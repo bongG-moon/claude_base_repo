@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "models": {
+    "small": "REPLACE_WITH_INTERNAL_SMALL_MODEL_ID",
+    "medium": "REPLACE_WITH_INTERNAL_MEDIUM_MODEL_ID",
+    "large": "REPLACE_WITH_INTERNAL_LARGE_MODEL_ID"
+  },
+  "defaultTier": "medium",
+  "managedMcpConfig": "C:\\ProgramData\\CompanyAgent\\config\\managed-mcp.json",
+  "knowledgePacks": [
+    "corporate-base"
+  ],
+  "policy": {
+    "database": "select-only",
+    "outlookSender": "initialized-user-only",
+    "maxFeedbackRetries": 2,
+    "storeRawTranscripts": false
+  }
+}

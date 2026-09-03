@@ -1,0 +1,15 @@
+{
+  "name": "company-agent",
+  "version": "0.1.0",
+  "description": "Windows-first enterprise Claude Code harness with personal knowledge, guarded tools, feedback loops, and tiered model routing.",
+  "author": {
+    "name": "Company Agent Platform Team"
+  },
+  "license": "Proprietary",
+  "keywords": [
+    "enterprise",
+    "knowledge",
+    "model-routing",
+    "self-feedback"
+  ]
+}

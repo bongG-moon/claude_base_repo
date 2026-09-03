@@ -1,0 +1,21 @@
+{
+  "model": "sonnet",
+  "availableModels": [
+    "haiku",
+    "sonnet",
+    "opus"
+  ],
+  "enforceAvailableModels": true,
+  "permissions": {
+    "allow": [
+      "Bash(company-agent knowledge *)",
+      "Bash(company-agent asset *)",
+      "Bash(company-agent memory *)",
+      "Bash(company-agent session verify *)",
+      "PowerShell(company-agent knowledge *)",
+      "PowerShell(company-agent asset *)",
+      "PowerShell(company-agent memory *)",
+      "PowerShell(company-agent session verify *)"
+    ]
+  }
+}

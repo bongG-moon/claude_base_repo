@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "corp-db-read": {
+      "type": "stdio",
+      "command": "REPLACE_WITH_INTERNAL_DB_MCP_COMMAND",
+      "args": []
+    },
+    "corp-outlook-self": {
+      "type": "stdio",
+      "command": "REPLACE_WITH_INTERNAL_OUTLOOK_MCP_COMMAND",
+      "args": []
+    }
+  }
+}
