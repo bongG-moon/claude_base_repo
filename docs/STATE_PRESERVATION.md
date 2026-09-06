@@ -1,15 +1,19 @@
-# 업데이트와 개인 상태 보존 — 0.3.2
+# 업데이트와 개인 상태 보존 — 0.3.3
 
 ## 직원의 업데이트 방법
 
 새 배포 ZIP을 완전히 압축 해제한 뒤 `Install-CompanyAgent.cmd`를 실행한다.
 기존과 같은 **Claude 전체 / 프로젝트** 범위를 선택하고, 프로젝트라면 같은 폴더를 지정한다.
-완료되면 Claude를 재시작한다. 개인 저장 위치를 처음에 따로 지정했어도 다시 입력할 필요가 없다.
+기존 하네스 감지 화면에서 **백업 후 Company Agent 설치**를 선택한다. **기존 하네스 유지**는 갱신 없이 종료한다.
+설치 전에 Claude를 닫고, 완료되면 다시 실행한다. 개인 저장 위치를 처음에 따로 지정했어도 다시 입력할 필요가 없다.
 설치 프로그램은 기존 등록의 `userStateRoot`를 재사용한다.
 
 | 상황 | 처리 |
 | --- | --- |
-| 기본 경로에서 동일 범위 업데이트 | 공통 버전/등록만 갱신, 개인 파일 유지 |
+| 기존 하네스 감지 후 Keep 선택 | 백업·비활성화·설치 없이 종료 |
+| 기존 하네스 감지 후 Replace 선택 | 기존 규칙·Hook을 암호화 백업 후 선택 범위에서 비활성화, 개인 상태 유지 |
+| 기존 하네스 없음 | 추가 선택 없이 설치 |
+| 기본 경로에서 동일 범위 업데이트 | 공통 버전/등록 갱신, 개인 파일 유지 |
 | 기존 사용자 지정 경로, 다음 설치에서 경로 생략 | 기존 등록 경로 재사용 |
 | 기존 경로와 다른 `-UserStateRoot` 지정 | 백업/등록/배포 변경 전 중단. 자동 이동하지 않음 |
 | 기존 등록이 손상되었거나 상대 경로/공통 영역을 가리킴 | 초기화하지 않고 중단 |
@@ -25,6 +29,7 @@
 
 백업 폴더는 `%LOCALAPPDATA%\CompanyAgent-Backups\pre-install-<시간>-<ID>`이다.
 현재 사용자와 LocalSystem만 접근하며, 작업 중인 원본은 그대로 둔다.
+다만 **교체**를 선택하면 안전한 백업 후 기존 규칙·Hook 원본을 선택 범위에서 비활성화한다.
 
 기존 Claude 설정·Skill·Hook·등록 백업 외에 `company-agent\personal-learning` 아래에 다음을 보관한다.
 
@@ -41,6 +46,30 @@ Markdown 안의 업무 지식까지 익명화하는 기능은 아니다. 백업�
 junction/symlink는 따라가지 않는다. 필수 개인 학습자료 안에서 발견되면 부분 백업을 성공으로 처리하지 않고 설치를 중단한다.
 일반 선택 백업의 제외 항목은 백업 기록으로 확인한다. 기본 상한은 2만 파일, 합계 1GiB, 단일 파일 64MiB, 깊이 32이다.
 
+## 기존 하네스의 별도 암호화 백업
+
+0.3.3에서 ‘백업 후 설치’를 선택하고 교체할 기존 파일·Hook이 있으면 같은 백업 폴더의 `previous-harness`에 해당 원본을 추가 보관한다.
+일반 선택 백업의 마스킹된 사본과 달리, 원본 전체를 **Windows DPAPI CurrentUser로 암호화**한다.
+따라서 기존 settings에 포함된 비밀값도 복구할 수 있지만 평문 자격 증명 파일을 백업 폴더에 복사하지는 않는다.
+복구는 백업을 만든 동일 Windows 사용자·PC와 **원래 백업 폴더 경로**에서 수행한다.
+백업 폴더를 옮겼다면 설치 때 출력된 원래 위치로 되돌린 뒤 복구한다. PC 교체/계정 이관용 백업으로 사용하지 않는다.
+추가 암호화 백업의 한도는 512개 파일, 단일 원본 8MiB, 원본 합계 32MiB이다.
+이 한도를 넘거나 스냅샷 작성·검증에 실패하면 기존 규칙·Hook을 비활성화하지 않고 설치를 중단한다.
+
+| 선택 범위 | 비활성화 대상 |
+| --- | --- |
+| User | 현재 Claude 설정 폴더의 `CLAUDE.md`·`CLAUDE.local.md`, `rules/**/*.md`, `settings.json`의 최상위 `hooks` |
+| Project | 선택 프로젝트 루트와 `.claude`의 `CLAUDE.md`·`CLAUDE.local.md`, `.claude/rules/**/*.md`, `.claude/settings.json`과 `.claude/settings.local.json`의 최상위 `hooks` |
+
+설정의 나머지 항목(모델·MCP·env·permissions 등), 개인 Memory/Knowledge/Skill, 일반 Skill과 다른 플러그인은 유지한다.
+상위 폴더·다른 범위·별도 플러그인에서 적용되는 규칙/Hook은 비활성화 대상이 아니다. 전체 환경 초기화가 아니다.
+기존 Company Agent 등록도 같은 범위의 기존 하네스로 감지한다. 모델·MCP 전용 설정이나 독립 Skill만으로는 감지하지 않는다.
+
+설치 실패 시 비활성화했던 항목을 자동 복구한다. 동시 편집 등으로 원래 위치의 파일이 달라졌으면 강제로 덮어쓰지 않고
+복구 충돌과 백업 위치를 안내한다. Claude와 해당 폴더를 수정하는 작업을 닫은 상태에서 설치해야 한다.
+파일마다 원본 변경을 다시 확인하지만 여러 파일을 OS 전체에서 한꺼번에 잠그는 원자적 교체·복구는 아니다.
+따라서 다른 프로세스가 동시에 파일을 쓰는 상황까지 전체 파일의 단일 시점 일관성을 보장하지 않는다.
+
 ## 복구
 
 1. 실행 중인 Claude와 해당 개인 상태를 쓰는 작업을 종료한다.
@@ -48,6 +77,21 @@ junction/symlink는 따라가지 않는다. 필수 개인 학습자료 안에서
 3. 현재 개인 데이터도 별도로 보존하고, 필요한 파일만 원래 위치로 복원한다. 폴더 전체를 무조건 덮어쓰지 않는다.
 4. 마스킹된 설정과 제외된 인증정보/MCP 의존성은 기존 회사 설정 절차로 복구한다.
 5. 호환되는 Core로 다시 실행해 Memory 검색과 개인 Skill 사용을 확인한다.
+
+교체 전 하네스로 돌아가려는 경우에는 위 개인 자료 선택 복구와 별도로 다음 절차를 사용한다.
+
+1. Claude를 닫고 `deploy\Uninstall-ScopedCompanyAgent.ps1`로 설치했던 같은 User/Project 범위의 Company Agent를 제거한다.
+2. 같은 Windows 사용자·PC에서 설치 때 출력된 백업 경로를 지정해 아래 Dry Run을 실행한다.
+3. 충돌이 없으면 두 번째 명령으로 기존 규칙·설정을 복구하고 Claude를 다시 연다.
+
+```powershell
+powershell.exe -NoProfile -File .\deploy\Restore-PreviousHarness.ps1 -BackupPath "<pre-install 백업 폴더>" -DryRun
+powershell.exe -NoProfile -File .\deploy\Restore-PreviousHarness.ps1 -BackupPath "<pre-install 백업 폴더>" -NonInteractive
+```
+
+이 복구 스크립트는 Company Agent를 자동 제거하지 않는다. 지시 파일이 수정·재생성되었거나 새 Hook과 충돌하면 복구를 거절한다.
+모델·MCP·Plugin 등록 등 Hook 이외의 설정 변경은 유지하면서 기존 Hook만 복구한다.
+충돌한 현재 자료를 별도로 보존하고 안내를 확인한다. 백업과 맞추기 위해 현재 설정이나 개인 자료를 무조건 삭제하지 않는다.
 
 사용자 지정 경로 설치를 **제거**하면 활성 등록도 삭제된다. 제거 전에 등록/백업의 `userStateRoot`를 보관하고,
 다시 설치할 때 같은 `-UserStateRoot`를 전달한다. 제거 후 경로 자동 추정은 하지 않는다.
@@ -61,6 +105,10 @@ junction/symlink는 따라가지 않는다. 필수 개인 학습자료 안에서
 표시 없는 기존 State와 사용자 설정은 호환 대상으로 유지한다. 표시가 있는데 잘못되었거나 미래 버전이면 거절한다.
 런타임의 개인 상태 쓰기도 같은 검사를 통과해야 하며, 알 수 없는 세션 schema를 기존 형식으로 덮어쓰지 않는다.
 `init-user` 재실행은 기존 사용자 설정의 추가 필드를 보존한다.
+
+Claude native CLI가 다시 저장할 설정에 안전한 정수 범위(`±9007199254740991`)를 넘는 정수 리터럴이 있으면,
+설치 전 검사에서 기존 설정을 변경하지 않고 중단한다. 해당 설정 항목이 문자열 값을 허용하는지 확인한 뒤 명시적으로 수정한다.
+이 검사는 숫자 임의 반올림이나 모든 소수·지수 표기의 정밀도 보장을 제공하지 않는다.
 
 일반 데이터 마이그레이션/전체 세션 검사 기능은 아니다. 향후 저장 형식 변경은 명시적인 변환과 검증이 필요하다.
 이 보호 장치를 모르는 과거 Core까지 안전하게 역호환된다고 보장하지 않는다. 형식 표시를 지워 검사를 우회하지 않는다.
@@ -88,6 +136,8 @@ Claude native 등록이 이전 Python을 가리키면 해당 **소유권이 확�
 ```powershell
 python -B -m unittest discover -s tests -q
 powershell.exe -NoProfile -File .\deploy\Test-PersonalStateBackup.ps1
+powershell.exe -NoProfile -File .\deploy\Test-ExistingHarness.ps1
+powershell.exe -NoProfile -File .\deploy\Test-HarnessReplacement.ps1
 powershell.exe -NoProfile -File .\deploy\Test-ScopedInstallSmoke.ps1 -IncludeBundledPython
 ```
 

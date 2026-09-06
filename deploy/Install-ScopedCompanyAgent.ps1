@@ -11,6 +11,8 @@ param(
     [string] $PythonCommand = 'python',
     [string] $InvokingUserProfile,
     [string] $InvokingLocalAppData,
+    [ValidateSet('Ask', 'Keep', 'Replace')]
+    [string] $ExistingHarnessAction = 'Ask',
     [switch] $NonInteractive,
     [switch] $DryRun,
     [switch] $SkipAdminCheck,
@@ -23,11 +25,13 @@ Set-StrictMode -Version 2.0
 $scopedEntryValues = @{}
 foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'BackupRoot', 'ClaudeConfigRoot',
     'ClaudeCommand', 'PythonCommand', 'InvokingUserProfile', 'InvokingLocalAppData', 'NonInteractive',
-    'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification')) {
+    'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction')) {
     $scopedEntryValues[$name] = Get-Variable -Name $name -ValueOnly
 }
 . (Join-Path $PSScriptRoot 'Setup-CompanyAgent.ps1') -FunctionsOnly
 foreach ($name in $scopedEntryValues.Keys) { Set-Variable -Name $name -Value $scopedEntryValues[$name] }
+. (Join-Path $PSScriptRoot 'ExistingHarness.ps1')
+. (Join-Path $PSScriptRoot 'HarnessReplacement.ps1')
 $usesConfigOverride = -not [string]::IsNullOrWhiteSpace([string]$scopedEntryValues['ClaudeConfigRoot']) -or
     -not [string]::IsNullOrWhiteSpace($env:CLAUDE_CONFIG_DIR)
 
@@ -60,6 +64,43 @@ function Read-ScopedJsonOrEmpty {
     return [pscustomobject]@{}
 }
 
+function Get-ScopedRawProperty {
+    param([byte[]] $Bytes, [string] $Key)
+    $document = Get-SetupHarnessJsonProperties -Bytes $Bytes
+    $properties = @($document.properties | Where-Object { $_.name -ieq $Key })
+    if ($properties.Count -eq 0) { return $null }
+    $property = $properties[0]
+    return $document.text.Substring($property.valueStart, $property.end - $property.valueStart)
+}
+
+function Set-ScopedRawProperty {
+    param([byte[]] $Bytes, [string] $Key, [bool] $Exists, [string] $RawValue)
+    $document = Get-SetupHarnessJsonProperties -Bytes $Bytes
+    $properties = @($document.properties | Where-Object { $_.name -ieq $Key })
+    $text = $document.text
+    if ($properties.Count -gt 0) {
+        $property = $properties[0]
+        if ($Exists) {
+            $text = $text.Substring(0, $property.valueStart) + $RawValue + $text.Substring($property.end)
+        }
+        else {
+            $start = $property.start
+            $end = $property.end
+            if ($property.followingComma -ge 0) { $end = $property.followingComma + 1 }
+            elseif ($property.previousComma -ge 0) { $start = $property.previousComma }
+            $text = $text.Substring(0, $start) + $text.Substring($end)
+        }
+    }
+    elseif ($Exists) {
+        $separator = $(if (@($document.properties).Count -gt 0) { ',' } else { '' })
+        $encodedKey = ConvertTo-Json -InputObject $Key -Compress
+        $text = $text.Substring(0, $document.close) + $separator + $encodedKey + ':' + $RawValue + $text.Substring($document.close)
+    }
+    $result = ConvertTo-SetupHarnessUtf8Bytes -Text $text -Bom $document.bom
+    $null = Get-SetupHarnessJsonProperties -Bytes $result
+    return ,$result
+}
+
 function Get-ScopedEntrySnapshot {
     param([string] $Path, [string] $Container, [string] $Key)
     $document = Read-ScopedJsonOrEmpty -Path $Path
@@ -67,40 +108,56 @@ function Get-ScopedEntrySnapshot {
     if ($Container) { $parent = Get-SetupPropertyValue -Object $document -Name $Container }
     $property = $null
     if ($null -ne $parent) { $property = $parent.PSObject.Properties[$Key] }
+    $rawValue = $null
+    if ($null -ne $property) {
+        $sourceBytes = Read-SetupHarnessBytes -Path $Path
+        if ($Container) {
+            $containerRaw = Get-ScopedRawProperty -Bytes $sourceBytes -Key $Container
+            $sourceBytes = ConvertTo-SetupHarnessUtf8Bytes -Text $containerRaw
+        }
+        $rawValue = Get-ScopedRawProperty -Bytes $sourceBytes -Key $Key
+    }
     return [pscustomobject]@{
         path = $Path; container = $Container; key = $Key
         fileExisted = (Test-Path -LiteralPath $Path -PathType Leaf)
         containerExisted = ($null -ne $parent)
         existed = ($null -ne $property)
         value = $(if ($null -ne $property) { $property.Value } else { $null })
+        rawValue = $rawValue
     }
 }
 
 function Restore-ScopedEntry {
     param([object] $Snapshot)
     Assert-SetupPathHasNoReparsePoint -Path $Snapshot.path -Name 'Registration restore target'
-    $document = Read-ScopedJsonOrEmpty -Path $Snapshot.path
-    $parent = $document
+    $fileExists = Test-Path -LiteralPath $Snapshot.path -PathType Leaf
+    $sourceBytes = $(if ($fileExists) { Read-SetupHarnessBytes -Path $Snapshot.path } else { ConvertTo-SetupHarnessUtf8Bytes -Text '{}' })
+    $beforeHash = Get-SetupHarnessHash -Bytes $sourceBytes
+    $resultBytes = $sourceBytes
     if ($Snapshot.container) {
-        $parent = Get-SetupPropertyValue -Object $document -Name $Snapshot.container
-        if ($null -eq $parent -and $Snapshot.existed) {
-            $parent = [pscustomobject]@{}
-            $document | Add-Member -MemberType NoteProperty -Name $Snapshot.container -Value $parent -Force
+        $containerRaw = Get-ScopedRawProperty -Bytes $sourceBytes -Key $Snapshot.container
+        if ($null -ne $containerRaw -or $Snapshot.existed) {
+            if ($null -eq $containerRaw) { $containerRaw = '{}' }
+            $containerBytes = Set-ScopedRawProperty -Bytes (ConvertTo-SetupHarnessUtf8Bytes -Text $containerRaw) -Key $Snapshot.key -Exists ([bool]$Snapshot.existed) -RawValue $Snapshot.rawValue
+            $containerDocument = Get-SetupHarnessJsonProperties -Bytes $containerBytes
+            $keepContainer = [bool]$Snapshot.containerExisted -or @($containerDocument.properties).Count -gt 0
+            $resultBytes = Set-ScopedRawProperty -Bytes $sourceBytes -Key $Snapshot.container -Exists $keepContainer -RawValue $containerDocument.text
         }
     }
-    if ($null -ne $parent) {
-        $parent.PSObject.Properties.Remove($Snapshot.key)
-        if ($Snapshot.existed) {
-            $parent | Add-Member -MemberType NoteProperty -Name $Snapshot.key -Value $Snapshot.value -Force
-        }
-        if ($Snapshot.container -and -not $Snapshot.containerExisted -and @($parent.PSObject.Properties).Count -eq 0) {
-            $document.PSObject.Properties.Remove($Snapshot.container)
+    else {
+        $resultBytes = Set-ScopedRawProperty -Bytes $sourceBytes -Key $Snapshot.key -Exists ([bool]$Snapshot.existed) -RawValue $Snapshot.rawValue
+    }
+    $resultDocument = Get-SetupHarnessJsonProperties -Bytes $resultBytes
+    if (-not $Snapshot.fileExisted -and @($resultDocument.properties).Count -eq 0) {
+        if ($fileExists) {
+            if ((Get-SetupHarnessHash -Bytes (Read-SetupHarnessBytes -Path $Snapshot.path)) -cne $beforeHash) { throw 'Claude registration changed during rollback; review the backup before retrying.' }
+            Remove-Item -LiteralPath $Snapshot.path -Force
         }
     }
-    if (-not $Snapshot.fileExisted -and @($document.PSObject.Properties).Count -eq 0) {
-        if (Test-Path -LiteralPath $Snapshot.path -PathType Leaf) { Remove-Item -LiteralPath $Snapshot.path -Force }
+    elseif ((Get-SetupHarnessHash -Bytes $resultBytes) -cne $beforeHash -or -not $fileExists) {
+        if ($fileExists) { Write-SetupHarnessBytesAtomic -Path $Snapshot.path -Bytes $resultBytes -ExpectedHash $beforeHash }
+        else { Write-SetupHarnessBytesAtomic -Path $Snapshot.path -Bytes $resultBytes -AssertMissing }
     }
-    else { Write-CompanyAgentJsonAtomic -Path $Snapshot.path -Value $document }
 }
 
 function Invoke-ScopedClaude {
@@ -223,6 +280,25 @@ foreach ($protected in @($BundleRoot, $ClaudeConfigRoot, $distributionRoot, $reg
         throw "UserStateRoot must be separate from package, registration, and Claude configuration folders: $protected"
     }
 }
+$existingHarness = Get-SetupExistingHarness -Scope $Scope -ClaudeConfigRoot $ClaudeConfigRoot -ProjectRoot $ProjectRoot -ExistingRegistration $existingScopeRegistration
+$harnessAction = Resolve-SetupExistingHarnessAction -Inventory $existingHarness -Action $ExistingHarnessAction -NonInteractive:$NonInteractive -DryRun:$DryRun
+if ($harnessAction -eq 'InputRequired') {
+    Write-Host '기존 하네스가 있습니다. 기존 구성을 유지할지, 백업 후 Company Agent로 설치할지 선택해 주세요.'
+    Write-Host '기존 유지: -ExistingHarnessAction Keep / 백업 후 설치: -ExistingHarnessAction Replace'
+    return [pscustomobject]@{
+        status = 'input-required'; input = 'ExistingHarnessAction'; choices = @('Keep', 'Replace')
+        scope = $Scope; projectRoot = $ProjectRoot; existingHarness = $existingHarness
+        userStateRoot = $UserStateRoot; backupRoot = $BackupRoot; dryRun = [bool]$DryRun
+        message = 'Ask the user to keep the existing harness or back it up, deactivate scoped instructions/custom hooks, and install Company Agent. No files were changed.'
+    }
+}
+if ($harnessAction -eq 'Keep') {
+    Write-Host '기존 하네스를 그대로 유지합니다. Company Agent 설치·업데이트와 설정 변경은 하지 않았습니다.'
+    return [pscustomobject]@{
+        status = 'kept'; scope = $Scope; projectRoot = $ProjectRoot; existingHarness = $existingHarness
+        userStateRoot = $UserStateRoot; changed = $false; dryRun = [bool]$DryRun
+    }
+}
 if (-not (Test-Path -LiteralPath (Join-Path $BundleRoot 'bundle-manifest.json') -PathType Leaf)) {
     throw "Extract the complete Company Agent ZIP first, then double-click Install-CompanyAgent.cmd. Checked: $BundleRoot"
 }
@@ -268,6 +344,9 @@ if ($Scope -eq 'Project') {
         $folder = $parent
     }
 }
+# Native Claude plugin commands rewrite JSON settings. Reject integer literals
+# that their JavaScript number representation cannot preserve before any write.
+Assert-SetupNativeSettingsIntegerSafety -Paths @($modelSettingsPaths | Select-Object -Unique)
 $modelOverrides = @(Get-CompanyAgentSubagentModelForceSettings -SettingsPaths $modelSettingsPaths -IncludeWindowsPolicy)
 $forcedEnvironment = @(@('CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE') | Where-Object { -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_, 'Process')) })
 if ($modelOverrides.Count -gt 0 -or $forcedEnvironment.Count -gt 0) {
@@ -314,6 +393,17 @@ if ($Scope -eq 'Project' -and (Test-Path -LiteralPath (Join-Path $ProjectRoot '.
     $projectItems = @(Get-SetupBackupItems -ClaudeConfigPath (Join-Path $ProjectRoot '.claude') -PersonalStatePath '' -ManagedDataPath $registrationRoot -ManagedInstallPath $distributionRoot -ManagedShortcutPath '')
     foreach ($item in $projectItems) { $item.relativePath = 'project-' + $item.relativePath; $backupItems += $item }
 }
+if ($Scope -eq 'Project') {
+    foreach ($instructionName in @('CLAUDE.md', 'CLAUDE.local.md')) {
+        $instructionPath = Join-Path $ProjectRoot $instructionName
+        if (Test-Path -LiteralPath $instructionPath -PathType Leaf) {
+            $backupItems += [pscustomobject]@{
+                source = $instructionPath; relativePath = ('project-root\' + $instructionName)
+                purpose = 'Project root Claude instruction before harness replacement'; mode = 'copy'; required = $true
+            }
+        }
+    }
+}
 foreach ($ownedFile in @($registrationPath, (Join-Path $marketplaceRoot '.claude-plugin\marketplace.json'))) {
     if (Test-Path -LiteralPath $ownedFile -PathType Leaf) {
         $backupItems += [pscustomobject]@{ source = $ownedFile; relativePath = ('company-agent\' + (Split-Path -Leaf $ownedFile)); purpose = 'Company Agent installation registration'; mode = 'sanitized-json' }
@@ -326,6 +416,7 @@ if ($DryRun) {
         distributionRoot = $distributionRoot; settingsPath = $settingsPath; backupRoot = $BackupRoot
         backupItems = $backupItems; needsElevation = $false; pythonCommand = $resolvedPython
         modelSource = 'existing Claude aliases: haiku/sonnet/opus'; pluginId = $pluginId
+        existingHarness = $existingHarness; existingHarnessAction = $harnessAction
     }
 }
 
@@ -335,6 +426,11 @@ Write-Host '개인 Memory·수정 이력·Knowledge·Skill도 선택 백업하�
 Write-Host '인증정보와 대화 원문은 제외하며, 설정의 비밀값은 마스킹합니다.'
 $backupPath = New-SetupBackup -BackupBase $BackupRoot -Items $backupItems -ClaudeConfigPath $ClaudeConfigRoot -PersonalStatePath $UserStateRoot -ManagedDataPath $registrationRoot -ManagedInstallPath $distributionRoot
 Write-Host "Backup: $backupPath"
+$harnessTransaction = $null
+if ($harnessAction -eq 'Replace' -and (@($existingHarness.replacementFiles).Count -gt 0 -or @($existingHarness.hookSettingsPaths).Count -gt 0)) {
+    # Persist and verify every exact snapshot before removing any instruction/hook.
+    $harnessTransaction = New-SetupHarnessReplacementBackup -BackupPath $backupPath -Inventory $existingHarness
+}
 $snapshots = @(
     (Get-ScopedEntrySnapshot -Path $settingsPath -Container 'enabledPlugins' -Key $pluginId),
     (Get-ScopedEntrySnapshot -Path $settingsPath -Container 'extraKnownMarketplaces' -Key $marketplaceName),
@@ -350,6 +446,10 @@ $previousConfigRoot = [Environment]::GetEnvironmentVariable('CLAUDE_CONFIG_DIR',
 $releaseCreated = $false
 $locationPushed = $false
 try {
+    if ($null -ne $harnessTransaction) {
+        Write-Host '기존 규칙·Hook의 암호화 백업을 확인했습니다. 선택한 범위에서만 비활성화합니다.'
+        $null = Invoke-SetupHarnessReplacement -Transaction $harnessTransaction
+    }
     Write-Host '[3/4] 오프라인 Plugin을 설치합니다...'
     if (-not (Test-Path -LiteralPath $releaseRoot)) {
         $releaseCreated = $true
@@ -400,6 +500,7 @@ try {
         installedAtUtc = [DateTime]::UtcNow.ToString('o')
     }
     Write-CompanyAgentJsonAtomic -Path $registrationPath -Value $registration
+    if ($null -ne $harnessTransaction) { $null = Complete-SetupHarnessReplacement -Transaction $harnessTransaction }
     Write-Host '[4/4] 설치가 완료되었습니다.'
     Write-Host 'Claude Code를 닫았다 다시 열면 Company Agent가 적용됩니다.'
     if ($Scope -eq 'Project') { Write-Host "이 프로젝트 폴더에서 Claude를 열어 주세요: $ProjectRoot" }
@@ -407,7 +508,9 @@ try {
     Write-Host '모델 설정은 기존 값을 재사용하며, MCP는 별도로 연결할 수 있습니다.'
     Write-Host "개인 자료 저장 위치: $UserStateRoot"
     Write-Host "백업 위치: $backupPath"
-    return [pscustomobject]@{ status = 'installed'; scope = $Scope; nativeClaudeScope = $nativeScope; projectRoot = $ProjectRoot; pluginId = $pluginId; coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath; safetyBackup = $backupPath; needsElevation = $false }
+    if ($null -ne $harnessTransaction) { Write-Host '기존 하네스 복원 자료: 백업 폴더의 previous-harness (현재 Windows 계정으로 복원)' }
+    foreach ($note in @($existingHarness.inheritedNotes)) { Write-Host ([string]$note) }
+    return [pscustomobject]@{ status = 'installed'; scope = $Scope; nativeClaudeScope = $nativeScope; projectRoot = $ProjectRoot; pluginId = $pluginId; coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath; safetyBackup = $backupPath; needsElevation = $false; existingHarnessAction = $harnessAction; previousHarnessDeactivated = ($null -ne $harnessTransaction); existingHarness = $existingHarness }
 }
 catch {
     $failure = $_.Exception.Message
@@ -427,8 +530,12 @@ catch {
         }
     }
     catch { $recoveryErrors += $_.Exception.Message }
+    if ($null -ne $harnessTransaction) {
+        try { $null = Restore-SetupHarnessReplacement -Transaction $harnessTransaction }
+        catch { $recoveryErrors += $_.Exception.Message }
+    }
     if ($recoveryErrors.Count -gt 0) { throw "$failure Recovery needs attention: $($recoveryErrors -join '; '). Backup: $backupPath" }
-    throw "$failure Company Agent registration was restored. Other Claude registrations and personal state were preserved. Backup: $backupPath"
+    throw "$failure Company Agent registration and any deactivated previous harness were restored. Other Claude registrations and personal state were preserved. Backup: $backupPath"
 }
 finally {
     if ($locationPushed) { Pop-Location }

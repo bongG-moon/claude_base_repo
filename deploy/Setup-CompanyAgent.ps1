@@ -14,6 +14,8 @@ param(
     [string] $PythonCommand = 'python',
     [string] $InvokingUserProfile,
     [string] $InvokingLocalAppData,
+    [ValidateSet('Ask', 'Keep', 'Replace')]
+    [string] $ExistingHarnessAction = 'Ask',
     [switch] $AllowExistingCompanyAgentPlugin,
     [switch] $NonInteractive,
     [switch] $DryRun,
@@ -372,7 +374,7 @@ function Get-SetupBackupItems {
             $mode = $(if ($file.Extension -ieq '.json') { 'sanitized-json' } else { 'copy' })
             Add-BackupItem -Source $file.FullName -RelativePath (Join-Path 'claude-config' $file.Name) -Purpose 'Claude user instruction or settings file' -Mode $mode
         }
-        foreach ($directoryName in @('skills', 'commands', 'agents', 'hooks')) {
+        foreach ($directoryName in @('skills', 'commands', 'agents', 'hooks', 'rules')) {
             Add-BackupItem -Source (Join-Path $claudeRoot $directoryName) -RelativePath (Join-Path 'claude-config' $directoryName) -Purpose 'Claude user customization directory'
         }
         foreach ($pluginFileName in @('config.json', 'installed_plugins.json', 'known_marketplaces.json')) {
@@ -724,7 +726,9 @@ function New-SetupBackup {
         $readme = @(
             'COMPANY AGENT PRE-INSTALL BACKUP',
             '',
-            'The installer did not overwrite the existing Claude user directory.',
+            'This selective backup was created before installation changes.',
+            'If replacement was selected, previous-harness contains encrypted',
+            'exact snapshots of the scoped instructions and settings being changed.',
             'This SELECTIVE user-only backup protects Skills, commands, agents, Hooks,',
             'settings, plugin registrations, and managed Company Agent selection files.',
             'company-agent/personal-learning contains selected personal Memory and',
@@ -843,7 +847,7 @@ if ($Scope -in @('User', 'Project')) {
     $scopedParameters = @{}
     foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'BackupRoot', 'ClaudeConfigRoot',
         'ClaudeCommand', 'PythonCommand', 'InvokingUserProfile', 'InvokingLocalAppData', 'NonInteractive',
-        'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification')) {
+        'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction')) {
         $value = Get-Variable -Name $name -ValueOnly
         if ($null -ne $value -and -not ($value -is [string] -and [string]::IsNullOrWhiteSpace($value))) {
             $scopedParameters[$name] = $value
@@ -851,6 +855,9 @@ if ($Scope -in @('User', 'Project')) {
     }
     & (Join-Path $PSScriptRoot 'Install-ScopedCompanyAgent.ps1') @scopedParameters
     return
+}
+if ($ExistingHarnessAction -ne 'Ask') {
+    throw 'ExistingHarnessAction applies only to User/Project installation. Legacy Machine installation does not replace existing Claude rules or hooks.'
 }
 
 $isHandoff = -not [string]::IsNullOrWhiteSpace($HandoffData)

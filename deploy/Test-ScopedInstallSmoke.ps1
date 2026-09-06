@@ -52,6 +52,7 @@ try {
         BundleRoot = $BundleRoot; ClaudeConfigRoot = $configRoot; InvokingUserProfile = $profileRoot
         InvokingLocalAppData = $localAppData; ClaudeCommand = $ClaudeCommand; PythonCommand = $PythonCommand
         NonInteractive = $true; SkipAdminCheck = $true
+        ExistingHarnessAction = 'Replace'
     }
     $setup = Join-Path $BundleRoot 'deploy\Setup-CompanyAgent.ps1'
     $scopeRequested = $false
@@ -94,12 +95,54 @@ try {
         }
     }
     Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $externalClaude 'settings.local.json')) 'Junction cleanup removed its target'
+    $userInstruction = Join-Path $configRoot 'CLAUDE.md'
+    $userRule = Join-Path $configRoot 'rules\old-guidance.md'
+    Write-CompanyAgentUtf8File -Path $userInstruction -Content 'Previous user harness instructions.'
+    Write-CompanyAgentUtf8File -Path $userRule -Content 'Previous user harness rule.'
+    $userBeforeSettings = Read-CompanyAgentJson -Path (Join-Path $configRoot 'settings.json')
+    $oldHooks = [pscustomobject]@{ SessionStart = @([pscustomobject]@{ hooks = @([pscustomobject]@{ type = 'command'; command = 'echo PREVIOUS_HARNESS_FIXTURE' }) }) }
+    $userBeforeSettings | Add-Member -MemberType NoteProperty -Name hooks -Value $oldHooks
+    Write-CompanyAgentJsonAtomic -Path (Join-Path $configRoot 'settings.json') -Value $userBeforeSettings
+    $userBeforeChoice = @(Get-CompanyAgentTreeRecords -Root $configRoot | ConvertTo-Json -Depth 10 -Compress) -join ''
+    $askCommon = $common.Clone()
+    $askCommon.ExistingHarnessAction = 'Ask'
+    foreach ($previewOnly in @($true, $false)) {
+        $choiceResult = & $setup @askCommon -Scope User -DryRun:$previewOnly
+        Assert-ScopedSmoke ($choiceResult.status -eq 'input-required' -and $choiceResult.input -eq 'ExistingHarnessAction') 'Existing harness silently selected replacement in unattended setup'
+    }
+    $keepCommon = $common.Clone()
+    $keepCommon.ExistingHarnessAction = 'Keep'
+    $keptUser = & $setup @keepCommon -Scope User
+    Assert-ScopedSmoke ($keptUser.status -eq 'kept' -and -not $keptUser.changed) 'Keep did not skip installation'
+    Assert-ScopedSmoke ((@(Get-CompanyAgentTreeRecords -Root $configRoot | ConvertTo-Json -Depth 10 -Compress) -join '') -ceq $userBeforeChoice) 'Ask/Keep changed previous harness contents'
+    Assert-ScopedSmoke (-not (Test-Path -LiteralPath (Join-Path $localAppData 'CompanyAgent-Backups'))) 'Ask/Keep created a backup despite no installation'
+    Assert-ScopedSmoke (-not (Test-Path -LiteralPath (Join-Path $localAppData 'CompanyAgent-Distribution'))) 'Ask/Keep created distribution'
+    $userSettingsPath = Join-Path $configRoot 'settings.json'
+    $userSettingsContent = Get-Content -LiteralPath $userSettingsPath -Raw -Encoding UTF8
+    $unsafeSettingsContent = '{"unsafeNumericIdentifier":9007199254740993,' + $userSettingsContent.TrimStart().Substring(1)
+    Write-CompanyAgentUtf8File -Path $userSettingsPath -Content $unsafeSettingsContent
+    $unsafeSettingsHash = (Get-FileHash -LiteralPath $userSettingsPath -Algorithm SHA256).Hash
+    $unsafeIntegerBlocked = $false
+    try {
+        try { $null = & $setup @common -Scope User }
+        catch {
+            if ($_.Exception.Message -notmatch '(?i)(integer|numeric|precision)') { throw }
+            $unsafeIntegerBlocked = $true
+        }
+        Assert-ScopedSmoke $unsafeIntegerBlocked 'Native JSON registration could round an unsupported integer'
+        Assert-ScopedSmoke ((Get-FileHash -LiteralPath $userSettingsPath -Algorithm SHA256).Hash -ceq $unsafeSettingsHash) 'Unsafe integer rejection modified original settings'
+        Assert-ScopedSmoke ((Test-Path -LiteralPath $userInstruction) -and -not (Test-Path -LiteralPath (Join-Path $localAppData 'CompanyAgent-Backups'))) 'Unsafe integer rejection occurred after replacement or backup'
+    }
+    finally { Write-CompanyAgentUtf8File -Path $userSettingsPath -Content $userSettingsContent }
     $preview = & $setup @common -Scope User -DryRun
     Assert-ScopedSmoke ($preview.status -eq 'dry-run' -and -not $preview.needsElevation) 'User dry-run should be read-only without UAC'
     Assert-ScopedSmoke (-not (Test-Path -LiteralPath (Join-Path $localAppData 'CompanyAgent-Distribution'))) 'Dry-run created distribution'
     if ($IncludeBundledPython) { Assert-ScopedSmoke ($preview.pythonCommand -like '*\runtime\python\python.exe') 'Full package did not choose its embedded Python' }
     $user = & $setup @common -Scope User
     Assert-ScopedSmoke ($user.status -eq 'installed' -and $user.nativeClaudeScope -eq 'user') 'User installation failed'
+    Assert-ScopedSmoke ($user.previousHarnessDeactivated -and -not (Test-Path -LiteralPath $userInstruction) -and -not (Test-Path -LiteralPath $userRule)) 'Replace did not deactivate old user instructions'
+    Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $user.safetyBackup 'previous-harness')) 'Replace has no encrypted recovery snapshot'
+    Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $user.safetyBackup 'claude-config\rules\old-guidance.md')) 'Selective backup omitted rules'
     $userRecord = Read-CompanyAgentJson -Path $user.registrationPath
     Assert-ScopedSmoke ($userRecord.userStateRoot -eq (Join-Path $localAppData 'CompanyAgent\states\user')) 'Default User state path changed'
     Assert-ScopedSmoke ($userRecord.claudeConfigDirOverride -eq $true -and $userRecord.claudeConfigRoot -eq $configRoot) 'Explicit isolated Claude configuration was not recorded as an override'
@@ -124,11 +167,35 @@ try {
     $settings = Read-CompanyAgentJson -Path (Join-Path $configRoot 'settings.json')
     Assert-ScopedSmoke ($settings.env.ANTHROPIC_DEFAULT_HAIKU_MODEL -eq 'already-configured-small') 'Model setting changed'
     Assert-ScopedSmoke ($settings.enabledPlugins.'unrelated@fixture' -eq $true) 'Other plugin disabled'
+    Assert-ScopedSmoke ($settings.env.API_TOKEN -eq 'fixture-not-a-real-secret') 'Replace removed a model/auth configuration value'
+    Assert-ScopedSmoke ($null -eq $settings.PSObject.Properties['hooks']) 'Old user hooks are still active after replacement'
     Assert-ScopedSmoke ((Get-Content -LiteralPath (Join-Path $configRoot 'skills\existing-skill\SKILL.md') -Raw) -like 'Existing skill*') 'Existing skill changed'
     $backup = Read-CompanyAgentJson -Path (Join-Path $user.safetyBackup 'claude-config\settings.json')
     Assert-ScopedSmoke ($backup.env.API_TOKEN -eq '[REDACTED_BY_COMPANY_AGENT_BACKUP]') 'Backup secret redaction failed'
     Assert-ScopedSmoke (-not (Test-Path -LiteralPath (Join-Path $user.safetyBackup 'claude-config\.credentials.json'))) 'Backup copied credentials'
+    # A busy source makes the safety backup fail before any old rule is removed
+    # or any Company Agent project registration is added.
+    $lockedProject = Join-Path $testRoot 'Backup failure project'
+    $lockedInstruction = Join-Path $lockedProject 'CLAUDE.md'
+    Write-CompanyAgentUtf8File -Path $lockedInstruction -Content 'Busy previous harness must remain unchanged.'
+    $lockedBefore = (Get-FileHash -LiteralPath $lockedInstruction -Algorithm SHA256).Hash
+    $configBeforeBusyBackup = @(Get-CompanyAgentTreeRecords -Root $configRoot | ConvertTo-Json -Depth 10 -Compress) -join ''
+    $busyHandle = [IO.File]::Open($lockedInstruction, [IO.FileMode]::Open, [IO.FileAccess]::ReadWrite, [IO.FileShare]::Read)
+    $busyBackupBlocked = $false
+    try {
+        try { $null = & $setup @common -Scope Project -ProjectRoot $lockedProject }
+        catch { $busyBackupBlocked = $true }
+    }
+    finally { $busyHandle.Dispose() }
+    Assert-ScopedSmoke $busyBackupBlocked 'Unreadable backup source did not block installation'
+    Assert-ScopedSmoke ((Get-FileHash -LiteralPath $lockedInstruction -Algorithm SHA256).Hash -ceq $lockedBefore) 'Backup failure modified old instructions'
+    Assert-ScopedSmoke (-not (Test-Path -LiteralPath (Join-Path $lockedProject '.claude\settings.local.json'))) 'Backup failure registered the new plugin'
+    Assert-ScopedSmoke ((@(Get-CompanyAgentTreeRecords -Root $configRoot | ConvertTo-Json -Depth 10 -Compress) -join '') -ceq $configBeforeBusyBackup) 'Backup failure changed unrelated user settings'
+    $projectInstruction = Join-Path $projectRoot 'CLAUDE.md'
+    Write-CompanyAgentUtf8File -Path $projectInstruction -Content 'Old project harness must be backed up before replacement.'
     $project = & $setup @common -Scope Project -ProjectRoot $projectRoot
+    Assert-ScopedSmoke (-not (Test-Path -LiteralPath $projectInstruction)) 'Project root instructions were not deactivated'
+    Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $project.safetyBackup 'project-root\CLAUDE.md')) 'Project root instructions were not backed up'
     $project2 = & $setup @common -Scope Project -ProjectRoot $otherProject -UserStateRoot $customStateRoot
     Assert-ScopedSmoke ($project.nativeClaudeScope -eq 'local') 'Project must use local settings scope'
     Assert-ScopedSmoke ($project.userStateRoot -ne $user.userStateRoot -and $project.userStateRoot -ne $project2.userStateRoot) 'Per-scope state was shared'
@@ -223,6 +290,14 @@ try {
     Write-CompanyAgentUtf8File -Path $failureWrapper -Content $wrapperText
     $failureCommon = $common.Clone()
     $failureCommon.ClaudeCommand = $failureWrapper
+    $failedInstruction = Join-Path $failedProject 'CLAUDE.md'
+    $failureSettings = Join-Path $failedProject '.claude\settings.local.json'
+    Write-CompanyAgentUtf8File -Path $failedInstruction -Content 'Restore this previous harness when installation fails.'
+    $failedInstructionHash = (Get-FileHash -LiteralPath $failedInstruction -Algorithm SHA256).Hash
+    $deepProvider = '{"leaf":"deep-provider-setting-preserved","largeInteger":9007199254740991}'
+    for ($level = 0; $level -lt 28; $level++) { $deepProvider = '{"nested":' + $deepProvider + '}' }
+    $failureJsonText = '{"hooks":' + ($oldHooks | ConvertTo-Json -Depth 12 -Compress) + ',"env":{"API_TOKEN":"rollback-fixture-not-real"},"permissions":{"allow":["Read"]},"customProvider":' + $deepProvider + '}'
+    Write-CompanyAgentUtf8File -Path $failureSettings -Content $failureJsonText
     $didFail = $false
     try { $null = & $setup @failureCommon -Scope Project -ProjectRoot $failedProject }
     catch {
@@ -230,6 +305,14 @@ try {
         $didFail = $true
     }
     Assert-ScopedSmoke $didFail 'Injected plugin update failure was ignored'
+    Assert-ScopedSmoke ((Get-FileHash -LiteralPath $failedInstruction -Algorithm SHA256).Hash -ceq $failedInstructionHash) 'Failed install did not restore previous instruction bytes'
+    $restoredFailureSettings = Read-CompanyAgentJson -Path $failureSettings
+    Assert-ScopedSmoke ($restoredFailureSettings.hooks.SessionStart[0].hooks[0].command -eq 'echo PREVIOUS_HARNESS_FIXTURE') 'Failed install did not restore old hooks'
+    Assert-ScopedSmoke ($restoredFailureSettings.env.API_TOKEN -eq 'rollback-fixture-not-real' -and $restoredFailureSettings.permissions.allow -contains 'Read') 'Failed install damaged unrelated settings'
+    $restoredProvider = $restoredFailureSettings.customProvider
+    for ($level = 0; $level -lt 28; $level++) { $restoredProvider = $restoredProvider.nested }
+    Assert-ScopedSmoke ($restoredProvider.leaf -eq 'deep-provider-setting-preserved') 'Rollback truncated deeply nested unrelated settings'
+    Assert-ScopedSmoke ((Get-Content -LiteralPath $failureSettings -Raw) -match '9007199254740991') 'Rollback changed a large safe unrelated JSON integer'
     $afterEntries = (Read-CompanyAgentJson -Path (Join-Path $configRoot 'plugins\installed_plugins.json')).plugins.'company-agent@company-agent-local' | ConvertTo-Json -Depth 30 -Compress
     Assert-ScopedSmoke ($beforeEntries -ceq $afterEntries) 'Failure rollback changed existing user/project plugin registrations'
     $failureSettings = Join-Path $failedProject '.claude\settings.local.json'
@@ -242,6 +325,7 @@ try {
     $uninstallArgs = $common.Clone()
     $uninstallArgs.Remove('BundleRoot')
     $uninstallArgs.Remove('PythonCommand')
+    $uninstallArgs.Remove('ExistingHarnessAction')
     $removed = & (Join-Path $BundleRoot 'deploy\Uninstall-ScopedCompanyAgent.ps1') @uninstallArgs -Scope Project -ProjectRoot $projectRoot
     Assert-ScopedSmoke ($removed.status -eq 'uninstalled') 'Scoped uninstall failed'
     Assert-ScopedSmoke (-not (Test-Path -LiteralPath $project.registrationPath)) 'Scoped uninstall left active Project registry'
@@ -311,8 +395,18 @@ try {
     $updatedProjectEntries = @($updatedEntries | Where-Object { $_.scope -eq 'local' -and $_.projectPath -ieq $otherProject -and $_.version -eq $updateVersion })
     Assert-ScopedSmoke ($updatedProjectEntries.Count -eq 1) 'Real Claude CLI did not select the new plugin version for the custom-state project'
     Assert-ScopedSmoke ((@(Get-CompanyAgentTreeRecords -Root $customStateRoot | ConvertTo-Json -Depth 10 -Compress) -join '') -ceq $stateBeforeVersionUpdate) 'Distinct-version update changed latest memory, personal knowledge, or Skill files'
+    # User scope was uninstalled above. Restore only its original instructions
+    # and custom hooks through the packaged recovery entry point.
+    $restoreEntry = Join-Path $BundleRoot 'deploy\Restore-PreviousHarness.ps1'
+    $restorePreview = & $restoreEntry -BackupPath $user.safetyBackup -DryRun -NonInteractive
+    Assert-ScopedSmoke ($restorePreview.status -eq 'restore-ready' -and -not (Test-Path -LiteralPath $userInstruction)) 'Recovery DryRun changed the old harness'
+    $restoredUser = & $restoreEntry -BackupPath $user.safetyBackup -NonInteractive
+    Assert-ScopedSmoke ($restoredUser.status -eq 'restored' -and (Test-Path -LiteralPath $userInstruction) -and (Test-Path -LiteralPath $userRule)) 'Packaged recovery entry did not restore User instructions'
+    $afterRecovery = Read-CompanyAgentJson -Path (Join-Path $configRoot 'settings.json')
+    Assert-ScopedSmoke ($afterRecovery.hooks.SessionStart[0].hooks[0].command -eq 'echo PREVIOUS_HARNESS_FIXTURE') 'Packaged recovery did not restore original hooks'
+    Assert-ScopedSmoke ($afterRecovery.env.API_TOKEN -eq 'fixture-not-a-real-secret' -and $afterRecovery.enabledPlugins.'unrelated@fixture' -eq $true) 'Packaged recovery changed unrelated settings'
     Write-Host "Scoped install smoke PASS (real offline Claude plugin CLI): $testRoot"
-    [pscustomobject]@{ status = 'pass'; testRoot = $testRoot; nativeClaude = $true; scopes = @('user', 'local'); registrations = 3; nativeSessionStart = $true; embeddedPython = [bool]$IncludeBundledPython; customStatePreserved = $true; conflictingStateBlocked = $true; futureStateBlocked = $true; distinctVersionUpdate = $updateVersion }
+    [pscustomobject]@{ status = 'pass'; testRoot = $testRoot; nativeClaude = $true; scopes = @('user', 'local'); registrations = 3; nativeSessionStart = $true; embeddedPython = [bool]$IncludeBundledPython; customStatePreserved = $true; conflictingStateBlocked = $true; futureStateBlocked = $true; distinctVersionUpdate = $updateVersion; existingHarnessChoice = $true; replacementRollback = $true }
 }
 finally {
     $env:CLAUDE_CONFIG_DIR = $originalConfig

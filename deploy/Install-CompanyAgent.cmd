@@ -8,6 +8,7 @@ echo ========================
 echo Choose all Claude sessions for your Windows account or one project.
 echo Setup checks requirements, backs up existing customizations, and
 echo installs the offline plugin. User/Project installation needs no UAC.
+echo If an existing harness is found, choose Keep or Backup and replace.
 echo.
 echo Model IDs, MCP details, Outlook email, and display name are NOT
 echo requested during setup. Personal folders initialize automatically
@@ -25,7 +26,8 @@ set "COMPANY_AGENT_SETUP_EXIT=%ERRORLEVEL%"
 
 echo.
 if "%COMPANY_AGENT_SETUP_EXIT%"=="0" (
-    echo Setup finished. Close and reopen Claude Code to activate.
+    echo Setup finished. Check the result above: kept, input-required, or installed.
+    echo Only after installation, close and reopen Claude Code to activate.
 ) else (
     echo Setup did not finish. Read the message above; your safety backup
     echo and any existing personal Company Agent data were kept.
