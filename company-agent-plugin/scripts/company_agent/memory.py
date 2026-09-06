@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
 import shutil
+import stat
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from .frontmatter import dump_frontmatter, load_markdown
-from .knowledge import SECRET_PATTERNS
+from .frontmatter import MarkdownDocument, dump_frontmatter, parse_frontmatter_text
+from .knowledge import SECRET_PATTERNS, auto_title_slug
 from .paths import atomic_write_json, atomic_write_text, ensure_user_layout, load_json
 
 
@@ -42,6 +44,7 @@ MAX_MEMORY_RESULTS = 5
 MAX_MEMORY_RESULT_BODY_CHARS = 1_000
 MAX_MEMORY_CONTEXT_ITEM_CHARS = 700
 MAX_MEMORY_CONTEXT_CHARS = 4_000
+MAX_MEMORY_FILE_BYTES = 32_768
 
 MEMORY_CONTEXT_BEGIN = "<company-agent-personal-memory-data>"
 MEMORY_CONTEXT_END = "</company-agent-personal-memory-data>"
@@ -85,18 +88,34 @@ def _contains_raw_artifact(value: str) -> bool:
 
 def _safe_memory_path(path: Path, item_root: Path) -> bool:
     try:
-        return not path.is_symlink() and path.resolve().parent == item_root.resolve()
+        return (not path.is_symlink()
+                and not getattr(path, "is_junction", lambda: False)()
+                and path.resolve().parent == item_root.resolve())
     except OSError:
         return False
 
 
+def _read_memory_document(path: Path, item_root: Path) -> MarkdownDocument:
+    if not _safe_memory_path(path, item_root):
+        raise ValueError("unsafe memory path")
+    info = path.stat()
+    if not stat.S_ISREG(info.st_mode) or info.st_size > MAX_MEMORY_FILE_BYTES:
+        raise ValueError("memory file exceeds the bounded read limit")
+    # Limit the actual read as well as the stat check, including a file that
+    # grew between those operations. Oversized originals are never truncated.
+    with path.open("rb") as stream:
+        raw_bytes = stream.read(MAX_MEMORY_FILE_BYTES + 1)
+    if len(raw_bytes) > MAX_MEMORY_FILE_BYTES:
+        raise ValueError("memory file exceeds the bounded read limit")
+    raw = raw_bytes.decode("utf-8-sig")
+    metadata, body = parse_frontmatter_text(raw, str(path))
+    return MarkdownDocument(path=path, metadata=metadata, body=body, raw=raw)
+
+
 def _load_safe_memory(path: Path, item_root: Path):
     """Load one memory item or return None when local state is unsafe/corrupt."""
-
-    if not _safe_memory_path(path, item_root):
-        return None
     try:
-        document = load_markdown(path)
+        document = _read_memory_document(path, item_root)
     except (OSError, UnicodeError, ValueError, TypeError):
         return None
 
@@ -143,13 +162,32 @@ def _query_tokens(query: str) -> list[str]:
     return list(dict.fromkeys(tokens))[:MAX_MEMORY_QUERY_TOKENS]
 
 
-def _rebuild_index(root: Path) -> Path:
+def _content_fingerprint(kind: str, title: str, body: str) -> str:
+    # Exact content only: no case folding, semantic similarity, or removal of
+    # words that could merge two distinct preferences or business conventions.
+    payload = json.dumps([kind, title.strip(), body.strip()], ensure_ascii=False, separators=(",", ":"))
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def compact_memory(root: Path) -> dict[str, int]:
+    """Refresh a deduplicated derived catalog; never edit or delete originals."""
     layout = ensure_user_layout(root)
     entries = []
-    for path in sorted(layout["memory_items"].glob("*.md")):
+    files = sorted(layout["memory_items"].glob("*.md"))
+    counts = {"scanned": len(files), "active": 0, "unique": 0, "duplicates": 0, "ignored": 0}
+    seen: set[str] = set()
+    for path in files:
         document = _load_safe_memory(path, layout["memory_items"])
         if document is None:
+            counts["ignored"] += 1
             continue
+        counts["active"] += 1
+        fingerprint = _content_fingerprint(document.metadata["kind"], document.metadata["title"], document.body)
+        if fingerprint in seen:
+            counts["duplicates"] += 1
+            continue
+        seen.add(fingerprint)
+        counts["unique"] += 1
         entries.append(
             {
                 "id": document.metadata.get("id"),
@@ -157,11 +195,23 @@ def _rebuild_index(root: Path) -> Path:
                 "title": document.metadata.get("title"),
                 "path": str(path.resolve()),
                 "revision": document.metadata.get("revision", 1),
+                "content_hash": fingerprint,
             }
         )
     index_path = layout["memory_index"] / "catalog.json"
-    atomic_write_json(index_path, {"schemaVersion": 1, "generatedAt": _now(), "entries": entries})
-    return index_path
+    catalog = {"schemaVersion": 1, "entries": entries, "counts": counts}
+    try:
+        previous = load_json(index_path, {})
+    except (OSError, UnicodeError, ValueError, TypeError):
+        previous = {}
+    if not isinstance(previous, dict) or {key: value for key, value in previous.items() if key != "generatedAt"} != catalog:
+        atomic_write_json(index_path, {**catalog, "generatedAt": _now()})
+    return counts
+
+
+def _rebuild_index(root: Path) -> Path:
+    compact_memory(root)
+    return root / "memory" / "index" / "catalog.json"
 
 
 def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
@@ -198,17 +248,28 @@ def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
         raise ValueError("memory source must be a compact source code")
 
     layout = ensure_user_layout(root)
-    identifier = str(spec.get("id") or f"memory.{kind}.{_slug(title)}")
+    identifier = str(spec.get("id") or f"memory.{kind}.{auto_title_slug(title)}")
     if not MEMORY_ID_PATTERN.fullmatch(identifier):
         raise ValueError("invalid memory id")
     path = layout["memory_items"] / f"{_slug(identifier)}.md"
+    if not spec.get("id") and not path.exists():
+        legacy_id = f"memory.{kind}.{_slug(title)}"
+        legacy_path = layout["memory_items"] / f"{_slug(legacy_id)}.md"
+        if legacy_path.exists():
+            try:
+                legacy = _read_memory_document(legacy_path, layout["memory_items"])
+            except (OSError, UnicodeError, ValueError, TypeError):
+                legacy = None
+            if (legacy is not None and legacy.metadata.get("id") == legacy_id
+                    and legacy.metadata.get("kind") == kind and legacy.metadata.get("title") == title):
+                identifier, path = legacy_id, legacy_path
+    if not _safe_memory_path(path, layout["memory_items"]):
+        raise ValueError("unsafe memory path")
     revision = 1
+    old = None
     if path.exists():
-        old = load_markdown(path)
+        old = _read_memory_document(path, layout["memory_items"])
         revision = int(old.metadata.get("revision", 0)) + 1
-        snapshot = layout["memory_versions"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f") / path.name
-        snapshot.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, snapshot)
 
     user = load_json(layout["config"] / "user.json", {}) or {}
     metadata = {
@@ -222,7 +283,20 @@ def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
         "source": source,
         "updated_at": _now(),
     }
-    atomic_write_text(path, dump_frontmatter(metadata, body))
+    rendered = dump_frontmatter(metadata, body)
+    if len(rendered.encode("utf-8")) > MAX_MEMORY_FILE_BYTES:
+        raise ValueError("memory file exceeds the compact storage limit")
+    if old is not None:
+        previous_metadata = {key: value for key, value in old.metadata.items() if key not in {"revision", "updated_at"}}
+        next_metadata = {key: value for key, value in metadata.items() if key not in {"revision", "updated_at"}}
+        normalized_body = body.replace("\r\n", "\n").replace("\r", "\n").strip()
+        if previous_metadata == next_metadata and old.body.strip() == normalized_body:
+            _rebuild_index(root)
+            return path
+        snapshot = layout["memory_versions"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f") / path.name
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, snapshot)
+    atomic_write_text(path, rendered)
     ledger = layout["ledger"] / "memory.jsonl"
     with ledger.open("a", encoding="utf-8", newline="\n") as stream:
         stream.write(
@@ -289,10 +363,21 @@ def search_memory(root: Path, query: str, limit: int = 10) -> list[dict[str, Any
                     "body": _compact_text(body, MAX_MEMORY_RESULT_BODY_CHARS),
                     "status": "active",
                     "revision": metadata.get("revision", 1),
+                    "content_hash": _content_fingerprint(str(metadata["kind"]), title, body),
                 },
             )
         )
-    return [item for _, item in sorted(scored, key=lambda pair: (-pair[0], str(pair[1]["id"])))[:bounded_limit]]
+    selected = []
+    seen: set[str] = set()
+    for _, item in sorted(scored, key=lambda pair: (-pair[0], str(pair[1]["id"]))):
+        fingerprint = item["content_hash"]
+        if fingerprint in seen:
+            continue
+        seen.add(fingerprint)
+        selected.append(item)
+        if len(selected) >= bounded_limit:
+            break
+    return selected
 
 
 def render_memory_context(
@@ -309,22 +394,31 @@ def render_memory_context(
     if bounded_max <= len(MEMORY_CONTEXT_INSTRUCTION) + len(MEMORY_CONTEXT_BEGIN) + len(MEMORY_CONTEXT_END) + 20:
         return ""
 
-    selected: list[dict[str, str]] = []
+    selected: list[dict[str, Any]] = []
 
-    def render(items: list[dict[str, str]]) -> str:
+    def render(items: list[dict[str, Any]]) -> str:
         payload = json.dumps({"items": items}, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
         # Prevent a memory value from manufacturing one of our delimiters.
         payload = payload.replace("<", "\\u003c").replace(">", "\\u003e")
         return f"{MEMORY_CONTEXT_INSTRUCTION}\n{MEMORY_CONTEXT_BEGIN}\n{payload}\n{MEMORY_CONTEXT_END}"
 
-    for memory in memories[:MAX_MEMORY_RESULTS]:
+    seen: set[tuple[str, str]] = set()
+    for memory in memories:
         if memory.get("status") != "active":
             continue
+        # Keep the full-content hash from search alongside the returned text so
+        # two items differing beyond a displayed excerpt are never collapsed.
+        exact_text = _content_fingerprint(str(memory.get("kind", "")), str(memory.get("title", "")), str(memory.get("body", "")))
+        identity = (exact_text, str(memory.get("content_hash", "")))
+        if identity in seen:
+            continue
+        seen.add(identity)
         item = {
             "id": _compact_text(memory.get("id", ""), 160),
             "kind": _compact_text(memory.get("kind", ""), 40),
             "title": _compact_text(memory.get("title", ""), MAX_MEMORY_TITLE_CHARS),
             "body": _compact_text(memory.get("body", ""), MAX_MEMORY_CONTEXT_ITEM_CHARS),
+            "revision": memory.get("revision", 1) if type(memory.get("revision", 1)) is int else 1,
         }
         if not item["id"] or not item["title"] or not item["body"]:
             continue
@@ -332,5 +426,7 @@ def render_memory_context(
         if len(candidate) > bounded_max:
             break
         selected.append(item)
+        if len(selected) >= MAX_MEMORY_RESULTS:
+            break
 
     return render(selected) if selected else ""

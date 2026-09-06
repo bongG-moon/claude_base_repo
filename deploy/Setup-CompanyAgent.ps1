@@ -1,0 +1,1202 @@
+﻿[CmdletBinding()]
+param(
+    [ValidateSet('User', 'Project', 'Machine')]
+    [string] $Scope,
+    [string] $ProjectRoot,
+    [string] $BundleRoot,
+    [string] $InstallRoot,
+    [string] $DataRoot,
+    [string] $UserStateRoot,
+    [string] $BackupRoot,
+    [string] $ShortcutPath,
+    [string] $ClaudeConfigRoot,
+    [string] $ClaudeCommand = 'claude',
+    [string] $PythonCommand = 'python',
+    [string] $InvokingUserProfile,
+    [string] $InvokingLocalAppData,
+    [switch] $AllowExistingCompanyAgentPlugin,
+    [switch] $NonInteractive,
+    [switch] $DryRun,
+    [switch] $SkipAcl,
+    [switch] $SkipAdminCheck,
+    [switch] $SkipPrerequisiteCheck,
+    [switch] $SkipShortcut,
+    [switch] $SkipBundleVerification,
+    [Parameter(DontShow = $true)]
+    [switch] $FunctionsOnly,
+    [Parameter(DontShow = $true)]
+    [string] $HandoffData
+)
+
+$ErrorActionPreference = 'Stop'
+Set-StrictMode -Version 2.0
+. (Join-Path $PSScriptRoot 'CompanyAgent.Common.ps1')
+
+# Some parent shells prepend PowerShell 7 module folders to PSModulePath before
+# starting Windows PowerShell 5.1. Load the matching built-in utility module by
+# absolute path so bundle hashing also works when this file is started by CMD.
+if ($null -eq (Get-Command 'Get-FileHash' -ErrorAction SilentlyContinue)) {
+    $utilityModule = Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1'
+    if (Test-Path -LiteralPath $utilityModule -PathType Leaf) {
+        Import-Module $utilityModule -Force -ErrorAction Stop
+    }
+}
+
+function Get-SetupPropertyValue {
+    param(
+        [object] $Object,
+        [Parameter(Mandatory = $true)]
+        [string] $Name
+    )
+
+    if ($null -eq $Object) {
+        return $null
+    }
+    $property = $Object.PSObject.Properties[$Name]
+    if ($null -eq $property) {
+        return $null
+    }
+    return $property.Value
+}
+
+function ConvertFrom-SetupHandoff {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Encoded
+    )
+
+    try {
+        $bytes = [Convert]::FromBase64String($Encoded)
+        $json = [Text.Encoding]::UTF8.GetString($bytes)
+        $value = $json | ConvertFrom-Json
+    }
+    catch {
+        throw "The setup elevation handoff was invalid: $($_.Exception.Message)"
+    }
+    if ([int](Get-SetupPropertyValue -Object $value -Name 'schemaVersion') -ne 1) {
+        throw 'The setup elevation handoff version is not supported.'
+    }
+    return $value
+}
+
+function Get-SetupFullPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path
+    )
+
+    return (ConvertTo-CompanyAgentFullPath -Path $Path)
+}
+
+function Test-SetupSameOrChildPath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Candidate,
+        [Parameter(Mandatory = $true)]
+        [string] $Parent
+    )
+
+    $candidateFull = (Get-SetupFullPath -Path $Candidate).TrimEnd([char[]]@('\', '/'))
+    $parentFull = (Get-SetupFullPath -Path $Parent).TrimEnd([char[]]@('\', '/'))
+    if ($candidateFull -ieq $parentFull) {
+        return $true
+    }
+    return $candidateFull.StartsWith(
+        ($parentFull + [IO.Path]::DirectorySeparatorChar),
+        [StringComparison]::OrdinalIgnoreCase
+    )
+}
+
+function Resolve-SetupCommand {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Command,
+        [string[]] $FallbackCommands = @()
+    )
+
+    foreach ($candidate in @($Command) + @($FallbackCommands)) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) {
+            continue
+        }
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return (Get-SetupFullPath -Path $candidate)
+        }
+        $commandInfo = Get-Command $candidate -ErrorAction SilentlyContinue | Select-Object -First 1
+        if ($null -ne $commandInfo) {
+            $resolved = $commandInfo.Source
+            if ([string]::IsNullOrWhiteSpace($resolved)) {
+                $resolved = $commandInfo.Definition
+            }
+            if (-not [string]::IsNullOrWhiteSpace($resolved)) {
+                return [string]$resolved
+            }
+        }
+    }
+    return $null
+}
+
+function Resolve-SetupApprovedPython {
+    param(
+        [string] $PreferredCommand = 'python'
+    )
+
+    foreach ($candidate in @(@($PreferredCommand, 'python', 'py') | Select-Object -Unique)) {
+        $resolved = Resolve-SetupCommand -Command $candidate
+        if ([string]::IsNullOrWhiteSpace($resolved)) {
+            continue
+        }
+        try {
+            $versionText = & $resolved -c "import sys; print('.'.join(str(v) for v in sys.version_info[:3]))" 2>&1
+            if ($LASTEXITCODE -ne 0) {
+                continue
+            }
+            $version = [version]([string]($versionText | Select-Object -Last 1))
+            if ($version -ge [version]'3.11') {
+                return $resolved
+            }
+        }
+        catch {
+            continue
+        }
+    }
+    return $null
+}
+
+function Assert-SetupPathHasNoReparsePoint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path,
+        [Parameter(Mandatory = $true)]
+        [string] $Name
+    )
+
+    $current = Get-SetupFullPath -Path $Path
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Name cannot use a junction, symbolic link, or other reparse point: $($item.FullName)"
+            }
+        }
+        $parent = Split-Path -Parent $current
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -ieq $current) {
+            break
+        }
+        $current = $parent
+    }
+}
+
+function Get-SetupSkillOverlaps {
+    param(
+        [string] $BundlePath,
+        [string] $ClaudeConfigPath,
+        [string] $PersonalStatePath
+    )
+
+    # Plugin Skills are namespaced by Claude Code. Only the three unnamespaced
+    # add-dir locations can collide: Corporate, ordinary user, and personal.
+    $locations = @(
+        [pscustomobject]@{ label = 'corporate'; root = (Join-Path $BundlePath 'payload\knowledge\.claude\skills') },
+        [pscustomobject]@{ label = 'user'; root = (Join-Path $ClaudeConfigPath 'skills') },
+        [pscustomobject]@{ label = 'personal'; root = (Join-Path $PersonalStatePath 'personal-root\.claude\skills') }
+    )
+    $byName = @{}
+    foreach ($location in $locations) {
+        if (-not (Test-Path -LiteralPath $location.root -PathType Container)) {
+            continue
+        }
+        foreach ($directory in @(Get-ChildItem -LiteralPath $location.root -Directory -Force)) {
+            $key = $directory.Name.ToLowerInvariant()
+            if (-not $byName.ContainsKey($key)) {
+                $byName[$key] = New-Object Collections.ArrayList
+            }
+            $null = $byName[$key].Add([pscustomobject][ordered]@{
+                location = $location.label
+                path = $directory.FullName
+            })
+        }
+    }
+
+    $overlaps = @()
+    foreach ($key in @($byName.Keys | Sort-Object)) {
+        $definitions = @($byName[$key].ToArray())
+        if ($definitions.Count -gt 1) {
+            $overlaps += [pscustomobject][ordered]@{
+                name = (Split-Path -Leaf $definitions[0].path)
+                definitions = $definitions
+            }
+        }
+    }
+    return @($overlaps)
+}
+
+function Get-SetupClaudeCompatibility {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $ClaudeConfigPath
+    )
+
+    $installedNames = @()
+    $enabledNames = @()
+    $hookProviders = @()
+    $companyAgentNameCollision = $false
+    $settingsPath = Join-Path $ClaudeConfigPath 'settings.json'
+    $settings = $null
+    if (Test-Path -LiteralPath $settingsPath -PathType Leaf) {
+        try {
+            $settings = Get-Content -LiteralPath $settingsPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $enabledPlugins = Get-SetupPropertyValue -Object $settings -Name 'enabledPlugins'
+            if ($null -ne $enabledPlugins) {
+                foreach ($property in @($enabledPlugins.PSObject.Properties)) {
+                    if ([bool]$property.Value) {
+                        $enabledNames += $property.Name
+                        if ([string]$property.Name -match '(?i)(^|@)company-agent($|@)') {
+                            $companyAgentNameCollision = $true
+                        }
+                    }
+                }
+            }
+            $userHooks = Get-SetupPropertyValue -Object $settings -Name 'hooks'
+            if ($null -ne $userHooks -and @($userHooks.PSObject.Properties).Count -gt 0) {
+                $hookProviders += 'user settings.json Hooks'
+            }
+        }
+        catch {
+            Write-Warning "Could not inspect existing Claude compatibility settings: $settingsPath"
+        }
+    }
+    if (Test-Path -LiteralPath (Join-Path $ClaudeConfigPath 'hooks') -PathType Container) {
+        $hookProviders += 'user hooks directory'
+    }
+
+    $inventoryPath = Join-Path $ClaudeConfigPath 'plugins\installed_plugins.json'
+    if (Test-Path -LiteralPath $inventoryPath -PathType Leaf) {
+        try {
+            $inventory = Get-Content -LiteralPath $inventoryPath -Raw -Encoding UTF8 | ConvertFrom-Json
+            $plugins = Get-SetupPropertyValue -Object $inventory -Name 'plugins'
+            if ($null -eq $plugins) {
+                throw 'The plugin inventory has no plugins object.'
+            }
+            foreach ($property in @($plugins.PSObject.Properties)) {
+                $pluginName = [string]$property.Name
+                $installedNames += $pluginName
+                if ($pluginName -match '(?i)(^|@)company-agent($|@)') {
+                    $companyAgentNameCollision = $true
+                }
+                if ($enabledNames.Count -gt 0 -and $enabledNames -notcontains $pluginName) {
+                    continue
+                }
+                foreach ($installation in @($property.Value)) {
+                    $installPath = [string](Get-SetupPropertyValue -Object $installation -Name 'installPath')
+                    if ([string]::IsNullOrWhiteSpace($installPath)) {
+                        continue
+                    }
+                    $hookManifest = Join-Path $installPath 'hooks\hooks.json'
+                    if (Test-Path -LiteralPath $hookManifest -PathType Leaf) {
+                        try {
+                            $hookJson = Get-Content -LiteralPath $hookManifest -Raw -Encoding UTF8 | ConvertFrom-Json
+                            $hookTable = Get-SetupPropertyValue -Object $hookJson -Name 'hooks'
+                            $events = @()
+                            if ($null -ne $hookTable) {
+                                $events = @($hookTable.PSObject.Properties | ForEach-Object { $_.Name })
+                            }
+                            $label = $pluginName
+                            if ($events.Count -gt 0) {
+                                $label += ' [' + ($events -join ', ') + ']'
+                            }
+                            $hookProviders += $label
+                        }
+                        catch {
+                            $hookProviders += ($pluginName + ' [Hook manifest unreadable]')
+                        }
+                    }
+                }
+            }
+        }
+        catch {
+            Write-Warning "Could not inspect existing Claude plugin inventory: $inventoryPath"
+        }
+    }
+
+    return [pscustomobject][ordered]@{
+        installedPlugins          = @($installedNames | Sort-Object -Unique)
+        enabledPlugins            = @($enabledNames | Sort-Object -Unique)
+        parallelHookProviders     = @($hookProviders | Sort-Object -Unique)
+        companyAgentNameCollision = $companyAgentNameCollision
+    }
+}
+
+function Get-SetupBackupItems {
+    param(
+        [string] $ClaudeConfigPath,
+        [string] $PersonalStatePath,
+        [string] $ManagedDataPath,
+        [string] $ManagedInstallPath,
+        [string] $ManagedShortcutPath
+    )
+
+    $items = New-Object Collections.ArrayList
+    $seen = @{}
+    function Add-BackupItem {
+        param(
+            [string] $Source,
+            [string] $RelativePath,
+            [string] $Purpose,
+            [ValidateSet('copy', 'sanitized-json', 'learning-markdown')]
+            [string] $Mode = 'copy',
+            [bool] $Required = $false
+        )
+        if ([string]::IsNullOrWhiteSpace($Source) -or -not (Test-Path -LiteralPath $Source)) {
+            return
+        }
+        $fullSource = Get-SetupFullPath -Path $Source
+        if ($seen.ContainsKey($fullSource.ToLowerInvariant())) {
+            return
+        }
+        $seen[$fullSource.ToLowerInvariant()] = $true
+        $null = $items.Add([pscustomobject][ordered]@{
+            source       = $fullSource
+            relativePath = $RelativePath
+            purpose      = $Purpose
+            mode         = $Mode
+            required     = $Required
+        })
+    }
+
+    $claudeRoot = $ClaudeConfigPath
+    if (Test-Path -LiteralPath $claudeRoot -PathType Container) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $claudeRoot -File -Force | Where-Object {
+            ($_.Extension -ieq '.md' -or $_.Name -like 'settings*.json') -and
+            $_.Name -notmatch '(?i)(credential|secret|token|session|history|cache|debug|telemetry)'
+        })) {
+            $mode = $(if ($file.Extension -ieq '.json') { 'sanitized-json' } else { 'copy' })
+            Add-BackupItem -Source $file.FullName -RelativePath (Join-Path 'claude-config' $file.Name) -Purpose 'Claude user instruction or settings file' -Mode $mode
+        }
+        foreach ($directoryName in @('skills', 'commands', 'agents', 'hooks')) {
+            Add-BackupItem -Source (Join-Path $claudeRoot $directoryName) -RelativePath (Join-Path 'claude-config' $directoryName) -Purpose 'Claude user customization directory'
+        }
+        foreach ($pluginFileName in @('config.json', 'installed_plugins.json', 'known_marketplaces.json')) {
+            Add-BackupItem -Source (Join-Path $claudeRoot (Join-Path 'plugins' $pluginFileName)) -RelativePath (Join-Path 'claude-config\plugins' $pluginFileName) -Purpose 'Claude plugin registration file' -Mode 'sanitized-json'
+        }
+    }
+    Add-BackupItem -Source (Join-Path $ManagedDataPath 'state') -RelativePath 'company-agent\managed\state' -Purpose 'Existing active and rollback selection'
+    Add-BackupItem -Source (Join-Path $ManagedInstallPath 'bin') -RelativePath 'company-agent\managed\bin' -Purpose 'Existing management scripts'
+    Add-BackupItem -Source $ManagedShortcutPath -RelativePath 'company-agent\managed\Company Agent.lnk' -Purpose 'Existing Start menu shortcut'
+
+    # This is deliberately not a snapshot of the entire user-state directory.
+    # Runtime MCP registries, transcripts, temporary files and derived indexes
+    # are not needed to recover learned knowledge and may contain credentials.
+    if (-not [string]::IsNullOrWhiteSpace($PersonalStatePath)) {
+        foreach ($relative in @('memory\items', 'memory\versions', 'knowledge\entries', 'knowledge\overlays', 'knowledge\versions')) {
+            Add-BackupItem -Source (Join-Path $PersonalStatePath $relative) `
+                -RelativePath (Join-Path 'company-agent\personal-learning' $relative) `
+                -Purpose 'Personal learning Markdown sources and revision history (selective)' -Mode 'learning-markdown' -Required $true
+        }
+        Add-BackupItem -Source (Join-Path $PersonalStatePath 'personal-root\.claude\skills') `
+            -RelativePath 'company-agent\personal-learning\personal-root\.claude\skills' `
+            -Purpose 'Personal Skills and supporting files (secret and runtime files excluded)' -Required $true
+        foreach ($relative in @('config\user.json', 'state-format.json')) {
+            Add-BackupItem -Source (Join-Path $PersonalStatePath $relative) `
+                -RelativePath (Join-Path 'company-agent\personal-learning' $relative) `
+                -Purpose 'Personal configuration or state-format marker (sanitized)' -Mode 'sanitized-json' -Required $true
+        }
+    }
+
+    return @($items.ToArray())
+}
+
+function ConvertTo-SetupRedactedData {
+    param(
+        [AllowNull()]
+        [object] $Value,
+        [string] $PropertyName = ''
+    )
+
+    if ($PropertyName -match '(?i)(token|secret|password|credential|api.?key|auth|access.?key|private.?key|client.?secret|(^|[_-])pat($|[_-])|bearer|session.?key)') {
+        return '[REDACTED_BY_COMPANY_AGENT_BACKUP]'
+    }
+    if ($null -eq $Value) {
+        return $null
+    }
+    if ($Value -is [System.Management.Automation.PSCustomObject]) {
+        $result = [ordered]@{}
+        foreach ($property in @($Value.PSObject.Properties)) {
+            $result[$property.Name] = ConvertTo-SetupRedactedData -Value $property.Value -PropertyName $property.Name
+        }
+        return [pscustomobject]$result
+    }
+    if ($Value -is [System.Collections.IDictionary]) {
+        $result = [ordered]@{}
+        foreach ($key in @($Value.Keys)) {
+            $keyText = [string]$key
+            $result[$keyText] = ConvertTo-SetupRedactedData -Value $Value[$key] -PropertyName $keyText
+        }
+        return [pscustomobject]$result
+    }
+    if ($Value -is [System.Collections.IEnumerable] -and -not ($Value -is [string])) {
+        $items = New-Object Collections.ArrayList
+        foreach ($entry in $Value) {
+            $null = $items.Add((ConvertTo-SetupRedactedData -Value $entry))
+        }
+        return ,$items.ToArray()
+    }
+    return $Value
+}
+
+function Protect-SetupBackupDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path
+    )
+
+    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
+    if ($null -eq $identity.User) {
+        throw 'The current Windows user SID could not be resolved for backup protection.'
+    }
+    $security = New-Object Security.AccessControl.DirectorySecurity
+    $security.SetAccessRuleProtection($true, $false)
+    $inheritance = [Security.AccessControl.InheritanceFlags]'ContainerInherit, ObjectInherit'
+    $propagation = [Security.AccessControl.PropagationFlags]::None
+    $allow = [Security.AccessControl.AccessControlType]::Allow
+    $userRule = New-Object Security.AccessControl.FileSystemAccessRule(
+        $identity.User,
+        [Security.AccessControl.FileSystemRights]::FullControl,
+        $inheritance,
+        $propagation,
+        $allow
+    )
+    $systemSid = New-Object Security.Principal.SecurityIdentifier(
+        [Security.Principal.WellKnownSidType]::LocalSystemSid,
+        $null
+    )
+    $systemRule = New-Object Security.AccessControl.FileSystemAccessRule(
+        $systemSid,
+        [Security.AccessControl.FileSystemRights]::FullControl,
+        $inheritance,
+        $propagation,
+        $allow
+    )
+    $null = $security.AddAccessRule($userRule)
+    $null = $security.AddAccessRule($systemRule)
+    [IO.Directory]::SetAccessControl($Path, $security)
+}
+
+function Copy-SetupBackupFile {
+    param(
+        [string] $Source,
+        [string] $Destination,
+        [bool] $SanitizeJson,
+        [hashtable] $Budget
+    )
+
+    Assert-SetupPathHasNoReparsePoint -Path $Source -Name 'Backup source file'
+    Assert-SetupPathHasNoReparsePoint -Path $Destination -Name 'Backup destination file'
+    # A read-only share prevents another writer from growing/replacing this file
+    # while it is being copied. An already-open writer causes a safe failure.
+    $sourceStream = [IO.File]::Open($Source, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $length = $sourceStream.Length
+        if ($length -gt $Budget.maxFileBytes -or ($Budget.bytes + $length) -gt $Budget.maxTotalBytes -or $Budget.files -ge $Budget.maxFiles) {
+            throw "Selective backup size or file-count limit exceeded at: $Source. No installation changes have started."
+        }
+        if ($SanitizeJson) {
+            $reader = New-Object IO.StreamReader($sourceStream, [Text.Encoding]::UTF8, $true, 4096, $true)
+            try { $json = $reader.ReadToEnd() | ConvertFrom-Json -ErrorAction Stop }
+            finally { $reader.Dispose() }
+            $redacted = ConvertTo-SetupRedactedData -Value $json
+            $jsonText = ($redacted | ConvertTo-Json -Depth 100) + [Environment]::NewLine
+            $encoding = New-Object Text.UTF8Encoding($false)
+            $jsonBytes = $encoding.GetBytes($jsonText)
+            $length = [Math]::Max($length, [long]$jsonBytes.LongLength)
+            if ($length -gt $Budget.maxFileBytes -or ($Budget.bytes + $length) -gt $Budget.maxTotalBytes) {
+                throw "Selective backup size limit exceeded while sanitizing: $Source"
+            }
+            # This is a new, protected, incomplete backup. Its final manifest is
+            # the completion marker; no long .tmp filename is needed per JSON.
+            $destinationStream = [IO.File]::Open($Destination, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            try { $destinationStream.Write($jsonBytes, 0, $jsonBytes.Length) }
+            finally { $destinationStream.Dispose() }
+        }
+        else {
+            $destinationStream = [IO.File]::Open($Destination, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            try { $sourceStream.CopyTo($destinationStream) }
+            finally { $destinationStream.Dispose() }
+        }
+        $Budget.files += 1
+        $Budget.bytes += $length
+    }
+    finally { $sourceStream.Dispose() }
+}
+
+function Copy-SetupBackupItem {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Source,
+        [Parameter(Mandatory = $true)]
+        [string] $Destination,
+        [ValidateSet('copy', 'sanitized-json', 'learning-markdown')]
+        [string] $Mode = 'copy',
+        [hashtable] $Budget = @{
+            files = 0; bytes = [long]0; visited = 0
+            maxFiles = 20000; maxTotalBytes = 1GB; maxFileBytes = 64MB; maxDepth = 32; maxVisited = 100000
+        }
+    )
+
+    $skipped = New-Object Collections.ArrayList
+    $excluded = New-Object Collections.ArrayList
+    Assert-SetupPathHasNoReparsePoint -Path (Split-Path -Parent (Get-SetupFullPath -Path $Source)) -Name 'Backup source parent'
+    Assert-SetupPathHasNoReparsePoint -Path $Destination -Name 'Backup destination'
+    $sourceItem = Get-Item -LiteralPath $Source -Force -ErrorAction Stop
+    if (($sourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        $null = $skipped.Add($sourceItem.FullName)
+        return [pscustomobject][ordered]@{ copied = $false; skippedReparsePoints = @($skipped.ToArray()); excludedPaths = @() }
+    }
+
+    if (-not $sourceItem.PSIsContainer) {
+        if ($Mode -eq 'learning-markdown') { throw "A learning source directory was replaced by a file: $Source" }
+        Copy-SetupBackupFile -Source $sourceItem.FullName -Destination $Destination -SanitizeJson ($Mode -eq 'sanitized-json' -or $sourceItem.Extension -ieq '.json') -Budget $Budget
+        return [pscustomobject][ordered]@{ copied = $true; skippedReparsePoints = @(); excludedPaths = @() }
+    }
+    if ($Mode -eq 'sanitized-json') { throw "A selected JSON file was replaced by a directory: $Source" }
+
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    $queue = New-Object Collections.Queue
+    $queue.Enqueue([pscustomobject]@{ source = $sourceItem.FullName; destination = $Destination; depth = 0 })
+    $excludedDirectoryNames = @('.git', '.venv', 'node_modules', '__pycache__', '.pytest_cache', 'cache', 'caches', 'sessions', 'transcripts', 'history', 'projects', 'debug', 'telemetry', 'tmp', 'temp', 'mcp', 'credentials', '.ssh', '.aws', '.azure')
+    while ($queue.Count -gt 0) {
+        $current = $queue.Dequeue()
+        Assert-SetupPathHasNoReparsePoint -Path $current.source -Name 'Backup source directory'
+        # Stream the enumeration so a giant source directory cannot allocate an
+        # unbounded array before the traversal limit is checked.
+        Get-ChildItem -LiteralPath $current.source -Force -ErrorAction Stop | ForEach-Object {
+            $child = $_
+            $Budget.visited += 1
+            if ($Budget.visited -gt $Budget.maxVisited) { throw "Selective backup traversal limit exceeded at: $($current.source)" }
+            $target = Join-Path $current.destination $child.Name
+            if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                $null = $skipped.Add($child.FullName)
+                return
+            }
+            if ($child.PSIsContainer) {
+                if ($excludedDirectoryNames -contains $child.Name -or $child.Name -match '(?i)^\.?(credential|secret|token|password)s?$') {
+                    $null = $excluded.Add($child.FullName)
+                    return
+                }
+                if ($current.depth -ge $Budget.maxDepth) { throw "Selective backup directory depth limit exceeded at: $($child.FullName)" }
+                New-Item -ItemType Directory -Path $target -Force | Out-Null
+                $queue.Enqueue([pscustomobject]@{ source = $child.FullName; destination = $target; depth = $current.depth + 1 })
+                return
+            }
+            if ($child.Name -match '(?i)(^\.env(?:\.|$)|credential|secret|token|password|private.?key|(^|[._-])pat([._-]|$)|^id_(rsa|dsa|ecdsa|ed25519)(\.|$)|^\.?mcp(?:\.|$)|^settings(?:\..*)?\.json$|^(conversation|transcript|session-history)([._-].*)?\.(md|txt|json)$)' -or
+                $child.Extension -match '(?i)^\.(pfx|p12|pem|key|kdbx|jsonl|ndjson|log)$' -or
+                ($Mode -eq 'learning-markdown' -and $child.Extension -ine '.md')) {
+                $null = $excluded.Add($child.FullName)
+                return
+            }
+            Copy-SetupBackupFile -Source $child.FullName -Destination $target -SanitizeJson ($child.Extension -ieq '.json') -Budget $Budget
+        }
+    }
+    return [pscustomobject][ordered]@{
+        copied = $true
+        skippedReparsePoints = @($skipped.ToArray())
+        excludedPaths = @($excluded.ToArray())
+    }
+}
+
+function New-SetupBackup {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $BackupBase,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyCollection()]
+        [object[]] $Items,
+        [string] $ClaudeConfigPath,
+        [string] $PersonalStatePath,
+        [string] $ManagedDataPath,
+        [string] $ManagedInstallPath,
+        [ValidateRange(1, 2147483647)]
+        [int] $MaxFiles = 20000,
+        [ValidateRange(1, 1099511627776)]
+        [long] $MaxTotalBytes = 1GB,
+        [ValidateRange(1, 1073741824)]
+        [long] $MaxFileBytes = 64MB,
+        [ValidateRange(1, 256)]
+        [int] $MaxDepth = 32,
+        [ValidateRange(1, 2147483647)]
+        [int] $MaxVisited = 100000
+    )
+
+    $backupBaseFull = Get-SetupFullPath -Path $BackupBase
+    Assert-SetupPathHasNoReparsePoint -Path $backupBaseFull -Name 'BackupRoot'
+    $backupDriveRoot = [IO.Path]::GetPathRoot($backupBaseFull)
+    $backupIsNetwork = $backupBaseFull.StartsWith('\\')
+    if (-not $backupIsNetwork -and -not [string]::IsNullOrWhiteSpace($backupDriveRoot)) {
+        try {
+            $backupIsNetwork = ((New-Object IO.DriveInfo($backupDriveRoot)).DriveType -eq [IO.DriveType]::Network)
+        }
+        catch {
+            $backupIsNetwork = $false
+        }
+    }
+    if ($backupIsNetwork) {
+        throw "BackupRoot must be on this PC, not a network path: $backupBaseFull"
+    }
+    if (Test-SetupSameOrChildPath -Candidate $backupBaseFull -Parent $ClaudeConfigPath) {
+        throw "BackupRoot cannot be inside the existing Claude configuration directory: $ClaudeConfigPath"
+    }
+
+    foreach ($managedRoot in @($PersonalStatePath, $ManagedDataPath, $ManagedInstallPath)) {
+        if (Test-SetupSameOrChildPath -Candidate $BackupBase -Parent $managedRoot) {
+            throw "BackupRoot must be separate from every Company Agent managed directory: $managedRoot"
+        }
+    }
+    foreach ($item in $Items) {
+        if ((Test-Path -LiteralPath $item.source -PathType Container) -and
+            (Test-SetupSameOrChildPath -Candidate $BackupBase -Parent $item.source)) {
+            throw "BackupRoot cannot be inside a directory that is being backed up: $($item.source)"
+        }
+    }
+
+    $stamp = [DateTime]::Now.ToString('yyyyMMdd-HHmmss')
+    $suffix = [guid]::NewGuid().ToString('N').Substring(0, 6)
+    $backupPath = Join-Path $backupBaseFull ("pre-install-$stamp-$suffix")
+    New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
+    Assert-SetupPathHasNoReparsePoint -Path $backupPath -Name 'Created backup directory'
+    try {
+        Protect-SetupBackupDirectory -Path $backupPath
+    }
+    catch {
+        Remove-Item -LiteralPath $backupPath -Recurse -Force -ErrorAction SilentlyContinue
+        throw "The local backup folder could not be restricted to the current Windows user. Installation has not started. Details: $($_.Exception.Message)"
+    }
+
+    $records = @()
+    $skippedReparsePoints = @()
+    $excludedPaths = @()
+    $budget = @{
+        files = 0; bytes = [long]0; visited = 0
+        maxFiles = $MaxFiles; maxTotalBytes = $MaxTotalBytes; maxFileBytes = $MaxFileBytes; maxDepth = $MaxDepth; maxVisited = $MaxVisited
+    }
+    try {
+        foreach ($item in $Items) {
+            if ([IO.Path]::IsPathRooted([string]$item.relativePath) -or [string]$item.relativePath -match '[:\x00-\x1f]') { throw 'A backup item destination must be a normal relative path without streams or control characters.' }
+            $destination = Get-SetupFullPath -Path (Join-Path $backupPath $item.relativePath)
+            if ($destination -ieq $backupPath -or -not (Test-SetupSameOrChildPath -Candidate $destination -Parent $backupPath)) {
+                throw 'A backup item destination escapes the backup directory.'
+            }
+            Assert-SetupPathHasNoReparsePoint -Path $destination -Name 'Backup item destination'
+            $destinationParent = Split-Path -Parent $destination
+            if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
+                New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
+            }
+            $copyResult = Copy-SetupBackupItem -Source $item.source -Destination $destination -Mode ([string]$item.mode) -Budget $budget
+            $required = [bool](Get-SetupPropertyValue -Object $item -Name 'required')
+            if ($required -and (-not $copyResult.copied -or @($copyResult.skippedReparsePoints).Count -gt 0)) {
+                throw "Required personal learning backup could not safely include a selected source or descendant: $($item.source). Junctions and symbolic links must be reviewed before installation."
+            }
+            $skippedReparsePoints += @($copyResult.skippedReparsePoints)
+            $excludedPaths += @($copyResult.excludedPaths)
+            $records += [pscustomobject][ordered]@{
+                source      = $item.source
+                backup      = $destination
+                purpose     = $item.purpose
+                mode        = $item.mode
+                required    = $required
+                copied      = [bool]$copyResult.copied
+                itemType    = $(if (Test-Path -LiteralPath $item.source -PathType Container) { 'directory' } else { 'file' })
+            }
+        }
+
+        $manifest = [pscustomobject][ordered]@{
+            schemaVersion = 2
+            createdAt     = [DateTime]::Now.ToString('o')
+            claudeConfigRoot = $ClaudeConfigPath
+            userStateRoot = $PersonalStatePath
+            note          = 'Selective pre-install backup, not a complete user-state snapshot. Personal learning sources and revisions are included; runtime MCP configuration, transcripts, caches and secret-like files are excluded.'
+            access        = 'Current Windows user and LocalSystem only'
+            copiedFiles   = $budget.files
+            accountedBytes = $budget.bytes
+            limits        = [pscustomobject]@{ maxFiles = $MaxFiles; maxTotalBytes = $MaxTotalBytes; maxFileBytes = $MaxFileBytes; maxDepth = $MaxDepth; maxVisited = $MaxVisited }
+            skippedReparsePoints = @($skippedReparsePoints)
+            excludedPaths = @($excludedPaths)
+            items         = $records
+        }
+        $readme = @(
+            'COMPANY AGENT PRE-INSTALL BACKUP',
+            '',
+            'The installer did not overwrite the existing Claude user directory.',
+            'This SELECTIVE user-only backup protects Skills, commands, agents, Hooks,',
+            'settings, plugin registrations, and managed Company Agent selection files.',
+            'company-agent/personal-learning contains selected personal Memory and',
+            'knowledge Markdown sources plus revisions, personal Skills, sanitized',
+            'config/user.json and state-format.json when present. It is NOT a full',
+            'user-state snapshot. MCP registries/configuration, full transcripts,',
+            'sessions, indexes, caches, temporary files and secret-like files are excluded.',
+            'Secret-like JSON fields were redacted. Re-enter those values if restoring.',
+            'All copied JSON files are sanitized. Filename/key filters are not a full',
+            'secret scanner; never store credentials inside learning text or scripts.',
+            'Junctions/symbolic links are not followed. Required personal learning',
+            'items containing them block installation. See backup-manifest.json.',
+            'The backup may still contain private work instructions. Do not share it.',
+            '',
+            'If recovery is needed:',
+            '1. Close Claude Code and Company Agent.',
+            '2. Open backup-manifest.json in this folder.',
+            '3. Ask your support owner to restore only the listed item that is needed.',
+            '4. Do not restore credentials or session caches from another user.',
+            '',
+            'Existing Company Agent versions are installed side by side. The prior',
+            'selection can normally be restored with Rollback-CompanyAgent.ps1.'
+        ) -join "`r`n"
+        Write-CompanyAgentUtf8File -Path (Join-Path $backupPath 'README.txt') -Content ($readme + "`r`n")
+        Write-CompanyAgentJsonAtomic -Path (Join-Path $backupPath 'backup-manifest.json') -Value $manifest
+    }
+    catch {
+        throw "The safety backup could not be completed. Installation has not started. Partial backup: $backupPath. Details: $($_.Exception.Message)"
+    }
+    return $backupPath
+}
+
+function Write-SetupResultFile {
+    param(
+        [string] $Path,
+        [Parameter(Mandatory = $true)]
+        [object] $Value
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Path)) {
+        return
+    }
+    $json = $Value | ConvertTo-Json -Depth 20
+    $encoding = New-Object Text.UTF8Encoding($false)
+    [IO.File]::WriteAllText($Path, ($json + [Environment]::NewLine), $encoding)
+}
+
+function Invoke-SetupElevation {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object] $Payload,
+        [Parameter(Mandatory = $true)]
+        [string] $ResultPath
+    )
+
+    $Payload | Add-Member -MemberType NoteProperty -Name 'resultPath' -Value $ResultPath -Force
+    $json = $Payload | ConvertTo-Json -Depth 20 -Compress
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+    $powershellPath = (Get-Command 'powershell.exe' -ErrorAction Stop | Select-Object -First 1).Source
+    $argumentLine = '-NoLogo -NoProfile -ExecutionPolicy Bypass -File "' + $PSCommandPath.Replace('"', '""') + '" -HandoffData "' + $encoded + '"'
+
+    try {
+        $process = Start-Process -FilePath $powershellPath -ArgumentList $argumentLine -Verb RunAs -Wait -PassThru
+    }
+    catch {
+        throw "Administrator approval was not completed. Nothing was installed. The safety backup is still available. Details: $($_.Exception.Message)"
+    }
+
+    $childResult = $null
+    if (Test-Path -LiteralPath $ResultPath -PathType Leaf) {
+        try {
+            $childResult = Get-Content -LiteralPath $ResultPath -Raw -Encoding UTF8 | ConvertFrom-Json
+        }
+        finally {
+            Remove-Item -LiteralPath $ResultPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+    if ($process.ExitCode -ne 0) {
+        $details = 'The elevated installer returned an error.'
+        if ($null -ne $childResult -and -not [string]::IsNullOrWhiteSpace([string]$childResult.message)) {
+            $details = [string]$childResult.message
+        }
+        throw $details
+    }
+    if ($null -eq $childResult -or [string]$childResult.status -ne 'ok') {
+        throw 'The elevated installer finished without a readable completion report.'
+    }
+    return $childResult.result
+}
+
+if ($FunctionsOnly) { return }
+
+# The beginner path registers a native Claude plugin for this Windows user or
+# one project. Explicit machine roots keep the established administrator path.
+if ([string]::IsNullOrWhiteSpace($Scope) -and [string]::IsNullOrWhiteSpace($HandoffData)) {
+    if ($PSBoundParameters.ContainsKey('InstallRoot') -or $PSBoundParameters.ContainsKey('DataRoot')) {
+        $Scope = 'Machine'
+    }
+    elseif ($DryRun -and -not $NonInteractive) {
+        return [pscustomobject]@{
+            status = 'input-required'; input = 'Scope'; choices = @('User', 'Project')
+            message = 'Choose User for all Claude sessions of this Windows user, or Project for one folder.'
+        }
+    }
+    elseif ($NonInteractive) { throw 'Choose the installation scope: pass -Scope User, or -Scope Project -ProjectRoot "C:\Work\MyProject".' }
+    else {
+        Write-Host ''
+        Write-Host 'Company Agent를 어디에서 사용할까요?'
+        Write-Host '  1. 내 Windows 계정의 모든 Claude Code 작업에서 사용 (기본값)'
+        Write-Host '  2. 선택한 프로젝트 폴더에서만 사용'
+        do { $selection = Read-Host '1 또는 2를 입력하세요. Enter를 누르면 1번' } while ($selection -notin @('', '1', '2'))
+        $Scope = $(if ($selection -eq '2') { 'Project' } else { 'User' })
+    }
+}
+if ($Scope -in @('User', 'Project')) {
+    $scopedParameters = @{}
+    foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'BackupRoot', 'ClaudeConfigRoot',
+        'ClaudeCommand', 'PythonCommand', 'InvokingUserProfile', 'InvokingLocalAppData', 'NonInteractive',
+        'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification')) {
+        $value = Get-Variable -Name $name -ValueOnly
+        if ($null -ne $value -and -not ($value -is [string] -and [string]::IsNullOrWhiteSpace($value))) {
+            $scopedParameters[$name] = $value
+        }
+    }
+    & (Join-Path $PSScriptRoot 'Install-ScopedCompanyAgent.ps1') @scopedParameters
+    return
+}
+
+$isHandoff = -not [string]::IsNullOrWhiteSpace($HandoffData)
+$completedBackupPath = $null
+$handoffResultPath = $null
+if ($isHandoff) {
+    $handoff = ConvertFrom-SetupHandoff -Encoded $HandoffData
+    $BundleRoot = [string](Get-SetupPropertyValue -Object $handoff -Name 'bundleRoot')
+    $InstallRoot = [string](Get-SetupPropertyValue -Object $handoff -Name 'installRoot')
+    $DataRoot = [string](Get-SetupPropertyValue -Object $handoff -Name 'dataRoot')
+    $UserStateRoot = [string](Get-SetupPropertyValue -Object $handoff -Name 'userStateRoot')
+    $BackupRoot = [string](Get-SetupPropertyValue -Object $handoff -Name 'backupRoot')
+    $ShortcutPath = [string](Get-SetupPropertyValue -Object $handoff -Name 'shortcutPath')
+    $ClaudeConfigRoot = [string](Get-SetupPropertyValue -Object $handoff -Name 'claudeConfigRoot')
+    $ClaudeCommand = [string](Get-SetupPropertyValue -Object $handoff -Name 'claudeCommand')
+    $PythonCommand = [string](Get-SetupPropertyValue -Object $handoff -Name 'pythonCommand')
+    $InvokingUserProfile = [string](Get-SetupPropertyValue -Object $handoff -Name 'invokingUserProfile')
+    $InvokingLocalAppData = [string](Get-SetupPropertyValue -Object $handoff -Name 'invokingLocalAppData')
+    $completedBackupPath = [string](Get-SetupPropertyValue -Object $handoff -Name 'completedBackupPath')
+    $handoffResultPath = [string](Get-SetupPropertyValue -Object $handoff -Name 'resultPath')
+    $NonInteractive = [bool](Get-SetupPropertyValue -Object $handoff -Name 'nonInteractive')
+    $SkipAcl = [bool](Get-SetupPropertyValue -Object $handoff -Name 'skipAcl')
+    $SkipAdminCheck = [bool](Get-SetupPropertyValue -Object $handoff -Name 'skipAdminCheck')
+    $SkipPrerequisiteCheck = [bool](Get-SetupPropertyValue -Object $handoff -Name 'skipPrerequisiteCheck')
+    $SkipShortcut = [bool](Get-SetupPropertyValue -Object $handoff -Name 'skipShortcut')
+    $SkipBundleVerification = [bool](Get-SetupPropertyValue -Object $handoff -Name 'skipBundleVerification')
+    $AllowExistingCompanyAgentPlugin = [bool](Get-SetupPropertyValue -Object $handoff -Name 'allowExistingCompanyAgentPlugin')
+}
+
+$DefaultTier = 'AUTO'
+
+try {
+    if (-not $isHandoff -and -not $SkipAdminCheck -and (Test-CompanyAgentAdministrator)) {
+        throw 'Run the easy Setup from a normal, non-elevated Windows session. It performs user-specific checks and requests UAC only for the managed install step. Already-elevated or software-distribution installs must use the low-level Install-CompanyAgent.ps1 flow with explicit user preflight.'
+    }
+    if ([string]::IsNullOrWhiteSpace($BundleRoot)) {
+        $BundleRoot = Split-Path -Parent $PSScriptRoot
+    }
+    if ([string]::IsNullOrWhiteSpace($InvokingUserProfile)) {
+        $InvokingUserProfile = $env:USERPROFILE
+    }
+    if ([string]::IsNullOrWhiteSpace($InvokingLocalAppData)) {
+        $InvokingLocalAppData = $env:LOCALAPPDATA
+    }
+    if ([string]::IsNullOrWhiteSpace($ClaudeConfigRoot)) {
+        $ClaudeConfigRoot = [Environment]::GetEnvironmentVariable('CLAUDE_CONFIG_DIR', 'Process')
+    }
+    if ([string]::IsNullOrWhiteSpace($ClaudeConfigRoot)) {
+        $ClaudeConfigRoot = Join-Path $InvokingUserProfile '.claude'
+    }
+    if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
+        $InstallRoot = Get-CompanyAgentDefaultInstallRoot
+    }
+    if ([string]::IsNullOrWhiteSpace($DataRoot)) {
+        $DataRoot = Get-CompanyAgentDefaultDataRoot
+    }
+    if ([string]::IsNullOrWhiteSpace($UserStateRoot)) {
+        $UserStateRoot = Join-Path $InvokingLocalAppData 'CompanyAgent'
+    }
+    if ([string]::IsNullOrWhiteSpace($BackupRoot)) {
+        $BackupRoot = Join-Path $InvokingLocalAppData 'CompanyAgent-Backups'
+    }
+    if ([string]::IsNullOrWhiteSpace($ShortcutPath)) {
+        $ShortcutPath = Join-Path $env:ProgramData 'Microsoft\Windows\Start Menu\Programs\Company Agent.lnk'
+    }
+
+    $BundleRoot = Get-SetupFullPath -Path $BundleRoot
+    $InstallRoot = Get-SetupFullPath -Path $InstallRoot
+    $DataRoot = Get-SetupFullPath -Path $DataRoot
+    $UserStateRoot = Get-SetupFullPath -Path $UserStateRoot
+    $BackupRoot = Get-SetupFullPath -Path $BackupRoot
+    $ShortcutPath = Get-SetupFullPath -Path $ShortcutPath
+    $ClaudeConfigRoot = Get-SetupFullPath -Path $ClaudeConfigRoot
+    $InvokingUserProfile = Get-SetupFullPath -Path $InvokingUserProfile
+    $InvokingLocalAppData = Get-SetupFullPath -Path $InvokingLocalAppData
+
+    if (-not (Test-Path -LiteralPath (Join-Path $BundleRoot 'bundle-manifest.json') -PathType Leaf)) {
+        throw "This easy installer must be run from an extracted Company Agent offline bundle. Extract the ZIP first, then run deploy\Install-CompanyAgent.cmd. Bundle root checked: $BundleRoot"
+    }
+
+    Write-Host ''
+    Write-Host 'Company Agent easy setup'
+    Write-Host '------------------------'
+    Write-Host '[1/4] Checking Claude Code, Python, and the installation package...'
+
+    if (-not $SkipPrerequisiteCheck) {
+        $resolvedClaude = Resolve-SetupCommand -Command $ClaudeCommand
+        if ([string]::IsNullOrWhiteSpace($resolvedClaude)) {
+            throw 'Claude Code was not found. Confirm that the already-installed claude command works in a normal PowerShell window, then run setup again.'
+        }
+        # The plugin-local python.cmd shim forwards every Hook to this exact
+        # interpreter, so a validated py.exe fallback is safe as well.
+        $resolvedPython = Resolve-SetupApprovedPython -PreferredCommand $PythonCommand
+        if ([string]::IsNullOrWhiteSpace($resolvedPython)) {
+            throw 'Python was not found. Company Agent needs an approved Python 3.11 or newer runtime available through python or py.'
+        }
+        $ClaudeCommand = $resolvedClaude
+        try {
+            Assert-CompanyAgentPrerequisites -ClaudeCommand $ClaudeCommand -PythonCommand $resolvedPython
+        }
+        catch {
+            throw "A required program check failed. No installation changes were made. Details: $($_.Exception.Message)"
+        }
+        # Store the same absolute executable that passed the normal-user
+        # preflight. The launcher exposes it only to its own child process.
+        $PythonCommand = $resolvedPython
+    }
+
+    $manifest = $null
+    if ($SkipBundleVerification) {
+        $manifest = Read-CompanyAgentJson -Path (Join-Path $BundleRoot 'bundle-manifest.json')
+    }
+    else {
+        try {
+            $manifest = Test-CompanyAgentBundleIntegrity -BundleRoot $BundleRoot
+        }
+        catch {
+            throw "The installation package failed its safety check. Do not continue with this copy. Details: $($_.Exception.Message)"
+        }
+    }
+
+    $currentPointerPath = Get-CompanyAgentCurrentPointerPath -DataRoot $DataRoot
+    $existingInstall = Test-Path -LiteralPath $currentPointerPath -PathType Leaf
+    $DefaultTier = $DefaultTier.ToUpperInvariant()
+
+    $backupItems = @(Get-SetupBackupItems `
+        -ClaudeConfigPath $ClaudeConfigRoot `
+        -PersonalStatePath $UserStateRoot `
+        -ManagedDataPath $DataRoot `
+        -ManagedInstallPath $InstallRoot `
+        -ManagedShortcutPath $ShortcutPath)
+    $skillOverlaps = @(Get-SetupSkillOverlaps -BundlePath $BundleRoot -ClaudeConfigPath $ClaudeConfigRoot -PersonalStatePath $UserStateRoot)
+    $claudeCompatibility = Get-SetupClaudeCompatibility -ClaudeConfigPath $ClaudeConfigRoot
+    $pluginCollisionBlocked = $claudeCompatibility.companyAgentNameCollision -and (-not $AllowExistingCompanyAgentPlugin)
+    $settingsModelOverrides = @(Get-CompanyAgentSubagentModelForceSettings `
+        -SettingsPaths @((Join-Path $ClaudeConfigRoot 'settings.json')) `
+        -IncludeWindowsPolicy)
+    $settingsModelOverrideBlocked = $settingsModelOverrides.Count -gt 0
+    $subagentModelOverrides = @(@('CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE') | Where-Object {
+        -not [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable($_, 'Process'))
+    })
+    $subagentModelOverrideDetected = $subagentModelOverrides.Count -gt 0
+    foreach ($managedRoot in @($UserStateRoot, $DataRoot, $InstallRoot)) {
+        if (Test-SetupSameOrChildPath -Candidate $BackupRoot -Parent $managedRoot) {
+            throw "BackupRoot must be outside Company Agent managed directories. Choose a separate path instead of: $BackupRoot"
+        }
+    }
+
+    if ($DryRun) {
+        return [pscustomobject][ordered]@{
+            status                = 'dry-run'
+            action                = $(if ($existingInstall) { 'update-or-reinstall' } else { 'fresh-install' })
+            bundleRoot            = $BundleRoot
+            bundleVersion         = [string]$manifest.bundleVersion
+            installRoot           = $InstallRoot
+            dataRoot              = $DataRoot
+            userStateRoot         = $UserStateRoot
+            backupRoot            = $BackupRoot
+            backupItems           = $backupItems
+            possibleSkillOverlaps = $skillOverlaps
+            claudeCompatibility    = $claudeCompatibility
+            pluginCollisionBlocked = $pluginCollisionBlocked
+            settingsModelOverrideBlocked = $settingsModelOverrideBlocked
+            settingsModelOverrides = $settingsModelOverrides
+            modelMap              = [pscustomobject][ordered]@{ SMALL = 'haiku'; MEDIUM = 'sonnet'; LARGE = 'opus' }
+            modelSource           = 'existing Claude Code alias configuration'
+            defaultTier           = $DefaultTier
+            claudeConfigRoot       = $ClaudeConfigRoot
+            subagentModelOverrideDetected = $subagentModelOverrideDetected
+            subagentModelOverrides = $subagentModelOverrides
+            needsElevation        = ((-not (Test-CompanyAgentAdministrator)) -and (-not $SkipAdminCheck))
+            mutatesClaudeUserHome = $false
+            promptsForUserProfile = $false
+        }
+    }
+
+    if ($pluginCollisionBlocked) {
+        throw 'A user-installed Claude plugin named company-agent already exists. Setup stopped before making a backup or installation change. Remove or rename that plugin first. Administrators may use -AllowExistingCompanyAgentPlugin only after reviewing the duplicate.'
+    }
+    if ($settingsModelOverrideBlocked) {
+        $locations = @($settingsModelOverrides | ForEach-Object { "$($_.variable) in $($_.source)" }) -join '; '
+        throw "A Claude settings source forces all subagents to one model, so SMALL/MEDIUM/LARGE routing cannot work: $locations. Remove that setting through your Claude or IT configuration owner, then run Setup again. No setting was changed."
+    }
+
+    Write-Host ("Package: Core {0}, Knowledge {1}" -f [string]$manifest.coreVersion, [string]$manifest.knowledgeVersion)
+    Write-Host ("Mode: {0}" -f $(if ($existingInstall) { 'safe update or reinstall' } else { 'new installation' }))
+    Write-Host 'Existing Claude model aliases will be reused. Model IDs will not be requested or copied.'
+    Write-Host '  SMALL=haiku, MEDIUM=sonnet, LARGE=opus'
+    Write-Host ''
+    Write-Host '[2/4] Protecting existing personal settings before installation...'
+    Write-Host 'Company Agent does not overwrite your existing .claude directory.'
+    Write-Host 'The following existing information is copied only as a safety backup:'
+    Write-Host '  - .claude Skills, commands, agents, Hooks, Markdown instructions, and settings'
+    Write-Host '  - Claude plugin registration JSON files (not caches, credentials, or sessions)'
+    Write-Host '  - existing Company Agent activation pointers and launcher scripts'
+    Write-Host '  - selected personal Memory/Knowledge sources and revisions, Skills, and sanitized user configuration'
+    Write-Host ("Company Agent personal state is preserved in place: $UserStateRoot")
+    if ($skillOverlaps.Count -gt 0) {
+        Write-Warning ('Possible duplicate Skill names were found: ' + (($skillOverlaps | ForEach-Object { $_.name }) -join ', '))
+        Write-Warning 'Nothing will be overwritten. If Claude later reports an ambiguous Skill, keep one definition or rename the personal one.'
+    }
+    if ($claudeCompatibility.installedPlugins.Count -gt 0) {
+        Write-Host ('Existing Claude plugins remain enabled: ' + ($claudeCompatibility.installedPlugins -join ', '))
+    }
+    if ($claudeCompatibility.parallelHookProviders.Count -gt 0) {
+        Write-Warning ('Existing Hooks will run alongside Company Agent Hooks: ' + ($claudeCompatibility.parallelHookProviders -join '; '))
+        Write-Warning 'After first launch, run a simple read-only prompt and one temporary-file edit as a compatibility check.'
+    }
+    if ($claudeCompatibility.companyAgentNameCollision) {
+        Write-Warning 'An installed Claude plugin with the Company Agent name remains enabled under the explicit administrator override.'
+    }
+    if ($subagentModelOverrideDetected) {
+        Write-Warning ('Model-forcing environment setting detected: ' + ($subagentModelOverrides -join ', ') + '. It would force every worker to one model.')
+        Write-Warning 'Company Agent removes that override only inside its own child Claude process; your Windows or Claude setting is not changed.'
+    }
+
+    if ([string]::IsNullOrWhiteSpace($completedBackupPath)) {
+        $completedBackupPath = New-SetupBackup `
+            -BackupBase $BackupRoot `
+            -Items $backupItems `
+            -ClaudeConfigPath $ClaudeConfigRoot `
+            -PersonalStatePath $UserStateRoot `
+            -ManagedDataPath $DataRoot `
+            -ManagedInstallPath $InstallRoot
+    }
+    Write-Host ("Safety backup completed: $completedBackupPath")
+
+    $needsElevation = (-not (Test-CompanyAgentAdministrator)) -and (-not $SkipAdminCheck)
+    if ($needsElevation) {
+        Write-Host ''
+        Write-Host '[3/4] Windows will ask for administrator approval.'
+        Write-Host 'No model, MCP, Outlook, or display-name input is requested in the administrator profile.'
+        $resultPath = Join-Path ([IO.Path]::GetTempPath()) ('CompanyAgent-Setup-Result-' + [guid]::NewGuid().ToString('N') + '.json')
+        $payload = [pscustomobject][ordered]@{
+            schemaVersion          = 1
+            bundleRoot            = $BundleRoot
+            installRoot           = $InstallRoot
+            dataRoot              = $DataRoot
+            userStateRoot         = $UserStateRoot
+            backupRoot            = $BackupRoot
+            shortcutPath          = $ShortcutPath
+            claudeConfigRoot      = $ClaudeConfigRoot
+            claudeCommand         = $ClaudeCommand
+            pythonCommand         = $PythonCommand
+            invokingUserProfile   = $InvokingUserProfile
+            invokingLocalAppData  = $InvokingLocalAppData
+            completedBackupPath   = $completedBackupPath
+            nonInteractive        = [bool]$NonInteractive
+            skipAcl               = [bool]$SkipAcl
+            skipAdminCheck        = [bool]$SkipAdminCheck
+            skipPrerequisiteCheck = $true
+            skipShortcut          = [bool]$SkipShortcut
+            skipBundleVerification = [bool]$SkipBundleVerification
+            allowExistingCompanyAgentPlugin = [bool]$AllowExistingCompanyAgentPlugin
+        }
+        $elevatedResult = Invoke-SetupElevation -Payload $payload -ResultPath $resultPath
+        Write-Host ''
+        Write-Host '[4/4] Installation completed.'
+        Write-Host 'Open Company Agent from the Start menu as your normal Windows user.'
+        Write-Host 'Personal folders initialize automatically without questions on first launch.'
+        Write-Host 'Outlook identity is configured separately only when the Outlook MCP is first used.'
+        Write-Host ("Safety backup: $completedBackupPath")
+        return $elevatedResult
+    }
+
+    Write-Host ''
+    Write-Host '[3/4] Installing the managed core and Corporate Knowledge...'
+    $installerParameters = @{
+        BundleRoot             = $BundleRoot
+        DefaultTier            = $DefaultTier
+        UseExistingClaudeModels = $true
+        InstallRoot            = $InstallRoot
+        DataRoot               = $DataRoot
+        UserStateRoot          = $UserStateRoot
+        ClaudeCommand          = $ClaudeCommand
+        PythonCommand          = $PythonCommand
+        ShortcutPath           = $ShortcutPath
+        SkipAcl                = $SkipAcl
+        SkipAdminCheck         = $SkipAdminCheck
+        SkipPrerequisiteCheck  = $true
+        SkipShortcut           = $SkipShortcut
+        SkipBundleVerification = $SkipBundleVerification
+    }
+    if ($existingInstall) {
+        $operationResult = & (Join-Path $BundleRoot 'deploy\Update-CompanyAgent.ps1') @installerParameters
+    }
+    else {
+        $operationResult = & (Join-Path $BundleRoot 'deploy\Install-CompanyAgent.ps1') @installerParameters
+    }
+
+    $finalResult = [pscustomobject][ordered]@{
+        status                 = 'installed'
+        action                 = $(if ($existingInstall) { 'updated-or-reinstalled' } else { 'fresh-install' })
+        coreVersion            = [string]$manifest.coreVersion
+        knowledgeVersion       = [string]$manifest.knowledgeVersion
+        installRoot            = $InstallRoot
+        dataRoot               = $DataRoot
+        userStateRoot          = $UserStateRoot
+        safetyBackup           = $completedBackupPath
+        possibleSkillOverlaps  = $skillOverlaps
+        claudeCompatibility    = $claudeCompatibility
+        modelMapSource         = 'existing Claude Code aliases'
+        subagentModelOverrideDetected = $subagentModelOverrideDetected
+        subagentModelOverrides = $subagentModelOverrides
+        personalInitialization = 'automatic-on-normal-user-first-launch-without-input'
+        underlyingResult       = $operationResult
+    }
+
+    Write-Host ''
+    Write-Host '[4/4] Installation completed.'
+    Write-Host 'No existing Claude user Skill or setting was overwritten.'
+    Write-Host 'Open Company Agent from the Start menu as your normal Windows user.'
+    Write-Host 'Personal folders initialize automatically without questions on first launch.'
+    Write-Host 'Outlook identity is configured separately only when the Outlook MCP is first used.'
+    Write-Host ("Safety backup: $completedBackupPath")
+
+    if ($isHandoff) {
+        Write-SetupResultFile -Path $handoffResultPath -Value ([pscustomobject][ordered]@{
+            status = 'ok'
+            result = $finalResult
+        })
+    }
+    $finalResult
+}
+catch {
+    $message = $_.Exception.Message
+    Write-Host ''
+    Write-Host 'Setup stopped safely.' -ForegroundColor Red
+    Write-Host $message -ForegroundColor Red
+    Write-Host 'The existing Claude user directory was not modified by this installer.'
+    if (-not [string]::IsNullOrWhiteSpace($completedBackupPath)) {
+        Write-Host ("Pre-install backup: $completedBackupPath")
+    }
+    Write-Host 'If an older Company Agent was already installed, its versioned core and personal state remain on disk.'
+    if (-not [string]::IsNullOrWhiteSpace([string]$InstallRoot)) {
+        $rollbackPath = Join-Path ([string]$InstallRoot) 'bin\Rollback-CompanyAgent.ps1'
+        if (Test-Path -LiteralPath $rollbackPath -PathType Leaf) {
+            Write-Host ("Recovery command (administrator): powershell.exe -NoProfile -File `"$rollbackPath`"")
+        }
+    }
+    if ($isHandoff) {
+        Write-SetupResultFile -Path $handoffResultPath -Value ([pscustomobject][ordered]@{
+            status  = 'error'
+            message = $message
+            backup  = $completedBackupPath
+        })
+    }
+    throw
+}

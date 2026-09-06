@@ -29,6 +29,8 @@ def knowledge_base_root() -> Path | None:
 
 def ensure_user_layout(root: Path | None = None) -> dict[str, Path]:
     base = root or user_state_root()
+    from .state_compatibility import check_state_compatibility
+    check_state_compatibility(base)
     paths = {
         "root": base,
         "config": base / "config",

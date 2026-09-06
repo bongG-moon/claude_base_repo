@@ -27,6 +27,24 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'CompanyAgent.Common.ps1')
 
+function Test-CompanyAgentMcpConfigHasServers {
+    param([string] $Path)
+
+    if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return $false
+    }
+    try {
+        $config = Read-CompanyAgentJson -Path $Path
+        if ($null -eq $config.PSObject.Properties['mcpServers'] -or $null -eq $config.mcpServers) {
+            return $false
+        }
+        return @($config.mcpServers.PSObject.Properties).Count -gt 0
+    }
+    catch {
+        throw "Invalid MCP configuration '$Path': $($_.Exception.Message)"
+    }
+}
+
 if ([string]::IsNullOrWhiteSpace($InstallRoot)) {
     $InstallRoot = Get-CompanyAgentDefaultInstallRoot
 }
@@ -44,13 +62,64 @@ $InstallRoot = ConvertTo-CompanyAgentFullPath -Path $InstallRoot
 $DataRoot = ConvertTo-CompanyAgentFullPath -Path $DataRoot
 $UserStateRoot = ConvertTo-CompanyAgentFullPath -Path $UserStateRoot
 $WorkingDirectory = ConvertTo-CompanyAgentFullPath -Path $WorkingDirectory
+Assert-CompanyAgentRootsSeparated -InstallRoot $InstallRoot -DataRoot $DataRoot -UserStateRoot $UserStateRoot
 if (-not (Test-Path -LiteralPath $WorkingDirectory -PathType Container)) {
     throw "Working directory was not found: $WorkingDirectory"
 }
-Assert-CompanyAgentPrerequisites -ClaudeCommand $ClaudeCommand -PythonCommand $PythonCommand -SkipPrerequisiteCheck:$SkipPrerequisiteCheck
+
+$claudeConfigRoot = [Environment]::GetEnvironmentVariable('CLAUDE_CONFIG_DIR', 'Process')
+if ([string]::IsNullOrWhiteSpace($claudeConfigRoot)) {
+    $claudeConfigRoot = Join-Path $env:USERPROFILE '.claude'
+}
+$modelSettingsPaths = New-Object Collections.ArrayList
+$null = $modelSettingsPaths.Add((Join-Path $claudeConfigRoot 'settings.json'))
+$settingsSearchRoot = $WorkingDirectory
+while (-not [string]::IsNullOrWhiteSpace($settingsSearchRoot)) {
+    $null = $modelSettingsPaths.Add((Join-Path $settingsSearchRoot '.claude\settings.json'))
+    $null = $modelSettingsPaths.Add((Join-Path $settingsSearchRoot '.claude\settings.local.json'))
+    $settingsParent = Split-Path -Parent $settingsSearchRoot
+    if ([string]::IsNullOrWhiteSpace($settingsParent) -or $settingsParent -ieq $settingsSearchRoot) {
+        break
+    }
+    $settingsSearchRoot = $settingsParent
+}
+$settingsModelOverrides = @(Get-CompanyAgentSubagentModelForceSettings `
+    -SettingsPaths @($modelSettingsPaths.ToArray()) `
+    -IncludeWindowsPolicy)
+if ($settingsModelOverrides.Count -gt 0) {
+    $locations = @($settingsModelOverrides | ForEach-Object { "$($_.variable) in $($_.source)" }) -join '; '
+    throw "Company Agent cannot start because Claude settings force every subagent to one model: $locations. Remove that setting through your Claude or IT configuration owner. Company Agent did not change the file."
+}
 
 $currentPointerPath = Get-CompanyAgentCurrentPointerPath -DataRoot $DataRoot
 $deployment = Read-CompanyAgentJson -Path $currentPointerPath
+
+# Setup records the exact interpreter that passed the user-context preflight.
+# This also makes the Windows `py.exe` fallback safe: every hook reaches it via
+# the plugin-local python.cmd shim instead of assuming a `python` alias exists.
+if (-not $PSBoundParameters.ContainsKey('PythonCommand') -and
+    $null -ne $deployment.PSObject.Properties['runtime'] -and
+    $null -ne $deployment.runtime.PSObject.Properties['pythonCommand'] -and
+    -not [string]::IsNullOrWhiteSpace([string]$deployment.runtime.pythonCommand)) {
+    $PythonCommand = [string]$deployment.runtime.pythonCommand
+}
+$bundledPython = Join-Path $InstallRoot ('versions\' + [string]$deployment.coreVersion + '\plugin\runtime\python\python.exe')
+if (-not $PSBoundParameters.ContainsKey('PythonCommand') -and (Test-Path -LiteralPath $bundledPython -PathType Leaf)) {
+    $PythonCommand = $bundledPython
+}
+$pythonInfo = Get-Command $PythonCommand -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($null -eq $pythonInfo) {
+    throw "The Company Agent Python runtime was not found: $PythonCommand"
+}
+$resolvedPythonCommand = $pythonInfo.Source
+if ([string]::IsNullOrWhiteSpace($resolvedPythonCommand)) {
+    $resolvedPythonCommand = $pythonInfo.Definition
+}
+if ([string]::IsNullOrWhiteSpace($resolvedPythonCommand)) {
+    throw "The Company Agent Python runtime could not be resolved: $PythonCommand"
+}
+$PythonCommand = [string]$resolvedPythonCommand
+Assert-CompanyAgentPrerequisites -ClaudeCommand $ClaudeCommand -PythonCommand $PythonCommand -SkipPrerequisiteCheck:$SkipPrerequisiteCheck
 Assert-CompanyAgentVersion -Version ([string]$deployment.coreVersion) -Name 'coreVersion in current.json'
 Assert-CompanyAgentVersion -Version ([string]$deployment.knowledgeVersion) -Name 'knowledgeVersion in current.json'
 
@@ -59,9 +128,18 @@ $corporateKnowledgePath = Join-Path $DataRoot (Join-Path 'knowledge\versions' ([
 $personalKnowledgePath = Join-Path $UserStateRoot 'knowledge'
 $personalRootPath = Join-Path $UserStateRoot 'personal-root'
 $coreCliBinPath = Join-Path $corePluginPath 'bin'
-$settingsPath = Join-Path $DataRoot 'config\managed.settings.json'
-$managedConfigPath = Join-Path $DataRoot 'config\managed.json'
-$managedMcpPath = Join-Path $DataRoot 'config\managed-mcp.json'
+$configRoot = Join-Path $DataRoot 'config'
+if ($null -ne $deployment.PSObject.Properties['configVersion'] -and
+    -not [string]::IsNullOrWhiteSpace([string]$deployment.configVersion)) {
+    $configRoot = Join-Path $configRoot (Join-Path 'versions' ([string]$deployment.configVersion))
+}
+$settingsPath = Join-Path $configRoot 'session.settings.json'
+if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
+    # Backward compatibility with 0.1 installations.
+    $settingsPath = Join-Path $configRoot 'managed.settings.json'
+}
+$managedConfigPath = Join-Path $configRoot 'managed.json'
+$managedMcpPath = Join-Path $configRoot 'managed-mcp.json'
 $personalMcpPath = Join-Path $UserStateRoot 'mcp\registry.json'
 
 if (-not (Test-Path -LiteralPath $corePluginPath -PathType Container)) {
@@ -83,13 +161,7 @@ $requiresUserInitialization = (-not (Test-Path -LiteralPath $personalKnowledgePa
     (-not (Test-Path -LiteralPath $personalMcpPath -PathType Leaf)) -or
     (-not (Test-Path -LiteralPath $userConfigPath -PathType Leaf))
 if (-not $requiresUserInitialization) {
-    $existingUserConfig = Read-CompanyAgentJson -Path $userConfigPath
-    $existingEmail = @($existingUserConfig.PSObject.Properties | Where-Object { $_.Name -eq 'user_email' } | Select-Object -First 1)
-    $existingDisplayName = @($existingUserConfig.PSObject.Properties | Where-Object { $_.Name -eq 'display_name' } | Select-Object -First 1)
-    $requiresUserInitialization = $existingEmail.Count -eq 0 -or
-        $existingDisplayName.Count -eq 0 -or
-        [string]::IsNullOrWhiteSpace([string]$existingEmail[0].Value) -or
-        [string]::IsNullOrWhiteSpace([string]$existingDisplayName[0].Value)
+    $null = Read-CompanyAgentJson -Path $userConfigPath
 }
 
 if ($requiresUserInitialization -and -not $SkipUserInitialization) {
@@ -177,26 +249,40 @@ if (-not $SkipKnowledgePreparation) {
 
 $effectiveTier = $ModelTier.ToUpperInvariant()
 if ($effectiveTier -eq 'AUTO') {
-    $effectiveTier = ([string]$deployment.routing.defaultTier).ToUpperInvariant()
+    $configuredDefaultTier = ([string]$deployment.routing.defaultTier).ToUpperInvariant()
+    if (-not [string]::IsNullOrWhiteSpace($configuredDefaultTier) -and $configuredDefaultTier -ne 'AUTO') {
+        $effectiveTier = $configuredDefaultTier
+    }
 }
-if (@('SMALL', 'MEDIUM', 'LARGE') -notcontains $effectiveTier) {
+if (@('AUTO', 'SMALL', 'MEDIUM', 'LARGE') -notcontains $effectiveTier) {
     throw "Invalid effective model tier in current.json: $effectiveTier"
 }
 
-$modelOverrideProvided = -not [string]::IsNullOrWhiteSpace($ModelId)
-if (-not $modelOverrideProvided) {
-    $modelProperty = $deployment.modelMap.PSObject.Properties[$effectiveTier]
-    if ($null -eq $modelProperty -or [string]::IsNullOrWhiteSpace([string]$modelProperty.Value)) {
-        throw "No model ID is configured for tier $effectiveTier."
-    }
-    $ModelId = [string]$modelProperty.Value
+$modelMode = 'explicit-map'
+if ($null -ne $deployment.PSObject.Properties['modelConfiguration'] -and
+    $null -ne $deployment.modelConfiguration.PSObject.Properties['mode']) {
+    $modelMode = [string]$deployment.modelConfiguration.mode
 }
+$modelOverrideProvided = -not [string]::IsNullOrWhiteSpace($ModelId)
+$resolvedEntryModel = $null
+$entryModelArgument = $null
 $modelAliases = @{
     SMALL  = 'haiku'
     MEDIUM = 'sonnet'
     LARGE  = 'opus'
 }
-$entryModelArgument = $(if ($modelOverrideProvided) { $ModelId } else { [string]$modelAliases[$effectiveTier] })
+if ($modelOverrideProvided) {
+    $resolvedEntryModel = $ModelId
+    $entryModelArgument = $ModelId
+}
+elseif ($effectiveTier -ne 'AUTO') {
+    $modelProperty = $deployment.modelMap.PSObject.Properties[$effectiveTier]
+    if ($null -eq $modelProperty -or [string]::IsNullOrWhiteSpace([string]$modelProperty.Value)) {
+        throw "No model ID is configured for tier $effectiveTier."
+    }
+    $resolvedEntryModel = [string]$modelProperty.Value
+    $entryModelArgument = [string]$modelAliases[$effectiveTier]
+}
 
 $protectedOptions = @('--model', '--plugin-dir', '--add-dir', '--settings', '--mcp-config', '--strict-mcp-config')
 foreach ($argument in @($ClaudeArguments)) {
@@ -216,11 +302,31 @@ if ($NonInteractive -and [string]::IsNullOrWhiteSpace($Prompt)) {
 $arguments = @(
     '--plugin-dir', $corePluginPath,
     '--add-dir', $corporateKnowledgePath, $personalKnowledgePath, $personalRootPath,
-    '--settings', $settingsPath,
-    '--model', $entryModelArgument
+    '--settings', $settingsPath
 )
-if (Test-Path -LiteralPath $managedMcpPath -PathType Leaf) {
-    $arguments += @('--mcp-config', $managedMcpPath, $personalMcpPath, '--strict-mcp-config')
+if (-not [string]::IsNullOrWhiteSpace($entryModelArgument)) {
+    $arguments += @('--model', $entryModelArgument)
+}
+
+$strictMcpConfig = $false
+if (Test-Path -LiteralPath $managedConfigPath -PathType Leaf) {
+    $managedRuntimeConfig = Read-CompanyAgentJson -Path $managedConfigPath
+    if ($null -ne $managedRuntimeConfig.PSObject.Properties['strictMcpConfig']) {
+        $strictMcpConfig = [bool]$managedRuntimeConfig.strictMcpConfig
+    }
+}
+$mcpConfigPaths = @()
+if ($strictMcpConfig -or (Test-CompanyAgentMcpConfigHasServers -Path $managedMcpPath)) {
+    $mcpConfigPaths += $managedMcpPath
+}
+if ($strictMcpConfig -or (Test-CompanyAgentMcpConfigHasServers -Path $personalMcpPath)) {
+    $mcpConfigPaths += $personalMcpPath
+}
+if ($mcpConfigPaths.Count -gt 0) {
+    $arguments += @('--mcp-config') + $mcpConfigPaths
+    if ($strictMcpConfig) {
+        $arguments += '--strict-mcp-config'
+    }
 }
 if ($NonInteractive) {
     $arguments += '--print'
@@ -245,14 +351,21 @@ $environmentValues = [ordered]@{
     COMPANY_AGENT_MODEL_SMALL       = [string]$deployment.modelMap.SMALL
     COMPANY_AGENT_MODEL_MEDIUM      = [string]$deployment.modelMap.MEDIUM
     COMPANY_AGENT_MODEL_LARGE       = [string]$deployment.modelMap.LARGE
+    COMPANY_AGENT_MODEL_MODE        = $modelMode
     COMPANY_AGENT_MODEL_TIER        = $effectiveTier
-    COMPANY_AGENT_ENTRY_MODEL       = $ModelId
+    COMPANY_AGENT_ENTRY_MODEL       = $(if ($null -eq $resolvedEntryModel) { '' } else { $resolvedEntryModel })
     COMPANY_AGENT_PYTHON            = $PythonCommand
-    ANTHROPIC_DEFAULT_HAIKU_MODEL   = [string]$deployment.modelMap.SMALL
-    ANTHROPIC_DEFAULT_SONNET_MODEL  = [string]$deployment.modelMap.MEDIUM
-    ANTHROPIC_DEFAULT_OPUS_MODEL    = [string]$deployment.modelMap.LARGE
     Path                             = ($coreCliBinPath + ';' + [Environment]::GetEnvironmentVariable('Path', 'Process'))
 }
+if ($modelMode -eq 'explicit-map') {
+    $environmentValues.ANTHROPIC_DEFAULT_HAIKU_MODEL = [string]$deployment.modelMap.SMALL
+    $environmentValues.ANTHROPIC_DEFAULT_SONNET_MODEL = [string]$deployment.modelMap.MEDIUM
+    $environmentValues.ANTHROPIC_DEFAULT_OPUS_MODEL = [string]$deployment.modelMap.LARGE
+}
+$environmentClearNames = @(
+    'CLAUDE_CODE_SUBAGENT_MODEL',
+    'CLAUDE_CODE_SUBAGENT_MODEL_FORCE'
+)
 
 if ($DryRun) {
     return [pscustomobject][ordered]@{
@@ -264,12 +377,18 @@ if ($DryRun) {
         personalKnowledge    = $personalKnowledgePath
         personalRoot         = $personalRootPath
         personalMcpRegistry  = $personalMcpPath
+        sessionSettings      = $settingsPath
+        configRoot           = $configRoot
         knowledgeCatalog     = $(if (Test-Path -LiteralPath $knowledgeCatalogPath -PathType Leaf) { $knowledgeCatalogPath } else { $null })
         knowledgeConflicts   = $knowledgeConflictCount
         knowledgeDetached    = $knowledgeDetachedCount
+        modelMode            = $modelMode
         modelTier            = $effectiveTier
-        modelId              = $ModelId
+        modelId              = $resolvedEntryModel
         modelArgument        = $entryModelArgument
+        mcpConfigMode        = $(if ($strictMcpConfig) { 'strict' } elseif ($mcpConfigPaths.Count -gt 0) { 'merge' } else { 'existing-only' })
+        mcpConfigPaths       = $mcpConfigPaths
+        processOnlyEnvironmentClears = $environmentClearNames
         environment          = [pscustomobject]$environmentValues
         userClaudeHomeMutated = $false
     }
@@ -295,6 +414,12 @@ foreach ($name in $environmentValues.Keys) {
     $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
     [Environment]::SetEnvironmentVariable($name, [string]$environmentValues[$name], 'Process')
 }
+foreach ($name in $environmentClearNames) {
+    if (-not $previousEnvironment.ContainsKey($name)) {
+        $previousEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+    }
+    [Environment]::SetEnvironmentVariable($name, $null, 'Process')
+}
 
 Push-Location -LiteralPath $WorkingDirectory
 try {
@@ -310,6 +435,9 @@ try {
 finally {
     Pop-Location
     foreach ($name in $environmentValues.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
+    }
+    foreach ($name in $environmentClearNames) {
         [Environment]::SetEnvironmentVariable($name, $previousEnvironment[$name], 'Process')
     }
 }

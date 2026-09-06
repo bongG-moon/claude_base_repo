@@ -18,17 +18,18 @@ Turn a user's natural-language automation request into the smallest reusable ass
 
 1. Consult Effective Knowledge before defining inputs, table meanings, or business rules.
 2. Ask only for missing material choices, using at most three simple options.
-3. Define success cases, invalid-input cases, JSON input/output schemas, permission boundaries, and offline dependencies before writing code.
-4. List every required risky capability in `reviewed_capabilities`. Supported reviewable capabilities are `filesystem-read`, `filesystem-write`, `network`, `process`, and `third-party-import`. Explain the need in plain language before adding one. Dynamic code, shell execution, native code, and destructive filesystem operations are rejected because this Harness does not provide an OS sandbox.
-5. Create a JSON AssetSpec and run:
+3. For a Skill, choose a name that is unique across the Harness personal Skill root and the user's existing Claude config root (`CLAUDE_CONFIG_DIR` or `%USERPROFILE%\.claude`). If the create/activate command reports an external Skill collision, do not overwrite or disable the existing Skill. Rename the new asset with a clear prefix such as `company-personal-<name>` and retry.
+4. Define success cases, invalid-input cases, JSON input/output schemas, permission boundaries, and offline dependencies before writing code.
+5. List every required risky capability in `reviewed_capabilities`. Supported reviewable capabilities are `filesystem-read`, `filesystem-write`, `network`, `process`, and `third-party-import`. Explain the need in plain language before adding one. Dynamic code, shell execution, native code, and destructive filesystem operations are rejected because this Harness does not provide an OS sandbox.
+6. Create a JSON AssetSpec and run:
 
    `company-agent asset create --spec "<asset-spec.json>"`
 
-6. Validate its structure and static security scan:
+7. Validate its structure and static security scan:
 
    `company-agent asset validate "<asset-path>"`
 
-7. Skills need no manual activation. For a Script Tool, save one representative JSON input under `%COMPANY_AGENT_USER_STATE%\tmp`, then let the Harness execute it with a bounded timeout and validate JSON output against the manifest schema:
+8. Skills need no manual activation. For a Script Tool, save one representative JSON input under `%COMPANY_AGENT_USER_STATE%\tmp`, then let the Harness execute it with a bounded timeout and validate JSON output against the manifest schema:
 
    `company-agent asset test-tool --name "<name>" --input "<input.json>" --timeout 30`
 
@@ -36,7 +37,7 @@ Turn a user's natural-language automation request into the smallest reusable ass
 
    `company-agent asset activate-tool --name "<name>" --receipt "<receipt.json>"`
 
-8. For an MCP, use only the administrator-approved Python environment containing the pinned `mcp>=1.20,<2` SDK. If it is absent, stop and tell the user that the approved offline wheel is required. Never run `pip` against the internet. Run the real stdio initialize, tools/list, and `health` test:
+9. For an MCP, use only the administrator-approved Python environment containing the pinned `mcp>=1.20,<2` SDK. If it is absent, stop and tell the user that the approved offline wheel is required. Never run `pip` against the internet. Run the real stdio initialize, tools/list, and `health` test:
 
    `company-agent asset test-mcp --name "<name>" --timeout 30`
 
@@ -44,8 +45,8 @@ Turn a user's natural-language automation request into the smallest reusable ass
 
    `company-agent asset activate-mcp --name "<name>" --receipt "<receipt.json>"`
 
-9. Any source, manifest, command, argument, or entrypoint change invalidates the receipt. Re-run the relevant test command rather than editing a receipt.
-10. Restart Company Agent after activating a new MCP because the launch-time MCP registry must be reloaded. Script Tool and Skill changes are detected live.
+10. Any source, manifest, command, argument, or entrypoint change invalidates the receipt. Re-run the relevant test command rather than editing a receipt.
+11. In native User/Project installations, activation also registers the receipt-validated server through Claude's native `mcp add-json` for that scope. Restart Claude afterwards. If registration fails, report that native activation is pending and resolve the stated cause; retry with `company-agent asset sync-mcp --name "<name>"`. Existing/unowned MCP names are never overwritten. In the machine launcher, restart Company Agent to reload its MCP registry. Script Tool and personal Skill changes are available through live contextual retrieval.
 
 Never write personal assets into the plugin installation directory. That directory is replaced on Core update. Store every generated asset under the user state directory selected by the harness.
 

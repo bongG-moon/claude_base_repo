@@ -31,9 +31,7 @@ if ([string]::IsNullOrWhiteSpace($ShortcutPath)) {
 }
 $ShortcutPath = ConvertTo-CompanyAgentFullPath -Path $ShortcutPath
 
-if ($InstallRoot -ieq $DataRoot -or $InstallRoot -ieq $UserStateRoot -or $DataRoot -ieq $UserStateRoot) {
-    throw 'InstallRoot, DataRoot, and UserStateRoot must be distinct directories.'
-}
+Assert-CompanyAgentRootsSeparated -InstallRoot $InstallRoot -DataRoot $DataRoot -UserStateRoot $UserStateRoot
 
 Assert-CompanyAgentAdministrator -SkipAdminCheck:$SkipAdminCheck
 $removed = @()

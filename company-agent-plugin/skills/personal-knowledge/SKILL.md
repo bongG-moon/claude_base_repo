@@ -5,7 +5,7 @@ description: Create, update, search, reconcile, or share a user's local company 
 
 # Personal Knowledge writer
 
-Personal Knowledge is a writable overlay under `%LOCALAPPDATA%\CompanyAgent\knowledge`. The administrator's Corporate Base remains immutable.
+Personal Knowledge is a writable overlay under the active `company_agent_runtime.stateRoot` (or `COMPANY_AGENT_USER_STATE`) plus `knowledge`. User and Project installations have distinct state roots. The administrator's Corporate Base remains immutable.
 
 ## Decide what to store
 

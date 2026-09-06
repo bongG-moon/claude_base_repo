@@ -8,6 +8,7 @@ param(
     [string] $MediumModelId,
     [string] $LargeModelId,
     [string] $DefaultTier,
+    [switch] $UseExistingClaudeModels,
     [string] $InstallRoot,
     [string] $DataRoot,
     [string] $UserStateRoot,
@@ -54,6 +55,7 @@ $installParameters = @{
     MediumModelId           = $MediumModelId
     LargeModelId            = $LargeModelId
     DefaultTier             = $DefaultTier
+    UseExistingClaudeModels = $UseExistingClaudeModels
     InstallRoot             = $InstallRoot
     DataRoot                = $DataRoot
     UserStateRoot           = $UserStateRoot

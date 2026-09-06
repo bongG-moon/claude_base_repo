@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -15,11 +16,14 @@ from company_agent.asset_factory import (  # noqa: E402
     activate_mcp,
     activate_script_tool,
     create_asset,
+    rebind_mcp_runtime,
     run_script_tool,
     validate_asset,
     validate_mcp_runtime,
     validate_script_tool_runtime,
 )
+from company_agent import asset_factory as assets  # noqa: E402
+from company_agent.paths import ensure_user_layout  # noqa: E402
 from company_agent.cli import build_parser  # noqa: E402
 
 
@@ -88,6 +92,23 @@ class AssetFactoryTests(unittest.TestCase):
             self.state,
         )
         self.assertEqual(1, len(list((self.state / "assets" / "versions").rglob("SKILL.md"))))
+
+    def test_personal_skill_refuses_existing_global_name_collision(self) -> None:
+        claude_root = Path(self.temp.name) / "existing-claude"
+        existing = claude_root / "skills" / "daily-summary"
+        existing.mkdir(parents=True)
+        (existing / "SKILL.md").write_text("existing", encoding="utf-8")
+        with mock.patch.dict("os.environ", {"CLAUDE_CONFIG_DIR": str(claude_root)}):
+            with self.assertRaisesRegex(ValueError, "company-personal-daily-summary"):
+                create_asset(
+                    {
+                        "type": "skill",
+                        "name": "daily-summary",
+                        "description": "충돌 테스트",
+                        "instructions": "테스트",
+                    },
+                    self.state,
+                )
 
     def test_script_tool_is_candidate_and_compiles(self) -> None:
         path = self._create_counter()
@@ -224,6 +245,101 @@ class AssetFactoryTests(unittest.TestCase):
         manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
         with self.assertRaisesRegex(ValueError, "approved Company Agent Python"):
             validate_mcp_runtime(self.state, "hello-mcp")
+
+    def _previous_runtime_mcp(self) -> tuple[Path, Path, str]:
+        old_command = str(Path(self.temp.name) / "releases" / "old" / "python.exe")
+        with mock.patch.object(assets.sys, "executable", old_command):
+            path = create_asset({"type": "mcp", "name": "previous-mcp", "description": "Previous runtime fixture",
+                                 "reviewed_capabilities": ["third-party-import"]}, self.state)
+            receipt = assets._write_receipt(ensure_user_layout(self.state), path, "mcp-protocol", "mcp", "previous-mcp",
+                                            assets._asset_content_hash(path, "asset.json"), {"fixture": True})
+            activate_mcp(self.state, "previous-mcp", receipt)
+        return path, receipt, old_command
+
+    def test_runtime_rebind_requires_old_receipt_and_renews_hash_before_reactivation(self) -> None:
+        path, old_receipt, old_command = self._previous_runtime_mcp()
+        registry_path = self.state / "mcp" / "registry.json"
+        original_registry = registry_path.read_bytes()
+        with self.assertRaisesRegex(ValueError, "rebind-mcp-runtime"):
+            validate_mcp_runtime(self.state, "previous-mcp")
+        with mock.patch.object(assets, "_probe_mcp", new_callable=mock.AsyncMock, return_value={"healthTool": "health"}) as probe, \
+                mock.patch.object(assets, "_approved_mcp_sdk_version", return_value="1.26.0"):
+            renewed = rebind_mcp_runtime(self.state, "previous-mcp", timeout=7)
+        current_command = str(Path(sys.executable).resolve())
+        self.assertEqual(current_command, probe.call_args.args[0])
+        self.assertEqual([str((path / "server.py").resolve())], probe.call_args.args[1])
+        self.assertEqual(7, probe.call_args.args[3])
+        self.assertNotEqual(old_receipt, renewed)
+        manifest = json.loads((path / "asset.json").read_text(encoding="utf-8"))
+        self.assertEqual("candidate", manifest["status"])
+        self.assertEqual(current_command, manifest["command"])
+        self.assertEqual(old_command, manifest["runtimeRebind"]["previousCommand"])
+        self.assertEqual(original_registry, registry_path.read_bytes())
+        layout = ensure_user_layout(self.state)
+        assets._verify_receipt(layout, path, renewed, "mcp-protocol", "mcp", "previous-mcp", "asset.json")
+        with self.assertRaisesRegex(ValueError, "content changed"):
+            assets._verify_receipt(layout, path, old_receipt, "mcp-protocol", "mcp", "previous-mcp", "asset.json")
+        activate_mcp(self.state, "previous-mcp", renewed)
+        self.assertEqual(current_command, json.loads(registry_path.read_text(encoding="utf-8"))["mcpServers"]["previous-mcp"]["command"])
+        self.assertTrue(old_receipt.is_file())
+
+    def test_runtime_rebind_probe_and_receipt_failures_preserve_previous_active_state(self) -> None:
+        path, _, _ = self._previous_runtime_mcp()
+        manifest_path = path / "asset.json"
+        original = manifest_path.read_bytes()
+        registry_path = self.state / "mcp" / "registry.json"
+        registry = registry_path.read_bytes()
+        for stage in ("probe", "receipt"):
+            with self.subTest(stage=stage), \
+                    mock.patch.object(assets, "_approved_mcp_sdk_version", return_value="1.26.0"), \
+                    mock.patch.object(assets, "_probe_mcp", new_callable=mock.AsyncMock,
+                                      side_effect=ValueError("probe failed") if stage == "probe" else None,
+                                      return_value={"healthTool": "health"}), \
+                    mock.patch.object(assets, "_write_receipt", side_effect=OSError("receipt unavailable")):
+                with self.assertRaises((ValueError, OSError)):
+                    rebind_mcp_runtime(self.state, "previous-mcp")
+            self.assertEqual(original, manifest_path.read_bytes())
+            self.assertEqual(registry, registry_path.read_bytes())
+
+    def test_runtime_rebind_rejects_modified_unsigned_and_reserved_assets_without_execution(self) -> None:
+        path, _, _ = self._previous_runtime_mcp()
+        manifest_path = path / "asset.json"
+        original = manifest_path.read_bytes()
+        for alteration in ("command", "receipt"):
+            manifest = json.loads(original)
+            if alteration == "command":
+                manifest["command"] = str(Path(self.temp.name) / "unapproved.exe")
+            else:
+                manifest.pop("validationReceipt")
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            unchanged = manifest_path.read_bytes()
+            with self.subTest(alteration=alteration), mock.patch.object(assets, "_probe_mcp", new_callable=mock.AsyncMock) as probe:
+                with self.assertRaisesRegex(ValueError, "content changed|receipt"):
+                    rebind_mcp_runtime(self.state, "previous-mcp")
+                probe.assert_not_called()
+            self.assertEqual(unchanged, manifest_path.read_bytes())
+        for name in ("corp-db-read", "corp-outlook-self"):
+            with self.assertRaisesRegex(ValueError, "managed separately"):
+                rebind_mcp_runtime(self.state, name)
+
+    def test_runtime_rebind_does_not_overwrite_concurrent_asset_changes(self) -> None:
+        path, _, _ = self._previous_runtime_mcp()
+        manifest_path = path / "asset.json"
+        original = manifest_path.read_bytes()
+        receipt_files = list((path / ".receipts").iterdir())
+
+        async def changed_probe(*args):
+            server = path / "server.py"
+            server.write_bytes(server.read_bytes() + b"\n# concurrent personal edit\n")
+            return {"healthTool": "health"}
+
+        with mock.patch.object(assets, "_probe_mcp", side_effect=changed_probe), \
+                mock.patch.object(assets, "_approved_mcp_sdk_version", return_value="1.26.0"):
+            with self.assertRaisesRegex(ValueError, "changed during runtime rebind"):
+                rebind_mcp_runtime(self.state, "previous-mcp")
+        self.assertEqual(original, manifest_path.read_bytes())
+        self.assertEqual(receipt_files, list((path / ".receipts").iterdir()))
+        self.assertIn(b"concurrent personal edit", (path / "server.py").read_bytes())
 
     def test_cli_exposes_receipt_based_runtime_validation_flow(self) -> None:
         parser = build_parser()

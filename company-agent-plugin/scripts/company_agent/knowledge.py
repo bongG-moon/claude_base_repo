@@ -479,6 +479,12 @@ def _slug(value: str) -> str:
     return normalized or "knowledge"
 
 
+def auto_title_slug(title: str) -> str:
+    """A readable, stable identifier that does not erase non-ASCII titles."""
+    digest = hashlib.sha256(title.strip().encode("utf-8")).hexdigest()[:16]
+    return f"{_slug(title)[:48]}.{digest}"
+
+
 def _find_by_id(root: Path | None, identifier: str) -> MarkdownDocument | None:
     documents, _ = discover_documents(root)
     return next((item for item in documents if _is_active(item) and item.metadata.get("id") == identifier), None)
@@ -499,18 +505,27 @@ def upsert_personal(spec: dict[str, Any], state_root: Path, base_root: Path | No
 
     user_config = load_json(layout["config"] / "user.json", {}) or {}
     owner = str(spec.get("owner") or user_config.get("display_name") or os.environ.get("USERNAME") or "local-user")
-    identifier = str(spec.get("id") or f"personal.{_slug(target or kind)}.{_slug(title)}")
+    identifier = str(spec.get("id") or f"personal.{_slug(target or kind)}.{auto_title_slug(title)}")
     destination_dir = layout["overlays"] if target else layout["entries"]
     path = destination_dir / f"{_slug(identifier)}.md"
+    if not spec.get("id") and not path.exists():
+        # Continue an exact legacy item in place, but never mistake another
+        # Korean title that collapsed to the same old slug for an update.
+        legacy_id = f"personal.{_slug(target or kind)}.{_slug(title)}"
+        legacy_path = destination_dir / f"{_slug(legacy_id)}.md"
+        if legacy_path.exists() and not legacy_path.is_symlink():
+            legacy = load_markdown(legacy_path)
+            if (legacy.metadata.get("id") == legacy_id
+                    and legacy.metadata.get("title") == title
+                    and legacy.metadata.get("kind") == ("knowledge_overlay" if target else kind)
+                    and str(legacy.metadata.get("extends", "")) == target):
+                identifier, path = legacy_id, legacy_path
 
     revision = 1
+    existing = None
     if path.exists():
         existing = load_markdown(path)
         revision = int(existing.metadata.get("personal_revision", 0)) + 1
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-        snapshot = layout["versions"] / timestamp / path.name
-        snapshot.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(path, snapshot)
 
     metadata = dict(spec.get("metadata") or {})
     for field in ("aliases", "tags", "domain", "system", "schema", "table", "grain", "columns", "column"):
@@ -555,6 +570,18 @@ def upsert_personal(spec: dict[str, Any], state_root: Path, base_root: Path | No
     errors = [issue for issue in validation if issue.level == "error" and issue.path == str(path)]
     if errors:
         raise ValueError("; ".join(issue.message for issue in errors))
+
+    if existing is not None:
+        ignored_fields = {"personal_revision", "updated_at"}
+        previous_metadata = {key: value for key, value in existing.metadata.items() if key not in ignored_fields}
+        next_metadata = {key: value for key, value in candidate_meta.items() if key not in ignored_fields}
+        if previous_metadata == next_metadata and existing.body.strip() == candidate_body.strip():
+            build_index(base_root, layout["knowledge"], layout["index"])
+            return path
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
+        snapshot = layout["versions"] / timestamp / path.name
+        snapshot.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(path, snapshot)
 
     atomic_write_text(path, rendered)
     ledger_record = {

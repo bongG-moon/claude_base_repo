@@ -32,6 +32,10 @@ if ([string]::IsNullOrWhiteSpace($UserStateRoot)) {
 $InstallRoot = ConvertTo-CompanyAgentFullPath -Path $InstallRoot
 $DataRoot = ConvertTo-CompanyAgentFullPath -Path $DataRoot
 $UserStateRoot = ConvertTo-CompanyAgentFullPath -Path $UserStateRoot
+Assert-CompanyAgentRootsSeparated -InstallRoot $InstallRoot -DataRoot $DataRoot -UserStateRoot $UserStateRoot
+if (-not $SkipAdminCheck -and (Test-CompanyAgentAdministrator)) {
+    throw 'Personal initialization must run from the employee''s normal, non-elevated Windows session. Close the administrator PowerShell window and start Company Agent from the Start menu.'
+}
 
 $deployment = $null
 if (-not $SkipDeploymentCheck) {
@@ -79,7 +83,7 @@ if (Test-Path -LiteralPath $userConfigPath -PathType Leaf) {
 }
 else {
     $userConfig = [pscustomobject][ordered]@{
-        schemaVersion = 1
+        schemaVersion = 2
         user_email    = $null
         display_name  = $null
         createdAtUtc  = [DateTime]::UtcNow.ToString('o')
@@ -101,13 +105,7 @@ if ($emailProperties.Count -gt 0) {
 }
 Write-Verbose ("Existing Outlook identity present: {0}; supplied identity present: {1}" -f (-not [string]::IsNullOrWhiteSpace($configuredEmail)), (-not [string]::IsNullOrWhiteSpace($UserEmail)))
 $needsEmail = [string]::IsNullOrWhiteSpace($configuredEmail)
-if ($needsEmail -and [string]::IsNullOrWhiteSpace($UserEmail) -and $NonInteractive) {
-    throw 'UserEmail is required for non-interactive initialization. It must be the signed-in user''s own Outlook address.'
-}
-if ($needsEmail -and [string]::IsNullOrWhiteSpace($UserEmail)) {
-    $UserEmail = Read-Host 'Enter your own corporate Outlook email address'
-}
-if ($needsEmail) {
+if ($needsEmail -and -not [string]::IsNullOrWhiteSpace($UserEmail)) {
     $UserEmail = ([string]$UserEmail).Trim()
     if ($UserEmail -notmatch '^[^@\s]+@[^@\s]+$') {
         throw "UserEmail is not a valid email address: $UserEmail"
@@ -122,11 +120,11 @@ if ($displayNameProperties.Count -gt 0) {
     $configuredDisplayName = [string]$displayNameProperties[0].Value
 }
 $needsDisplayName = [string]::IsNullOrWhiteSpace($configuredDisplayName)
-if ($needsDisplayName -and [string]::IsNullOrWhiteSpace($DisplayName) -and $NonInteractive) {
-    throw 'DisplayName is required for non-interactive initialization.'
-}
 if ($needsDisplayName -and [string]::IsNullOrWhiteSpace($DisplayName)) {
-    $DisplayName = Read-Host 'Enter the display name Company Agent should use'
+    $DisplayName = [Environment]::UserName
+    if ([string]::IsNullOrWhiteSpace($DisplayName)) {
+        $DisplayName = 'local-user'
+    }
 }
 if ($needsDisplayName) {
     $DisplayName = ([string]$DisplayName).Trim()

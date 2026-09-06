@@ -15,6 +15,7 @@ from .asset_factory import (
     activate_script_tool,
     create_asset,
     run_script_tool,
+    rebind_mcp_runtime,
     validate_asset,
     validate_mcp_runtime,
     validate_script_tool_runtime,
@@ -28,10 +29,12 @@ from .knowledge import (
     validate_pack,
 )
 from .model_router import classify_prompt
-from .memory import search_memory, upsert_memory
+from .memory import compact_memory, search_memory, upsert_memory
+from .context_audit import audit_context
 from .paths import atomic_write_json, ensure_user_layout, knowledge_base_root, load_json, user_state_root
 from .policy import evaluate_tool_call
 from .state import load_session, mark_verified
+from .state_compatibility import check_state_compatibility
 
 
 def _path(value: str | None, default: Path | None = None) -> Path | None:
@@ -55,13 +58,12 @@ def cmd_init_user(args: argparse.Namespace) -> int:
     layout = ensure_user_layout(root)
     existing = load_json(layout["config"] / "user.json", {}) or {}
     config = {
-        "schemaVersion": 1,
+        **existing,
+        "schemaVersion": existing.get("schemaVersion", 1),
         "user_email": args.email or existing.get("user_email", ""),
         "display_name": args.display_name or existing.get("display_name") or os.environ.get("USERNAME", "local-user"),
         "knowledgeCapture": "extracted-only",
     }
-    if not config["user_email"]:
-        raise ValueError("--email is required on first initialization")
     atomic_write_json(layout["config"] / "user.json", config)
     registry_path = layout["mcp"] / "registry.json"
     if not registry_path.exists():
@@ -72,6 +74,11 @@ def cmd_init_user(args: argparse.Namespace) -> int:
         if any(item.level == "error" for item in issues):
             raise ValueError("knowledge index initialization failed; run knowledge validate")
     _print_json({"ok": True, "stateRoot": str(root), "email": config["user_email"]})
+    return 0
+
+
+def cmd_state_check(args: argparse.Namespace) -> int:
+    _print_json(check_state_compatibility(_state_root(args)))
     return 0
 
 
@@ -150,7 +157,17 @@ def cmd_asset_validate(args: argparse.Namespace) -> int:
 
 def cmd_asset_activate_mcp(args: argparse.Namespace) -> int:
     registry = activate_mcp(_state_root(args), args.name, args.receipt)
-    _print_json({"ok": True, "registry": str(registry), "name": args.name})
+    native = None
+    if os.environ.get("COMPANY_AGENT_SCOPE") in {"User", "Project"}:
+        from .native_mcp import sync_native_mcp
+        native = sync_native_mcp(_state_root(args), args.name)
+    _print_json({"ok": True, "registry": str(registry), "name": args.name, "nativeRegistration": native})
+    return 0
+
+
+def cmd_asset_sync_mcp(args: argparse.Namespace) -> int:
+    from .native_mcp import sync_native_mcp
+    _print_json(sync_native_mcp(_state_root(args), args.name))
     return 0
 
 
@@ -177,6 +194,14 @@ def cmd_asset_test_mcp(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_asset_rebind_mcp(args: argparse.Namespace) -> int:
+    receipt = rebind_mcp_runtime(_state_root(args), args.name, args.timeout)
+    _print_json({"ok": True, "name": args.name, "receipt": str(receipt),
+                 "activationRequired": True, "nativeRegistrationChanged": False,
+                 "nextStep": "Run asset activate-mcp with this receipt; review any native registration conflict separately."})
+    return 0
+
+
 def cmd_asset_run_tool(args: argparse.Namespace) -> int:
     result = run_script_tool(_state_root(args), args.name, Path(args.input).resolve(), args.timeout)
     _print_json(result)
@@ -194,6 +219,16 @@ def cmd_memory_upsert(args: argparse.Namespace) -> int:
 def cmd_memory_search(args: argparse.Namespace) -> int:
     results = search_memory(_state_root(args), args.query, args.limit)
     _print_json({"query": args.query, "count": len(results), "results": results})
+    return 0
+
+
+def cmd_memory_compact(args: argparse.Namespace) -> int:
+    _print_json(compact_memory(_state_root(args)))
+    return 0
+
+
+def cmd_context_audit(args: argparse.Namespace) -> int:
+    _print_json(audit_context(Path(args.project)))
     return 0
 
 
@@ -233,9 +268,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "hooks": {"ok": (plugin_root / "hooks" / "hooks.json").exists()},
         "userConfig": {"ok": (layout["config"] / "user.json").exists()},
         "knowledgeBase": {"ok": bool(base and base.exists()), "value": str(base) if base else None},
-        "smallModel": {"ok": bool(os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")), "value": os.environ.get("ANTHROPIC_DEFAULT_HAIKU_MODEL")},
-        "mediumModel": {"ok": bool(os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL")), "value": os.environ.get("ANTHROPIC_DEFAULT_SONNET_MODEL")},
-        "largeModel": {"ok": bool(os.environ.get("ANTHROPIC_DEFAULT_OPUS_MODEL")), "value": os.environ.get("ANTHROPIC_DEFAULT_OPUS_MODEL")},
+        "smallModel": {"ok": True, "alias": "haiku", "source": "existing Claude configuration", "liveVerified": False},
+        "mediumModel": {"ok": True, "alias": "sonnet", "source": "existing Claude configuration", "liveVerified": False},
+        "largeModel": {"ok": True, "alias": "opus", "source": "existing Claude configuration", "liveVerified": False},
     }
     ok = all(item["ok"] for item in checks.values())
     _print_json({"ok": ok, "version": __version__, "stateRoot": str(state), "checks": checks})
@@ -246,6 +281,32 @@ def _add_state_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--state-root", help="Override the per-user state root.")
 
 
+def cmd_harness(args: argparse.Namespace) -> int:
+    from .project_harness import (
+        apply_project_harness, inspect_project, plan_project_harness, validate_project_harness,
+    )
+
+    if args.harness_command == "inspect":
+        result = inspect_project(args.project)
+    elif args.harness_command == "validate":
+        result = validate_project_harness(args.project)
+    else:
+        spec = load_json(Path(args.spec))
+        if not isinstance(spec, dict):
+            raise ValueError("Harness specification must be a JSON object")
+        operation = apply_project_harness if args.harness_command == "apply" else plan_project_harness
+        result = operation(args.project, spec)
+    _print_json(result)
+    return 0 if result.get("ok", True) else 1
+
+
+def cmd_skill_search(args: argparse.Namespace) -> int:
+    from .native_runtime import _personal_skills
+    results = _personal_skills(_state_root(args), args.query, limit=args.limit)
+    _print_json({"ok": True, "skills": results, "discovery": "Read the matching SKILL.md before using it."})
+    return 0
+
+
 def _add_base_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base", help="Corporate Knowledge Pack root. Defaults to COMPANY_AGENT_KNOWLEDGE_BASE.")
 
@@ -254,6 +315,29 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="company-agent", description="Company Agent local harness administration CLI")
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    state = subparsers.add_parser("state", help="Check personal state compatibility without changing files.")
+    state_sub = state.add_subparsers(dest="state_command", required=True)
+    state_check = state_sub.add_parser("check")
+    _add_state_argument(state_check)
+    state_check.set_defaults(func=cmd_state_check)
+
+    skill = subparsers.add_parser("skill", help="Find active personal Skills in the selected scope.")
+    skill_sub = skill.add_subparsers(dest="skill_command", required=True)
+    skill_search = skill_sub.add_parser("search")
+    skill_search.add_argument("query")
+    skill_search.add_argument("--limit", type=int, choices=range(1, 51), default=12)
+    _add_state_argument(skill_search)
+    skill_search.set_defaults(func=cmd_skill_search)
+
+    harness = subparsers.add_parser("harness", help="Inspect, design, generate and validate a project-local agent harness.")
+    harness_sub = harness.add_subparsers(dest="harness_command", required=True)
+    for operation in ("inspect", "plan", "apply", "validate"):
+        action = harness_sub.add_parser(operation)
+        action.add_argument("--project", required=True)
+        if operation in {"plan", "apply"}:
+            action.add_argument("--spec", required=True)
+        action.set_defaults(func=cmd_harness)
 
     init_user = subparsers.add_parser("init-user", help="Create the per-user state directory without touching ~/.claude.")
     _add_state_argument(init_user)
@@ -316,11 +400,20 @@ def build_parser() -> argparse.ArgumentParser:
     test_mcp.add_argument("--name", required=True)
     test_mcp.add_argument("--timeout", type=int, default=30)
     test_mcp.set_defaults(func=cmd_asset_test_mcp)
+    rebind_mcp = asset_sub.add_parser("rebind-mcp-runtime", help="Explicitly revalidate a signed personal MCP with the current approved Python after a Core update.")
+    _add_state_argument(rebind_mcp)
+    rebind_mcp.add_argument("--name", required=True)
+    rebind_mcp.add_argument("--timeout", type=int, default=30)
+    rebind_mcp.set_defaults(func=cmd_asset_rebind_mcp)
     activate = asset_sub.add_parser("activate-mcp")
     _add_state_argument(activate)
     activate.add_argument("--name", required=True)
     activate.add_argument("--receipt", required=True)
     activate.set_defaults(func=cmd_asset_activate_mcp)
+    sync_mcp = asset_sub.add_parser("sync-mcp", help="Retry native scoped registration for an already validated active MCP.")
+    _add_state_argument(sync_mcp)
+    sync_mcp.add_argument("--name", required=True)
+    sync_mcp.set_defaults(func=cmd_asset_sync_mcp)
     activate_tool = asset_sub.add_parser("activate-tool")
     _add_state_argument(activate_tool)
     activate_tool.add_argument("--name", required=True)
@@ -333,6 +426,12 @@ def build_parser() -> argparse.ArgumentParser:
     run_tool.add_argument("--timeout", type=int, default=60)
     run_tool.set_defaults(func=cmd_asset_run_tool)
 
+    context = subparsers.add_parser("context", help="Read-only instruction size diagnostics.")
+    context_sub = context.add_subparsers(dest="context_command", required=True)
+    context_audit = context_sub.add_parser("audit")
+    context_audit.add_argument("--project", default=str(Path.cwd()))
+    context_audit.set_defaults(func=cmd_context_audit)
+
     memory = subparsers.add_parser("memory", help="Store extracted personal preferences without session transcripts.")
     memory_sub = memory.add_subparsers(dest="memory_command", required=True)
     memory_upsert = memory_sub.add_parser("upsert")
@@ -344,6 +443,9 @@ def build_parser() -> argparse.ArgumentParser:
     memory_search.add_argument("query")
     memory_search.add_argument("--limit", type=int, default=10)
     memory_search.set_defaults(func=cmd_memory_search)
+    memory_compact = memory_sub.add_parser("compact", help="Rebuild a deduplicated index without changing source memories.")
+    _add_state_argument(memory_compact)
+    memory_compact.set_defaults(func=cmd_memory_compact)
 
     session = subparsers.add_parser("session", help="Manage compact verification state; no transcript content is stored.")
     session_sub = session.add_subparsers(dest="session_command", required=True)

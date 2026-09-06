@@ -1,10 +1,12 @@
-# Managed MCP contracts
+# Optional MCP contracts
 
-The repository does not implement the company's database and Outlook transports. Deployment supplies their real commands in `managed-mcp.json`. The Harness enforces the following outer contracts, and each MCP server must independently enforce the same rules.
+The repository does not implement the company's database and Outlook transports. They are separate development and security deliverables; installing the base Harness neither requires nor configures them. When an approved MCP is ready, its real command can be supplied in `managed-mcp.json`. The Harness then enforces the following outer contracts, and each MCP server must independently enforce the same rules.
+
+If `managed-mcp.json` is absent/empty and the personal registry has no active servers, Company Agent does not pass `--mcp-config` or `--strict-mcp-config`; the user's existing Claude Code MCP sources remain available. A non-empty Harness MCP configuration merges with those existing sources by default. Strict MCP isolation is an explicit administrator decision in versioned `managed.json`, not a base-install default.
 
 ## `corp-db-read`
 
-- Authenticate with the current employee's approved database identity.
+- Authenticate with the current employee's approved database identity; installation of Company Agent must not request or store database credentials.
 - Expose read-only metadata and query tools only.
 - Keep query tool names within the Harness allowlist (`query`, `select`, `execute_query`, `run_query`, or names composed from those read verbs). A name that also contains a write verb is rejected.
 - Put executable SQL in a recognized string field such as `sql`, `query`, `statement`, `query_text`, `sql_text`, or `command`. Unknown fields containing SQL-shaped text and unknown operations are rejected.
@@ -15,8 +17,8 @@ The repository does not implement the company's database and Outlook transports.
 
 ## `corp-outlook-self`
 
-- Bind the connection to the current employee's mailbox.
-- Every send/reply/forward/resend call must expose either the sender identity or a top-level `authenticatedAccount*` identity that the MCP server injects immutably. Ignore or reject any override that differs from the initialized `user_email`; never let the model supply a field that is presented as immutable authentication evidence.
+- Bind the connection to the current employee's mailbox through the separately deployed MCP's user-context onboarding. Base Harness installation must not request Outlook identity or credentials.
+- Every send/reply/forward/resend call must expose either the sender identity or a top-level `authenticatedAccount*` identity that the MCP server injects immutably. Ignore or reject any override that differs from the onboarded `user_email`; never let the model supply a field that is presented as immutable authentication evidence.
 - Permit recipients according to company mail policy; the Harness requirement here constrains the sender, not recipients.
 - Read/search operations may run automatically. Non-send mutations and unknown Outlook operations require a user confirmation instead of being auto-approved.
 - Return a confirmation preview before any send if the managed MCP itself is configured to require it.

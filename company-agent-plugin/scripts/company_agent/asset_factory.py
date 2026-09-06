@@ -79,6 +79,19 @@ def _validate_name(name: str) -> None:
         raise ValueError("asset name must match ^[a-z][a-z0-9-]{1,62}$")
 
 
+def _assert_no_external_skill_collision(name: str, destination: Path) -> None:
+    config_value = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
+    claude_root = Path(config_value).expanduser() if config_value else (Path.home() / ".claude")
+    external_skill = (claude_root / "skills" / name).resolve(strict=False)
+    if external_skill == destination.resolve(strict=False):
+        return
+    if external_skill.exists():
+        raise ValueError(
+            f"personal skill name '{name}' conflicts with an existing Claude skill at "
+            f"{external_skill}; choose a unique name such as 'company-personal-{name}'"
+        )
+
+
 def _normalize_capabilities(value: Any) -> list[str]:
     if value in (None, ""):
         return []
@@ -288,6 +301,7 @@ def create_asset(spec: dict[str, Any], state_root: Path) -> Path:
 
 def _create_skill(layout: dict[str, Path], name: str, description: str, spec: dict[str, Any]) -> Path:
     destination = _confined_child(layout["personal_skills"], name)
+    _assert_no_external_skill_collision(name, destination)
     instructions = str(spec.get("instructions", "")).strip()
     if not instructions:
         raise ValueError("instructions are required for a skill")
@@ -408,17 +422,13 @@ def _validate_tool_manifest(tool_root: Path, expected_name: str) -> tuple[dict[s
     return manifest, entrypoint
 
 
-def _validate_mcp_manifest(server_root: Path, expected_name: str) -> tuple[dict[str, Any], Path]:
+def _validate_mcp_definition(server_root: Path, expected_name: str, manifest: dict[str, Any]) -> Path:
+    """Validate server metadata; callers must separately authorize its runtime."""
     _validate_name(expected_name)
-    manifest = _load_manifest(server_root, "asset.json")
     if manifest.get("type") != "mcp" or manifest.get("name") != expected_name:
         raise ValueError("MCP manifest type/name does not match the requested asset")
     entrypoint = _confined_entrypoint(server_root, manifest.get("entrypoint"), "server.py")
-    command = manifest.get("command")
     args = manifest.get("args")
-    expected_python = str(Path(sys.executable).resolve())
-    if not isinstance(command, str) or str(Path(command).resolve()) != expected_python:
-        raise ValueError("MCP command must be the approved Company Agent Python interpreter")
     if not isinstance(args, list) or len(args) != 1 or not isinstance(args[0], str):
         raise ValueError("MCP args must contain only its server.py entrypoint")
     if str(Path(args[0]).resolve()) != str(entrypoint):
@@ -426,6 +436,21 @@ def _validate_mcp_manifest(server_root: Path, expected_name: str) -> tuple[dict[
     if manifest.get("mcpRequirement") != MCP_REQUIREMENT:
         raise ValueError(f"MCP requirement must remain pinned to {MCP_REQUIREMENT}")
     _normalize_capabilities(manifest.get("reviewedCapabilities"))
+    return entrypoint
+
+
+def _validate_mcp_manifest(server_root: Path, expected_name: str) -> tuple[dict[str, Any], Path]:
+    _validate_name(expected_name)
+    manifest = _load_manifest(server_root, "asset.json")
+    command = manifest.get("command")
+    expected_python = str(Path(sys.executable).resolve())
+    if not isinstance(command, str) or str(Path(command).resolve()) != expected_python:
+        raise ValueError(
+            "MCP command must be the approved Company Agent Python interpreter. "
+            f"After a Core runtime change, run company-agent asset rebind-mcp-runtime --name {expected_name}; "
+            "this repair requires the unchanged asset and its previous signed protocol receipt."
+        )
+    entrypoint = _validate_mcp_definition(server_root, expected_name, manifest)
     return manifest, entrypoint
 
 
@@ -456,6 +481,21 @@ def validate_asset(path: Path) -> dict[str, Any]:
     except (OSError, ValueError) as exc:
         errors.append(str(exc))
 
+    source_errors, source_warnings = _scan_asset_sources(path, reviewed)
+    errors.extend(source_errors)
+    warnings.extend(source_warnings)
+    return {
+        "ok": not errors and not warnings,
+        "errors": errors,
+        "warnings": warnings,
+        "reviewedCapabilities": reviewed,
+        "osSandbox": False,
+    }
+
+
+def _scan_asset_sources(path: Path, reviewed: list[str]) -> tuple[list[str], list[str]]:
+    errors: list[str] = []
+    warnings: list[str] = []
     for script in path.rglob("*.py"):
         if "__pycache__" in script.parts or ".receipts" in script.parts:
             continue
@@ -469,28 +509,28 @@ def validate_asset(path: Path) -> dict[str, Any]:
             warnings.extend(f"{script.name}: {item}" for item in _check_code(code, reviewed))
         except (OSError, UnicodeError) as exc:
             errors.append(str(exc))
-    return {
-        "ok": not errors and not warnings,
-        "errors": errors,
-        "warnings": warnings,
-        "reviewedCapabilities": reviewed,
-        "osSandbox": False,
-    }
+    return errors, warnings
 
 
 def _canonical_manifest_bytes(path: Path) -> bytes:
-    value = _load_manifest(path.parent, path.name)
+    return _canonical_manifest_value(_load_manifest(path.parent, path.name))
+
+
+def _canonical_manifest_value(value: dict[str, Any]) -> bytes:
     normalized = {key: item for key, item in value.items() if key not in _MUTABLE_MANIFEST_FIELDS}
     return json.dumps(normalized, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
 
-def _asset_content_hash(asset_root: Path, manifest_name: str) -> str:
+def _asset_content_hash(asset_root: Path, manifest_name: str, *, manifest_override: dict[str, Any] | None = None) -> str:
     digest = hashlib.sha256()
     for path in sorted(asset_root.rglob("*"), key=lambda item: item.as_posix()):
         if not path.is_file() or ".receipts" in path.parts or "__pycache__" in path.parts or path.suffix == ".pyc":
             continue
         relative = path.relative_to(asset_root).as_posix()
-        content = _canonical_manifest_bytes(path) if relative == manifest_name else path.read_bytes()
+        if relative == manifest_name:
+            content = _canonical_manifest_value(manifest_override) if manifest_override is not None else _canonical_manifest_bytes(path)
+        else:
+            content = path.read_bytes()
         digest.update(relative.encode("utf-8"))
         digest.update(b"\0")
         digest.update(len(content).to_bytes(8, "big"))
@@ -780,15 +820,7 @@ async def _probe_mcp(command: str, args: list[str], cwd: Path, timeout: int) -> 
         raise ValueError(f"MCP protocol/import/health validation failed: {type(exc).__name__}: {exc}") from exc
 
 
-def validate_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path:
-    _validate_name(name)
-    timeout = _bounded_timeout(timeout)
-    layout = ensure_user_layout(state_root)
-    server_root = _confined_child(layout["mcp"] / "servers", name)
-    manifest, _ = _validate_mcp_manifest(server_root, name)
-    validation = validate_asset(server_root)
-    if not validation["ok"]:
-        raise ValueError("MCP validation failed: " + "; ".join(validation["errors"] + validation["warnings"]))
+def _approved_mcp_sdk_version() -> str:
     try:
         installed_version = importlib.metadata.version("mcp")
     except importlib.metadata.PackageNotFoundError as exc:
@@ -799,6 +831,19 @@ def validate_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path
     parsed = _parse_version(installed_version)
     if not ((1, 20, 0) <= parsed < (2, 0, 0)):
         raise ValueError(f"installed MCP SDK {installed_version} does not satisfy {MCP_REQUIREMENT}")
+    return installed_version
+
+
+def validate_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path:
+    _validate_name(name)
+    timeout = _bounded_timeout(timeout)
+    layout = ensure_user_layout(state_root)
+    server_root = _confined_child(layout["mcp"] / "servers", name)
+    manifest, _ = _validate_mcp_manifest(server_root, name)
+    validation = validate_asset(server_root)
+    if not validation["ok"]:
+        raise ValueError("MCP validation failed: " + "; ".join(validation["errors"] + validation["warnings"]))
+    installed_version = _approved_mcp_sdk_version()
 
     asset_hash = _asset_content_hash(server_root, "asset.json")
     with tempfile.TemporaryDirectory(prefix=f"company-agent-mcp-{name}-", dir=str(layout["tmp"])) as run_dir:
@@ -807,6 +852,66 @@ def validate_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path
         raise ValueError("MCP server modified its own validated asset files")
     details.update({"mcpSdkVersion": installed_version, "requirement": MCP_REQUIREMENT, "timeoutSeconds": timeout})
     return _write_receipt(layout, server_root, "mcp-protocol", "mcp", name, asset_hash, details)
+
+
+def rebind_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path:
+    """Explicitly re-test a previously validated personal MCP after a Core update.
+
+    An exact signed receipt authenticates the OLD manifest before any runtime
+    exception is considered. Only the CURRENT approved interpreter is executed.
+    Native Claude entries and the local active registry are never modified here;
+    the caller must activate the returned new receipt and reconcile native state.
+    """
+    _validate_name(name)
+    if name.casefold() in {"corp-db-read", "corp-outlook-self"}:
+        raise ValueError("Corporate MCPs are managed separately; runtime rebind is for personal MCPs only.")
+    timeout = _bounded_timeout(timeout)
+    layout = ensure_user_layout(state_root)
+    server_root = _confined_child(layout["mcp"] / "servers", name)
+    manifest_path = server_root / "asset.json"
+    original_bytes = manifest_path.read_bytes()
+    manifest = _load_manifest(server_root, "asset.json")
+    receipt_path, previous_receipt = _verify_receipt(
+        layout, server_root, manifest.get("validationReceipt", ""), "mcp-protocol", "mcp", name, "asset.json"
+    )
+    entrypoint = _validate_mcp_definition(server_root, name, manifest)
+    previous_command = manifest.get("command")
+    if not isinstance(previous_command, str) or not Path(previous_command).is_absolute():
+        raise ValueError("Previously validated MCP runtime must be an absolute interpreter path.")
+    current_command = str(Path(sys.executable).resolve())
+    if str(Path(previous_command).resolve()) == current_command:
+        return validate_mcp_runtime(state_root, name, timeout)
+
+    reviewed = _normalize_capabilities(manifest.get("reviewedCapabilities"))
+    errors, warnings = _scan_asset_sources(server_root, reviewed)
+    if errors or warnings:
+        raise ValueError("MCP validation failed: " + "; ".join(errors + warnings))
+    installed_version = _approved_mcp_sdk_version()
+    original_hash = previous_receipt["assetHash"]
+    with tempfile.TemporaryDirectory(prefix=f"company-agent-mcp-rebind-{name}-", dir=str(layout["tmp"])) as run_dir:
+        details = asyncio.run(_probe_mcp(current_command, [str(entrypoint)], Path(run_dir), timeout))
+
+    def require_unchanged() -> None:
+        if manifest_path.read_bytes() != original_bytes or _asset_content_hash(server_root, "asset.json") != original_hash:
+            raise ValueError("MCP asset changed during runtime rebind; no manifest or activation was replaced.")
+
+    require_unchanged()
+    transition = {"previousCommand": previous_command, "currentCommand": current_command,
+                  "previousAssetHash": original_hash, "previousReceipt": receipt_path.name}
+    updated = {**manifest, "command": current_command, "status": "candidate", "runtimeRebind": transition}
+    updated.pop("activatedAt", None)
+    updated.pop("validationReceipt", None)
+    details.update({"mcpSdkVersion": installed_version, "requirement": MCP_REQUIREMENT,
+                    "timeoutSeconds": timeout, "runtimeRebind": transition})
+    # Stage the signed receipt first. Until the one atomic manifest replacement,
+    # it is inert (its hash does not match the old asset). A failed probe/receipt
+    # write therefore cannot invalidate the previously active asset or registry.
+    new_hash = _asset_content_hash(server_root, "asset.json", manifest_override=updated)
+    renewed = _write_receipt(layout, server_root, "mcp-protocol", "mcp", name, new_hash, details)
+    require_unchanged()
+    updated["validationReceipt"] = renewed.name
+    atomic_write_json(manifest_path, updated)
+    return renewed
 
 
 def activate_mcp(state_root: Path, name: str, validation_receipt: str | Path) -> Path:
@@ -860,6 +965,7 @@ def activate_script_tool(state_root: Path, name: str, validation_receipt: str | 
     atomic_write_json(tool_root / "tool.json", manifest)
 
     skill_root = _confined_child(layout["personal_skills"], name)
+    _assert_no_external_skill_collision(name, skill_root)
     skill_root.mkdir(parents=True, exist_ok=True)
     skill_text = f'''---
 name: {name}

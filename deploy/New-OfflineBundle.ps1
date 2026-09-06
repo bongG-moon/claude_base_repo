@@ -11,6 +11,9 @@ param(
     [string] $UserStateRoot,
     [string] $ClaudeCommand = 'claude',
     [string] $PythonCommand = 'python',
+    [string] $PythonRuntimeZip,
+    [string] $PythonRuntimeSha256 = 'd1f04d990aee1253d8569e8e5104e30fa9f5fa830899f14843448872d936a2cf',
+    [switch] $WithoutBundledPython,
     [switch] $SkipAcl,
     [switch] $SkipSourceValidation,
     [switch] $Force
@@ -41,9 +44,16 @@ if ((Test-Path -LiteralPath $OutputPath) -and -not $Force) {
 $pluginSource = Join-Path $SourceRoot 'company-agent-plugin'
 $knowledgeSource = Join-Path $SourceRoot 'corporate-knowledge'
 $deploySource = Join-Path $SourceRoot 'deploy'
+$claudeInstallDoc = Join-Path $SourceRoot 'INSTALL_WITH_CLAUDE.md'
+$easyInstaller = Join-Path $SourceRoot 'Install-CompanyAgent.cmd'
 foreach ($requiredPath in @($pluginSource, $knowledgeSource, $deploySource)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Container)) {
         throw "Required source directory was not found: $requiredPath"
+    }
+}
+foreach ($requiredFile in @($claudeInstallDoc, $easyInstaller)) {
+    if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
+        throw "Required beginner installation entrypoint was not found: $requiredFile"
     }
 }
 
@@ -124,6 +134,45 @@ try {
     Copy-CompanyAgentDirectoryContents -Source $knowledgeSource -Destination (Join-Path $stagePath 'payload\knowledge')
     Copy-CompanyAgentDirectoryContents -Source $deploySource -Destination (Join-Path $stagePath 'deploy')
 
+    if (-not $WithoutBundledPython -and -not $SkipSourceValidation) {
+        if ([string]::IsNullOrWhiteSpace($PythonRuntimeZip)) {
+            $PythonRuntimeZip = Join-Path $SourceRoot 'build\runtime\python-3.13.15-embed-amd64.zip'
+        }
+        if (-not (Test-Path -LiteralPath $PythonRuntimeZip -PathType Leaf)) {
+            throw 'Bundled Python is required for the beginner release. Run deploy\Get-EmbeddedPython.ps1 on the connected build PC, or supply -PythonRuntimeZip with -PythonRuntimeSha256. The employee installer never downloads dependencies. Use -WithoutBundledPython only for an existing-runtime release.'
+        }
+        if ($PythonRuntimeSha256 -notmatch '^[a-fA-F0-9]{64}$' -or
+            (Get-FileHash -LiteralPath $PythonRuntimeZip -Algorithm SHA256).Hash -ine $PythonRuntimeSha256) {
+            throw 'Embedded Python archive hash does not match the pinned release digest.'
+        }
+        $runtimeDestination = Join-Path $stagePath 'payload\core\plugin\runtime\python'
+        New-CompanyAgentDirectory -Path $runtimeDestination
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $archive = [IO.Compression.ZipFile]::OpenRead($PythonRuntimeZip)
+        try {
+            foreach ($entry in $archive.Entries) {
+                if ($entry.FullName -match '(^[\\/]|^[A-Za-z]:|(^|[\\/])\.\.([\\/]|$))') {
+                    throw 'Embedded Python archive contains an unsafe path.'
+                }
+            }
+        } finally { $archive.Dispose() }
+        [IO.Compression.ZipFile]::ExtractToDirectory($PythonRuntimeZip, $runtimeDestination)
+        $runtimePth = @(Get-ChildItem -LiteralPath $runtimeDestination -Filter 'python*._pth')
+        if ($runtimePth.Count -ne 1 -or -not (Test-Path -LiteralPath (Join-Path $runtimeDestination 'LICENSE.txt'))) {
+            throw 'Expected the official Python Windows embeddable package with its license and isolated path file.'
+        }
+        $pthContent = Get-Content -LiteralPath $runtimePth[0].FullName -Raw -Encoding UTF8
+        # Resolve package imports from any cwd without enabling site/PYTHONPATH.
+        Write-CompanyAgentUtf8File -Path $runtimePth[0].FullName -Content ($pthContent.TrimEnd() + "`n../../scripts`n")
+        $runtimeVersion = & (Join-Path $runtimeDestination 'python.exe') -c 'import sys, company_agent; print(sys.version.split()[0]); sys.exit(0 if sys.version_info >= (3,11) else 1)'
+        if ($LASTEXITCODE -ne 0) { throw 'The bundled Python runtime failed its import/version check on this build PC.' }
+        Write-CompanyAgentJsonAtomic -Path (Join-Path $runtimeDestination 'company-agent-runtime.json') -Value ([ordered]@{
+            schemaVersion = 1; pythonVersion = [string](@($runtimeVersion)[-1]); architecture = 'windows-x64'
+            archiveSha256 = $PythonRuntimeSha256.ToLowerInvariant(); source = [IO.Path]::GetFileName($PythonRuntimeZip)
+            pathCustomization = '../../scripts'; license = 'LICENSE.txt'
+        })
+    }
+
     $excludedDirectoryNames = @('.git', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.tox', '.nox', 'htmlcov')
     $excludedDirectories = @(Get-ChildItem -LiteralPath $stagePath -Recurse -Force | Where-Object {
         $_.PSIsContainer -and ($excludedDirectoryNames -contains $_.Name)
@@ -142,7 +191,7 @@ try {
         Remove-Item -LiteralPath $excludedFile.FullName -Force
     }
 
-    foreach ($configName in @('managed.settings.json', 'managed.json', 'managed-mcp.json')) {
+    foreach ($configName in @('session.settings.json', 'managed.json', 'managed-mcp.json')) {
         $configSource = Join-Path $SourceRoot (Join-Path 'config' $configName)
         if (Test-Path -LiteralPath $configSource -PathType Leaf) {
             $configContent = Get-Content -LiteralPath $configSource -Raw -Encoding UTF8
@@ -152,11 +201,16 @@ try {
         }
     }
 
-    $deploymentDoc = Join-Path $SourceRoot 'docs\DEPLOYMENT.md'
-    if (Test-Path -LiteralPath $deploymentDoc -PathType Leaf) {
-        New-CompanyAgentDirectory -Path (Join-Path $stagePath 'docs')
-        Copy-Item -LiteralPath $deploymentDoc -Destination (Join-Path $stagePath 'docs\DEPLOYMENT.md') -Force
+    foreach ($docName in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'PROJECT_HARNESS.md', 'IMPLEMENTATION_REVIEW.md', 'CONTEXT_OPTIMIZATION.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md')) {
+        $deploymentDoc = Join-Path $SourceRoot ('docs\' + $docName)
+        if (Test-Path -LiteralPath $deploymentDoc -PathType Leaf) {
+            New-CompanyAgentDirectory -Path (Join-Path $stagePath 'docs')
+            Copy-Item -LiteralPath $deploymentDoc -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
+        }
     }
+
+    Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
+    Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
 
     $fileRecords = @(Get-CompanyAgentTreeRecords -Root $stagePath)
     $manifest = [pscustomobject][ordered]@{

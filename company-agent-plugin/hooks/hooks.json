@@ -1,14 +1,28 @@
 {
   "description": "Routes each prompt to a model tier and enforces Company Agent policy, activity capture, and completion feedback.",
   "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-CompanyAgent.ps1", "-Mode", "Hook", "-Event", "SessionStart"],
+            "timeout": 30
+          }
+        ]
+      }
+    ],
     "UserPromptSubmit": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "python",
+            "command": "powershell.exe",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/model_route_hook.py"
+              "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+              "${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-CompanyAgent.ps1",
+              "-Mode", "Hook", "-Event", "UserPromptSubmit"
             ],
             "timeout": 5
           }
@@ -21,9 +35,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python",
+            "command": "powershell.exe",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/policy_guard_hook.py"
+              "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+              "${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-CompanyAgent.ps1",
+              "-Mode", "Hook", "-Event", "PreToolUse"
             ],
             "timeout": 5
           }
@@ -36,9 +52,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python",
+            "command": "powershell.exe",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/activity_hook.py"
+              "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+              "${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-CompanyAgent.ps1",
+              "-Mode", "Hook", "-Event", "PostToolUse"
             ],
             "timeout": 5
           }
@@ -51,9 +69,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python",
+            "command": "powershell.exe",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/activity_hook.py"
+              "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+              "${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-CompanyAgent.ps1",
+              "-Mode", "Hook", "-Event", "PostToolUseFailure"
             ],
             "timeout": 5
           }
@@ -65,9 +85,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python",
+            "command": "powershell.exe",
             "args": [
-              "${CLAUDE_PLUGIN_ROOT}/scripts/stop_feedback_hook.py"
+              "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+              "${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-CompanyAgent.ps1",
+              "-Mode", "Hook", "-Event", "Stop"
             ],
             "timeout": 15
           }

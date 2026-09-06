@@ -1,318 +1,130 @@
-# Company Agent Windows 배포 가이드
+# Company Agent 설치와 배포 — Windows 0.3
 
-이 문서는 폐쇄망 Windows PC에 Company Agent 하네스를 배포하고 개인 사용자 상태를 초기화하는 운영 절차다. 관리자 배포 영역과 개인 상태는 물리적으로 분리된다.
+직원은 Claude Code와 사내 SMALL/MEDIUM/LARGE 연결이 준비된 상태에서 ZIP 하나를 받습니다. 완전한 배포 ZIP에는 Python도 포함되어 Python/pip/Git 설치나 외부 접속이 필요하지 않습니다. Claude Code CLI 2.1.220 이상, Windows 10/11 x64를 확인합니다. ARM64 PC에는 별도 검증한 해당 아키텍처 패키지를 배포합니다.
+
+## 직원이 하는 일
+
+1. ZIP을 로컬 폴더에 모두 압축 해제합니다.
+2. 최상위 `Install-CompanyAgent.cmd`를 더블클릭합니다. 관리자 권한으로 실행하지 않습니다.
+3. **Claude 전체** 또는 **이 프로젝트만**을 선택합니다. 프로젝트라면 대상 폴더도 선택합니다.
+4. 완료되면 열려 있던 Claude Code를 닫고 다시 실행합니다.
+
+| 선택 | 적용되는 곳 | 자동 기록되는 Claude 설정 | 관리자 권한 |
+| --- | --- | --- | --- |
+| Claude 전체 / User | 현재 Windows 사용자의 Claude 작업 전체 | 사용자 settings.json의 플러그인 등록 | 불필요 |
+| 이 프로젝트만 / Project | 선택한 프로젝트와 하위 폴더 | 프로젝트 .claude/settings.local.json의 플러그인 등록 | 불필요 |
+
+‘전체’는 본인 Windows 계정의 Claude 환경입니다. PC의 모든 직원이나 전사 PC를 즉시 변경하는 기능은 아닙니다. 같은 ZIP을 직원에게 배포하면 같은 공통 하네스를 각각 설치합니다. Project 설치는 Claude의 `local` scope를 사용하여 PC별 설치 경로가 공유 settings.json에 들어가지 않게 합니다.
+
+두 범위를 함께 사용할 수 있습니다. 동일한 플러그인 ID `company-agent@company-agent-local`를 사용하고, 가장 가까운 프로젝트 등록이 개인 상태를 선택합니다. 해당 프로젝트 밖에서는 User 상태를 사용합니다. Project만 설치한 PC에서는 다른 프로젝트에 활성화되지 않습니다.
+
+현재 배포본은 한 Windows 계정에서 하나의 Claude 설정 프로필을 지원합니다. 다른 `CLAUDE_CONFIG_DIR` 프로필로 기존 등록을 덮어쓰려 하면 중단합니다.
+
+전용 실행기 없이 평소처럼 Claude를 사용합니다. 프로젝트에서 다음처럼 요청할 수 있습니다.
+
+> 이 프로젝트의 내용을 먼저 확인하고, 이 일을 잘 수행할 수 있는 하네스를 구성해줘. 꼭 필요한 내용만 물어봐줘.
+
+## Claude에게 설치 맡기기
+
+압축을 푼 폴더의 `INSTALL_WITH_CLAUDE.md`를 Claude에 주고 “이 지침대로 설치해줘”라고 요청합니다. 적용 범위와 필요한 경우 대상 프로젝트만 물어보고, Dry Run으로 확인한 뒤 설치합니다. 이미 말한 선택은 다시 묻지 않도록 지침에 반영했습니다. 모델 ID, 비밀번호, MCP, Outlook 정보는 요구하지 않습니다.
+
+운영자용 단일 명령 예시:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\Setup-CompanyAgent.ps1 -Scope User -NonInteractive
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\Setup-CompanyAgent.ps1 -Scope Project -ProjectRoot "C:\Work\Report" -NonInteractive
+```
+
+사전 점검만 하려면 같은 명령에 `-DryRun`을 추가합니다. 범위 없는 무인 실행은 선택을 추측하지 않고 필요한 인자를 안내합니다. 조직이 실행 정책을 강제한 경우 사내 서명 정책에 맞춰 실행합니다.
+
+## 자동 점검과 백업
+
+사용자 컨텍스트, Claude 버전, 포함된 Python 실행 여부, 번들 해시, 대상 경로와 기존 플러그인을 확인합니다. 기존 모델 별칭 haiku/sonnet/opus를 그대로 사용하며 API shim을 만들지 않습니다. 모든 subagent를 한 모델로 강제하는 설정이 있으면 해당 문제를 안내합니다.
+
+설정 변경 전에 아래 위치로 선택 백업합니다.
 
 ```text
-오프라인 릴리스 ZIP
-  ├─ payload/core/plugin             관리자 배포
-  ├─ payload/knowledge               관리자 배포
-  ├─ payload/config                  관리자 배포
-  └─ deploy                          설치 및 복구 스크립트
-             │
-             ▼
-C:\Program Files\CompanyAgent
-  ├─ versions\<coreVersion>\plugin   버전별 불변 Core
-  └─ bin                              Launcher/관리 스크립트
-
-C:\ProgramData\CompanyAgent
-  ├─ knowledge\versions\<version>    버전별 불변 Corporate Base
-  ├─ config                           모델·MCP·Claude 관리 설정
-  └─ state\current.json              현재 Core/Knowledge/모델 매핑
-           \previous.json            직전 선택, 즉시 Rollback 용도
-
-%LOCALAPPDATA%\CompanyAgent
-  ├─ config\user.json                본인 Outlook 주소와 개인 설정
-  ├─ knowledge                        Personal Overlay와 합성 인덱스
-  ├─ personal-root\.claude\skills    자동 활성화 개인 Skill
-  ├─ mcp\registry.json               개인 MCP Registry
-  ├─ tools / ledger / sessions
-  └─ memory                           추출된 개인 Memory
+%LOCALAPPDATA%\CompanyAgent-Backups\pre-install-<시각>-<ID>
 ```
 
-일반 사용자는 Corporate Base를 읽을 수만 있고 `%LOCALAPPDATA%`의 Personal Overlay와 Skill은 계속 발전시킬 수 있다. 업데이트와 기본 삭제는 개인 상태를 변경하지 않는다.
+User는 `%USERPROFILE%\.claude`, Project는 여기에 대상 프로젝트의 `.claude`도 추가합니다. `CLAUDE_CONFIG_DIR`가 있으면 해당 경로를 사용합니다.
 
-## 1. 사전 조건
+- settings*.json, Markdown 지시 파일, Skill, Agent, Command, Hook
+- 플러그인 등록 JSON과 기존 Company Agent 등록
+- 개인 Memory 원본/수정 이력, Knowledge entries/overlays/versions, 개인 Skill, 사용자 설정 및 있는 경우 State 형식 표시
 
-- Windows 10/11 또는 대응되는 Windows Server
-- Windows PowerShell 5.1 이상
-- 사내에서 승인해 오프라인 설치한 Claude Code CLI 2.1.220 이상
-- Python 3.11 이상이 `PATH`의 `python`으로 실행 가능할 것
-- 최초 설치·업데이트·롤백·삭제 작업용 로컬 관리자 또는 소프트웨어 배포 계정
-- 사내 SMALL, MEDIUM, LARGE 모델의 실제 Claude Code 모델 ID
+자격 증명, .env, 개인키, Claude 세션/대화 history, cache는 백업하지 않습니다. JSON의 token/password/secret 계열 값은 마스킹하므로 복구 시 다시 입력해야 할 수 있습니다. 백업은 현재 사용자와 LocalSystem으로 접근을 제한하고 junction/symlink를 따라가지 않습니다. 업무 지시가 남을 수 있으므로 개인 PC에서 보관합니다.
 
-설치와 실행 스크립트는 `claude`와 Python 3.11 이상을 검사하고 조건이 맞지 않으면 즉시 중단한다. 운영 PC에서 `-SkipPrerequisiteCheck`를 사용하면 안 된다.
+개인 학습자료는 `company-agent\personal-learning`에 선택 백업합니다. 전체 State, MCP 환경, 인증정보를 복제하는 기능은 아닙니다. 백업 범위·제한·복구 순서는 [개인 상태 보존](STATE_PRESERVATION.md)에 설명되어 있습니다.
 
-PowerShell 실행 정책이 `RemoteSigned`인 환경을 고려해 **번들을 만들기 전에** 소스의 `deploy\*.ps1`에 사내 코드 서명을 적용하고 서명 인증서를 신뢰 체인에 배포한다. ZIP의 SHA-256 manifest는 파일 손상을 검출하지만 배포 주체의 신원을 증명하지는 않으므로 생성된 ZIP에도 사내 패키지 서명을 별도로 적용한다.
+기존 Skill·모델·MCP를 덮어쓰지 않고 네이티브 플러그인 등록 키만 병합합니다. 다른 배포본이 동일 플러그인 이름을 사용하거나 같은 버전에 다른 내용을 설치하려 하면 중단합니다. 등록 실패 시 Company Agent가 변경한 키를 복원하고 다른 등록과 개인 상태를 보존합니다.
 
-## 2. 릴리스 준비
-
-### 2.1 버전 일치
-
-다음 세 값이 반드시 일치해야 한다.
-
-- `company-agent-plugin\.claude-plugin\plugin.json`의 `version`
-- `New-OfflineBundle.ps1 -CoreVersion`
-- 배포 후 `C:\Program Files\CompanyAgent\versions\<coreVersion>`
-
-Corporate Knowledge도 다음 값이 일치해야 한다.
-
-- `corporate-knowledge\pack.json`의 `version`
-- `New-OfflineBundle.ps1 -KnowledgeVersion`
-- 배포 후 `C:\ProgramData\CompanyAgent\knowledge\versions\<knowledgeVersion>`
-
-Bundler가 이 일치를 강제로 검사한다. 동일 버전 경로에 내용이 다른 Core 또는 Knowledge를 덮어쓸 수 없으므로 내용이 변경되면 반드시 새 버전을 부여한다.
-
-### 2.2 MCP 설정
-
-실제 배포 전 예시 파일을 복사해 실제 파일을 만든다.
-
-```powershell
-Copy-Item .\config\managed-mcp.example.json .\config\managed-mcp.json
-```
-
-`managed-mcp.json`에서 다음 두 서버의 사내 실행 명령을 설정한다.
-
-- `corp-db-read`: 서버 자체에서도 SELECT-only를 강제해야 한다.
-- `corp-outlook-self`: 서버 자체에서도 초기화된 본인 계정만 송신하도록 강제해야 한다.
-
-두 MCP 도구를 Claude 설정의 `permissions.allow`에 직접 추가하지 않는다. 정상 호출은 PreToolUse Hook이 승인하지만 Hook이 실행되지 못한 경우에는 Claude Code의 일반 권한 확인으로 되돌아가야 한다. 다만 프로세스 강제 종료나 timeout까지 Hook만으로 보안 경계로 만들 수는 없으므로 서버 측 권한 강제가 필수다.
-
-Hook 검사는 2차 방어선이다. DB 계정 권한과 MCP 서버 권한을 실제 보안 경계로 유지한다. 토큰, 비밀번호, DB 접속 문자열을 Markdown이나 ZIP에 넣지 말고 Windows Credential Manager 또는 승인된 사내 비밀 저장소를 사용한다.
-
-선택적으로 다음 파일을 실제 이름으로 제공하면 번들에 포함된다.
+## 저장 위치와 업데이트
 
 ```text
-config\managed.json
-config\managed.settings.json
-config\managed-mcp.json
+%LOCALAPPDATA%\CompanyAgent-Distribution\marketplace\
+├─ .claude-plugin\marketplace.json
+└─ versions\<CoreVersion>\
+   ├─ plugin\                    공통 Core + 프로젝트 하네스 생성 Skill
+   │  └─ runtime\python\         포함된 Python + 라이선스
+   ├─ knowledge\                 관리자 Markdown Base
+   └─ config\                    배포 설정
+
+%LOCALAPPDATA%\CompanyAgent\
+├─ installations\user\
+├─ installations\projects\<경로해시>\
+└─ states\
+   ├─ user\                      사용자 Memory / Knowledge / Skill
+   └─ projects\<경로해시>\         프로젝트별 Memory / Knowledge / Skill
 ```
 
-`managed.json`의 모델 ID와 설치 경로는 설치 매개변수 기준으로 다시 생성된다. 실제 `managed.settings.json`이 없으면 installer가 `haiku`, `sonnet`, `opus`만 허용하는 기본 설정을 생성한다.
+사용자 권한의 로컬 설치입니다. 설치 프로그램이 Core와 개인 상태를 구분해 보존하지만 사용자가 OS 권한으로 Core를 직접 편집하는 것까지 금지하는 영역은 아닙니다. DB와 Outlook의 보안 경계는 사내 MCP와 계정 권한으로 집행합니다. 관리자 ACL로 Core를 보호하는 기존 machine 배포는 별도 경로로 유지합니다.
 
-### 2.3 오프라인 ZIP 생성
+Core, Knowledge, 설정이 바뀌면 관리자에게 새 CoreVersion의 ZIP을 받습니다. 새 ZIP의 설치 파일을 다시 실행하고 기존 범위를 선택하면 갱신됩니다. 이전 릴리스와 개인 상태는 유지됩니다. User와 여러 Project scope를 쓰면 각 scope를 갱신하고 Claude를 재시작합니다.
 
-저장소 루트에서 실행한다.
+0.3.2부터 동일 scope의 기존 등록에 저장된 `userStateRoot`를 기본 경로보다 우선합니다. 처음 지정한 개인 경로를 업데이트 때 다시 입력할 필요가 없습니다. 기존 등록과 다른 `-UserStateRoot`는 자동 이관을 뜻하지 않으므로 파일·등록을 바꾸기 전에 거절합니다. User↔Project 변경이나 프로젝트 경로 이동 역시 별도 상태이며 자동 병합하지 않습니다.
+
+설치 전 `state check`는 개인 State의 형식 표시와 사용자 설정 형식을 읽기 전용으로 확인합니다. 지원하지 않는 미래 버전/손상된 표시가 있으면 초기화하지 않고 중단합니다. 기존 형식 표시가 없는 State는 호환 대상으로 읽습니다. 이는 호환성 보호 장치이지 일반 마이그레이션 엔진은 아닙니다.
+
+개인 Knowledge는 Corporate Base와 분리된 Markdown overlay입니다. 충돌 없는 추가 지식은 새 Base에 맞춰 갱신하고 충돌한 수정은 별도로 기록합니다. 개인 Skill은 현재 scope의 상태 디렉터리에 저장됩니다. 매 요청에 관련 Skill 정보를 찾고 Claude가 SKILL.md를 읽어 사용합니다. 모든 개인 Skill이 슬래시 메뉴에 표시된다는 의미는 아닙니다. Factory가 프로젝트 .claude/skills와 .claude/agents에 생성한 파일은 Claude가 직접 발견합니다.
+
+## 제거와 재설치
+
+같은 배포본의 제거 스크립트에 범위를 지정합니다.
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File .\deploy\New-OfflineBundle.ps1 `
-  -CoreVersion '0.1.0' `
-  -KnowledgeVersion '2026.09.03' `
-  -OutputPath 'D:\Release\company-agent-0.1.0-2026.09.03.zip'
+powershell.exe -NoProfile -File .\deploy\Uninstall-ScopedCompanyAgent.ps1 -Scope User
+
+powershell.exe -NoProfile -File .\deploy\Uninstall-ScopedCompanyAgent.ps1 -Scope Project -ProjectRoot "C:\Work\Report"
 ```
 
-기본 릴리스 검사는 다음 순서로 수행되며 하나라도 실패하면 ZIP을 만들지 않는다.
+선택한 scope의 플러그인 등록만 제거하며 개인 상태와 공통 배포 파일은 보존합니다. 기본 경로는 같은 범위로 재설치하면 이전 개인 상태가 이어집니다. 사용자 지정 경로는 제거 전 등록/백업의 `userStateRoot`를 보관하고 재설치 때 같은 `-UserStateRoot`를 전달합니다. 사용자가 Factory로 만든 프로젝트 Agent와 Skill도 남습니다.
 
-1. Plugin/Knowledge 내부 버전과 명령행 버전 일치
-2. `claude plugin validate --strict`
-3. `harness_cli.py knowledge validate`
-4. Python `compileall`
-5. payload 파일별 SHA-256·길이 manifest 생성
+## 빌드 PC에서 배포 ZIP 만들기
 
-`.git`, `__pycache__`, `*.pyc`, pytest/mypy/ruff/tox 캐시 및 coverage 산출물은 staging에서 제외된다. 소스는 삭제하거나 수정하지 않는다. `-SkipSourceValidation`은 격리된 배포 스크립트 테스트에만 사용한다.
-
-## 3. 관리자 설치
-
-ZIP을 로컬 staging 폴더에 압축 해제한 후 상승된 Windows PowerShell에서 실행한다.
+인터넷 가능한 빌드 PC에서 다음을 한 번 실행합니다. 직원 PC는 다운로드하지 않습니다.
 
 ```powershell
-Expand-Archive `
-  -LiteralPath 'D:\Release\company-agent-0.1.0-2026.09.03.zip' `
-  -DestinationPath 'C:\CompanyAgent-Staging\0.1.0'
-
-powershell.exe -NoLogo -NoProfile -File `
-  'C:\CompanyAgent-Staging\0.1.0\deploy\Install-CompanyAgent.ps1' `
-  -BundleRoot 'C:\CompanyAgent-Staging\0.1.0' `
-  -SmallModelId  'INTERNAL_SMALL_MODEL_ID' `
-  -MediumModelId 'INTERNAL_MEDIUM_MODEL_ID' `
-  -LargeModelId  'INTERNAL_LARGE_MODEL_ID' `
-  -DefaultTier 'MEDIUM'
+powershell.exe -NoProfile -File .\deploy\Get-EmbeddedPython.ps1
 ```
 
-Installer는 다음을 수행한다.
-
-- Bundle manifest의 모든 파일 hash와 manifest에 기록되지 않은 모든 번들 파일을 검사한다.
-- Core와 Corporate Knowledge를 side-by-side 불변 버전 경로에 설치한다.
-- 모델 매핑과 관리형 Claude/MCP 설정을 `ProgramData`에 기록한다.
-- 기존 `current.json`을 `previous.json`으로 보존한 뒤 새 포인터를 원자적으로 활성화한다.
-- 일반 사용자에게 `Program Files`와 `ProgramData`의 읽기/실행만 허용하는 ACL을 설정한다.
-- 모든 사용자 시작 메뉴에 `Company Agent` 바로가기를 만든다.
-- `%USERPROFILE%\.claude`의 파일을 생성·수정·삭제하지 않는다.
-
-대량 배포에서 `Install-CompanyAgent.ps1`은 System/관리자 컨텍스트로 실행한다. Intune Win32 app 또는 SCCM의 install command에는 위 명령을 사용하고 세 모델 ID를 조직의 실제 값으로 고정한다. `-SkipAcl`, `-SkipAdminCheck`, `-SkipBundleVerification`은 운영 배포에 사용하지 않는다.
-
-## 4. 개인 PC 최초 적용
-
-### 권장: 시작 메뉴에서 실행
-
-사용자가 시작 메뉴의 **Company Agent**를 실행한다. 최초 한 번 다음 두 값을 알기 쉬운 prompt로 입력한다.
-
-1. 본인의 사내 Outlook 이메일 주소
-2. Agent가 사용할 표시 이름
-
-그 뒤에는 동일 정보를 다시 묻지 않는다. 기존 `user.json`의 다른 설정은 보존되며 누락된 필드만 채운다.
-
-### 무인 사용자 초기화
-
-VDI provisioning이나 사용자 컨텍스트 배포가 필요하면 다음을 실행한다.
+Python 3.13.15 Windows x64 embeddable archive의 공식 SHA-256을 확인하여 build/runtime에 보관합니다. 폐쇄망 빌드 PC로 검증된 ZIP을 반입할 수도 있습니다. Python 라이선스를 배포물에 포함하고 격리된 import 경로에 하네스 scripts만 추가합니다. pip나 PC 전역 PATH를 변경하지 않습니다.
 
 ```powershell
-powershell.exe -NoLogo -NoProfile -File `
-  'C:\Program Files\CompanyAgent\bin\Initialize-CompanyAgentUser.ps1' `
-  -UserEmail 'employee@company.internal' `
-  -DisplayName '홍길동' `
-  -NonInteractive
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 0.3.2 -KnowledgeVersion 2026.09.03
 ```
 
-`-NonInteractive`에서 이메일이나 표시 이름이 빠지면 안전하게 실패한다. 이 스크립트는 반드시 실제 사용자의 컨텍스트로 실행해야 `%LOCALAPPDATA%`와 Outlook 본인 계정 경계가 올바르게 연결된다.
+결과는 `dist\company-agent-0.3.2-2026.09.03.zip`입니다. `-WithoutBundledPython`은 승인된 Python이 이미 있는 PC용 경량 패키지에만 사용합니다. 별도 런타임은 `-PythonRuntimeZip`과 정확한 `-PythonRuntimeSha256`을 함께 지정합니다.
 
-초기화 과정은 개인 디렉터리와 빈 `mcp\registry.json`을 만들고 Corporate Base와 Personal Overlay를 합친 `knowledge\generated-index\catalog.json`을 즉시 생성한다.
+빌더는 플러그인·Knowledge 버전과 구조, Python import, 파일별 해시를 검사합니다. 전사 정식 배포는 사내 서명·소프트웨어 배포 절차로 전달합니다. 해시 목록은 배포 주체 인증을 대신하지 않습니다.
 
-## 5. 일상 실행과 모델 전환
+## 적용 후 확인
 
-직접 실행할 수도 있다.
+Claude에 “Company Agent 설치 상태를 확인해줘”라고 요청하면 자동 전달된 실행 경로로 doctor를 호출할 수 있습니다. 진단은 구조와 모델 별칭 상속을 확인하며 사내 모델에 실제 응답을 요청하지 않습니다. 실제 모델 전환과 업무 품질은 대표 프로젝트 작업으로 확인합니다.
 
-```powershell
-& 'C:\Program Files\CompanyAgent\bin\Start-CompanyAgent.ps1'
-```
+사내 MCP 구현은 별도입니다. 기존 Claude MCP 설정을 유지하고 사내 서버는 기존 운영 방식으로 연결합니다. DB SELECT-only와 Outlook 본인 계정 제한은 서버 자체가 강제해야 합니다. 하네스 생성 기능은 실제 MCP와 계약을 확인하며, 존재하지 않는 서버 기능을 생성 결과에 꾸며 넣지 않도록 합니다.
 
-특정 시작 모델을 강제로 고를 때만 다음 옵션을 사용한다.
+개인 MCP는 구조·프로토콜 검증을 통과한 후 `asset activate-mcp`에서 선택 scope의 Claude 등록까지 수행합니다. 응답 유실 등으로 등록만 남으면 `asset sync-mcp --name ...`으로 재시도합니다. 기존 이름이나 다른 scope의 동일 이름은 덮어쓰지 않습니다. 새 MCP 생성에는 해당 자산이 사용하는 승인된 MCP SDK 환경이 별도로 필요하며, 기본 내장 Python은 하네스 실행에 필요한 표준 라이브러리만 포함합니다. 모델·자산 실행 환경이 바뀌면 기존 검증 receipt는 재검증이 필요할 수 있습니다.
 
-```powershell
-& 'C:\Program Files\CompanyAgent\bin\Start-CompanyAgent.ps1' -ModelTier SMALL
-& 'C:\Program Files\CompanyAgent\bin\Start-CompanyAgent.ps1' -ModelTier MEDIUM
-& 'C:\Program Files\CompanyAgent\bin\Start-CompanyAgent.ps1' -ModelTier LARGE
-```
-
-기본 `AUTO`는 `DefaultTier`로 coordinator를 시작한다. 이후 각 사용자 prompt는 Plugin router가 난이도와 위험도를 분류해 worker를 선택한다.
-
-```text
-SMALL  → haiku alias  → INTERNAL_SMALL_MODEL_ID
-MEDIUM → sonnet alias → INTERNAL_MEDIUM_MODEL_ID
-LARGE  → opus alias   → INTERNAL_LARGE_MODEL_ID
-```
-
-Launcher는 실행 프로세스에만 `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`을 설정한다. `CLAUDE_CODE_SUBAGENT_MODEL`은 모든 worker 모델을 하나로 덮어쓰므로 의도적으로 설정하지 않는다.
-
-각 시작 시 다음 순서가 자동 수행된다.
-
-1. Python과 Claude Code prerequisite 확인
-2. 새 Corporate Knowledge와 Personal Overlay의 안전한 자동 reconcile
-3. 충돌·분리 항목을 보존하고 사용자에게 경고
-4. Effective Knowledge `catalog.json` 재생성
-5. 현재 Core를 `--plugin-dir`로 로드
-6. Corporate Knowledge, Personal Knowledge, Personal Skill root를 `--add-dir`로 로드
-7. 관리형 MCP와 개인 MCP registry만 `--mcp-config ... --strict-mcp-config`로 로드
-8. 선택된 alias로 Claude Code 시작
-
-실행 프로세스의 `PATH` 앞에는 현재 Core의 `plugin\bin`만 임시로 추가된다. 따라서 Agent가 사용하는 `company-agent knowledge`, `asset`, `memory`, `session` 명령은 별도 사용자 설치 없이 동작하며, Claude Code가 종료되면 원래 환경으로 복원된다.
-
-따라서 관리자가 Corporate Pack을 업데이트해도 개인 `extend` overlay는 다음 실행에서 안전한 범위 안에서 자동 rebase된다. 충돌 내용은 삭제하지 않고 `%LOCALAPPDATA%\CompanyAgent\knowledge\conflicts`에 남긴다.
-
-## 6. 업데이트
-
-새 ZIP을 별도 staging 폴더에 풀고 상승된 PowerShell에서 실행한다.
-
-```powershell
-& 'C:\CompanyAgent-Staging\0.2.0\deploy\Update-CompanyAgent.ps1' `
-  -BundleRoot 'C:\CompanyAgent-Staging\0.2.0'
-```
-
-모델 ID 매개변수를 생략하면 기존 매핑이 유지된다. 모델도 바꾸려면 `-SmallModelId`, `-MediumModelId`, `-LargeModelId`, `-DefaultTier`를 함께 지정한다.
-
-업데이트는 새 버전을 옆에 설치한 뒤 포인터만 전환한다. 다음 경로는 건드리지 않는다.
-
-```text
-%LOCALAPPDATA%\CompanyAgent
-```
-
-새 버전의 최초 사용자 실행에서 Knowledge reconcile과 index 재생성이 자동 수행된다.
-
-## 7. 즉시 롤백
-
-상승된 PowerShell에서 다음을 실행한다.
-
-```powershell
-& 'C:\Program Files\CompanyAgent\bin\Rollback-CompanyAgent.ps1'
-```
-
-`current.json`과 `previous.json`을 원자적으로 교환해 Core, Corporate Knowledge, 모델 매핑을 함께 되돌린다. 한 번 더 실행하면 직전 상태로 다시 전환된다. 개인 상태는 변경되지 않는다. 이전 버전 디렉터리가 수동 삭제된 경우 rollback은 활성화 전에 실패한다.
-
-## 8. 삭제
-
-기본 삭제는 시스템 Core와 Corporate Knowledge만 제거하고 개인 상태를 보존한다.
-
-```powershell
-& 'C:\Program Files\CompanyAgent\bin\Uninstall-CompanyAgent.ps1' -Confirm:$false
-```
-
-재설치 후 이전 Personal Overlay, Memory, Skill을 이어서 사용할 수 있다. 개인 상태까지 영구 삭제하도록 명시한 경우에만 다음을 사용한다.
-
-```powershell
-& 'C:\Program Files\CompanyAgent\bin\Uninstall-CompanyAgent.ps1' `
-  -RemoveUserState `
-  -Confirm:$false
-```
-
-`-RemoveUserState`는 `%LOCALAPPDATA%\CompanyAgent`의 개인 지식, Skill, MCP, Memory, 이력을 복구 불가능하게 삭제한다. Uninstaller는 관리형 root marker가 없는 경로의 재귀 삭제를 거부한다. 시작 메뉴 링크도 대상이 이 설치의 `CompanyAgent.cmd`일 때만 삭제한다.
-
-## 9. 검증
-
-### 배포 스크립트 smoke test
-
-관리자 권한이나 실제 시스템 경로를 사용하지 않고 임시 디렉터리에서 전체 생명주기를 검증한다.
-
-```powershell
-powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
-  .\deploy\Test-DeploymentSmoke.ps1
-```
-
-검증 범위:
-
-- ZIP과 SHA-256 manifest
-- side-by-side 설치와 immutable version
-- Outlook 본인 identity와 개인 MCP registry
-- Corporate+Personal `catalog.json`
-- SMALL/MEDIUM/LARGE alias 환경 매핑
-- 관리형·개인 MCP의 strict scope
-- 업데이트와 previous pointer
-- rollback
-- 기본 삭제의 개인 상태 보존
-- 명시적인 개인 상태 삭제
-
-### 설치 PC dry-run
-
-Claude 프로세스를 시작하지 않고 실제 arguments와 경로를 확인한다.
-
-```powershell
-& 'C:\Program Files\CompanyAgent\bin\Start-CompanyAgent.ps1' -DryRun |
-  Format-List *
-```
-
-`current.json`, `catalog.json`, 두 MCP config, 세 모델 alias, active Core/Knowledge 경로가 모두 표시되어야 한다.
-
-## 10. 테스트 전용 경로 override
-
-각 상태 변경 스크립트는 다음 override를 지원한다.
-
-```powershell
--InstallRoot 'C:\Temp\CompanyAgentTest\install'
--DataRoot 'C:\Temp\CompanyAgentTest\data'
--UserStateRoot 'C:\Temp\CompanyAgentTest\user'
--SkipAcl
--SkipAdminCheck
-```
-
-이는 개발·CI의 격리 디렉터리에만 사용한다. 운영 배포에서 ACL, 관리자 검사, bundle 검증, prerequisite 검사를 끄면 Corporate Base 변조 방지와 재귀 삭제 보호를 약화시킨다.
-
-## 11. 운영 체크리스트
-
-- [ ] Plugin과 Knowledge 내부 버전을 새 릴리스 번호로 변경했다.
-- [ ] `managed-mcp.json`에 placeholder나 비밀값이 남지 않았다.
-- [ ] DB MCP 계정 자체가 SELECT-only다.
-- [ ] Outlook MCP가 초기화된 사용자의 mailbox만 송신한다.
-- [ ] 세 사내 모델 ID가 Claude Code에서 실제로 응답한다.
-- [ ] 소스 `.ps1`에 Authenticode 서명을 적용한 뒤 Bundler 기본 validation을 통과했다.
-- [ ] 생성된 최종 ZIP에 사내 패키지 서명을 적용했다.
-- [ ] Windows PowerShell 5.1 smoke test가 통과했다.
-- [ ] Pilot 사용자로 최초 prompt, 개인 Knowledge 저장, Skill 생성, update 후 reconcile을 확인했다.
-- [ ] Intune/SCCM의 install은 System 컨텍스트, 개인 초기화는 user 컨텍스트로 분리했다.
+[프로젝트 하네스 생성](PROJECT_HARNESS.md) · [최초 의도와 구현 대조](IMPLEMENTATION_REVIEW.md) · [기존 관리자 배포](LEGACY_MACHINE_DEPLOYMENT.md)

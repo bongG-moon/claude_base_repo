@@ -1,5 +1,5 @@
 ---
-name: corporate-knowledge
+name: company-agent-corporate-knowledge
 description: Look up authoritative company terminology, tables, columns, joins, metrics, and business rules before answering company-specific questions or writing SQL. Always use for corporate data semantics and combine the Corporate Base with the user's Personal Knowledge overlay.
 ---
 

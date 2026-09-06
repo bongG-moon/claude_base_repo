@@ -59,11 +59,14 @@ class PolicyTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
-    def test_managed_settings_do_not_bypass_policy_hook_failures(self) -> None:
+    def test_session_settings_preserve_models_and_do_not_bypass_policy(self) -> None:
         settings = json.loads(
-            (ROOT / "config" / "managed.settings.json").read_text(encoding="utf-8")
+            (ROOT / "config" / "session.settings.json").read_text(encoding="utf-8")
         )
-        self.assertTrue(settings["enforceAvailableModels"])
+        self.assertNotIn("model", settings)
+        self.assertNotIn("availableModels", settings)
+        self.assertNotIn("enforceAvailableModels", settings)
+        self.assertNotIn("env", settings)
         allowed = settings.get("permissions", {}).get("allow", [])
         self.assertFalse(
             any(
@@ -334,6 +337,31 @@ class FeedbackStateTests(unittest.TestCase):
         mark_verified("session-1", "pass", "unit tests passed", self.state)
         self.assertEqual({}, stop_decision({"session_id": "session-1"}, self.state))
 
+    def test_read_only_context_audit_preserves_verification_but_compounds_do_not(self) -> None:
+        from company_agent.native_runtime import cli_command
+        session = "context-audit"
+        begin_turn(session, "SMALL", False, (), self.state)
+        mark_verified(session, "pass", "previous check", self.state)
+        command = cli_command(SCRIPTS.parent) + f' context audit --project "{self.state}"'
+        record_activity({"session_id": session, "tool_name": "Bash", "tool_input": {"command": command}}, self.state)
+        current = load_session(session, self.state)
+        self.assertEqual(0, current["mutationCount"])
+        self.assertEqual("pass", current["verification"]["status"])
+        record_activity({"session_id": session, "tool_name": "Bash", "tool_input": {"command": command + " > result.txt"}}, self.state)
+        self.assertEqual(1, load_session(session, self.state)["mutationCount"])
+
+    def test_failed_verification_requests_fresh_worker_without_claiming_rewind(self) -> None:
+        session = "fresh-retry"
+        begin_turn(session, "LARGE", True, (), self.state)
+        record_activity({"session_id": session, "tool_name": "Write"}, self.state)
+        mark_verified(session, "fail", "one failing test", self.state)
+        result = stop_decision({"session_id": session}, self.state)
+        self.assertEqual("block", result["decision"])
+        self.assertIn("새 worker", result["reason"])
+        self.assertIn("2,000자", result["reason"])
+        self.assertIn("rollback이 아닙니다", result["reason"])
+        self.assertEqual(1, load_session(session, self.state)["stopRetryCount"])
+
     def test_stop_allows_two_corrective_continuations_even_when_active(self) -> None:
         begin_turn("session-loop", "MEDIUM", True, ["FILE_WRITE_INTENT"], self.state)
         record_activity(
@@ -428,6 +456,83 @@ class FeedbackStateTests(unittest.TestCase):
                 "decision"
             ],
         )
+
+    def test_native_verification_command_keeps_its_own_pass_marker(self) -> None:
+        session = "session-native-verify"
+        suffix = f'session verify --session "{session}" --status pass --summary "검증 성공"'
+        entrypoint = SCRIPTS / "Invoke-CompanyAgent.ps1"
+        commands = [
+            f'company-agent {suffix}',
+            f'& "{SCRIPTS.parent / "bin" / "company-agent.cmd"}" {suffix}',
+            f'"{sys.executable}" "{SCRIPTS / "harness_cli.py"}" {suffix}',
+            f'python -I -B "{SCRIPTS / "harness_cli.py"}" {suffix}',
+            f'powershell.exe -NoProfile -ExecutionPolicy Bypass -File "{entrypoint}" -Mode Cli {suffix}',
+            f'& powershell.exe -NoProfile -File "{entrypoint}" -Mode Cli {suffix}',
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                begin_turn(session, "MEDIUM", True, [], self.state)
+                record_activity({"session_id": session, "tool_name": "Write", "tool_input": {}}, self.state)
+                mark_verified(session, "pass", "검증 성공", self.state)
+                updated = record_activity(
+                    {"session_id": session, "tool_name": "PowerShell", "tool_input": {"command": command}},
+                    self.state,
+                )
+                self.assertEqual(1, updated["mutationCount"])
+                self.assertEqual("pass", updated["verification"]["status"])
+                self.assertEqual({}, stop_decision({"session_id": session}, self.state))
+
+    def test_verification_exception_rejects_compounds_fake_paths_and_other_actions(self) -> None:
+        session = "session-verify-reject"
+        suffix = f'session verify --session {session} --status pass --summary "check passed"'
+        entrypoint = SCRIPTS / "Invoke-CompanyAgent.ps1"
+        valid = f'powershell.exe -NoProfile -File "{entrypoint}" -Mode Cli {suffix}'
+        commands = [
+            valid + '; Set-Content result.txt changed',
+            valid + ' && python another.py',
+            valid + ' | Out-File result.txt',
+            valid + '\nSet-Content result.txt changed',
+            valid.replace('check passed', '$(Set-Content result.txt changed)'),
+            valid.replace(str(entrypoint), str(Path(self.temp.name) / "Invoke-CompanyAgent.ps1")),
+            valid.replace('powershell.exe', f'"{Path(self.temp.name) / "powershell.exe"}"', 1),
+            valid.replace(f'--session {session}', '--session another-session'),
+            valid + ' --state-root another-state',
+            valid.replace('session verify', 'memory upsert'),
+            f'python "{Path(self.temp.name) / "harness_cli.py"}" {suffix}',
+            f'python -c "print(1)" "{SCRIPTS / "harness_cli.py"}" {suffix}',
+            f'company-agent {suffix}; echo x>result.txt',
+        ]
+        for command in commands:
+            with self.subTest(command=command):
+                begin_turn(session, "MEDIUM", True, [], self.state)
+                mark_verified(session, "pass", "earlier check", self.state)
+                updated = record_activity(
+                    {"session_id": session, "tool_name": "PowerShell", "tool_input": {"command": command}},
+                    self.state,
+                )
+                self.assertEqual(1, updated["mutationCount"])
+                self.assertIsNone(updated["verification"])
+                self.assertEqual("block", stop_decision({"session_id": session}, self.state)["decision"])
+
+    def test_native_failed_verification_preserves_equivalent_failure_count(self) -> None:
+        session = "session-native-fail"
+        begin_turn(session, "MEDIUM", True, [], self.state)
+        record_activity({"session_id": session, "tool_name": "Write", "tool_input": {}}, self.state)
+        command = (
+            f'python "{SCRIPTS / "harness_cli.py"}" session verify '
+            f'--session {session} --status fail --summary "same failing assertion"'
+        )
+        for _ in range(2):
+            mark_verified(session, "fail", "same failing assertion", self.state)
+            record_activity(
+                {"hook_event_name": "PostToolUseFailure", "session_id": session,
+                 "tool_name": "Bash", "tool_input": {"command": command}, "error": "exit code 1"},
+                self.state,
+            )
+        stored = load_session(session, self.state)
+        self.assertEqual("fail", stored["verification"]["status"])
+        self.assertEqual(2, stored["sameFailureCount"])
+        self.assertIn("same verification failure", stop_decision({"session_id": session}, self.state)["systemMessage"])
 
     def test_failed_tool_that_may_have_mutated_still_requires_verification(self) -> None:
         record_activity(

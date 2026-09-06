@@ -144,6 +144,43 @@ class KnowledgeTests(unittest.TestCase):
         ledger = (self.state / "ledger" / "knowledge.jsonl").read_text(encoding="utf-8")
         self.assertNotIn("TEST 이벤트도 제외", ledger)
 
+    def test_korean_automatic_ids_do_not_overwrite_other_terms_or_overlays(self) -> None:
+        paths = [upsert_personal({"title": title, "kind": "term", "mode": "personal-new", "body": "# 정의\n\n업무 지식"},
+                                 self.state, self.base)
+                 for title in ("재공 기준", "출하 기준", "report+format", "report format")]
+        self.assertEqual(4, len(set(paths)))
+        first_overlay = upsert_personal({"title": "조회 규칙", "mode": "extend", "extends": "table.mes.wip_history", "body": "첫 규칙"},
+                                        self.state, self.base)
+        second_overlay = upsert_personal({"title": "정렬 규칙", "mode": "extend", "extends": "table.mes.wip_history", "body": "둘째 규칙"},
+                                         self.state, self.base)
+        self.assertNotEqual(first_overlay, second_overlay)
+        self.assertEqual("조회 규칙", load_markdown(first_overlay).metadata["title"])
+
+    def test_noop_knowledge_upsert_preserves_original_revision_and_history(self) -> None:
+        spec = {"title": "재공 기준", "mode": "extend", "extends": "table.mes.wip_history", "body": "추가 필터"}
+        path = upsert_personal(spec, self.state, self.base)
+        original = (path.read_bytes(), path.stat().st_mtime_ns)
+        ledger = self.state / "ledger" / "knowledge.jsonl"
+        original_ledger = ledger.read_bytes()
+        self.assertEqual(path, upsert_personal({**spec, "reason": "내용 변경 없는 반복 요청"}, self.state, self.base))
+        self.assertEqual(original, (path.read_bytes(), path.stat().st_mtime_ns))
+        self.assertEqual(original_ledger, ledger.read_bytes())
+        self.assertEqual([], list((self.state / "knowledge" / "versions").rglob("*.md")))
+        self.assertEqual(1, load_markdown(path).metadata["personal_revision"])
+        upsert_personal({**spec, "id": load_markdown(path).metadata["id"], "body": "수정 필터"}, self.state, self.base)
+        self.assertEqual(2, load_markdown(path).metadata["personal_revision"])
+        self.assertEqual(1, len(list((self.state / "knowledge" / "versions").rglob("*.md"))))
+
+    def test_automatic_knowledge_update_preserves_matching_legacy_id(self) -> None:
+        legacy = upsert_personal({"id": "personal.term.knowledge", "title": "재공 기준", "kind": "term", "body": "기존 정의"},
+                                 self.state, self.base)
+        other = upsert_personal({"title": "출하 기준", "kind": "term", "body": "다른 정의"}, self.state, self.base)
+        self.assertNotEqual(legacy, other)
+        updated = upsert_personal({"title": "재공 기준", "kind": "term", "body": "변경 정의"}, self.state, self.base)
+        self.assertEqual(legacy, updated)
+        self.assertEqual("personal.term.knowledge", load_markdown(updated).metadata["id"])
+        self.assertEqual("출하 기준", load_markdown(other).metadata["title"])
+
     def test_active_overlay_alias_tags_and_body_are_searchable(self) -> None:
         upsert_personal(
             {

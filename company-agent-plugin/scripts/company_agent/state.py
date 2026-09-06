@@ -4,6 +4,8 @@ from contextlib import contextmanager
 import hashlib
 import os
 import re
+import shutil
+import sys
 import threading
 import time
 from datetime import datetime, timezone
@@ -190,6 +192,8 @@ def _load_session_unlocked(path: Path, session_id: str) -> dict[str, Any]:
     loaded = load_json(path, _default_session(session_id))
     if not isinstance(loaded, dict):
         raise ValueError("session state must be a JSON object")
+    from .state_compatibility import assert_supported_version
+    assert_supported_version(loaded, {1}, "session")
     state = _default_session(session_id)
     state.update(loaded)
     return state
@@ -249,6 +253,141 @@ def _mcp_operation_is_read_only(operation: str) -> bool:
     return first_word in _READ_ONLY_MCP_OPERATION_PREFIXES
 
 
+def _literal_command_words(command: str) -> list[str] | None:
+    """Accept only literal command words, never shell programs or expansions."""
+
+    if any(character in command for character in "\r\n\0$`%"):
+        return None
+    value = command.strip()
+    # PowerShell's call operator is safe only before the one literal command.
+    if value.startswith("& "):
+        value = value[2:].lstrip()
+    words: list[str] = []
+    current: list[str] = []
+    quote = ""
+    started = False
+    for character in value:
+        if quote:
+            if character == quote:
+                # Backslash-escaped quotes have different shell semantics.
+                if current and current[-1] == "\\":
+                    return None
+                quote = ""
+            else:
+                current.append(character)
+        elif character in "\"'":
+            quote = character
+            started = True
+        elif character.isspace():
+            if started:
+                words.append("".join(current))
+                current = []
+                started = False
+        elif character in ";|<>&(){}[]":
+            return None
+        else:
+            current.append(character)
+            started = True
+    if quote:
+        return None
+    if started:
+        words.append("".join(current))
+    return words
+
+
+def _same_absolute_path(value: str, expected: Path) -> bool:
+    try:
+        path = Path(value)
+        return path.is_absolute() and path.resolve() == expected.resolve()
+    except (OSError, ValueError):
+        return False
+
+
+def _known_runtime(value: str, names: set[str]) -> bool:
+    if value.casefold() in names:
+        return True
+    # An arbitrary path named python.exe/powershell.exe is not trusted merely
+    # because its filename matches. Accept only a runtime resolved locally.
+    expected = [Path(sys.executable)] if "python" in names else []
+    if "python" in names and os.environ.get("COMPANY_AGENT_PYTHON"):
+        expected.append(Path(os.environ["COMPANY_AGENT_PYTHON"]))
+    for name in names:
+        resolved = shutil.which(name)
+        if resolved and Path(resolved).suffix.casefold() == ".exe":
+            expected.append(Path(resolved))
+    return any(_same_absolute_path(value, path) for path in expected)
+
+
+def _own_cli_arguments(command: str) -> list[str] | None:
+    """Identify literal arguments to this installed CLI, not an arbitrary script.
+
+    This is a narrow bookkeeping exception, not a permission rule. Every
+    unrecognized/compound invocation retains conservative mutation detection.
+    """
+
+    words = _literal_command_words(command)
+    if not words:
+        return None
+    program, *arguments = words
+    scripts = Path(__file__).resolve().parents[1]
+    if program.casefold() == "company-agent" or _same_absolute_path(
+        program, scripts.parent / "bin" / "company-agent.cmd"
+    ):
+        pass
+    elif _known_runtime(program, {"powershell", "powershell.exe", "pwsh", "pwsh.exe"}):
+        while arguments and arguments[0].casefold() in {"-noprofile", "-noninteractive", "-nologo"}:
+            arguments.pop(0)
+        if len(arguments) >= 2 and arguments[0].casefold() == "-executionpolicy":
+            if arguments[1].casefold() not in {"bypass", "remotesigned"}:
+                return None
+            arguments = arguments[2:]
+        if len(arguments) < 4 or arguments[0].casefold() != "-file":
+            return None
+        if not _same_absolute_path(arguments[1], scripts / "Invoke-CompanyAgent.ps1"):
+            return None
+        if arguments[2].casefold() != "-mode" or arguments[3].casefold() != "cli":
+            return None
+        arguments = arguments[4:]
+    elif _known_runtime(program, {"python", "python.exe", "python3", "python3.exe", "py", "py.exe"}):
+        if arguments and arguments[0] in {"-3", "-3.11", "-3.12", "-3.13", "-3.14"}:
+            arguments.pop(0)
+        while arguments and arguments[0] in {"-I", "-B", "-u"}:
+            arguments.pop(0)
+        if not arguments or not _same_absolute_path(arguments[0], scripts / "harness_cli.py"):
+            return None
+        arguments = arguments[1:]
+    else:
+        return None
+    return arguments
+
+
+def _is_own_context_audit(command: str) -> bool:
+    arguments = _own_cli_arguments(command)
+    if arguments == ["context", "audit"]:
+        return True
+    return bool(arguments and len(arguments) == 4 and arguments[:3] == ["context", "audit", "--project"]
+                and Path(arguments[3]).is_absolute())
+
+
+def _is_own_verification_command(command: str, session_id: str) -> bool:
+    """Do not invalidate a verification marker while recording its own call."""
+    arguments = _own_cli_arguments(command)
+    if not arguments:
+        return False
+    if arguments[:2] != ["session", "verify"]:
+        return False
+    arguments = arguments[2:]
+    if len(arguments) != 6:
+        return False
+    fields: dict[str, str] = {}
+    for index in range(0, len(arguments), 2):
+        key, value = arguments[index:index + 2]
+        if key not in {"--session", "--status", "--summary"} or key in fields or not value:
+            return False
+        fields[key] = value
+    return fields.get("--session") == safe_session_id(session_id) and fields.get("--status") in {"pass", "fail"}
+
+
 def _tool_mutated(tool_name: str, tool_input: dict[str, Any]) -> bool:
     normalized = tool_name.casefold().strip()
     if is_outlook_send_like_tool(normalized):
@@ -268,9 +407,9 @@ def _tool_mutated(tool_name: str, tool_input: dict[str, Any]) -> bool:
 
     mcp_match = _MCP_TOOL_RE.fullmatch(normalized)
     if mcp_match:
-        # Launch uses --strict-mcp-config with managed + personal registries.
-        # Any non-corporate MCP operation that is not explicitly read-only is
-        # therefore conservatively treated as potentially mutating.
+        # Existing Claude MCP sources and additive Harness registries may both
+        # be visible. Any non-corporate MCP operation that is not explicitly
+        # read-only is therefore conservatively treated as potentially mutating.
         return not _mcp_operation_is_read_only(mcp_match.group("operation"))
     return False
 
@@ -287,6 +426,10 @@ def record_activity(
         else {}
     )
     mutated = _tool_mutated(tool_name, tool_input)
+    if mutated and tool_name.casefold().strip() in {"bash", "powershell"}:
+        command = str(tool_input.get("command") or tool_input.get("cmd") or "")
+        if _is_own_verification_command(command, session_id) or _is_own_context_audit(command):
+            mutated = False
     failed = (
         str(payload.get("hook_event_name") or "").casefold()
         == "posttoolusefailure"
@@ -421,4 +564,11 @@ def stop_decision(
         "검증에 실패하면 status fail로 기록하고 원인을 수정하십시오. "
         f"보정 기회는 최대 {MAX_CORRECTIVE_CONTINUATIONS}회이며, 이후에는 실패를 성공으로 표현하지 말고 남은 위험을 명확히 보고하십시오."
     )
+    if isinstance(verification, dict) and verification.get("status") == "fail":
+        reason += (
+            " 실패한 worker를 resume하지 말고 새 worker에 목표·제약·현재 파일 경로·실패한 검사와 관찰 사실만 2,000자 이내로 전달하십시오. "
+            "실패 대화 전체나 추측은 복사하지 마십시오. 기존 모델 등급을 낮추지 말고 현재 파일부터 재확인하십시오. "
+            "이는 대화 rewind나 파일 rollback이 아닙니다. 메일 발송 등 외부 변경은 실행 여부를 조회하기 전 재실행하지 마십시오. "
+            "새 worker도 남은 동일 재시도 예산을 공유합니다."
+        )
     return {"decision": "block", "reason": reason}

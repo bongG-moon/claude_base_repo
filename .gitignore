@@ -7,3 +7,9 @@ build/
 .smoke/
 *.zip
 *.log
+.env
+.env.*
+!.env.example
+.credentials.json
+*.pem
+*.key

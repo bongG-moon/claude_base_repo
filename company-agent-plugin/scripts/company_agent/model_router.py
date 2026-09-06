@@ -56,7 +56,9 @@ class RouteDecision:
         envelope = {
             "company_agent_route": self.as_dict(),
             "company_agent_instruction": (
-                f"For this turn, use {self.agent} as the primary execution worker. "
+                f"For this turn, use {self.agent} as the primary execution worker, unless a project orchestrator is active. "
+                "In that case keep the orchestrator in the main conversation, invoke its project agents directly, "
+                "and apply the routed tier as a minimum for substantive work. "
                 "Keep the parent conversation as coordinator, apply managed policy and effective knowledge, "
                 "and verify durable changes before reporting completion. If company_agent_session_id is present, "
                 "use that exact sanitized identifier when recording verification."
@@ -75,6 +77,8 @@ class RouteDecision:
 
 
 _LARGE_PATTERNS: Final = (
+    r"하네스.{0,30}(생성|구성|구축|만들|설계)",
+    r"\b(build|create|generate|design|configure)\b.{0,50}\bharness\b",
     # Cross-system design and broad change
     r"\b(system|solution|enterprise|platform)\s+architecture\b",
     r"\b(cross[- ]system|multi[- ]system|organization[- ]wide|company[- ]wide)\b",

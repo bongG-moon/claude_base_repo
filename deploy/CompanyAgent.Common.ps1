@@ -44,6 +44,67 @@ function ConvertTo-CompanyAgentFullPath {
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
 }
 
+function Assert-CompanyAgentPathHasNoReparsePoint {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $Path,
+        [Parameter(Mandatory = $true)]
+        [string] $Name
+    )
+
+    $current = ConvertTo-CompanyAgentFullPath -Path $Path
+    while (-not [string]::IsNullOrWhiteSpace($current)) {
+        if (Test-Path -LiteralPath $current) {
+            $item = Get-Item -LiteralPath $current -Force
+            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                throw "$Name cannot use a junction, symbolic link, or other reparse point: $($item.FullName)"
+            }
+        }
+        $parent = Split-Path -Parent $current
+        if ([string]::IsNullOrWhiteSpace($parent) -or $parent -ieq $current) {
+            break
+        }
+        $current = $parent
+    }
+}
+
+function Assert-CompanyAgentRootsSeparated {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $InstallRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string] $DataRoot,
+
+        [Parameter(Mandatory = $true)]
+        [string] $UserStateRoot
+    )
+
+    $roots = @(
+        [pscustomobject]@{ Name = 'InstallRoot'; Path = (ConvertTo-CompanyAgentFullPath -Path $InstallRoot).TrimEnd([char[]]@('\', '/')) },
+        [pscustomobject]@{ Name = 'DataRoot'; Path = (ConvertTo-CompanyAgentFullPath -Path $DataRoot).TrimEnd([char[]]@('\', '/')) },
+        [pscustomobject]@{ Name = 'UserStateRoot'; Path = (ConvertTo-CompanyAgentFullPath -Path $UserStateRoot).TrimEnd([char[]]@('\', '/')) }
+    )
+
+    foreach ($root in $roots) {
+        Assert-CompanyAgentPathHasNoReparsePoint -Path $root.Path -Name $root.Name
+    }
+
+    for ($leftIndex = 0; $leftIndex -lt $roots.Count; $leftIndex++) {
+        for ($rightIndex = $leftIndex + 1; $rightIndex -lt $roots.Count; $rightIndex++) {
+            $left = $roots[$leftIndex]
+            $right = $roots[$rightIndex]
+            $leftPrefix = $left.Path + [System.IO.Path]::DirectorySeparatorChar
+            $rightPrefix = $right.Path + [System.IO.Path]::DirectorySeparatorChar
+            if ($left.Path -ieq $right.Path -or
+                $left.Path.StartsWith($rightPrefix, [System.StringComparison]::OrdinalIgnoreCase) -or
+                $right.Path.StartsWith($leftPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                throw ("InstallRoot, DataRoot, and UserStateRoot must be separate non-nested directories. {0}='{1}', {2}='{3}'" -f $left.Name, $left.Path, $right.Name, $right.Path)
+            }
+        }
+    }
+}
+
 function Test-CompanyAgentAdministrator {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
     $principal = New-Object Security.Principal.WindowsPrincipal($identity)
@@ -119,6 +180,93 @@ function Assert-CompanyAgentPrerequisites {
     if ($pythonVersion -lt [version]'3.11') {
         throw "Python 3.11 or newer is required. Found: $pythonVersion"
     }
+}
+
+function Get-CompanyAgentSubagentModelForceSettings {
+    param(
+        [string[]] $SettingsPaths = @(),
+        [switch] $IncludeWindowsPolicy
+    )
+
+    $candidateFiles = New-Object Collections.ArrayList
+    foreach ($path in @($SettingsPaths)) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$path)) {
+            $null = $candidateFiles.Add((ConvertTo-CompanyAgentFullPath -Path ([string]$path)))
+        }
+    }
+    if ($IncludeWindowsPolicy) {
+        $programFilesRoot = $env:ProgramFiles
+        if ([string]::IsNullOrWhiteSpace($programFilesRoot)) {
+            $programFilesRoot = 'C:\Program Files'
+        }
+        $managedRoot = Join-Path $programFilesRoot 'ClaudeCode'
+        $null = $candidateFiles.Add((Join-Path $managedRoot 'managed-settings.json'))
+        $dropInRoot = Join-Path $managedRoot 'managed-settings.d'
+        if (Test-Path -LiteralPath $dropInRoot -PathType Container) {
+            foreach ($dropIn in @(Get-ChildItem -LiteralPath $dropInRoot -Filter '*.json' -File -Force | Sort-Object Name)) {
+                if (-not $dropIn.Name.StartsWith('.')) {
+                    $null = $candidateFiles.Add($dropIn.FullName)
+                }
+            }
+        }
+    }
+
+    $forceNames = @('CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE')
+    $results = New-Object Collections.ArrayList
+    foreach ($settingsPath in @($candidateFiles.ToArray() | Sort-Object -Unique)) {
+        if (-not (Test-Path -LiteralPath $settingsPath -PathType Leaf)) {
+            continue
+        }
+        try {
+            $settings = Read-CompanyAgentJson -Path $settingsPath
+        }
+        catch {
+            continue
+        }
+        $envProperty = $settings.PSObject.Properties['env']
+        if ($null -eq $envProperty -or $null -eq $envProperty.Value) {
+            continue
+        }
+        foreach ($forceName in $forceNames) {
+            $forceProperty = $envProperty.Value.PSObject.Properties[$forceName]
+            if ($null -ne $forceProperty -and -not [string]::IsNullOrWhiteSpace([string]$forceProperty.Value)) {
+                $null = $results.Add([pscustomobject][ordered]@{
+                    variable = $forceName
+                    source = $settingsPath
+                })
+            }
+        }
+    }
+
+    if ($IncludeWindowsPolicy) {
+        foreach ($registryPath in @('HKLM:\SOFTWARE\Policies\ClaudeCode', 'HKCU:\SOFTWARE\Policies\ClaudeCode')) {
+            try {
+                $registrySettings = [string](Get-ItemProperty -LiteralPath $registryPath -Name 'Settings' -ErrorAction Stop).Settings
+                if ([string]::IsNullOrWhiteSpace($registrySettings)) {
+                    continue
+                }
+                $settings = $registrySettings | ConvertFrom-Json
+                $envProperty = $settings.PSObject.Properties['env']
+                if ($null -eq $envProperty -or $null -eq $envProperty.Value) {
+                    continue
+                }
+                foreach ($forceName in $forceNames) {
+                    $forceProperty = $envProperty.Value.PSObject.Properties[$forceName]
+                    if ($null -ne $forceProperty -and -not [string]::IsNullOrWhiteSpace([string]$forceProperty.Value)) {
+                        $null = $results.Add([pscustomobject][ordered]@{
+                            variable = $forceName
+                            source = $registryPath
+                        })
+                    }
+                }
+            }
+            catch {
+                continue
+            }
+        }
+    }
+
+    return @($results.ToArray() | Sort-Object source, variable -Unique)
 }
 
 function Assert-CompanyAgentVersion {
@@ -528,21 +676,58 @@ function Test-CompanyAgentSelectionEqual {
         return $false
     }
 
+    $leftModelMode = 'explicit-map'
+    if ($null -ne $Left.PSObject.Properties['modelConfiguration'] -and
+        $null -ne $Left.modelConfiguration.PSObject.Properties['mode']) {
+        $leftModelMode = [string]$Left.modelConfiguration.mode
+    }
+    $rightModelMode = 'explicit-map'
+    if ($null -ne $Right.PSObject.Properties['modelConfiguration'] -and
+        $null -ne $Right.modelConfiguration.PSObject.Properties['mode']) {
+        $rightModelMode = [string]$Right.modelConfiguration.mode
+    }
+
+    $leftConfigVersion = ''
+    if ($null -ne $Left.PSObject.Properties['configVersion']) {
+        $leftConfigVersion = [string]$Left.configVersion
+    }
+    $rightConfigVersion = ''
+    if ($null -ne $Right.PSObject.Properties['configVersion']) {
+        $rightConfigVersion = [string]$Right.configVersion
+    }
+
+    $leftPythonCommand = ''
+    if ($null -ne $Left.PSObject.Properties['runtime'] -and
+        $null -ne $Left.runtime.PSObject.Properties['pythonCommand']) {
+        $leftPythonCommand = [string]$Left.runtime.pythonCommand
+    }
+    $rightPythonCommand = ''
+    if ($null -ne $Right.PSObject.Properties['runtime'] -and
+        $null -ne $Right.runtime.PSObject.Properties['pythonCommand']) {
+        $rightPythonCommand = [string]$Right.runtime.pythonCommand
+    }
+
     $leftNormalized = [ordered]@{
         coreVersion      = [string]$Left.coreVersion
         knowledgeVersion = [string]$Left.knowledgeVersion
+        configVersion    = $leftConfigVersion
+        modelMode        = $leftModelMode
         small             = [string]$Left.modelMap.SMALL
         medium            = [string]$Left.modelMap.MEDIUM
         large             = [string]$Left.modelMap.LARGE
         defaultTier       = [string]$Left.routing.defaultTier
+        pythonCommand     = $leftPythonCommand
     }
     $rightNormalized = [ordered]@{
         coreVersion      = [string]$Right.coreVersion
         knowledgeVersion = [string]$Right.knowledgeVersion
+        configVersion    = $rightConfigVersion
+        modelMode        = $rightModelMode
         small             = [string]$Right.modelMap.SMALL
         medium            = [string]$Right.modelMap.MEDIUM
         large             = [string]$Right.modelMap.LARGE
         defaultTier       = [string]$Right.routing.defaultTier
+        pythonCommand     = $rightPythonCommand
     }
 
     return (($leftNormalized | ConvertTo-Json -Compress) -ceq ($rightNormalized | ConvertTo-Json -Compress))

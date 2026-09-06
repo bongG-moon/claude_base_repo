@@ -1,11 +1,4 @@
 {
-  "model": "sonnet",
-  "availableModels": [
-    "haiku",
-    "sonnet",
-    "opus"
-  ],
-  "enforceAvailableModels": true,
   "permissions": {
     "allow": [
       "Bash(company-agent knowledge *)",

@@ -23,6 +23,7 @@ if ([string]::IsNullOrWhiteSpace($UserStateRoot)) {
 $InstallRoot = ConvertTo-CompanyAgentFullPath -Path $InstallRoot
 $DataRoot = ConvertTo-CompanyAgentFullPath -Path $DataRoot
 $UserStateRoot = ConvertTo-CompanyAgentFullPath -Path $UserStateRoot
+Assert-CompanyAgentRootsSeparated -InstallRoot $InstallRoot -DataRoot $DataRoot -UserStateRoot $UserStateRoot
 
 Assert-CompanyAgentAdministrator -SkipAdminCheck:$SkipAdminCheck
 Assert-CompanyAgentManagedRoot -Root $InstallRoot
@@ -43,6 +44,13 @@ if (-not (Test-Path -LiteralPath $previousCorePath -PathType Container)) {
 if (-not (Test-Path -LiteralPath $previousKnowledgePath -PathType Container)) {
     throw "Previous knowledge version is no longer installed: $previousKnowledgePath"
 }
+if ($null -ne $previousSelection.PSObject.Properties['configVersion'] -and
+    -not [string]::IsNullOrWhiteSpace([string]$previousSelection.configVersion)) {
+    $previousConfigPath = Join-Path $DataRoot (Join-Path 'config\versions' ([string]$previousSelection.configVersion))
+    if (-not (Test-Path -LiteralPath $previousConfigPath -PathType Container)) {
+        throw "Previous configuration version is no longer installed: $previousConfigPath"
+    }
+}
 
 # Write the reverse pointer first. If the second atomic write fails, the active pointer is unchanged.
 Write-CompanyAgentJsonAtomic -Path $previousPointerPath -Value $currentSelection
@@ -55,6 +63,7 @@ Set-CompanyAgentCorporateAcl -Path $DataRoot -SkipAcl:$SkipAcl
     status           = 'rolled-back'
     coreVersion      = [string]$previousSelection.coreVersion
     knowledgeVersion = [string]$previousSelection.knowledgeVersion
+    configVersion    = $(if ($null -ne $previousSelection.PSObject.Properties['configVersion']) { [string]$previousSelection.configVersion } else { $null })
     modelMap         = $previousSelection.modelMap
     reverseRollbackAvailable = $true
     userStateRootPreserved = $UserStateRoot

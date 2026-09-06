@@ -1,0 +1,96 @@
+# 컨텍스트 최적화, Compact와 실패 복구
+
+검토일: 2026-09-05 / 반영 Core: 0.3.1
+
+## 영상 확인 범위
+
+요청 영상은 Jay Choi | 인디해커 라이프의 「클로드」 이 영상 하나로 끝냅니다 (80분 총정리)이다. 공개 YouTube 메타데이터와 설명에서 2026-08-24 게시, 51:04 필수 스킬, 1:01:02 추천 스킬, 1:11:03 스킬을 지운 이유 챕터를 확인했다. 자막 트랙은 있으나 공개 자막 응답이 비어 있어 **영상 발언 본문을 직접 확인하지 못했다**. 아래 기술 판단은 사용자가 짚은 논점과 공식 Claude 문서를 현재 코드에 대조한 결과이며, 영상 전체를 시청·검증했다는 의미가 아니다. [영상](https://www.youtube.com/watch?v=La7sir6uVjw)
+
+## 결론
+
+작은 상시 지침, 필요한 Skill/Knowledge만 조회, 짧은 결과 전달, 제한된 재시도라는 방향은 현재 하네스와 맞는다. 다만 다음 세 기능은 별개다.
+
+| 대상 | 목적 | 이번 처리 |
+| --- | --- | --- |
+| 대화 컨텍스트 Compact | 오래된 대화와 도구 결과를 요약해 모델 입력 공간 확보 | Claude의 기존 native auto-compact 사용. 완료 후 하네스 경로·검증 상태 재주입 |
+| 개인 Memory 정리 | 영구 기억을 매번 모두 읽히지 않고 관련 사실만 전달 | 원본 보존, 정확한 중복의 파생 index/검색 view 정리, 동일 내용 저장 시 이력 증가 방지 |
+| 실패 복구 | 실패한 접근을 반복하지 않고 실제 산출물 재검증 | 새 worker에 짧은 작업 설명을 전달하는 지침. 실제 live conversation rewind/파일 rollback은 아님 |
+
+## 1. CLAUDE.md 150–200줄의 의미
+
+공식 문서는 CLAUDE.md를 200줄 미만으로 간결하게 유지하도록 권장한다. 이는 성능을 보장하는 강제 규격이 아니다. 긴 한 줄, 여러 상위 지시 파일, 무조건 읽히는 규칙, 대형 MCP 결과까지 합치면 150줄이어도 큰 입력이 될 수 있다. `@파일` import로 옮기기만 하면 내용은 여전히 로드된다. [공식 Memory 문서](https://code.claude.com/docs/en/memory)
+
+권장 분리:
+
+- CLAUDE.md: 핵심 목적, 실행/검증 방법, 프로젝트 특유의 주의점, 필요한 문서 위치.
+- Skill: 해당 업무일 때만 읽는 절차.
+- Knowledge MD: 용어·테이블·지표·업무 정의. 관련 항목만 조회.
+- 개인 Memory: 짧은 선호·관례. 긴 대화나 원본 업무 데이터는 넣지 않음.
+- 상세 로그/산출물: 파일에 두고 경로와 관찰 결과만 전달.
+
+현재 Project Harness는 사용자 CLAUDE.md를 덮어쓰지 않고 작은 rule과 Skill을 생성한다. 이미 방향은 맞지만 큰 acceptance criteria를 Skill과 contract 양쪽에 중복 렌더링할 수 있다. 이후 generator 버전 변경 시 전체 조건은 contract에 한 번만 두고 Skill에는 참조만 두는 것이 좋다. 기존 생성 파일의 소유권 검증이 템플릿 hash에 연결돼 있으므로, 이번에 템플릿만 바꾸어 기존 manifest를 무효화하지는 않았다.
+
+새 `company-agent context audit --project "C:\Work\Project"`는 선택 프로젝트/상위 지시 파일과 사용자·프로젝트 최상위 rules의 크기를 읽기 전용으로 점검한다. 200줄 또는 12,000자 초과를 안내하며 원문은 출력·수정하지 않는다. 이 문자 기준은 회사 하네스의 보조 기준이지 Claude 공식 토큰 한도가 아니다. Imports, 하위 path rules, Claude native auto-memory 전체를 펼치는 정밀 토큰 계산기도 아니다.
+
+세션 시작 시 큰 지시 파일이 발견되면 간단히 알려준다. 사용자가 정리를 요청하지 않은 CLAUDE.md를 자동 축약하거나 지우지는 않는다.
+
+## 2. 현재 코드에서 발견한 점과 반영
+
+| 항목 | 이전 상태 | 0.3.1 |
+| --- | --- | --- |
+| 개인 Skill 추천 | 적은 수의 Skill은 관련도가 없어도 모두 전달될 수 있었음 | 일치하는 Skill만 최대 3개, 설명 240자. 본문은 선택 후 읽음 |
+| Knowledge 주입 | 최대 5개지만 aliases/tags/overlay metadata 크기는 제한되지 않음 | 최대 3개의 짧은 발견용 정보만 전달. 본문/대형 목록 제외 |
+| 전체 Hook 입력 | route, Memory, runtime 조합의 총량 제한 없음 | route 최대 6,000자 + runtime 최대 6,000자 + 구분자 1자. JSON 문자열 기준 |
+| Overlay 누락 방지 | 전체 metadata가 항상 주입됨 | 선택 항목에 overlay 존재 여부를 표시하고 사용 전에 전체 active overlay를 별도 조회하도록 요구 |
+| 개인 기억 누적 | 같은 내용을 다시 저장해도 revision/backup 증가 | 동일 내용은 기존 파일 유지. 다른 내용의 실제 수정은 이력 보존 |
+| 중복 기억 | 여러 ID의 같은 내용이 반복 주입될 수 있음 | 종류·제목·전체 본문이 정확히 같은 항목만 파생 view에서 하나로 표시 |
+| 한글 제목 ID | 서로 다른 한글 제목이 같은 slug로 변환돼 덮어쓸 위험 | 제목 hash를 포함한 안정적 ID. 정확히 일치하는 기존 legacy 항목은 경로 유지 |
+| Compact 후 상태 | 일반 SessionStart만 수행 | 경로 재공급 및 session ID/변경 수/재시도 수/검증 상태의 짧은 재주입 |
+
+예산을 맞추느라 실행 명령·경로·JSON을 중간에서 잘라내지 않는다. 선택적 정보부터 제외하고, 비정상적으로 긴 필수 경로는 명확한 복구 안내로 처리한다. Memory 자체는 기존 최대 5개/본문 일부/4,000자 예산을 유지하며, JSON escape로 route 예산까지 넘으면 해당 턴의 선택적 Memory 블록을 제외한다.
+
+이는 **하네스가 추가하는 입력의 상한**이다. 사용자의 긴 질문, Claude 자체 지침, 다른 Plugin의 Skill 목록, MCP 응답까지 포함한 전체 컨텍스트를 12,001자로 제한한다는 뜻은 아니다. 같은 세션에서 안정적인 경로 안내를 매 턴 짧게 재주입하는 동작은 유지했다. 무조건 ‘이미 보냈으니 생략’하면 native Compact/Rewind 이후 실제 모델에 남은 내용과 하네스의 전송 기록이 어긋날 수 있기 때문이다.
+
+## 3. 자동 Compact 범위
+
+Claude는 컨텍스트 한도에 가까워지면 대화를 자동 압축한다. 하네스가 별도 LLM으로 전체 대화를 읽고 다시 요약할 필요는 없다. 기존 사용자 설정과 모델 매핑은 변경하지 않았다. 사용자가 native auto-compact를 꺼둔 경우 하네스가 몰래 켜거나 작동 중이라고 보고하지 않는다. [공식 권장 사용법](https://code.claude.com/docs/en/best-practices)
+
+하네스는 `SessionStart`의 `source=compact`를 사용한다. 압축을 새 요청으로 취급해 실패 횟수나 검증 의무를 초기화하지 않는다. `transcript_path`를 열거나 compact summary를 별도 User State에 복사하지 않는다. [공식 Hook 계약](https://code.claude.com/docs/en/hooks#sessionstart)
+
+개인 기억 정리는 시작/압축 후 자동으로 수행하며 `memory compact`로도 호출할 수 있다. 바뀌는 것은 `memory/index/catalog.json` 파생 데이터뿐이다. 원본 Markdown, 이전 버전, ledger는 삭제하지 않는다. 서로 다른 의미의 기억을 LLM이 임의로 하나로 합치거나 오래됐다는 이유만으로 폐기하지 않는다. 정정된 사실은 기존 id로 갱신하고, 다른 업무 범위라면 범위를 명시해 별도 보존한다.
+
+현재 긴 기억 파일은 읽기 상한을 넘어가면 모델 주입에서 제외되지만 원본은 보존된다. 과거 ID 충돌로 이미 덮어써진 내용이 있었다면 이번 코드 변경이 자동 복구하지는 않는다. 필요하면 해당 사용자의 기존 versions/백업에서 정확한 항목을 확인해야 한다.
+
+## 4. 왜 실패 때 Restore conversation을 무조건 실행하지 않는가
+
+`Restore conversation`은 대화만 되돌리며 파일은 현재 상태로 둔다. 코드 복구는 별도 선택이다. Bash/외부 실행 변경은 checkpoint 범위 밖이고, 일반 하위 Agent가 만든 파일 변경도 복구되지 않을 수 있다. 메일 발송이나 외부 MCP 작업을 취소하는 기능도 아니다. [공식 Checkpointing](https://code.claude.com/docs/en/checkpointing)
+
+현재 하네스는 하위 worker가 실작업을 하는 구조라 ‘실패 → rewind → 깨끗한 파일’로 설명하면 부정확하다. 대화만 지운 뒤 이미 발송된 메일을 다시 보내는 문제도 생길 수 있다.
+
+또 공식 CLI/Hook 계약과 로컬 Claude Code 2.1.261의 공개 help에서 **현재 대화형 세션을 Hook이 자동으로 Restore conversation하는 지원 인터페이스는 확인하지 못했다**. UI에는 `/rewind`가 있지만 Hook에서 다른 Claude 프로세스를 띄우거나 `/rewind`를 shell 명령으로 실행한다고 현재 대화가 되감기지는 않는다. Claude JSONL을 직접 고치는 방법도 사용하지 않는다. [CLI 참조](https://code.claude.com/docs/en/cli-reference)
+
+대신 이번 실행 지침은 다음과 같다.
+
+1. 실패한 검사와 실제 관찰 결과를 확인한다.
+2. 실패한 worker를 resume하지 않고 새 worker를 사용한다.
+3. 목표·권한 제약·현재 파일 경로·실패 검사·확인된 사실만 2,000자 이내로 전달한다. 실패 대화 전체와 검증되지 않은 가설은 제외한다.
+4. 새 worker는 현재 파일과 외부 작업 완료 여부부터 확인한 뒤, 기존 모델 등급과 남은 재시도 예산 안에서 수정·재검증한다.
+5. 같은 실패 반복/예산 소진 시 미검증 결과를 솔직히 보고한다. 성공이라고 기록하거나 대화 리셋으로 예산을 늘리지 않는다.
+
+새 worker 호출 자체는 Claude의 Agent 도구 수행에 의존하는 **실행 지침**이다. Python Hook이 직접 worker를 강제 시작하는 엔진은 아니다. Stop Hook의 최대 두 번 추가 검증 기회는 기존처럼 코드가 제한한다. 새 worker는 관련 지침·작업 설명을 가진 별도 컨텍스트이지 모든 시스템 지침이 없는 완전한 빈 모델도 아니다.
+
+실제 파일 rollback까지 자동화하려면 별도 범위 확장이 필요하다. 소유 파일/기존 사용자 변경 snapshot, 프로세스·하위 Agent 변경 추적, 충돌 검사, 외부 작업의 idempotency/완료 조회를 설계해야 한다. 현재 설치 rollback과 일반 업무 산출물 rollback은 서로 다른 기능이다.
+
+## 5. andrej-karpathy-skills 기본 포함
+
+`company-agent-plugin/skills/karpathy-guidelines`에 회사 adapter를 포함했다. 네 원칙인 생각 후 구현, 단순한 구현, 필요한 곳만 수정, 검증 가능한 목표를 유지한다. 코드·Script·MCP·실행형 Skill 제작에만 적용하고, 일반 사무 문서에 코딩 절차를 강제하지 않는다. 별도 모델 설정/승인 단계/커밋 자동화를 추가하지 않는다.
+
+원본 commit `2c606141936f1eeef17fa3043a72095b4765b9c2`, 원문 hash, 회사 변경 이유를 SOURCE에 기록했다. upstream 본문은 참고 파일로 보존하고 기본 컨텍스트에 이중으로 읽히지 않게 했다. 원 저장소는 MIT를 선언하지만 별도 전체 LICENSE/저작권 고지는 제공하지 않아 그 한계를 명시했다. 동봉 표준 MIT 전문은 원문 고지 복제나 권리 확인 완료를 의미하지 않는다. [회사 adapter 출처 기록](../company-agent-plugin/skills/karpathy-guidelines/SOURCE.md)
+
+기존에 개인이 설치한 동명 Skill은 보존한다. 회사판은 `/company-agent:karpathy-guidelines` 이름으로 구분하고, 동일 업무에 두 절차를 연속 적용하지 않는다. 전사 배포물은 관리자가 고르며 개인 Skill 자동 활성화/개인 상태 보존 요구는 그대로 유지한다.
+
+## 6. 배포와 검증
+
+Core 0.3.1은 기존 0.3.0과 다른 버전으로 배포한다. 새 ZIP을 압축 해제한 뒤 `Install-CompanyAgent.cmd`를 실행하고 기존과 같은 범위를 선택한다. 기존 모델/범용 Skill/개인 User State는 보존된다. 이 작업 중 실제 사용자 PC의 설치 설정을 변경하지 않았다.
+
+자동 테스트는 입력량 제한, 무관 Skill 제외, 한글 Memory/Knowledge ID 충돌 방지, 중복 원본 보존, no-op 이력 억제, Compact 후 재시도 상태 보존, Windows PowerShell hook 경로를 포함한다. 실제 사내 모델의 한국어 Skill 선택 정확도, 대화 품질 향상, 자동 worker 재시도 수행률은 대표 업무로 추가 평가해야 한다. 코드 검사를 통과했다고 이 모델 품질까지 검증됐다는 뜻은 아니다.
