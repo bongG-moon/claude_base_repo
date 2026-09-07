@@ -1,6 +1,8 @@
-# Company Agent Windows 배포 가이드
+# Company Agent 관리자 설치 방식 가이드 — 1.0.0
 
-이 문서는 폐쇄망 Windows PC에 Company Agent 하네스를 배포하고 개인 사용자 상태를 초기화하는 운영 절차다. 관리자 배포 영역과 개인 상태는 물리적으로 분리된다.
+이 문서는 `-Scope Machine`을 명시하는 관리자 설치 방식의 운영 절차다. 파일명의 LEGACY는 먼저 개발한 설치 방식을 구분하는 이름이며 조직에 이전 버전이 배포되었다는 뜻은 아니다. 최초 배포 기준은 1.0.0이고 조직 배포는 아직 시작하지 않았다. 일반 직원의 기본 설치는 [User/Project 설치 안내](DEPLOYMENT.md)를 따른다. 관리자 배포 영역과 개인 상태는 물리적으로 분리된다.
+
+1.0.0 기본 ZIP은 PC에 이미 설치된 회사 승인 Python 3.11 이상을 사용한다. Python 실행 파일과 DLL은 포함하지 않는다. Claude Code와 모델 연결은 기존 사내 구성을 사용하며, 설치기는 Python/pip를 설치·다운로드하거나 PC의 PATH 설정을 바꾸지 않는다. Python 포함 패키지가 별도로 필요한 관리자는 소스 저장소에서 `-IncludeBundledPython`을 명시한다.
 
 ```text
 오프라인 릴리스 ZIP
@@ -39,7 +41,7 @@ C:\ProgramData\CompanyAgent
 - Windows 10/11 또는 대응되는 Windows Server
 - Windows PowerShell 5.1 이상
 - 사내에서 승인해 오프라인 설치한 Claude Code CLI 2.1.220 이상
-- 승인된 Python 3.11 이상이 `PATH`의 `python` 또는 Windows `py` launcher로 실행 가능할 것
+- 승인된 Python 3.11 이상이 `python` 또는 Windows `py` launcher로 실행 가능하거나 `-PythonCommand`로 실제 실행 파일 경로를 지정할 것
 - 최초 설치·업데이트·롤백·삭제 작업용 로컬 관리자 또는 소프트웨어 배포 계정
 - Claude Code에서 이미 동작하는 `haiku`, `sonnet`, `opus` alias(SMALL, MEDIUM, LARGE)
 
@@ -104,14 +106,16 @@ config\managed-mcp.json
 
 ### 2.3 오프라인 ZIP 생성
 
-저장소 루트에서 실행한다.
+소스 저장소 루트에서 실행한다. 직원 ZIP에는 빌더와 테스트 스크립트를 포함하지 않는다.
 
 ```powershell
 powershell.exe -NoLogo -NoProfile -File .\deploy\New-OfflineBundle.ps1 `
-  -CoreVersion '0.2.0' `
+  -CoreVersion '1.0.0' `
   -KnowledgeVersion '2026.09.03' `
-  -OutputPath 'D:\Release\company-agent-0.2.0-2026.09.03.zip'
+  -OutputPath 'D:\Release\company-agent-1.0.0-2026.09.03.zip'
 ```
+
+이 명령은 로컬 ZIP을 만들며 GitHub 릴리스를 게시하지 않는다. 기본값과 기존 `-WithoutBundledPython` 모두 외부 Python을 사용한다. Python 동봉이 필요한 운영자는 [선택 패키지 빌드 절차](DEPLOYMENT.md#빌드-pc에서-배포-zip-만들기)를 따른다. 기본 ZIP에 `.exe`, `.dll`, `.pyd`가 없어도 `.cmd`, `.ps1`, `.py`가 남으므로 Gmail 첨부나 사내 반입·실행 허용이 보장되지 않는다. 파일 이름이나 확장자를 숨기지 않고 승인된 배포 경로로 전달한다.
 
 기본 릴리스 검사는 다음 순서로 수행되며 하나라도 실패하면 ZIP을 만들지 않는다.
 
@@ -125,18 +129,18 @@ powershell.exe -NoLogo -NoProfile -File .\deploy\New-OfflineBundle.ps1 `
 
 ## 3. 설치
 
-### 3.1 일반 사용자: 더블클릭
+### 3.1 관리자 배포: Machine 범위 지정
 
 1. 승인된 ZIP을 로컬 폴더에 모두 압축 해제한다. ZIP 안에서 직접 실행하지 않는다.
-2. 최상위 `Install-CompanyAgent.cmd`를 더블클릭한다.
+2. 일반 권한 터미널에서 최상위 `Install-CompanyAgent.cmd -Scope Machine`을 실행한다.
 3. 사전 검사를 확인하고 Windows 관리자 권한 요청(UAC)만 승인한다.
 4. 완료되면 시작 메뉴의 **Company Agent**를 일반 사용자로 실행한다.
 
-CMD wrapper는 `deploy\Setup-CompanyAgent.ps1`을 호출한다. Setup은 사용자의 기존 Claude/Python 환경을 먼저 확인하고 선택 백업을 만든 뒤, 관리 영역을 쓸 때만 스스로 상승한다. 기존 설치를 발견하면 동일한 진입점이 안전한 update/reinstall 경로를 선택한다. 모델 ID, MCP, Outlook 정보는 설치 중 입력하지 않는다.
+CMD wrapper는 `deploy\Setup-CompanyAgent.ps1`을 호출한다. 범위를 지정하지 않은 더블클릭은 User/Project 선택으로 이어진다. Machine 범위의 Setup은 사용자의 기존 Claude/Python 환경을 먼저 확인하고 선택 백업을 만든 뒤, 관리 영역을 쓸 때만 스스로 상승한다. 기존 설치를 발견하면 동일한 진입점이 update/reinstall 경로를 선택한다. 모델 ID, MCP, Outlook 정보는 설치 중 입력하지 않는다.
 
 ### 3.2 Claude에게 설치 요청
 
-비기술 사용자는 압축을 푼 폴더의 `INSTALL_WITH_CLAUDE.md`를 Claude Code에 첨부하거나 경로를 알려주고 “이 지침대로 설치해줘”라고 요청할 수 있다. 이 파일은 Claude가 dry-run과 preflight를 먼저 확인하고, 사용자의 선택이 실제로 필요한 경우에만 짧게 질문한 뒤 같은 Setup을 실행하도록 제한한다. 자격 증명이나 모델 ID를 Claude에게 전달할 필요가 없다.
+비기술 사용자는 압축을 푼 폴더의 `INSTALL_WITH_CLAUDE.md`를 Claude Code에 첨부하거나 경로를 알려주고 “이 지침대로 설치해줘”라고 요청할 수 있다. 이 안내의 기본값은 User/Project 설치다. 조직에서 승인한 Machine 설치가 목적이라면 관리자 배포 범위임을 명시하고 운영자가 확인한다. 자격 증명이나 모델 ID를 Claude에게 전달할 필요가 없다.
 
 ### 3.3 운영자/배포 도구용 명령
 
@@ -144,8 +148,9 @@ Intune/SCCM 또는 운영자가 명시적으로 실행할 때도 쉬운 Setup을
 
 ```powershell
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `
-  'C:\CompanyAgent-Staging\0.2.0\deploy\Setup-CompanyAgent.ps1' `
-  -BundleRoot 'C:\CompanyAgent-Staging\0.2.0' `
+  'C:\CompanyAgent-Staging\1.0.0\deploy\Setup-CompanyAgent.ps1' `
+  -BundleRoot 'C:\CompanyAgent-Staging\1.0.0' `
+  -Scope Machine `
   -NonInteractive
 ```
 
@@ -231,13 +236,13 @@ LARGE  → 기존 Claude Code `opus` alias
 새 ZIP을 별도 staging 폴더에 풀고 상승된 PowerShell에서 실행한다.
 
 ```powershell
-& 'C:\CompanyAgent-Staging\0.2.0\deploy\Update-CompanyAgent.ps1' `
-  -BundleRoot 'C:\CompanyAgent-Staging\0.2.0' `
+& 'C:\CompanyAgent-Staging\1.0.0\deploy\Update-CompanyAgent.ps1' `
+  -BundleRoot 'C:\CompanyAgent-Staging\1.0.0' `
   -UseExistingClaudeModels `
   -DefaultTier 'AUTO'
 ```
 
-일반 update는 `deploy\Setup-CompanyAgent.ps1` 또는 새 bundle의 최상위 CMD를 다시 실행하면 된다. 기존 0.1의 명시적 모델 ID 매핑을 유지해야 하는 호환 update가 아니라면 `-UseExistingClaudeModels`로 현재 Claude alias 설정을 사용한다. 모델 ID를 직접 주입하는 explicit-map 모드는 특수 운영 환경을 위한 고급 호환 옵션이며 일반 직원 설치에 사용하지 않는다.
+Machine update는 `deploy\Setup-CompanyAgent.ps1` 또는 새 bundle의 최상위 CMD에 `-Scope Machine`을 지정해 다시 실행한다. 배포 전 초기 개발 방식의 명시적 모델 ID 매핑을 유지해야 하는 호환 update가 아니라면 `-UseExistingClaudeModels`로 현재 Claude alias 설정을 사용한다. 모델 ID를 직접 주입하는 explicit-map 모드는 특수 운영 환경을 위한 고급 호환 옵션이며 일반 직원 설치에 사용하지 않는다.
 
 업데이트는 새 버전을 옆에 설치한 뒤 포인터만 전환한다. Config·바로가기·ACL 등 포인터 전환 전 단계가 실패하면 이전 launcher, current/previous 포인터, 바로가기를 자동 복원한다. 다음 경로는 건드리지 않는다.
 
@@ -279,7 +284,7 @@ LARGE  → 기존 Claude Code `opus` alias
 
 ### 배포 스크립트 smoke test
 
-관리자 권한이나 실제 시스템 경로를 사용하지 않고 임시 디렉터리에서 전체 생명주기를 검증한다.
+소스 저장소에서 실행한다. 관리자 권한이나 실제 시스템 경로를 사용하지 않고 임시 디렉터리에서 전체 생명주기를 검증한다. 직원 ZIP에는 이 테스트 스크립트가 없다.
 
 ```powershell
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File `

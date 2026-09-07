@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $SourceRoot,
     [Parameter(Mandatory = $true)]
@@ -13,6 +13,7 @@ param(
     [string] $PythonCommand = 'python',
     [string] $PythonRuntimeZip,
     [string] $PythonRuntimeSha256 = 'd1f04d990aee1253d8569e8e5104e30fa9f5fa830899f14843448872d936a2cf',
+    [switch] $IncludeBundledPython,
     [switch] $WithoutBundledPython,
     [switch] $SkipAcl,
     [switch] $SkipSourceValidation,
@@ -22,6 +23,60 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'CompanyAgent.Common.ps1')
+
+if ($IncludeBundledPython -and $WithoutBundledPython) {
+    throw 'IncludeBundledPython and WithoutBundledPython cannot be used together.'
+}
+if (-not $IncludeBundledPython -and
+    ($PSBoundParameters.ContainsKey('PythonRuntimeZip') -or $PSBoundParameters.ContainsKey('PythonRuntimeSha256'))) {
+    throw 'PythonRuntimeZip and PythonRuntimeSha256 require -IncludeBundledPython. The default employee bundle uses an existing Python 3.11 or later installation.'
+}
+
+# Employee packages contain only the deploy entrypoints and their dependencies.
+# Build/download helpers and regression scripts remain on the build PC.
+$productionDeployFiles = @(
+    'CompanyAgent.Common.ps1',
+    'ExistingHarness.ps1',
+    'HarnessReplacement.ps1',
+    'Initialize-CompanyAgentUser.ps1',
+    'Install-CompanyAgent.cmd',
+    'Install-CompanyAgent.ps1',
+    'Install-ScopedCompanyAgent.ps1',
+    'Restore-PreviousHarness.ps1',
+    'Rollback-CompanyAgent.ps1',
+    'Setup-CompanyAgent.ps1',
+    'Start-CompanyAgent.ps1',
+    'Uninstall-CompanyAgent.ps1',
+    'Uninstall-ScopedCompanyAgent.ps1',
+    'Update-CompanyAgent.ps1'
+)
+
+function Copy-CompanyAgentPluginSource {
+    param([string] $Source, [string] $Destination)
+
+    New-CompanyAgentDirectory -Path $Destination
+    foreach ($item in @(Get-ChildItem -LiteralPath $Source -Force)) {
+        if ($item.Name -ieq 'runtime') {
+            # A prior local build must never supply the packaged interpreter.
+            # Opt-in packages also receive a fresh, hash-verified runtime below.
+            continue
+        }
+        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
+    }
+}
+
+function Assert-CompanyAgentExternalBundleFiles {
+    param([string] $Root)
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $Root -Recurse -Force | Where-Object { -not $_.PSIsContainer })) {
+        if ($file.Extension -iin @('.exe', '.dll', '.pyd', '.so', '.dylib')) {
+            throw "External-runtime bundle cannot contain native binary files: $($file.FullName)"
+        }
+    }
+    if (Test-Path -LiteralPath (Join-Path $Root 'payload\core\plugin\runtime')) {
+        throw 'External-runtime bundle unexpectedly contains a runtime directory.'
+    }
+}
 
 if ([string]::IsNullOrWhiteSpace($SourceRoot)) {
     $SourceRoot = Split-Path -Parent $PSScriptRoot
@@ -54,6 +109,11 @@ foreach ($requiredPath in @($pluginSource, $knowledgeSource, $deploySource)) {
 foreach ($requiredFile in @($claudeInstallDoc, $easyInstaller)) {
     if (-not (Test-Path -LiteralPath $requiredFile -PathType Leaf)) {
         throw "Required beginner installation entrypoint was not found: $requiredFile"
+    }
+}
+foreach ($deployName in $productionDeployFiles) {
+    if (-not (Test-Path -LiteralPath (Join-Path $deploySource $deployName) -PathType Leaf)) {
+        throw "Required production deployment file was not found: $deployName"
     }
 }
 
@@ -97,9 +157,9 @@ if (-not $SkipSourceValidation) {
     $previousDontWriteBytecode = [Environment]::GetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', 'Process')
     try {
         [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', '1', 'Process')
-        $knowledgeValidation = & $pythonExecutable (Join-Path $pluginSource 'scripts\harness_cli.py') knowledge validate --base $knowledgeSource 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "Corporate Knowledge validation failed:`r`n$($knowledgeValidation -join [Environment]::NewLine)"
+        $knowledgeValidation = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-B', (Join-Path $pluginSource 'scripts\harness_cli.py'), 'knowledge', 'validate', '--base', $knowledgeSource)
+        if ($knowledgeValidation.ExitCode -ne 0) {
+            throw "Corporate Knowledge validation failed:`r`n$($knowledgeValidation.StdOut)`r`n$($knowledgeValidation.StdErr)"
         }
     }
     finally {
@@ -110,9 +170,9 @@ if (-not $SkipSourceValidation) {
     $previousCachePrefix = [Environment]::GetEnvironmentVariable('PYTHONPYCACHEPREFIX', 'Process')
     try {
         [Environment]::SetEnvironmentVariable('PYTHONPYCACHEPREFIX', $compileCache, 'Process')
-        $compileOutput = & $pythonExecutable -m compileall -q $pluginSource 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "Python compile validation failed:`r`n$($compileOutput -join [Environment]::NewLine)"
+        $compileOutput = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-m', 'compileall', '-q', $pluginSource)
+        if ($compileOutput.ExitCode -ne 0) {
+            throw "Python compile validation failed:`r`n$($compileOutput.StdOut)`r`n$($compileOutput.StdErr)"
         }
     }
     finally {
@@ -130,16 +190,20 @@ New-CompanyAgentDirectory -Path $outputParent
 
 try {
     New-CompanyAgentDirectory -Path $stagePath
-    Copy-CompanyAgentDirectoryContents -Source $pluginSource -Destination (Join-Path $stagePath 'payload\core\plugin')
+    Copy-CompanyAgentPluginSource -Source $pluginSource -Destination (Join-Path $stagePath 'payload\core\plugin')
     Copy-CompanyAgentDirectoryContents -Source $knowledgeSource -Destination (Join-Path $stagePath 'payload\knowledge')
-    Copy-CompanyAgentDirectoryContents -Source $deploySource -Destination (Join-Path $stagePath 'deploy')
+    $deployDestination = Join-Path $stagePath 'deploy'
+    New-CompanyAgentDirectory -Path $deployDestination
+    foreach ($deployName in $productionDeployFiles) {
+        Copy-Item -LiteralPath (Join-Path $deploySource $deployName) -Destination (Join-Path $deployDestination $deployName) -Force
+    }
 
-    if (-not $WithoutBundledPython -and -not $SkipSourceValidation) {
+    if ($IncludeBundledPython) {
         if ([string]::IsNullOrWhiteSpace($PythonRuntimeZip)) {
             $PythonRuntimeZip = Join-Path $SourceRoot 'build\runtime\python-3.13.15-embed-amd64.zip'
         }
         if (-not (Test-Path -LiteralPath $PythonRuntimeZip -PathType Leaf)) {
-            throw 'Bundled Python is required for the beginner release. Run deploy\Get-EmbeddedPython.ps1 on the connected build PC, or supply -PythonRuntimeZip with -PythonRuntimeSha256. The employee installer never downloads dependencies. Use -WithoutBundledPython only for an existing-runtime release.'
+            throw 'The optional bundled Python archive was not found. Run deploy\Get-EmbeddedPython.ps1 on the connected build PC, or supply -PythonRuntimeZip with -PythonRuntimeSha256. Omit -IncludeBundledPython to use an existing Python 3.11 or later installation.'
         }
         if ($PythonRuntimeSha256 -notmatch '^[a-fA-F0-9]{64}$' -or
             (Get-FileHash -LiteralPath $PythonRuntimeZip -Algorithm SHA256).Hash -ine $PythonRuntimeSha256) {
@@ -164,10 +228,10 @@ try {
         $pthContent = Get-Content -LiteralPath $runtimePth[0].FullName -Raw -Encoding UTF8
         # Resolve package imports from any cwd without enabling site/PYTHONPATH.
         Write-CompanyAgentUtf8File -Path $runtimePth[0].FullName -Content ($pthContent.TrimEnd() + "`n../../scripts`n")
-        $runtimeVersion = & (Join-Path $runtimeDestination 'python.exe') -c 'import sys, company_agent; print(sys.version.split()[0]); sys.exit(0 if sys.version_info >= (3,11) else 1)'
-        if ($LASTEXITCODE -ne 0) { throw 'The bundled Python runtime failed its import/version check on this build PC.' }
+        $runtimeVersion = Invoke-CompanyAgentPythonProcess -Executable (Join-Path $runtimeDestination 'python.exe') -Arguments @('-B', '-c', 'import sys, company_agent; print(sys.version.split()[0]); sys.exit(0 if sys.version_info >= (3,11) else 1)')
+        if ($runtimeVersion.ExitCode -ne 0) { throw 'The bundled Python runtime failed its import/version check on this build PC.' }
         Write-CompanyAgentJsonAtomic -Path (Join-Path $runtimeDestination 'company-agent-runtime.json') -Value ([ordered]@{
-            schemaVersion = 1; pythonVersion = [string](@($runtimeVersion)[-1]); architecture = 'windows-x64'
+            schemaVersion = 1; pythonVersion = $runtimeVersion.StdOut.Trim(); architecture = 'windows-x64'
             archiveSha256 = $PythonRuntimeSha256.ToLowerInvariant(); source = [IO.Path]::GetFileName($PythonRuntimeZip)
             pathCustomization = '../../scripts'; license = 'LICENSE.txt'
         })
@@ -201,7 +265,7 @@ try {
         }
     }
 
-    foreach ($docName in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'PROJECT_HARNESS.md', 'IMPLEMENTATION_REVIEW.md', 'CONTEXT_OPTIMIZATION.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md')) {
+    foreach ($docName in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md', 'PROJECT_HARNESS.md', 'IMPLEMENTATION_REVIEW.md', 'CONTEXT_OPTIMIZATION.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md', 'SELF_LEARNING.md', 'USER_GUIDE.md', 'Company-Agent-사용자-안내서.html')) {
         $deploymentDoc = Join-Path $SourceRoot ('docs\' + $docName)
         if (Test-Path -LiteralPath $deploymentDoc -PathType Leaf) {
             New-CompanyAgentDirectory -Path (Join-Path $stagePath 'docs')
@@ -212,6 +276,18 @@ try {
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
 
+    if (-not $IncludeBundledPython) {
+        Assert-CompanyAgentExternalBundleFiles -Root $stagePath
+    }
+    $runtimeMode = 'external'
+    # PythonCommand selects the BUILD PC interpreter, not an employee path.
+    $runtimeCommand = 'python'
+    $runtimeDescription = 'Requires an existing Python 3.11 or later installation on the employee PC; this bundle does not install or download Python.'
+    if ($IncludeBundledPython) {
+        $runtimeMode = 'bundled'
+        $runtimeCommand = 'payload/core/plugin/runtime/python/python.exe'
+        $runtimeDescription = 'Contains the administrator-selected, hash-verified Python embeddable runtime and its license.'
+    }
     $fileRecords = @(Get-CompanyAgentTreeRecords -Root $stagePath)
     $manifest = [pscustomobject][ordered]@{
         format           = 'company-agent-offline-bundle/v1'
@@ -220,6 +296,12 @@ try {
         coreVersion      = $CoreVersion
         knowledgeVersion = $KnowledgeVersion
         createdAtUtc     = [DateTime]::UtcNow.ToString('o')
+        runtime          = [pscustomobject][ordered]@{
+            mode           = $runtimeMode
+            minimumVersion = '3.11'
+            command        = $runtimeCommand
+            description    = $runtimeDescription
+        }
         payload          = [pscustomobject][ordered]@{
             corePlugin        = 'payload/core/plugin'
             corporateKnowledge = 'payload/knowledge'

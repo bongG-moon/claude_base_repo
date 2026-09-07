@@ -169,13 +169,12 @@ if (-not $SkipKnowledgeBuild) {
     $previousDontWriteBytecode = [Environment]::GetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', 'Process')
     try {
         [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', '1', 'Process')
-        $buildOutput = & $pythonExecutable $harnessCliPath knowledge build `
-            --state-root $UserStateRoot `
-            --base $corporateKnowledgePath `
-            --personal (Join-Path $UserStateRoot 'knowledge') `
-            --output (Join-Path $UserStateRoot 'knowledge\generated-index') 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "Personal knowledge index build failed:`r`n$($buildOutput -join [Environment]::NewLine)"
+        $buildOutput = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @(
+            '-B', $harnessCliPath, 'knowledge', 'build', '--state-root', $UserStateRoot,
+            '--base', $corporateKnowledgePath, '--personal', (Join-Path $UserStateRoot 'knowledge'),
+            '--output', (Join-Path $UserStateRoot 'knowledge\generated-index'))
+        if ($buildOutput.ExitCode -ne 0) {
+            throw "Personal knowledge index build failed:`r`n$($buildOutput.StdOut)`r`n$($buildOutput.StdErr)"
         }
     }
     finally {

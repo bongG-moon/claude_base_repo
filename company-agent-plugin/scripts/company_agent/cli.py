@@ -50,7 +50,9 @@ def _base_root(args: argparse.Namespace) -> Path | None:
 
 
 def _print_json(value: Any) -> None:
-    print(json.dumps(value, ensure_ascii=False, indent=2, sort_keys=True))
+    # ASCII-safe JSON wire output survives legacy Windows pipes without losing
+    # Unicode: JSON readers restore every escaped character, including paths.
+    print(json.dumps(value, ensure_ascii=True, indent=2, sort_keys=True))
 
 
 def cmd_init_user(args: argparse.Namespace) -> int:
@@ -227,6 +229,76 @@ def cmd_memory_compact(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_learning(args: argparse.Namespace) -> int:
+    from .learning import learning_status, rollback_change, set_learning_enabled, submit_review
+    root = _state_root(args)
+    operation = args.learning_command
+    if operation == "status":
+        session = load_session(args.session, root) if args.session else None
+        result = {"ok": True, "learning": learning_status(root, session=session)}
+        if args.session:
+            result["session"] = session
+    elif operation in {"pause", "resume"}:
+        result = set_learning_enabled(root, operation == "resume")
+    elif operation == "rollback":
+        result = rollback_change(root, args.change)
+    else:
+        # Only the turn-owned staging file is accepted. The completion hook can
+        # distinguish this bookkeeping write from a business artifact mutation.
+        import stat
+        from .state import safe_session_id
+        if args.session != safe_session_id(args.session):
+            raise ValueError("Use the exact sanitized session ID from the current runtime.")
+        if len(args.turn) != 32 or any(char not in "0123456789abcdef" for char in args.turn):
+            raise ValueError("Use the exact current learning turn ID.")
+        if load_session(args.session, root).get("turnId") != args.turn:
+            raise ValueError("Learning review must belong to the current user turn.")
+        spec_path = Path(args.spec).absolute()
+        expected = root / "tmp" / f"learning-review-{args.turn}.json"
+        if spec_path != expected.absolute():
+            raise ValueError("The learning review spec must use this turn's named file under the active state tmp directory.")
+        for parent in (spec_path, *spec_path.parents):
+            if parent.is_symlink() or getattr(parent, "is_junction", lambda: False)():
+                raise ValueError("Learning review paths cannot contain symbolic links or junctions.")
+        info = spec_path.stat()
+        if not stat.S_ISREG(info.st_mode) or info.st_size > 32_768:
+            raise ValueError("Learning review spec must be a compact JSON file of at most 32 KiB.")
+        with spec_path.open("rb") as stream:
+            raw = stream.read(32_769)
+        if len(raw) > 32_768:
+            raise ValueError("Learning review spec exceeds 32 KiB.")
+        cleanup = "retained_unavailable"
+        try:
+            spec = json.loads(raw.decode("utf-8-sig"))
+            if not isinstance(spec, dict):
+                raise ValueError("Learning review must be a JSON object.")
+            result = submit_review(root, args.session, args.turn, spec)
+        finally:
+            # This exact current-turn input is disposable, including rejected
+            # sensitive/malformed input. Never delete a subsequently edited
+            # file, follow a changed ancestor link, or scan other tmp files.
+            try:
+                linked = any(parent.is_symlink() or getattr(parent, "is_junction", lambda: False)()
+                             for parent in (spec_path, *spec_path.parents))
+                latest = spec_path.stat() if not linked else None
+                if (latest is not None and stat.S_ISREG(latest.st_mode)
+                        and latest.st_ino == info.st_ino and latest.st_size == len(raw)):
+                    with spec_path.open("rb") as stream:
+                        unchanged = stream.read(32_769) == raw
+                    if unchanged:
+                        spec_path.unlink()
+                        cleanup = "removed"
+                    else:
+                        cleanup = "retained_changed"
+                else:
+                    cleanup = "retained_changed"
+            except OSError:
+                pass
+        result["stagingCleanup"] = cleanup
+    _print_json(result)
+    return 0
+
+
 def cmd_context_audit(args: argparse.Namespace) -> int:
     _print_json(audit_context(Path(args.project)))
     return 0
@@ -300,10 +372,74 @@ def cmd_harness(args: argparse.Namespace) -> int:
     return 0 if result.get("ok", True) else 1
 
 
-def cmd_skill_search(args: argparse.Namespace) -> int:
-    from .native_runtime import _personal_skills
-    results = _personal_skills(_state_root(args), args.query, limit=args.limit)
-    _print_json({"ok": True, "skills": results, "discovery": "Read the matching SKILL.md before using it."})
+def _skill_options(args: argparse.Namespace, *, writing: bool = False) -> dict[str, Any]:
+    # Preserve raw path ancestors so the registry can reject reparse points.
+    def path(value: str | None) -> Path | None:
+        return Path(value).expanduser() if value else None
+
+    project = None if args.no_project else path(args.project_root) or Path.cwd()
+    if writing and args.scope == "default":
+        project = None
+    elif writing and args.no_project:
+        raise ValueError("Project preferences need --project-root; use --scope default for the current state defaults.")
+    return {
+        "project_root": project,
+        "claude_root": path(args.claude_root),
+        "plugin_root": path(args.plugin_root or os.environ.get("COMPANY_AGENT_PLUGIN_ROOT")),
+        "incoming_plugin": path(args.incoming_plugin),
+        "incoming_skill": path(args.incoming_skill),
+        "knowledge_root": path(args.base or os.environ.get("COMPANY_AGENT_KNOWLEDGE_BASE")),
+    }
+
+
+def cmd_skill(args: argparse.Namespace) -> int:
+    from .skill_registry import (
+        inventory_skills, reset_skill_preferences, resolve_skill, search_skills,
+        set_skill_preference, set_skill_source_order,
+    )
+    root = Path(args.state_root).expanduser() if args.state_root else user_state_root()
+    operation = args.skill_command
+    writing = operation in {"prefer", "prefer-incoming", "order", "reset"}
+    options = _skill_options(args, writing=writing)
+    if operation in {"inventory", "list", "conflicts"}:
+        result = inventory_skills(root, **options)
+        if operation == "conflicts":
+            result.pop("skills", None)
+    elif operation == "search":
+        result = search_skills(root, args.query, limit=args.limit, **options)
+    elif operation == "resolve":
+        result = resolve_skill(root, args.name, **options)
+    elif operation == "prefer":
+        result = set_skill_preference(root, args.name, args.candidate, **options)
+    elif operation == "order":
+        result = set_skill_source_order(root, args.sources, project_root=options["project_root"])
+    elif operation == "reset":
+        result = reset_skill_preferences(root, project_root=options["project_root"], name=args.name)
+    else:
+        if not options["incoming_plugin"] and not options["incoming_skill"]:
+            raise ValueError("prefer-incoming requires an explicit incoming plugin or Skill path.")
+        inventory = inventory_skills(root, **options)
+        if inventory.get("complete") is not True:
+            raise ValueError("Skill discovery was incomplete. Resolve inventory warnings before preferring incoming Skills.")
+        selections = []
+        for conflict in inventory["conflicts"]:
+            incoming = [item for item in conflict["candidates"] if item.get("incoming")]
+            existing = [item for item in conflict["candidates"] if not item.get("incoming")]
+            if not incoming or not existing:
+                continue
+            if len(incoming) != 1:
+                raise ValueError("Incoming Skill choices are ambiguous; use skill prefer for each exact candidate.")
+            selections.append((conflict["name"], incoming[0]["id"]))
+        # Validate all groups before changing any preference. The installer
+        # additionally snapshots/restores the file as part of its transaction.
+        changes = [set_skill_preference(root, name, candidate, **options) for name, candidate in selections]
+        result = {"ok": True, "changes": changes, "preferencesPath": inventory["preferencesPath"]}
+    result.setdefault("ok", True)
+    result["discovery"] = (
+        "Metadata only. Read the chosen SKILL.md before using it. These preferences govern Company Agent "
+        "recommendations, not Claude's native /name precedence; explicit user choices and managed policies still apply."
+    )
+    _print_json(result)
     return 0
 
 
@@ -322,13 +458,33 @@ def build_parser() -> argparse.ArgumentParser:
     _add_state_argument(state_check)
     state_check.set_defaults(func=cmd_state_check)
 
-    skill = subparsers.add_parser("skill", help="Find active personal Skills in the selected scope.")
+    skill = subparsers.add_parser("skill", help="Inspect Skill overlaps and select state/project workflow preferences.")
     skill_sub = skill.add_subparsers(dest="skill_command", required=True)
-    skill_search = skill_sub.add_parser("search")
-    skill_search.add_argument("query")
-    skill_search.add_argument("--limit", type=int, choices=range(1, 51), default=12)
-    _add_state_argument(skill_search)
-    skill_search.set_defaults(func=cmd_skill_search)
+    for operation in ("inventory", "list", "conflicts", "search", "resolve", "prefer", "prefer-incoming", "order", "reset"):
+        action = skill_sub.add_parser(operation)
+        _add_state_argument(action)
+        _add_base_argument(action)
+        project = action.add_mutually_exclusive_group()
+        project.add_argument("--project-root", help="Project to inspect or configure; defaults to the current directory.")
+        project.add_argument("--no-project", action="store_true", help="Inspect user/state sources only.")
+        for name in ("claude-root", "plugin-root", "incoming-plugin", "incoming-skill"):
+            action.add_argument("--" + name)
+        if operation == "search":
+            action.add_argument("query")
+            action.add_argument("--limit", type=int, choices=range(1, 51), default=12)
+        elif operation == "resolve":
+            action.add_argument("name")
+        if operation in {"prefer", "prefer-incoming", "order", "reset"}:
+            action.add_argument("--scope", choices=("project", "default"), default="project")
+        if operation == "prefer":
+            action.add_argument("--name", required=True)
+            action.add_argument("--candidate", required=True, help="Exact candidate ID from skill inventory; never guess.")
+        elif operation == "order":
+            action.add_argument("--sources", nargs="+", required=True,
+                                choices=("user", "project", "personal", "company", "plugin", "corporate"))
+        elif operation == "reset":
+            action.add_argument("--name", help="Reset one Skill choice; omission resets the selected preference scope.")
+        action.set_defaults(func=cmd_skill)
 
     harness = subparsers.add_parser("harness", help="Inspect, design, generate and validate a project-local agent harness.")
     harness_sub = harness.add_subparsers(dest="harness_command", required=True)
@@ -447,6 +603,21 @@ def build_parser() -> argparse.ArgumentParser:
     _add_state_argument(memory_compact)
     memory_compact.set_defaults(func=cmd_memory_compact)
 
+    learning = subparsers.add_parser("learning", help="Automatic personal learning review, observations, effects, and reversible changes.")
+    learning_sub = learning.add_subparsers(dest="learning_command", required=True)
+    for operation in ("review", "status", "pause", "resume", "rollback"):
+        action = learning_sub.add_parser(operation)
+        _add_state_argument(action)
+        if operation == "review":
+            action.add_argument("--session", required=True)
+            action.add_argument("--turn", required=True)
+            action.add_argument("--spec", required=True)
+        elif operation == "status":
+            action.add_argument("--session")
+        elif operation == "rollback":
+            action.add_argument("--change", required=True)
+        action.set_defaults(func=cmd_learning)
+
     session = subparsers.add_parser("session", help="Manage compact verification state; no transcript content is stored.")
     session_sub = session.add_subparsers(dest="session_command", required=True)
     verify = session_sub.add_parser("verify")
@@ -482,5 +653,6 @@ def main(argv: list[str] | None = None) -> int:
     try:
         return int(args.func(args))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
-        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=False), file=sys.stderr)
+        # Error details can contain the same Unicode paths as successful output.
+        print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=True), file=sys.stderr)
         return 1

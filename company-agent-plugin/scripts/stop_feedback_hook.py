@@ -22,7 +22,7 @@ def main() -> int:
         # End safely instead of crashing the hook or creating an unbounded Stop
         # loop. Never include exception or payload details in user-visible text.
         result = _FAILURE_OUTPUT
-    json.dump(result, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+    json.dump(result, sys.stdout, ensure_ascii=True, separators=(",", ":"))
     sys.stdout.write("\n")
     return 0
 

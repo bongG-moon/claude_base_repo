@@ -14,8 +14,10 @@ param(
     [string] $PythonCommand = 'python',
     [string] $InvokingUserProfile,
     [string] $InvokingLocalAppData,
-    [ValidateSet('Ask', 'Keep', 'Replace')]
+    [ValidateSet('Ask', 'Keep', 'Replace', 'Update')]
     [string] $ExistingHarnessAction = 'Ask',
+    [ValidateSet('Ask', 'KeepCurrent', 'PreferIncoming')]
+    [string] $SkillConflictAction = 'Ask',
     [switch] $AllowExistingCompanyAgentPlugin,
     [switch] $NonInteractive,
     [switch] $DryRun,
@@ -137,31 +139,87 @@ function Resolve-SetupCommand {
     return $null
 }
 
+function Invoke-SetupPythonProbe {
+    param([string] $Executable)
+
+    # Probe only an existing executable, without opening Store aliases, loading
+    # user site/customization, changing PATH, or downloading an interpreter.
+    if (-not [IO.Path]::IsPathRooted($Executable) -or
+        [IO.Path]::GetExtension($Executable) -ine '.exe' -or
+        -not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $null }
+    $item = Get-Item -LiteralPath $Executable -Force
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and $item.Length -eq 0) { return $null }
+    try {
+        $arguments = @()
+        if ([IO.Path]::GetFileNameWithoutExtension($Executable) -ieq 'py') { $arguments += '-3' }
+        $code = "import sys,json,os,sqlite3,ssl,ctypes; print(json.dumps({'version':list(sys.version_info[:3]),'executable':sys.executable,'automaticInstallDisabled':not any(k in os.environ for k in ('PYLAUNCHER_ALLOW_INSTALL','PYLAUNCHER_ALWAYS_INSTALL')) and os.environ.get('PYTHON_MANAGER_AUTOMATIC_INSTALL')=='false'})); sys.exit(0 if sys.version_info >= (3,11) and sys.version_info.major == 3 else 1)"
+        # Isolated mode ignores PYTHONIOENCODING, so opt into UTF-8 explicitly.
+        $arguments += @('-I', '-X', 'utf8', '-B', '-c', $code)
+        $result = Invoke-CompanyAgentPythonProcess -Executable $Executable -Arguments $arguments -TimeoutMilliseconds 10000
+        if ($result.ExitCode -ne 0) { return $null }
+        return ($result.StdOut | ConvertFrom-Json)
+    }
+    catch { return $null }
+}
+
 function Resolve-SetupApprovedPython {
     param(
-        [string] $PreferredCommand = 'python'
+        [string] $PreferredCommand = 'python',
+        [switch] $OnlyPreferred
     )
 
-    foreach ($candidate in @(@($PreferredCommand, 'python', 'py') | Select-Object -Unique)) {
+    # Approval is an organization policy, not something this compatibility
+    # probe can certify. Pin sys.executable, never the mutable py launcher.
+    $candidates = @($PreferredCommand)
+    if (-not $OnlyPreferred) { $candidates += @('python', 'py') }
+    foreach ($candidate in @($candidates | Select-Object -Unique)) {
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
         $resolved = Resolve-SetupCommand -Command $candidate
         if ([string]::IsNullOrWhiteSpace($resolved)) {
             continue
         }
         try {
-            $versionText = & $resolved -c "import sys; print('.'.join(str(v) for v in sys.version_info[:3]))" 2>&1
-            if ($LASTEXITCODE -ne 0) {
-                continue
+            $probe = Invoke-SetupPythonProbe -Executable $resolved
+            if ($null -eq $probe) { continue }
+            $version = [version](@($probe.version) -join '.')
+            $actual = [string]$probe.executable
+            if ($version.Major -ne 3 -or $version -lt [version]'3.11' -or
+                -not [IO.Path]::IsPathRooted($actual) -or [IO.Path]::GetExtension($actual) -ine '.exe' -or
+                -not (Test-Path -LiteralPath $actual -PathType Leaf)) { continue }
+            # Confirm the recorded executable also runs without launcher flags.
+            if ($actual -ine $resolved) {
+                $direct = Invoke-SetupPythonProbe -Executable $actual
+                if ($null -eq $direct -or [string]$direct.executable -ine $actual) { continue }
             }
-            $version = [version]([string]($versionText | Select-Object -Last 1))
-            if ($version -ge [version]'3.11') {
-                return $resolved
-            }
+            return (Get-SetupFullPath -Path $actual)
         }
         catch {
             continue
         }
     }
     return $null
+}
+
+function Get-SetupPythonForInstall {
+    param(
+        [string] $PreferredCommand = 'python',
+        [switch] $NonInteractive,
+        [switch] $DryRun
+    )
+
+    $resolved = Resolve-SetupApprovedPython -PreferredCommand $PreferredCommand
+    if (-not [string]::IsNullOrWhiteSpace($resolved)) { return $resolved }
+    $help = 'Python 3.11+ was not found or could not run. Use the company-approved Python already installed on this PC. Pass -PythonCommand "C:\Path\To\python.exe", or rerun interactive setup to enter its path. No Python download, installation, or PATH change was attempted.'
+    if ($NonInteractive -or $DryRun) { throw $help }
+    Write-Host '사내 Python 3.11 이상을 찾거나 실행하지 못했습니다. Python을 새로 설치하거나 다운로드하지 않습니다.'
+    Write-Host '이미 설치된 python.exe의 전체 경로를 입력하세요. 위치를 모르면 담당자에게 확인해 주세요.'
+    while ($true) {
+        $selection = Read-Host 'Python 경로 (예: C:\Python313\python.exe), Enter는 설치 취소'
+        if ([string]::IsNullOrWhiteSpace($selection)) { throw '설치를 취소했습니다. Python 확인 단계에서 중단하여 기존 설정과 개인 자료는 변경하지 않았습니다.' }
+        $resolved = Resolve-SetupApprovedPython -PreferredCommand ($selection.Trim().Trim('"')) -OnlyPreferred
+        if (-not [string]::IsNullOrWhiteSpace($resolved)) { return $resolved }
+        Write-Host '해당 Python을 실행할 수 없거나 3.11 미만입니다. 경로·버전·실행 권한을 확인하고 다시 입력하세요.'
+    }
 }
 
 function Assert-SetupPathHasNoReparsePoint {
@@ -230,6 +288,89 @@ function Get-SetupSkillOverlaps {
         }
     }
     return @($overlaps)
+}
+
+function Invoke-SetupSkillCommand {
+    param(
+        [string] $PythonExecutable, [string] $PluginRoot, [string] $PersonalStatePath,
+        [Parameter(Mandatory = $true)] [ValidateNotNullOrEmpty()] [string] $KnowledgeRoot,
+        [string] $ClaudeConfigPath, [string] $ProjectPath,
+        [ValidateSet('User', 'Project')] [string] $InstallScope,
+        [ValidateSet('inventory', 'prefer-incoming')] [string] $Command = 'inventory'
+    )
+    # Setup can be launched from another Agent session. Pin discovery to this
+    # verified bundle instead of inheriting that session's plugin/knowledge roots.
+    $arguments = @('-B', (Join-Path $PluginRoot 'scripts\harness_cli.py'), 'skill', $Command,
+        '--state-root', $PersonalStatePath, '--claude-root', $ClaudeConfigPath,
+        '--plugin-root', $PluginRoot, '--incoming-plugin', $PluginRoot, '--base', $KnowledgeRoot)
+    if ($InstallScope -eq 'Project') { $arguments += @('--project-root', $ProjectPath) }
+    else { $arguments += '--no-project' }
+    if ($Command -eq 'prefer-incoming') {
+        $arguments += @('--scope', $(if ($InstallScope -eq 'Project') { 'project' } else { 'default' }))
+    }
+    $processResult = Invoke-CompanyAgentPythonProcess -Executable $PythonExecutable -Arguments $arguments
+    if ($processResult.ExitCode -ne 0) {
+        throw ("Skill $Command failed; installed/incoming Skills could not be checked or selected safely. Details: " + $processResult.StdErr + [Environment]::NewLine + $processResult.StdOut)
+    }
+    try { $result = $processResult.StdOut | ConvertFrom-Json -ErrorAction Stop }
+    catch { throw "Skill $Command returned invalid JSON. Setup cannot treat an unreadable inventory as no conflicts." }
+    if ($Command -eq 'inventory') {
+        foreach ($property in @('skills', 'conflicts', 'warnings', 'preferencesPath', 'effectivePreferences', 'complete')) {
+            if ($null -eq $result -or $null -eq $result.PSObject.Properties[$property]) {
+                throw "Skill inventory is missing '$property'. Use a complete, compatible Company Agent bundle."
+            }
+        }
+        foreach ($conflict in @($result.conflicts)) {
+            foreach ($property in @('name', 'kind', 'candidates', 'resolution')) {
+                if ($null -eq $conflict -or $null -eq $conflict.PSObject.Properties[$property]) {
+                    throw "Skill inventory conflict is missing '$property'. Setup stopped before changing any preferences."
+                }
+            }
+            foreach ($candidate in @($conflict.candidates)) {
+                foreach ($property in @('id', 'name', 'source', 'path', 'incoming')) {
+                    if ($null -eq $candidate -or $null -eq $candidate.PSObject.Properties[$property]) {
+                        throw "Skill inventory candidate is missing '$property'. Setup stopped before changing any preferences."
+                    }
+                }
+            }
+        }
+        if ($result.complete -isnot [bool]) { throw 'Skill inventory returned an invalid completeness flag. Use a complete, compatible Company Agent bundle.' }
+        if (-not $result.complete) {
+            throw ('Skill inventory is incomplete or needs review. Setup cannot safely decide conflicts while metadata is skipped, unreadable, or outside supported limits. No installation changes were made. Details: ' + (@($result.warnings) -join '; '))
+        }
+    }
+    return $result
+}
+
+function Resolve-SetupSkillConflictAction {
+    param(
+        [object[]] $Conflicts = @(),
+        [ValidateSet('Ask', 'KeepCurrent', 'PreferIncoming')] [string] $Action = 'Ask',
+        [switch] $NonInteractive, [switch] $DryRun
+    )
+    if (@($Conflicts).Count -eq 0) { return $(if ($Action -eq 'Ask') { 'KeepCurrent' } else { $Action }) }
+    Write-Host ''
+    Write-Host '설치할 Skill과 기존 Skill에서 겹치는 이름을 찾았습니다.'
+    foreach ($conflict in $Conflicts) {
+        Write-Host ("  {0} [{1}]" -f $conflict.name, $conflict.kind)
+        foreach ($candidate in @($conflict.candidates)) {
+            $label = $(if ($candidate.incoming) { '설치 예정' } else { '기존' })
+            Write-Host ("    {0}: {1} / {2}" -f $label, $candidate.source, $candidate.path)
+            $invocation = Get-SetupPropertyValue -Object $candidate -Name 'invocation'
+            if ($invocation) { Write-Host ("      호출: {0}" -f $invocation) }
+        }
+    }
+    Write-Host '기본 선택은 현재 선호 설정을 유지합니다. 새 Plugin Skill은 네임스페이스로 함께 설치됩니다.'
+    Write-Host '새 Skill 우선은 Company Agent의 Skill 선택 설정에만 적용됩니다. 원본 Skill 파일은 보존됩니다.'
+    if ($Action -ne 'Ask') { return $Action }
+    if ($NonInteractive -or $DryRun) { return 'InputRequired' }
+    Write-Host '  1. 현재 선호 설정 유지 (기본값)'
+    Write-Host '  2. 겹치는 이름에서 새 Skill을 우선 사용'
+    Write-Host '  3. 설치 취소'
+    do { $selection = Read-Host '1, 2, 3 중 선택하세요. Enter를 누르면 1번' } while ($selection -notin @('', '1', '2', '3'))
+    if ($selection -eq '3') { return 'Cancel' }
+    if ($selection -eq '2') { return 'PreferIncoming' }
+    return 'KeepCurrent'
 }
 
 function Get-SetupClaudeCompatibility {
@@ -397,11 +538,17 @@ function Get-SetupBackupItems {
         Add-BackupItem -Source (Join-Path $PersonalStatePath 'personal-root\.claude\skills') `
             -RelativePath 'company-agent\personal-learning\personal-root\.claude\skills' `
             -Purpose 'Personal Skills and supporting files (secret and runtime files excluded)' -Required $true
-        foreach ($relative in @('config\user.json', 'state-format.json')) {
+        foreach ($relative in @('config\user.json', 'state-format.json', 'config\learning.json', 'learning\state.json')) {
             Add-BackupItem -Source (Join-Path $PersonalStatePath $relative) `
                 -RelativePath (Join-Path 'company-agent\personal-learning' $relative) `
                 -Purpose 'Personal configuration or state-format marker (sanitized)' -Mode 'sanitized-json' -Required $true
         }
+        Add-BackupItem -Source (Join-Path $PersonalStatePath 'config\skill-preferences.json') `
+            -RelativePath 'company-agent\personal-learning\config\skill-preferences.json' `
+            -Purpose 'Explicit Skill selections before installation' -Required $true
+        Add-BackupItem -Source (Join-Path $PersonalStatePath 'config\skill-preferences-history') `
+            -RelativePath 'company-agent\personal-learning\config\skill-preferences-history' `
+            -Purpose 'Skill selection revision history (selective)' -Required $true
     }
 
     return @($items.ToArray())
@@ -847,7 +994,7 @@ if ($Scope -in @('User', 'Project')) {
     $scopedParameters = @{}
     foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'BackupRoot', 'ClaudeConfigRoot',
         'ClaudeCommand', 'PythonCommand', 'InvokingUserProfile', 'InvokingLocalAppData', 'NonInteractive',
-        'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction')) {
+        'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction', 'SkillConflictAction')) {
         $value = Get-Variable -Name $name -ValueOnly
         if ($null -ne $value -and -not ($value -is [string] -and [string]::IsNullOrWhiteSpace($value))) {
             $scopedParameters[$name] = $value
@@ -858,6 +1005,9 @@ if ($Scope -in @('User', 'Project')) {
 }
 if ($ExistingHarnessAction -ne 'Ask') {
     throw 'ExistingHarnessAction applies only to User/Project installation. Legacy Machine installation does not replace existing Claude rules or hooks.'
+}
+if ($SkillConflictAction -ne 'Ask') {
+    throw 'SkillConflictAction applies only to User/Project installation. Legacy Machine setup reports Skill overlap warnings without changing Skill preferences.'
 }
 
 $isHandoff = -not [string]::IsNullOrWhiteSpace($HandoffData)
@@ -948,12 +1098,7 @@ try {
         if ([string]::IsNullOrWhiteSpace($resolvedClaude)) {
             throw 'Claude Code was not found. Confirm that the already-installed claude command works in a normal PowerShell window, then run setup again.'
         }
-        # The plugin-local python.cmd shim forwards every Hook to this exact
-        # interpreter, so a validated py.exe fallback is safe as well.
-        $resolvedPython = Resolve-SetupApprovedPython -PreferredCommand $PythonCommand
-        if ([string]::IsNullOrWhiteSpace($resolvedPython)) {
-            throw 'Python was not found. Company Agent needs an approved Python 3.11 or newer runtime available through python or py.'
-        }
+        $resolvedPython = Get-SetupPythonForInstall -PreferredCommand $PythonCommand -NonInteractive:$NonInteractive -DryRun:$DryRun
         $ClaudeCommand = $resolvedClaude
         try {
             Assert-CompanyAgentPrerequisites -ClaudeCommand $ClaudeCommand -PythonCommand $resolvedPython

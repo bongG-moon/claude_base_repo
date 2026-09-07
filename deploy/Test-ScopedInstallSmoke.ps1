@@ -1,9 +1,11 @@
 [CmdletBinding()]
 param(
     [string] $BundleRoot,
+    [string] $BundleZip,
     [string] $ClaudeCommand = 'claude',
     [string] $PythonCommand = 'python',
     [switch] $IncludeBundledPython,
+    [switch] $LegacyEncoding,
     [switch] $KeepTestDirectory
 )
 
@@ -14,27 +16,41 @@ function Assert-ScopedSmoke {
     param([bool] $Condition, [string] $Message)
     if (-not $Condition) { throw "Scoped install smoke failed: $Message" }
 }
-$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('CompanyAgent-ScopedSmoke-' + [guid]::NewGuid().ToString('N'))
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('CompanyAgent-ScopedSmoke-' + [guid]::NewGuid().ToString('N').Substring(0, 12))
 $originalConfig = $env:CLAUDE_CONFIG_DIR
 $originalForce = $env:CLAUDE_CODE_SUBAGENT_MODEL
 $originalForce2 = $env:CLAUDE_CODE_SUBAGENT_MODEL_FORCE
+$originalPythonEncoding = $env:PYTHONIOENCODING
+$originalPythonUtf8 = $env:PYTHONUTF8
+$originalConsoleEncoding = [Console]::OutputEncoding
+$originalPipeEncoding = $OutputEncoding
 try {
     New-CompanyAgentDirectory -Path $testRoot
+    if ($BundleRoot -and $BundleZip) { throw 'Use BundleRoot or BundleZip, not both.' }
     if ([string]::IsNullOrWhiteSpace($BundleRoot)) {
         $repoRoot = Split-Path -Parent $PSScriptRoot
         $pluginManifest = Read-CompanyAgentJson -Path (Join-Path $repoRoot 'company-agent-plugin\.claude-plugin\plugin.json')
         $knowledgeManifest = Read-CompanyAgentJson -Path (Join-Path $repoRoot 'corporate-knowledge\pack.json')
-        $bundleZip = Join-Path $testRoot 'bundle.zip'
-        $null = & (Join-Path $PSScriptRoot 'New-OfflineBundle.ps1') -SourceRoot $repoRoot -CoreVersion ([string]$pluginManifest.version) -KnowledgeVersion ([string]$knowledgeManifest.version) -OutputPath $bundleZip -SkipSourceValidation:(-not $IncludeBundledPython)
+        if ([string]::IsNullOrWhiteSpace($BundleZip)) {
+            $BundleZip = Join-Path $testRoot 'bundle.zip'
+            $null = & (Join-Path $PSScriptRoot 'New-OfflineBundle.ps1') -SourceRoot $repoRoot -CoreVersion ([string]$pluginManifest.version) -KnowledgeVersion ([string]$knowledgeManifest.version) -OutputPath $BundleZip -IncludeBundledPython:$IncludeBundledPython -SkipSourceValidation:(-not $IncludeBundledPython)
+        }
         $BundleRoot = Join-Path $testRoot 'bundle'
         Expand-Archive -LiteralPath $bundleZip -DestinationPath $BundleRoot
     }
-    $profileRoot = Join-Path $testRoot 'profile'
+    if ($LegacyEncoding) {
+        $env:PYTHONIOENCODING = 'cp949:strict'
+        $env:PYTHONUTF8 = '0'
+        [Console]::OutputEncoding = [Text.Encoding]::GetEncoding(949)
+        $OutputEncoding = [Text.Encoding]::GetEncoding(949)
+    }
+    $unicodeLabel = [string][char]0xD55C + [char]0xAE00 + [char]0x2014 + [char]::ConvertFromUtf32(0x1F680)
+    $profileRoot = Join-Path $testRoot ('profile ' + $unicodeLabel)
     $localAppData = Join-Path $profileRoot 'AppData\Local'
     $configRoot = Join-Path $profileRoot '.claude'
-    $projectRoot = Join-Path $testRoot 'My project'
-    $otherProject = Join-Path $testRoot 'Other project'
-    $customStateRoot = Join-Path $testRoot 'Personal state outside the defaults'
+    $projectRoot = Join-Path $testRoot ('My project ' + $unicodeLabel)
+    $otherProject = Join-Path $testRoot ('Other project ' + $unicodeLabel)
+    $customStateRoot = Join-Path $testRoot ('Personal state ' + $unicodeLabel)
     $failedProject = Join-Path $testRoot 'Failed project'
     foreach ($path in @($localAppData, $configRoot, $projectRoot, $otherProject, $failedProject)) { New-CompanyAgentDirectory -Path $path }
     $env:CLAUDE_CONFIG_DIR = $configRoot
@@ -45,6 +61,7 @@ try {
         enabledPlugins = [pscustomobject]@{ 'unrelated@fixture' = $true }
     })
     Write-CompanyAgentUtf8File -Path (Join-Path $configRoot 'skills\existing-skill\SKILL.md') -Content 'Existing skill must survive.'
+    Write-CompanyAgentUtf8File -Path (Join-Path $configRoot 'skills\unicode-fixture\SKILL.md') -Content ("---`nname: unicode-fixture`ndescription: $unicodeLabel`n---`nUnicode metadata must roundtrip.")
     Write-CompanyAgentUtf8File -Path (Join-Path $configRoot '.credentials.json') -Content '{"fixture":"do-not-copy"}'
     $settingsLocalPath = Join-Path $projectRoot '.claude\settings.local.json'
     Write-CompanyAgentJsonAtomic -Path $settingsLocalPath -Value ([pscustomobject]@{ permissions = [pscustomobject]@{ allow = @('Read') } })
@@ -138,6 +155,10 @@ try {
     Assert-ScopedSmoke ($preview.status -eq 'dry-run' -and -not $preview.needsElevation) 'User dry-run should be read-only without UAC'
     Assert-ScopedSmoke (-not (Test-Path -LiteralPath (Join-Path $localAppData 'CompanyAgent-Distribution'))) 'Dry-run created distribution'
     if ($IncludeBundledPython) { Assert-ScopedSmoke ($preview.pythonCommand -like '*\runtime\python\python.exe') 'Full package did not choose its embedded Python' }
+    else {
+        Assert-ScopedSmoke ([IO.Path]::IsPathRooted($preview.pythonCommand) -and [IO.Path]::GetFileName($preview.pythonCommand) -ine 'py.exe') 'External Python must be the validated absolute interpreter, not a launcher'
+        Assert-ScopedSmoke (-not (Test-Path -LiteralPath (Join-Path $BundleRoot 'payload\core\plugin\runtime\python'))) 'Default package contains a Python runtime'
+    }
     $user = & $setup @common -Scope User
     Assert-ScopedSmoke ($user.status -eq 'installed' -and $user.nativeClaudeScope -eq 'user') 'User installation failed'
     Assert-ScopedSmoke ($user.previousHarnessDeactivated -and -not (Test-Path -LiteralPath $userInstruction) -and -not (Test-Path -LiteralPath $userRule)) 'Replace did not deactivate old user instructions'
@@ -205,8 +226,14 @@ try {
     $inventory = Read-CompanyAgentJson -Path (Join-Path $configRoot 'plugins\installed_plugins.json')
     $entries = @($inventory.plugins.'company-agent@company-agent-local')
     Assert-ScopedSmoke ($entries.Count -eq 3) 'User plus two Project registrations should coexist as one plugin identity'
-    $again = & $setup @common -Scope Project -ProjectRoot $projectRoot
-    Assert-ScopedSmoke ($again.status -eq 'installed') 'Repeat installation failed'
+    $reapplyCommon = $common.Clone()
+    $reapplyCommon.ExistingHarnessAction = 'Update'
+    Write-CompanyAgentUtf8File -Path $projectInstruction -Content 'New personal project instruction; preserve on Company Agent update.'
+    $reapplyInstructionHash = (Get-FileHash -LiteralPath $projectInstruction -Algorithm SHA256).Hash
+    $again = & $setup @reapplyCommon -Scope Project -ProjectRoot $projectRoot
+    Assert-ScopedSmoke ($again.status -eq 'reapplied' -and $again.operation -eq 'reapply') 'Repeat installation was not distinguished from a new installation'
+    Assert-ScopedSmoke (-not $again.previousHarnessDeactivated -and $again.existingHarnessAction -eq 'Update') 'Reapply incorrectly selected harness replacement'
+    Assert-ScopedSmoke ((Get-FileHash -LiteralPath $projectInstruction -Algorithm SHA256).Hash -ceq $reapplyInstructionHash) 'Reapply removed a new personal instruction'
     $receipt = Read-CompanyAgentJson -Path $project.registrationPath
     Assert-ScopedSmoke ($receipt.projectRoot -eq $projectRoot -and $receipt.scope -eq 'Project') 'Project registry contract mismatch'
     Assert-ScopedSmoke ($receipt.claudeConfigDirOverride -eq $true) 'Project registration lost the explicit Claude config override'
@@ -218,6 +245,22 @@ try {
     Write-CompanyAgentUtf8File -Path $latestMemoryPath -Content 'First saved preference.'
     Write-CompanyAgentUtf8File -Path (Join-Path $customStateRoot 'knowledge\entries\local-term.md') -Content 'Personal term definition.'
     Write-CompanyAgentUtf8File -Path (Join-Path $customStateRoot 'personal-root\.claude\skills\personal-example\SKILL.md') -Content 'Personal skill must survive.'
+    Write-CompanyAgentJsonAtomic -Path (Join-Path $customStateRoot 'config\learning.json') -Value @{ schemaVersion = 1; enabled = $false }
+    Write-CompanyAgentJsonAtomic -Path (Join-Path $customStateRoot 'learning\state.json') -Value @{ schemaVersion = 1; preservationFixture = 'Local learning observations and rollback journal must survive.' }
+    # Save a real project-specific candidate through the packaged CLI. The ID
+    # must survive repeated installation and a new version/cache directory.
+    $skillPluginRoot = Join-Path $BundleRoot 'payload\core\plugin'
+    $skillCli = Join-Path $skillPluginRoot 'scripts\harness_cli.py'
+    $skillArgs = @('--state-root', $customStateRoot, '--project-root', $otherProject,
+        '--claude-root', $configRoot, '--plugin-root', $skillPluginRoot,
+        '--base', (Join-Path $BundleRoot 'payload\knowledge'))
+    $skillInventoryRaw = & $PythonCommand -B $skillCli skill inventory @skillArgs
+    Assert-ScopedSmoke ($LASTEXITCODE -eq 0) 'Packaged Skill inventory failed'
+    $skillInventory = ($skillInventoryRaw -join [Environment]::NewLine) | ConvertFrom-Json
+    $preferredSkill = @($skillInventory.skills | Where-Object { $_.source -eq 'company' -and $_.name -eq 'karpathy-guidelines' })
+    Assert-ScopedSmoke ($skillInventory.complete -and $preferredSkill.Count -eq 1) 'Packaged Company Skill was not discovered unambiguously'
+    $null = & $PythonCommand -B $skillCli skill prefer --name karpathy-guidelines --candidate $preferredSkill[0].id --scope project @skillArgs
+    Assert-ScopedSmoke ($LASTEXITCODE -eq 0) 'Project Skill preference could not be saved'
     Write-CompanyAgentUtf8File -Path $latestMemoryPath -Content 'Latest saved preference, amended after installation.'
     $customStateBefore = @(Get-CompanyAgentTreeRecords -Root $customStateRoot | ConvertTo-Json -Depth 10 -Compress) -join ''
     $customRepeat = & $setup @common -Scope Project -ProjectRoot $otherProject
@@ -262,6 +305,21 @@ try {
         }
     }
     finally { Write-CompanyAgentJsonAtomic -Path $project2.registrationPath -Value $savedCustomRegistration }
+
+    foreach ($invalidIdentity in @(@{ key = 'pluginId'; value = 'not-company@other' }, @{ key = 'coreVersion'; value = "bad`nversion" })) {
+        try {
+            $invalidRegistration = Read-CompanyAgentJson -Path $project2.registrationPath
+            $invalidRegistration.($invalidIdentity.key) = $invalidIdentity.value
+            Write-CompanyAgentJsonAtomic -Path $project2.registrationPath -Value $invalidRegistration
+            $invalidBefore = (Get-FileHash -LiteralPath $project2.registrationPath -Algorithm SHA256).Hash
+            $identityBlocked = $false
+            try { $null = & $setup @reapplyCommon -Scope Project -ProjectRoot $otherProject -DryRun }
+            catch { if ($_.Exception.Message -notmatch 'does not identify a supported Company Agent') { throw }; $identityBlocked = $true }
+            Assert-ScopedSmoke $identityBlocked 'Unrecognized plugin identity/version was offered as an owned update'
+            Assert-ScopedSmoke ((Get-FileHash -LiteralPath $project2.registrationPath -Algorithm SHA256).Hash -ceq $invalidBefore) 'Rejected identity changed the registration'
+        }
+        finally { Write-CompanyAgentJsonAtomic -Path $project2.registrationPath -Value $savedCustomRegistration }
+    }
 
     $futureMarker = Join-Path $customStateRoot 'state-format.json'
     Write-CompanyAgentJsonAtomic -Path $futureMarker -Value ([pscustomobject]@{ schemaVersion = 999 })
@@ -384,10 +442,27 @@ try {
     Write-CompanyAgentJsonAtomic -Path $updateManifestPath -Value $updateManifest
     $updateCommon = $common.Clone()
     $updateCommon.BundleRoot = $updateBundleRoot
+    $updateCommon.ExistingHarnessAction = 'Update'
     $updateSetup = Join-Path $updateBundleRoot 'deploy\Setup-CompanyAgent.ps1'
+    $updateInstruction = Join-Path $otherProject 'CLAUDE.md'
+    $updateRule = Join-Path $otherProject '.claude\rules\personal-rule.md'
+    $updateHooks = Join-Path $otherProject '.claude\settings.json'
+    Write-CompanyAgentUtf8File -Path $updateInstruction -Content 'Personal instruction survives normal product updates.'
+    Write-CompanyAgentUtf8File -Path $updateRule -Content 'Personal project rule survives normal product updates.'
+    Write-CompanyAgentJsonAtomic -Path $updateHooks -Value @{ hooks = @{ Stop = @(@{ hooks = @(@{ type = 'command'; command = 'echo PERSONAL-HOOK-PRESERVED' }) }) } }
+    $updatePersonalHashes = @{}
+    foreach ($updatePersonalPath in @($updateInstruction, $updateRule, $updateHooks)) { $updatePersonalHashes[$updatePersonalPath] = (Get-FileHash -LiteralPath $updatePersonalPath -Algorithm SHA256).Hash }
+    $updateAsk = $updateCommon.Clone()
+    $updateAsk.ExistingHarnessAction = 'Ask'
+    $updateAskResult = & $updateSetup @updateAsk -Scope Project -ProjectRoot $otherProject
+    Assert-ScopedSmoke ($updateAskResult.status -eq 'input-required' -and ($updateAskResult.choices -join ',') -eq 'Update,Keep') 'Recognized Company Agent offered generic replacement rather than update'
+    Assert-ScopedSmoke ($updateAskResult.operation -eq 'update' -and $updateAskResult.previousCoreVersion -eq $baselineVersion.ToString() -and $updateAskResult.coreVersion -eq $updateVersion) 'Update prompt omitted or misstated versions'
     Write-CompanyAgentUtf8File -Path $latestMemoryPath -Content 'Newest preference saved immediately before the distinct-version update.'
     $stateBeforeVersionUpdate = @(Get-CompanyAgentTreeRecords -Root $customStateRoot | ConvertTo-Json -Depth 10 -Compress) -join ''
     $updatedCustom = & $updateSetup @updateCommon -Scope Project -ProjectRoot $otherProject
+    Assert-ScopedSmoke ($updatedCustom.status -eq 'updated' -and $updatedCustom.operation -eq 'update' -and $updatedCustom.previousCoreVersion -eq $baselineVersion.ToString()) 'Actual update did not report old-to-new update completion'
+    Assert-ScopedSmoke (-not $updatedCustom.previousHarnessDeactivated -and $updatedCustom.existingHarnessAction -eq 'Update') 'Update deactivated unrelated personal rules/hooks'
+    foreach ($updatePersonalPath in $updatePersonalHashes.Keys) { Assert-ScopedSmoke ((Get-FileHash -LiteralPath $updatePersonalPath -Algorithm SHA256).Hash -ceq $updatePersonalHashes[$updatePersonalPath]) 'Update changed a personal instruction, rule or hook' }
     $updatedRegistration = Read-CompanyAgentJson -Path $updatedCustom.registrationPath
     Assert-ScopedSmoke ($updatedRegistration.coreVersion -eq $updateVersion) 'Distinct-version update did not advance the scope registration'
     Assert-ScopedSmoke ($updatedRegistration.userStateRoot -ieq $customStateRoot) 'Distinct-version update disconnected the custom state'
@@ -395,6 +470,19 @@ try {
     $updatedProjectEntries = @($updatedEntries | Where-Object { $_.scope -eq 'local' -and $_.projectPath -ieq $otherProject -and $_.version -eq $updateVersion })
     Assert-ScopedSmoke ($updatedProjectEntries.Count -eq 1) 'Real Claude CLI did not select the new plugin version for the custom-state project'
     Assert-ScopedSmoke ((@(Get-CompanyAgentTreeRecords -Root $customStateRoot | ConvertTo-Json -Depth 10 -Compress) -join '') -ceq $stateBeforeVersionUpdate) 'Distinct-version update changed latest memory, personal knowledge, or Skill files'
+    $updatedSkillRoot = [string]$updatedProjectEntries[0].installPath
+    $updatedSkillCli = Join-Path $updatedSkillRoot 'scripts\harness_cli.py'
+    $resolvedSkillRaw = & $PythonCommand -B $updatedSkillCli skill resolve karpathy-guidelines --state-root $customStateRoot --project-root $otherProject --claude-root $configRoot --plugin-root $updatedSkillRoot --base (Join-Path $updateBundleRoot 'payload\knowledge')
+    Assert-ScopedSmoke ($LASTEXITCODE -eq 0) 'Updated cached CLI could not resolve the preserved Skill preference'
+    $resolvedSkill = ($resolvedSkillRaw -join [Environment]::NewLine) | ConvertFrom-Json
+    Assert-ScopedSmoke ($resolvedSkill.complete -and $resolvedSkill.resolution.status -eq 'selected' -and $resolvedSkill.resolution.selectedId -ceq $preferredSkill[0].id) 'Skill preference ID or resolution changed after a version update'
+    $selectedUpdatedSkill = @($resolvedSkill.candidates | Where-Object { $_.id -eq $preferredSkill[0].id })
+    Assert-ScopedSmoke ($selectedUpdatedSkill.Count -eq 1 -and $selectedUpdatedSkill[0].path.StartsWith($updatedSkillRoot, [StringComparison]::OrdinalIgnoreCase)) 'Preserved Skill preference still points at the old plugin payload'
+    $rejectDowngrade = $false
+    try { $null = & $setup @reapplyCommon -Scope Project -ProjectRoot $otherProject }
+    catch { if ($_.Exception.Message -notmatch 'older') { throw }; $rejectDowngrade = $true }
+    Assert-ScopedSmoke $rejectDowngrade 'Older package was presented as an ordinary update'
+    Assert-ScopedSmoke ((Read-CompanyAgentJson -Path $updatedCustom.registrationPath).coreVersion -eq $updateVersion) 'Rejected downgrade changed the latest registration'
     # User scope was uninstalled above. Restore only its original instructions
     # and custom hooks through the packaged recovery entry point.
     $restoreEntry = Join-Path $BundleRoot 'deploy\Restore-PreviousHarness.ps1'
@@ -406,12 +494,16 @@ try {
     Assert-ScopedSmoke ($afterRecovery.hooks.SessionStart[0].hooks[0].command -eq 'echo PREVIOUS_HARNESS_FIXTURE') 'Packaged recovery did not restore original hooks'
     Assert-ScopedSmoke ($afterRecovery.env.API_TOKEN -eq 'fixture-not-a-real-secret' -and $afterRecovery.enabledPlugins.'unrelated@fixture' -eq $true) 'Packaged recovery changed unrelated settings'
     Write-Host "Scoped install smoke PASS (real offline Claude plugin CLI): $testRoot"
-    [pscustomobject]@{ status = 'pass'; testRoot = $testRoot; nativeClaude = $true; scopes = @('user', 'local'); registrations = 3; nativeSessionStart = $true; embeddedPython = [bool]$IncludeBundledPython; customStatePreserved = $true; conflictingStateBlocked = $true; futureStateBlocked = $true; distinctVersionUpdate = $updateVersion; existingHarnessChoice = $true; replacementRollback = $true }
+    [pscustomobject]@{ status = 'pass'; testRoot = $testRoot; nativeClaude = $true; scopes = @('user', 'local'); registrations = 3; nativeSessionStart = $true; embeddedPython = [bool]$IncludeBundledPython; customStatePreserved = $true; conflictingStateBlocked = $true; futureStateBlocked = $true; distinctVersionUpdate = $updateVersion; existingHarnessChoice = $true; replacementRollback = $true; legacyCp949 = [bool]$LegacyEncoding; unicodePaths = $true }
 }
 finally {
     $env:CLAUDE_CONFIG_DIR = $originalConfig
     $env:CLAUDE_CODE_SUBAGENT_MODEL = $originalForce
     $env:CLAUDE_CODE_SUBAGENT_MODEL_FORCE = $originalForce2
+    $env:PYTHONIOENCODING = $originalPythonEncoding
+    $env:PYTHONUTF8 = $originalPythonUtf8
+    [Console]::OutputEncoding = $originalConsoleEncoding
+    $OutputEncoding = $originalPipeEncoding
     if (-not $KeepTestDirectory -and (Test-Path -LiteralPath $testRoot)) {
         $resolved = ConvertTo-CompanyAgentFullPath -Path $testRoot
         $tempRoot = (ConvertTo-CompanyAgentFullPath -Path ([IO.Path]::GetTempPath())).TrimEnd('\')

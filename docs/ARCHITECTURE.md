@@ -1,6 +1,9 @@
 # Company Agent Harness Architecture
 
-## Native installation scopes (0.3)
+## Native installation scopes (1.1.0)
+
+1.0.0 is the first-release baseline. 1.1.0 adds automatic personal learning without replacing personal state.
+Earlier 0.3.x labels refer to pre-release development iterations.
 
 The default installer now registers the same offline plugin ID in Claude's user
 scope or project-local scope. Ordinary `claude` sessions load the hooks without a
@@ -10,7 +13,7 @@ while User/Project state is independently selected from installer records under
 inside its project and only while its native installation remains enabled.
 
 `SessionStart` invokes PowerShell as a real Windows executable, selects the
-bundled Python runtime, initializes the chosen state without email prompts, and
+existing Python 3.11+ interpreter validated at installation, initializes the chosen state without email prompts, and
 builds the knowledge index. Every hook resolves the same scope from its input cwd.
 Prompt hooks inject bounded personal Skill metadata and knowledge paths; Claude
 reads the relevant Skill body before use. The runtime supplies an absolute CLI
@@ -56,10 +59,19 @@ UserPromptSubmit hook
                    |                 |
              validator PASS     missing/failed
                    |                 |
-                finish       corrective feedback
+              learning review corrective feedback
                                      |
                               maximum two retries
 ```
+
+After verification passes or its bounded retry budget is exhausted, `Stop`
+requests a main-conversation self-learning review (at most two continuations).
+Read-only turns are also reviewed. The local engine validates turn identity,
+evidence, private paths and observed Skill hashes before changing only owned
+preference items or small personal Skill checklist sections. Later same-task
+uses assess the exact changed version; effects remain observational, not causal
+proof. No separate LLM process, transcript reader or background daemon is used.
+See [automatic learning](SELF_LEARNING.md) for evidence gates and pause/rollback.
 
 With the default `AUTO` mode, the interactive parent session keeps the model already selected by the user's Claude Code configuration. Claude Code does not expose a Hook response field that changes the active main-session model. Therefore the native CLI implementation performs real workload-specific execution through plugin subagents whose `model` frontmatter is `haiku`, `sonnet`, or `opus`. Those aliases are already configured to the company's SMALL, MEDIUM, and LARGE models before this Harness is installed.
 

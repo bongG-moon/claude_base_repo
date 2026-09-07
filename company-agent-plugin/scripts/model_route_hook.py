@@ -9,7 +9,7 @@ import sys
 from company_agent.memory import MAX_MEMORY_RESULTS, render_memory_context, search_memory
 from company_agent.model_router import MEDIUM, RouteDecision, hook_output, classify_prompt
 from company_agent.paths import user_state_root
-from company_agent.state import begin_turn, safe_session_id
+from company_agent.state import begin_turn, learning_context, safe_session_id
 
 
 def _safe_default(reason: str) -> RouteDecision:
@@ -25,6 +25,7 @@ def _safe_default(reason: str) -> RouteDecision:
 def main() -> int:
     personal_memory_context = ""
     sanitized_session_id: str | None = None
+    learning_metadata: dict | None = None
     try:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
@@ -50,12 +51,14 @@ def main() -> int:
             if isinstance(session_id, str) and session_id:
                 sanitized_session_id = safe_session_id(session_id)
                 try:
-                    begin_turn(
+                    state = begin_turn(
                         session_id,
                         decision.tier,
                         decision.verification_required,
                         decision.reason_codes,
+                        native_prompt_id=payload.get("prompt_id"),
                     )
+                    learning_metadata = learning_context(state)
                 except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
                     # A damaged session file must not prevent the user from
                     # starting a new Claude turn. Stop verification will fail
@@ -64,14 +67,19 @@ def main() -> int:
     except (json.JSONDecodeError, OSError, UnicodeError):
         decision = _safe_default("UNREADABLE_HOOK_INPUT")
 
+    output = hook_output(
+        decision,
+        session_id=sanitized_session_id,
+        personal_memory_context=personal_memory_context,
+    )
+    if learning_metadata:
+        envelope = json.loads(output["hookSpecificOutput"]["additionalContext"])
+        envelope["company_agent_learning"] = learning_metadata
+        output["hookSpecificOutput"]["additionalContext"] = json.dumps(envelope, ensure_ascii=True, separators=(",", ":"))
     json.dump(
-        hook_output(
-            decision,
-            session_id=sanitized_session_id,
-            personal_memory_context=personal_memory_context,
-        ),
+        output,
         sys.stdout,
-        ensure_ascii=False,
+        ensure_ascii=True,
         separators=(",", ":"),
     )
     sys.stdout.write("\n")

@@ -45,7 +45,11 @@ try {
     Assert-ExistingHarness (-not $inventory.detected -and $inventory.items.Count -eq 0) 'Empty profile requires a decision'
     Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $inventory -Action Ask -NonInteractive) -eq 'Install') 'Empty profile did not proceed without input'
     Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $inventory -Action Keep) -eq 'Install') 'No-existing Keep should remain a normal installation'
-    $assertions += 3
+    Assert-ExistingHarness (-not $inventory.hasCompanyAgent -and -not $inventory.hasCustomHarness) 'Empty profile acquired an installation identity'
+    $newIntent = Get-SetupInstallationIntent -Inventory $inventory -TargetCoreVersion '1.1.1' -TargetKnowledgeVersion '2026.09.03'
+    Assert-ExistingHarness ($newIntent.operation -eq 'install' -and -not $newIntent.hasCompanyAgent -and $newIntent.coreVersion -eq '1.1.1' -and $newIntent.knowledgeVersion -eq '2026.09.03') 'New installation intent is incorrect'
+    Assert-ExistingHarnessRejected -Action { Resolve-SetupExistingHarnessAction -Inventory $inventory -Action Update -NonInteractive } -Pattern 'existing|installed|registration|Company Agent' -Message 'Explicit update accepted an empty scope'
+    $assertions += 6
 
     Write-CompanyAgentJsonAtomic -Path (Join-Path $claudeRoot 'settings.json') -Value ([pscustomobject]@{
         model = 'already-configured'; env = [pscustomobject]@{ ANTHROPIC_AUTH_TOKEN = 'fixture-super-secret' }
@@ -79,7 +83,9 @@ try {
     Assert-ExistingHarness (($inventory | ConvertTo-Json -Depth 10) -notmatch 'fixture-super-secret') 'Inventory emitted a sensitive hook body'
     Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $inventory -Action Keep -NonInteractive) -eq 'Keep') 'Explicit Keep was not respected'
     Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $inventory -Action Replace -NonInteractive) -eq 'Replace') 'Explicit Replace was not respected'
-    $assertions += 6
+    Assert-ExistingHarness (-not $inventory.hasCompanyAgent -and $inventory.hasCustomHarness) 'A custom harness was mistaken for Company Agent'
+    Assert-ExistingHarnessRejected -Action { Resolve-SetupExistingHarnessAction -Inventory $inventory -Action Update -NonInteractive } -Pattern 'existing|installed|registration|Company Agent' -Message 'Explicit update accepted a different harness'
+    $assertions += 8
 
     function Read-Host { throw 'Read-Host must never be called in a noninteractive or dry run.' }
     Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $inventory -NonInteractive) -eq 'InputRequired') 'Noninteractive Ask did not require input safely'
@@ -125,6 +131,67 @@ try {
     Assert-ExistingHarness ($registered.detected -and $registered.items.Count -eq 1 -and $registered.replacementFiles.Count -eq 0 -and $registered.hookSettingsPaths.Count -eq 0) 'Existing Company Agent registration did not produce an update choice'
     Assert-ExistingHarness (($registered | ConvertTo-Json -Depth 10) -notmatch 'fixture-super-secret|not-scanned') 'Registration metadata leaked into inventory'
     $assertions += 3
+
+    # Own registration is a different decision from replacing an unrelated
+    # harness. It must not require reading private state to classify an update.
+    $registration = [pscustomobject]@{
+        coreVersion = '1.0.0'; knowledgeVersion = '2026.09.03'
+        userStateRoot = 'not-scanned'; private = 'fixture-super-secret'
+    }
+    $before = Get-ExistingHarnessFixtureDigest -Root $fixtureRoot
+    $ownedOnly = Get-SetupExistingHarness -Scope Project -ClaudeConfigRoot $claudeRoot -ProjectRoot $emptyProject -ExistingRegistration $registration
+    $ownedWithCustom = Get-SetupExistingHarness @userArgs -ExistingRegistration $registration
+    Assert-ExistingHarness ($ownedOnly.hasCompanyAgent -and -not $ownedOnly.hasCustomHarness) 'Owned-only registration was not distinguished from custom harness rules'
+    Assert-ExistingHarness ($ownedWithCustom.hasCompanyAgent -and $ownedWithCustom.hasCustomHarness) 'Custom rules alongside Company Agent were not reported separately'
+    Assert-ExistingHarness ($ownedOnly.installedCoreVersion -eq '1.0.0' -and $ownedOnly.installedKnowledgeVersion -eq '2026.09.03') 'Installed version display fields were not projected correctly'
+    Assert-ExistingHarness (($ownedOnly | ConvertTo-Json -Depth 10) -notmatch 'fixture-super-secret|not-scanned') 'Owned installation inventory exposed private registration fields'
+    $updateIntent = Get-SetupInstallationIntent -Inventory $ownedOnly -TargetCoreVersion '1.1.1' -TargetKnowledgeVersion '2026.09.03'
+    Assert-ExistingHarness ($updateIntent.operation -eq 'update' -and $updateIntent.hasCompanyAgent -and $updateIntent.previousCoreVersion -eq '1.0.0' -and $updateIntent.previousKnowledgeVersion -eq '2026.09.03' -and $updateIntent.coreVersion -eq '1.1.1') 'Upgrade intent lost the installed and target versions'
+    $reapplyIntent = Get-SetupInstallationIntent -Inventory $ownedOnly -TargetCoreVersion '1.0.0' -TargetKnowledgeVersion '2026.09.03'
+    Assert-ExistingHarness ($reapplyIntent.operation -eq 'reapply') 'An identical package was displayed as a new upgrade'
+    $knowledgeIntent = Get-SetupInstallationIntent -Inventory $ownedOnly -TargetCoreVersion '1.0.0' -TargetKnowledgeVersion '2026.09.04'
+    Assert-ExistingHarness ($knowledgeIntent.operation -eq 'update') 'A knowledge-only update was not classified as an update'
+    Assert-ExistingHarnessRejected -Action { Get-SetupInstallationIntent -Inventory $ownedOnly -TargetCoreVersion '0.9.9' -TargetKnowledgeVersion '2026.09.03' } -Pattern 'older' -Message 'An older core package was accepted'
+    Assert-ExistingHarnessRejected -Action { Get-SetupInstallationIntent -Inventory $ownedOnly -TargetCoreVersion '1.0.0' -TargetKnowledgeVersion '2026.09.02' } -Pattern 'older' -Message 'An older knowledge package with unchanged core was accepted'
+    $numericOrdering = Get-SetupExistingHarness -Scope Project -ClaudeConfigRoot $claudeRoot -ProjectRoot $emptyProject -ExistingRegistration ([pscustomobject]@{ coreVersion = '1.10.0'; knowledgeVersion = '2026.09.03' })
+    Assert-ExistingHarnessRejected -Action { Get-SetupInstallationIntent -Inventory $numericOrdering -TargetCoreVersion '1.2.0' -TargetKnowledgeVersion '2026.09.04' } -Pattern 'older' -Message 'Version comparison used lexical rather than numeric ordering'
+    Assert-ExistingHarness ((Get-ExistingHarnessFixtureDigest -Root $fixtureRoot) -ceq $before) 'Version classification or downgrade rejection changed source files'
+    Assert-ExistingHarness (($updateIntent | ConvertTo-Json -Depth 10) -notmatch 'fixture-super-secret|not-scanned') 'Update intent copied private registration data'
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedOnly -Action Update -NonInteractive) -eq 'Update') 'Explicit owned update did not select Update'
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedWithCustom -Action Update -NonInteractive) -eq 'Update') 'Custom rules alongside Company Agent forced replacement instead of update'
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedWithCustom -Action Keep -NonInteractive) -eq 'Keep') 'Explicit Keep did not preserve an owned installation'
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedWithCustom -Action Replace -NonInteractive) -eq 'Replace') 'Legacy explicit Replace is no longer supported for an owned installation'
+    $assertions += 16
+
+    function Read-Host { throw 'Read-Host must never be called in a noninteractive or dry update.' }
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedOnly -NonInteractive -TargetCoreVersion '1.1.1' -TargetKnowledgeVersion '2026.09.03') -eq 'InputRequired') 'Owned noninteractive Ask silently updated'
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedWithCustom -DryRun -TargetCoreVersion '1.1.1' -TargetKnowledgeVersion '2026.09.03') -eq 'InputRequired') 'Owned dry-run Ask tried to prompt or silently chose replacement'
+    Remove-Item -LiteralPath Function:\Read-Host
+    $script:harnessFixtureAnswers = New-Object Collections.Queue
+    function Read-Host { return $script:harnessFixtureAnswers.Dequeue() }
+    $script:harnessFixtureAnswers.Enqueue('')
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedOnly -TargetCoreVersion '1.1.1' -TargetKnowledgeVersion '2026.09.03') -eq 'Update') 'Owned interactive default did not update'
+    $script:harnessFixtureAnswers.Enqueue('2')
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedWithCustom -TargetCoreVersion '1.1.1' -TargetKnowledgeVersion '2026.09.03') -eq 'Keep') 'Owned interactive Keep option did not preserve custom rules'
+    $script:harnessFixtureAnswers.Enqueue('invalid')
+    $script:harnessFixtureAnswers.Enqueue('1')
+    Assert-ExistingHarness ((Resolve-SetupExistingHarnessAction -Inventory $ownedWithCustom -TargetCoreVersion '1.1.1' -TargetKnowledgeVersion '2026.09.03') -eq 'Update') 'Owned interactive update did not recover from an invalid answer'
+    Remove-Item -LiteralPath Function:\Read-Host
+    Assert-ExistingHarness ((Get-ExistingHarnessFixtureDigest -Root $fixtureRoot) -ceq $before) 'Interactive update choice changed rules, hooks, or settings before installation'
+    $assertions += 6
+
+    $previewInventory = Get-SetupExistingHarness -Scope Project -ClaudeConfigRoot $claudeRoot -ProjectRoot $emptyProject -ExistingRegistration ([pscustomobject]@{ coreVersion = 'preview-a'; knowledgeVersion = 'knowledge-preview'; private = 'fixture-super-secret' })
+    Assert-ExistingHarness ($previewInventory.installedCoreVersion -eq 'preview-a' -and $previewInventory.installedKnowledgeVersion -eq 'knowledge-preview') 'A safe nonnumeric version label was discarded'
+    $previewUpdate = Get-SetupInstallationIntent -Inventory $previewInventory -TargetCoreVersion 'preview-b' -TargetKnowledgeVersion 'knowledge-preview'
+    Assert-ExistingHarness ($previewUpdate.operation -eq 'update') 'Nonnumeric labels were incorrectly assigned numeric ordering'
+    $previewReapply = Get-SetupInstallationIntent -Inventory $previewInventory -TargetCoreVersion 'preview-a' -TargetKnowledgeVersion 'knowledge-preview'
+    Assert-ExistingHarness ($previewReapply.operation -eq 'reapply') 'Identical nonnumeric labels did not produce reapply'
+    $unknownVersion = Get-SetupInstallationIntent -Inventory $registered -TargetCoreVersion '1.1.1' -TargetKnowledgeVersion '2026.09.03'
+    Assert-ExistingHarness ($unknownVersion.operation -eq 'update' -and $unknownVersion.hasCompanyAgent) 'Legacy registration without version fields no longer supports update'
+    $unsafeVersion = Get-SetupExistingHarness -Scope Project -ClaudeConfigRoot $claudeRoot -ProjectRoot $emptyProject -ExistingRegistration ([pscustomobject]@{ coreVersion = "1.0.0`nfixture-super-secret"; knowledgeVersion = @{ private = 'fixture-super-secret' }; private = 'fixture-super-secret' })
+    Assert-ExistingHarness (($unsafeVersion | ConvertTo-Json -Depth 10) -notmatch 'fixture-super-secret') 'Invalid version values leaked private or multiline metadata'
+    Assert-ExistingHarness ((Get-ExistingHarnessFixtureDigest -Root $fixtureRoot) -ceq $before) 'Unknown or nonnumeric version inspection changed files'
+    $assertions += 6
 
     Assert-ExistingHarnessRejected -Action { Get-SetupExistingHarness @userArgs -MaxSettingsBytes 8 } -Pattern 'cannot be safely inspected' -Message 'Settings size cap was not enforced'
     Assert-ExistingHarnessRejected -Action { Get-SetupExistingHarness @userArgs -MaxFiles 1 } -Pattern 'file limit' -Message 'Rule file count cap was not enforced'

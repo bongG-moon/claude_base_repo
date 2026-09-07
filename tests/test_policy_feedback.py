@@ -311,6 +311,10 @@ class FeedbackStateTests(unittest.TestCase):
     def setUp(self) -> None:
         self.temp = tempfile.TemporaryDirectory()
         self.state = Path(self.temp.name) / "state"
+        # These cases isolate verification semantics. The default-enabled
+        # automatic learning lifecycle is exercised in test_learning_lifecycle.
+        (self.state / "config").mkdir(parents=True)
+        (self.state / "config" / "learning.json").write_text('{"schemaVersion": 1, "enabled": false}', encoding="utf-8")
 
     def tearDown(self) -> None:
         self.temp.cleanup()

@@ -5,9 +5,11 @@ import hashlib
 import os
 import re
 import shutil
+import stat
 import sys
 import threading
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterator
@@ -18,6 +20,10 @@ from .policy import db_operation, is_outlook_send_like_tool, outlook_operation
 
 MUTATING_TOOLS = {"edit", "multiedit", "notebookedit", "write"}
 MAX_CORRECTIVE_CONTINUATIONS = 2
+MAX_LEARNING_CONTINUATIONS = 2
+MAX_OBSERVED_SKILLS = 8
+MAX_OBSERVED_SKILL_BYTES = 65_536
+_TURN_ID_RE = re.compile(r"^[a-f0-9]{32}$")
 
 _MCP_TOOL_RE = re.compile(
     r"^mcp__(?P<server>[a-z0-9][a-z0-9_.:-]*)__+(?P<operation>[a-z0-9][a-z0-9_.:-]*)$",
@@ -109,6 +115,19 @@ def _safe_nonnegative_int(value: Any) -> int:
         return max(0, int(value))
     except (TypeError, ValueError, OverflowError):
         return 0
+
+
+def _native_prompt_digest(value: Any) -> str | None:
+    """Correlate newer Claude hook events without retaining the native ID."""
+    if not isinstance(value, str) or not re.fullmatch(r"[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}", value):
+        return None
+    return hashlib.sha256(str(uuid.UUID(value)).encode("ascii")).hexdigest()
+
+
+def _stale_native_prompt(payload: dict[str, Any], state: dict[str, Any]) -> bool:
+    incoming = _native_prompt_digest(payload.get("prompt_id"))
+    current = state.get("nativePromptSha256")
+    return bool(incoming and isinstance(current, str) and re.fullmatch(r"[a-f0-9]{64}", current) and incoming != current)
 
 
 def safe_session_id(value: str) -> str:
@@ -222,10 +241,34 @@ def begin_turn(
     verification_required: bool,
     reason_codes: list[str] | tuple[str, ...],
     root: Path | None = None,
+    *,
+    native_prompt_id: str | None = None,
 ) -> dict[str, Any]:
+    if not isinstance(session_id, str) or not session_id.strip() or session_id == "unknown-session":
+        raise ValueError("a real session identifier is required to start a turn")
+    from .learning import learning_enabled
+
+    enabled = learning_enabled(root or user_state_root())
+    native_digest = _native_prompt_digest(native_prompt_id)
     with _locked_session(session_id, root) as (state, path):
+        if native_digest and state.get("nativePromptSha256") == native_digest and learning_context(state):
+            # A repeated delivery of the same native user prompt must not grant
+            # new verification/review budgets or amplify learning observations.
+            return state
+        previous_turn = state.get("turnId")
         state.update(
             {
+                "turnId": uuid.uuid4().hex,
+                "nativePromptSha256": native_digest,
+                "previousTurnId": previous_turn if isinstance(previous_turn, str) and _TURN_ID_RE.fullmatch(previous_turn) else None,
+                "learningStatus": "pending" if enabled else "disabled",
+                "learningCompletedAt": None,
+                "learningDeferredReason": None,
+                "learningAttempts": 0,
+                "usedSkills": [],
+                "taskToolCount": 0,
+                "taskFailureCount": 0,
+                "taskVerificationFailures": 0,
                 "turnStartedAt": _now(),
                 "route": {
                     "tier": tier,
@@ -241,6 +284,59 @@ def begin_turn(
             }
         )
         atomic_write_json(path, state)
+        return state
+
+
+def learning_context(state: dict[str, Any]) -> dict[str, Any] | None:
+    """Expose bounded lifecycle identifiers, never task text or tool input."""
+    turn_id = state.get("turnId")
+    if not isinstance(turn_id, str) or not _TURN_ID_RE.fullmatch(turn_id):
+        return None
+    previous = state.get("previousTurnId")
+    return {
+        "turnId": turn_id,
+        "previousTurnId": previous if isinstance(previous, str) and _TURN_ID_RE.fullmatch(previous) else None,
+        "status": state.get("learningStatus") if state.get("learningStatus") in {"pending", "disabled", "complete", "deferred"} else "disabled",
+        "attempts": min(MAX_LEARNING_CONTINUATIONS, _safe_nonnegative_int(state.get("learningAttempts"))),
+    }
+
+
+def _collect_learning_observations(state: dict[str, Any], root: Path) -> bool:
+    """A paused observation gap cannot be resumed as a complete task sample.
+
+    Existing business verification remains independent. Only a genuinely new
+    user turn can enable collection again after this turn encountered a pause.
+    """
+    if not learning_context(state) or state.get("learningStatus") == "disabled":
+        return False
+    from .learning import learning_enabled
+
+    if not learning_enabled(root):
+        state["learningStatus"] = "disabled"
+        state["learningDeferredReason"] = "paused-during-turn"
+        return False
+    return True
+
+
+def mark_learning_complete(session_id: str, turn_id: str, root: Path | None = None) -> dict[str, Any]:
+    """A successful review can complete only the exact still-current turn.
+
+    Verification evidence and its budgets are never changed here. Repeating a
+    successful CLI call is harmless; an old worker cannot complete a newer turn.
+    """
+    if not session_id or session_id == "unknown-session" or not _TURN_ID_RE.fullmatch(turn_id or ""):
+        raise ValueError("valid session and turn identifiers are required")
+    with _locked_session(session_id, root) as (state, path):
+        if state.get("turnId") != turn_id:
+            raise ValueError("learning review does not belong to the current turn")
+        if state.get("learningDeferredReason") == "late-business-activity":
+            raise ValueError("work continued after this turn's review; do not mark the earlier review as current")
+        if state.get("learningStatus") not in {"pending", "deferred", "complete"}:
+            raise ValueError("learning is not enabled for this turn")
+        if state.get("learningStatus") != "complete":
+            state["learningStatus"] = "complete"
+            state["learningCompletedAt"] = _now()
+            atomic_write_json(path, state)
         return state
 
 
@@ -388,6 +484,103 @@ def _is_own_verification_command(command: str, session_id: str) -> bool:
     return fields.get("--session") == safe_session_id(session_id) and fields.get("--status") in {"pass", "fail"}
 
 
+def _safe_local_path(path: Path, boundary: Path, *, allow_missing_leaf: bool = False) -> bool:
+    """Reject redirected paths before observing skills or exempting a write."""
+    try:
+        if not path.is_absolute() or len(str(path)) > 2_048 or ".." in path.parts:
+            return False
+        boundary = boundary.absolute()
+        path.relative_to(boundary)
+        if path.resolve() != path.absolute():
+            return False
+        for component in (path, *path.parents):
+            try:
+                metadata = component.lstat()
+            except FileNotFoundError:
+                if allow_missing_leaf and component == path:
+                    continue
+                return False
+            if stat.S_ISLNK(metadata.st_mode) or getattr(metadata, "st_file_attributes", 0) & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400):
+                return False
+        return True
+    except (OSError, ValueError):
+        return False
+
+
+def _learning_spec_path(root: Path, turn_id: str) -> Path:
+    return root.absolute() / "tmp" / f"learning-review-{turn_id}.json"
+
+
+def _is_learning_spec_write(tool_name: str, tool_input: dict[str, Any], state: dict[str, Any], root: Path) -> bool:
+    if tool_name.casefold().strip() != "write":
+        return False
+    turn_id = state.get("turnId")
+    if not isinstance(turn_id, str) or not _TURN_ID_RE.fullmatch(turn_id) or state.get("learningStatus") != "pending":
+        return False
+    value = tool_input.get("file_path")
+    if not isinstance(value, str):
+        return False
+    path = Path(value)
+    return path == _learning_spec_path(root, turn_id) and _safe_local_path(path, root, allow_missing_leaf=True)
+
+
+def _is_own_learning_command(command: str, session_id: str, state: dict[str, Any], root: Path) -> bool:
+    arguments = _own_cli_arguments(command)
+    if not arguments:
+        return False
+    words = _literal_command_words(command)
+    if words and words[0].casefold() == "company-agent":
+        # A similarly named program on PATH must not bypass business checks.
+        installed_bin = Path(__file__).resolve().parents[2] / "bin" / "company-agent.cmd"
+        resolved = shutil.which("company-agent")
+        if not resolved or not _same_absolute_path(resolved, installed_bin):
+            return False
+    if arguments == ["learning", "status"] or arguments == ["learning", "status", "--session", safe_session_id(session_id)]:
+        return True
+    if len(arguments) != 8 or arguments[:2] != ["learning", "review"]:
+        return False
+    fields: dict[str, str] = {}
+    for index in range(2, len(arguments), 2):
+        key, value = arguments[index:index + 2]
+        if key not in {"--session", "--turn", "--spec"} or key in fields or not value:
+            return False
+        fields[key] = value
+    turn_id = state.get("turnId")
+    if not isinstance(turn_id, str) or not _TURN_ID_RE.fullmatch(turn_id):
+        return False
+    if fields.get("--session") != safe_session_id(session_id) or fields.get("--turn") != turn_id:
+        return False
+    path = Path(fields.get("--spec", ""))
+    return path == _learning_spec_path(root, turn_id) and _safe_local_path(path, root, allow_missing_leaf=True)
+
+
+def _observed_personal_skill(tool_name: str, tool_input: dict[str, Any], root: Path) -> dict[str, str] | None:
+    if tool_name.casefold().strip() != "read":
+        return None
+    value = tool_input.get("file_path")
+    if not isinstance(value, str) or len(value) > 2_048:
+        return None
+    path = Path(value)
+    skills_root = root.absolute() / "personal-root" / ".claude" / "skills"
+    try:
+        relative = path.relative_to(skills_root)
+        if len(relative.parts) != 2 or relative.name != "SKILL.md":
+            return None
+        name = relative.parts[0]
+        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,79}", name):
+            return None
+        if not _safe_local_path(path, skills_root) or path.stat().st_size > MAX_OBSERVED_SKILL_BYTES:
+            return None
+        with path.open("rb") as stream:
+            data = stream.read(MAX_OBSERVED_SKILL_BYTES + 1)
+        if len(data) > MAX_OBSERVED_SKILL_BYTES:
+            return None
+        # Hash only. The read body, other paths and search query never persist.
+        return {"name": name, "path": str(path), "sha256": hashlib.sha256(data).hexdigest()}
+    except (OSError, ValueError):
+        return None
+
+
 def _tool_mutated(tool_name: str, tool_input: dict[str, Any]) -> bool:
     normalized = tool_name.casefold().strip()
     if is_outlook_send_like_tool(normalized):
@@ -418,6 +611,8 @@ def record_activity(
     payload: dict[str, Any],
     root: Path | None = None,
 ) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        return {}
     session_id = str(payload.get("session_id") or "unknown-session")
     tool_name = str(payload.get("tool_name") or "unknown")
     tool_input = (
@@ -426,25 +621,43 @@ def record_activity(
         else {}
     )
     mutated = _tool_mutated(tool_name, tool_input)
-    if mutated and tool_name.casefold().strip() in {"bash", "powershell"}:
-        command = str(tool_input.get("command") or tool_input.get("cmd") or "")
-        if _is_own_verification_command(command, session_id) or _is_own_context_audit(command):
-            mutated = False
+    response = payload.get("tool_response")
     failed = (
         str(payload.get("hook_event_name") or "").casefold()
         == "posttoolusefailure"
         or bool(payload.get("tool_error"))
         or bool(payload.get("error"))
+        or (isinstance(response, dict) and (response.get("isError") is True or response.get("is_error") is True))
     )
     at = _now()
-    event = {
-        "at": at,
-        "tool": tool_name,
-        "success": not failed,
-        "mutation": mutated,
-    }
-
     with _locked_session(session_id, root) as (state, path):
+        if _stale_native_prompt(payload, state):
+            return state
+        collect_learning = _collect_learning_observations(state, root or user_state_root())
+        bookkeeping = False
+        if tool_name.casefold().strip() in {"bash", "powershell"}:
+            command = str(tool_input.get("command") or tool_input.get("cmd") or "")
+            bookkeeping = (
+                _is_own_verification_command(command, session_id)
+                or _is_own_context_audit(command)
+                or _is_own_learning_command(command, session_id, state, root or user_state_root())
+            )
+        bookkeeping = bookkeeping or _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
+        if bookkeeping:
+            mutated = False
+        elif collect_learning:
+            state["taskToolCount"] = _safe_nonnegative_int(state.get("taskToolCount")) + 1
+            if failed:
+                state["taskFailureCount"] = _safe_nonnegative_int(state.get("taskFailureCount")) + 1
+            if state.get("learningStatus") == "complete":
+                state["learningStatus"] = "deferred"
+                state["learningDeferredReason"] = "late-business-activity"
+            if not failed:
+                observed = _observed_personal_skill(tool_name, tool_input, root or user_state_root())
+                if observed:
+                    skills = [item for item in state.get("usedSkills", []) if isinstance(item, dict) and item.get("name") != observed["name"]]
+                    state["usedSkills"] = (skills + [observed])[-MAX_OBSERVED_SKILLS:]
+        event = {"at": at, "tool": tool_name[:120], "success": not failed, "mutation": mutated}
         recent = list(state.get("recentTools", []))[-19:]
         recent.append(event)
         state["recentTools"] = recent
@@ -478,6 +691,7 @@ def mark_verified(
     compact_summary = summary.strip()[:500]
 
     with _locked_session(session_id, root) as (state, path):
+        collect_learning = _collect_learning_observations(state, root or user_state_root())
         state["verification"] = {
             "status": status,
             "at": _now(),
@@ -488,6 +702,8 @@ def mark_verified(
             state["sameFailureCount"] = 0
             state["lastFailureFingerprint"] = None
         else:
+            if collect_learning:
+                state["taskVerificationFailures"] = _safe_nonnegative_int(state.get("taskVerificationFailures")) + 1
             fingerprint = hashlib.sha256(
                 compact_summary.casefold().encode("utf-8")
             ).hexdigest()[:16]
@@ -518,11 +734,63 @@ def _failure_message(kind: str) -> dict[str, Any]:
     return {"systemMessage": message}
 
 
+def _learning_stop(
+    state: dict[str, Any], path: Path, session_id: str, root: Path,
+    completion: dict[str, Any],
+) -> dict[str, Any]:
+    context = learning_context(state)
+    if context and context["status"] == "deferred" and state.get("learningDeferredReason") == "late-business-activity":
+        warning = (
+            "Company Agent observed additional business work after this turn's learning review. "
+            "The earlier review does not cover the final work; do not claim all work was learned. "
+            "The automatic review remains deferred until a later user turn; report the final task outcome honestly."
+        )
+        return {"systemMessage": " ".join(filter(None, [completion.get("systemMessage"), warning]))}
+    if not context or context["status"] != "pending":
+        return completion
+    from .learning import learning_enabled
+
+    if not learning_enabled(root):
+        state["learningStatus"] = "disabled"
+        atomic_write_json(path, state)
+        return completion
+    attempts = _safe_nonnegative_int(state.get("learningAttempts"))
+    if attempts >= MAX_LEARNING_CONTINUATIONS:
+        state["learningStatus"] = "deferred"
+        state["learningDeferredReason"] = "attempts-exhausted"
+        atomic_write_json(path, state)
+        warning = (
+            "Company Agent could not finish this turn's automatic learning after two attempts. "
+            "The review is deferred; do not claim that memory or skills were improved. "
+            "Report the task outcome and any remaining verification failure honestly."
+        )
+        return {"systemMessage": " ".join(filter(None, [completion.get("systemMessage"), warning]))}
+    state["learningAttempts"] = attempts + 1
+    atomic_write_json(path, state)
+    turn_id = context["turnId"]
+    spec_path = _learning_spec_path(root, turn_id)
+    reason = (
+        "최종 답변 전에 company-agent:self-learning Skill을 사용해 이번 업무의 성공·실패와 사용자 수정 요구를 짧게 검토하십시오. "
+        "사용자가 '기억해줘'라고 하지 않았어도 적용합니다. 대화 원문·비밀·일회성 업무값은 저장하지 마십시오. "
+        "근거 없는 선호를 확정하거나 검사 실패를 성공으로 바꾸지 마십시오. 재사용할 내용이 없으면 빈 학습 내용으로 완료하십시오. "
+        f'현재 session은 "{safe_session_id(session_id)}", turn은 "{turn_id}"입니다. '
+        f'Skill의 양식에 맞춘 검토 JSON을 "{spec_path}"에 Write로 저장한 뒤, 설치된 CLI로 '
+        f'learning review --session "{safe_session_id(session_id)}" --turn "{turn_id}" --spec "{spec_path}"를 실행하십시오. '
+        "검토를 위해 업무 파일을 더 수정하거나 외부 전송을 다시 실행하지 마십시오. "
+        f"학습 처리 기회는 최대 {MAX_LEARNING_CONTINUATIONS}회이며 실패하면 완료했다고 주장하지 마십시오."
+    )
+    if completion.get("systemMessage"):
+        reason = str(completion["systemMessage"]) + " " + reason
+    return {**completion, "decision": "block", "reason": reason}
+
+
 def stop_decision(
     payload: dict[str, Any],
     root: Path | None = None,
     max_retries: int = MAX_CORRECTIVE_CONTINUATIONS,
 ) -> dict[str, Any]:
+    if not isinstance(payload, dict) or not isinstance(payload.get("session_id"), str) or not payload["session_id"].strip() or payload["session_id"] == "unknown-session":
+        return {}
     session_id = str(payload.get("session_id") or "unknown-session")
     # A caller may reduce the budget for tests or stricter deployments, but
     # never raise it above the fixed production ceiling of two continuations.
@@ -532,25 +800,27 @@ def stop_decision(
     )
 
     with _locked_session(session_id, root) as (state, path):
-        if _safe_nonnegative_int(state.get("mutationCount")) == 0:
+        if _stale_native_prompt(payload, state):
             return {}
+        if _safe_nonnegative_int(state.get("mutationCount")) == 0:
+            return _learning_stop(state, path, session_id, root or user_state_root(), {})
         verification = state.get("verification")
         if (
             isinstance(verification, dict)
             and verification.get("status") == "pass"
         ):
-            return {}
+            return _learning_stop(state, path, session_id, root or user_state_root(), {})
         if (
             isinstance(verification, dict)
             and verification.get("status") == "fail"
             and _safe_nonnegative_int(state.get("sameFailureCount"))
             >= MAX_CORRECTIVE_CONTINUATIONS
         ):
-            return _failure_message("same-failure")
+            return _learning_stop(state, path, session_id, root or user_state_root(), _failure_message("same-failure"))
 
         retry_count = _safe_nonnegative_int(state.get("stopRetryCount"))
         if retry_count >= retry_budget:
-            return _failure_message("budget")
+            return _learning_stop(state, path, session_id, root or user_state_root(), _failure_message("budget"))
 
         # `stop_hook_active` means this is a corrective continuation. It must
         # not disable the second bounded attempt; the persisted counter is the

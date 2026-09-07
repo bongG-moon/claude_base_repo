@@ -50,11 +50,32 @@ try {
         'personal-root\.claude\skills\daily-summary\scripts\helper.py'
     )
     foreach ($relative in $learningFiles) { Write-CompanyAgentUtf8File -Path (Join-Path $stateRoot $relative) -Content ("preserve: $relative`n") }
+    foreach ($relative in @('memory\items\lesson.md', 'memory\items\session-guidance.md')) {
+        Write-CompanyAgentUtf8File -Path (Join-Path $stateRoot $relative) -Content ("---`nkind: fact`nstatus: active`n---`npreserve: $relative`n")
+    }
     Write-CompanyAgentJsonAtomic -Path (Join-Path $stateRoot 'config\user.json') -Value ([pscustomobject]@{
         schemaVersion = 2; displayName = 'Fixture employee'
         preferences = [pscustomobject]@{ concise = $true; apiKey = 'fixture-user-secret'; nested = @([pscustomobject]@{ password = 'fixture-password'; safe = 'keep' }) }
     })
     Write-CompanyAgentJsonAtomic -Path (Join-Path $stateRoot 'state-format.json') -Value ([pscustomobject]@{ schemaVersion = 1 })
+    $learningPython = Resolve-SetupApprovedPython -PreferredCommand 'python' -OnlyPreferred
+    if (-not $learningPython) { throw 'Python 3.11+ is required for the real learning journal backup regression.' }
+    $learningScripts = Join-Path (Split-Path -Parent $PSScriptRoot) 'company-agent-plugin\scripts'
+    $seedLearning = @'
+import sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from company_agent.state import begin_turn
+from company_agent.learning import submit_review, set_learning_enabled
+root = Path(sys.argv[2])
+for body in ('Reports start with the conclusion.', 'Reports start with decisions needed.'):
+    turn = begin_turn('backup-test', 'SMALL', False, [], root)
+    result = submit_review(root, 'backup-test', turn['turnId'], {'schemaVersion': 1, 'taskType': 'weekly-report', 'outcome': 'unknown', 'summary': 'A durable reporting preference was corrected.', 'observations': [{'kind': 'preference', 'key': 'report-order', 'signal': 'explicit_correction', 'title': 'Report order', 'body': body}], 'evaluations': []})
+    assert result['changes'][0]['status'] == 'active', result['changes'][0]
+set_learning_enabled(root, False)
+'@
+    $seedResult = Invoke-CompanyAgentPythonProcess -Executable $learningPython -Arguments @('-B', '-c', $seedLearning, $learningScripts, $stateRoot)
+    Assert-PersonalBackup ($seedResult.ExitCode -eq 0) ('Real learning fixture failed: ' + $seedResult.StdErr)
     Write-CompanyAgentJsonAtomic -Path (Join-Path $stateRoot 'personal-root\.claude\skills\daily-summary\options.json') -Value ([pscustomobject]@{
         label = 'Safe option'; env = [pscustomobject]@{ API_TOKEN = 'fixture-skill-secret'; NORMAL = 'keep' }
     })
@@ -104,12 +125,17 @@ try {
     Assert-PersonalBackup ($skillOptions.env.API_TOKEN -eq '[REDACTED_BY_COMPANY_AGENT_BACKUP]' -and $skillOptions.env.NORMAL -eq 'keep') 'Nested Skill JSON was not sanitized'
     $marker = Read-CompanyAgentJson -Path (Join-Path $personalBackup 'state-format.json')
     Assert-PersonalBackup ($marker.schemaVersion -eq 1) 'State format marker was not included'
+    $learningConfig = Read-CompanyAgentJson -Path (Join-Path $personalBackup 'config\learning.json')
+    Assert-PersonalBackup ($learningConfig.enabled -eq $false) 'Automatic learning pause setting was not preserved'
+    $learningHistory = Read-CompanyAgentJson -Path (Join-Path $personalBackup 'learning\state.json')
+    Assert-PersonalBackup ($learningHistory.changes[1].beforeContent -match 'Reports start with the conclusion.' -and $learningHistory.changes[1].afterContent -match 'Reports start with decisions needed.') 'Automatic learning comparison and rollback history was not preserved'
+    Assert-PersonalBackup ($learningHistory.reviews[0].sessionFingerprint -match '^[a-f0-9]{64}$') 'A nonsecret learning correlation fingerprint was redacted'
     $claudeSettings = Read-CompanyAgentJson -Path (Join-Path $backup 'claude-config\settings.json')
     Assert-PersonalBackup ($claudeSettings.env.API_TOKEN -eq '[REDACTED_BY_COMPANY_AGENT_BACKUP]') 'Existing Claude JSON redaction regressed'
     Assert-PersonalBackup (-not (Test-Path -LiteralPath (Join-Path $backup 'claude-config\.credentials.json'))) 'Claude credentials were copied'
     $manifest = Read-CompanyAgentJson -Path (Join-Path $backup 'backup-manifest.json')
     Assert-PersonalBackup ($manifest.schemaVersion -eq 2 -and $manifest.note -match 'Selective' -and $manifest.copiedFiles -gt 0) 'Manifest incorrectly describes backup coverage'
-    Assert-PersonalBackup (@($manifest.items | Where-Object { $_.required }).Count -eq 8) 'Personal learning artifacts are not required once selected'
+    Assert-PersonalBackup (@($manifest.items | Where-Object { $_.required }).Count -eq 10) 'Personal learning artifacts are not required once selected'
     foreach ($record in @($manifest.items)) {
         Assert-PersonalBackup (Test-SetupSameOrChildPath -Candidate $record.backup -Parent $backup) 'Manifest backup item escaped the destination'
     }
@@ -126,6 +152,30 @@ try {
         '{0}|{1}|{2}|{3}' -f $_.FullName, $_.Length, $_.LastWriteTimeUtc.Ticks, (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
     }) -join "`n")
     Assert-PersonalBackup ($sourceBefore -ceq $sourceAfter) 'Backup modified the original state contents or timestamps'
+
+    # A backup is useful only if the actual engine can read it and reverse its
+    # latest owned change. Keep this restore fixture outside the original state.
+    $restoredState = Join-Path $backupBase 'restored-learning-test'
+    Copy-CompanyAgentDirectoryContents -Source $personalBackup -Destination $restoredState
+    $verifyRestoredLearning = @'
+import json, sys
+from pathlib import Path
+sys.path.insert(0, sys.argv[1])
+from company_agent.learning import learning_status, rollback_change
+from company_agent.frontmatter import parse_frontmatter_text
+source, restored = Path(sys.argv[2]), Path(sys.argv[3])
+assert json.loads((source / 'learning/state.json').read_text(encoding='utf-8-sig')) == json.loads((restored / 'learning/state.json').read_text(encoding='utf-8-sig'))
+status = learning_status(restored)
+assert status['enabled'] is False and status['activeChanges'] == 1
+active = next(c for c in status['recentChanges'] if c['status'] == 'active')
+assert rollback_change(restored, active['id'])['status'] == 'rolled_back'
+body = (restored / 'memory/items' / (active['memoryId'] + '.md')).read_text(encoding='utf-8')
+metadata, _ = parse_frontmatter_text(body)
+assert metadata['status'] == 'inactive'
+assert 'Reports start with the conclusion.' in json.loads((restored / 'learning/state.json').read_text(encoding='utf-8'))['changes'][1]['beforeContent']
+'@
+    $restoreResult = Invoke-CompanyAgentPythonProcess -Executable $learningPython -Arguments @('-B', '-c', $verifyRestoredLearning, $learningScripts, $stateRoot, $restoredState)
+    Assert-PersonalBackup ($restoreResult.ExitCode -eq 0) ('Restored learning journal is unusable: ' + $restoreResult.StdErr)
 
     Assert-PersonalBackupRejected -Action { New-SetupBackup @backupArgs -MaxFileBytes 1 } -Pattern 'limit exceeded' -Message 'Oversized selected source did not stop backup'
     Assert-PersonalBackupRejected -Action { New-SetupBackup @backupArgs -MaxTotalBytes 1 } -Pattern 'limit exceeded' -Message 'Aggregate byte limit was not enforced'

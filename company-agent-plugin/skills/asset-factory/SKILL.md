@@ -7,6 +7,8 @@ description: Design, create, repair, validate, or package a personal Claude Code
 
 Turn a user's natural-language automation request into the smallest reusable asset that solves it.
 
+For each `company-agent` example, use the exact `company_agent_runtime.cliCommand` prefix from the current session and safely quote names and paths as arguments. Use its `stateRoot` and clearly identified absolute project path; do not assume Python or the CLI is on PATH. A request only to inspect, explain, or review permits read-only discovery, not asset creation, activation, or preference writes.
+
 ## Select the asset type
 
 - **Knowledge**: a fact, term, table definition, join, metric, or business rule. Use Personal Knowledge, not this factory.
@@ -18,7 +20,7 @@ Turn a user's natural-language automation request into the smallest reusable ass
 
 1. Consult Effective Knowledge before defining inputs, table meanings, or business rules.
 2. Ask only for missing material choices, using at most three simple options.
-3. For a Skill, choose a name that is unique across the Harness personal Skill root and the user's existing Claude config root (`CLAUDE_CONFIG_DIR` or `%USERPROFILE%\.claude`). If the create/activate command reports an external Skill collision, do not overwrite or disable the existing Skill. Rename the new asset with a clear prefix such as `company-personal-<name>` and retry.
+3. Before creating a personal Skill or Script Tool wrapper, run `company-agent skill resolve "<proposed-name>" --project-root "<absolute project>"`. Show any same-name candidates by name and origin, plus the current selection. If discovery is incomplete, explain its warnings rather than claiming no overlaps. The create/activate command's existing asset-name and personal/user Skill collision guards still apply: never overwrite, disable, or rename an existing asset to bypass them. If a requested new name is rejected, clearly propose an alternative such as `company-personal-<name>` and obtain the naming choice before retrying; do not silently rename it. Other same-name sources may coexist. Preserve any explicit priority choice and apply it after creation, when the new candidate ID exists.
 4. Define success cases, invalid-input cases, JSON input/output schemas, permission boundaries, and offline dependencies before writing code.
 5. List every required risky capability in `reviewed_capabilities`. Supported reviewable capabilities are `filesystem-read`, `filesystem-write`, `network`, `process`, and `third-party-import`. Explain the need in plain language before adding one. Dynamic code, shell execution, native code, and destructive filesystem operations are rejected because this Harness does not provide an OS sandbox.
 6. Create a JSON AssetSpec and run:
@@ -33,7 +35,7 @@ Turn a user's natural-language automation request into the smallest reusable ass
 
    `company-agent asset test-tool --name "<name>" --input "<input.json>" --timeout 30`
 
-   This returns a signed receipt bound to the current manifest and source hash. Activate using that exact receipt; activation creates an auto-discovered Skill wrapper:
+   This returns a signed receipt bound to the current manifest and source hash. Resolve the wrapper name again with the same absolute project before activation and show any changed overlaps. Activate using that exact receipt; activation creates a Skill wrapper discoverable by Company Agent. A valid requested creation/activation can proceed without another activation confirmation; an unresolved priority is a separate selection:
 
    `company-agent asset activate-tool --name "<name>" --receipt "<receipt.json>"`
 
@@ -47,6 +49,7 @@ Turn a user's natural-language automation request into the smallest reusable ass
 
 10. Any source, manifest, command, argument, or entrypoint change invalidates the receipt. Re-run the relevant test command rather than editing a receipt.
 11. In native User/Project installations, activation also registers the receipt-validated server through Claude's native `mcp add-json` for that scope. Restart Claude afterwards. If registration fails, report that native activation is pending and resolve the stated cause; retry with `company-agent asset sync-mcp --name "<name>"`. Existing/unowned MCP names are never overwritten. In the machine launcher, restart Company Agent to reload its MCP registry. Script Tool and personal Skill changes are available through live contextual retrieval.
+12. After Skill creation or Script Tool activation, resolve its name again in the same project. If the user explicitly chose a preferred candidate and scope, use the returned exact candidate ID with `company-agent skill prefer --name "<name>" --candidate "<ID>" --scope project --project-root "<absolute project>"`, or `--scope default` for that choice. Verify project choices with the same project resolve. For defaults, first verify the candidate in `company-agent skill inventory --no-project`, then verify the saved choice with `company-agent skill resolve "<name>" --no-project`; project-only candidates cannot be default choices. Otherwise preserve the existing selection and use `/company-agent:skills` to choose project/default scope only if an overlap needs a missing or stale priority choice. Never edit preference JSON by hand. Read the selected full `SKILL.md` before using it; this preference does not change Claude's native `/name` precedence or intercept third-party installers.
 
 Never write personal assets into the plugin installation directory. That directory is replaced on Core update. Store every generated asset under the user state directory selected by the harness.
 

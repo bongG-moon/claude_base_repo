@@ -327,7 +327,30 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         state = load_session(session, Path(self.record["userStateRoot"]))
         self.assertEqual("pass", state["verification"]["status"])
         stopped = self.run_wrapper(["-Mode", "Hook", "-Event", "Stop"], payload)
-        self.assertEqual({}, json.loads(stopped.stdout))
+        self.assertEqual("block", json.loads(stopped.stdout)["decision"])
+        self.assertIn("learning review", json.loads(stopped.stdout)["reason"])
+        turn_id = state["turnId"]
+        spec_path = Path(self.record["userStateRoot"]) / "tmp" / f"learning-review-{turn_id}.json"
+        atomic_write_json(spec_path, {"schemaVersion": 1, "taskType": "native-file-test", "outcome": "success",
+                                     "summary": "한글 검증 결과를 확인함", "observations": [], "evaluations": []})
+        staging = self.run_wrapper(["-Mode", "Hook", "-Event", "PostToolUse"], {
+            **payload, "tool_name": "Write", "tool_input": {"file_path": str(spec_path), "content": "DO-NOT-STORE-JSON-INPUT"},
+        })
+        self.assertEqual(0, staging.returncode, staging.stderr)
+        reviewed = self.run_wrapper(["-Mode", "Cli", "learning", "review", "--session", session,
+                                     "--turn", turn_id, "--spec", str(spec_path)])
+        self.assertEqual(0, reviewed.returncode, reviewed.stderr)
+        self.assertEqual("accepted", json.loads(reviewed.stdout)["status"])
+        review_command = cli_command(self.plugin) + f' learning review --session {session} --turn {turn_id} --spec "{spec_path}"'
+        review_activity = self.run_wrapper(["-Mode", "Hook", "-Event", "PostToolUse"], {
+            **payload, "tool_name": "PowerShell", "tool_input": {"command": review_command},
+        })
+        self.assertEqual(0, review_activity.returncode, review_activity.stderr)
+        closed = self.run_wrapper(["-Mode", "Hook", "-Event", "Stop"], payload)
+        self.assertEqual({}, json.loads(closed.stdout))
+        state = load_session(session, Path(self.record["userStateRoot"]))
+        self.assertEqual("complete", state["learningStatus"])
+        self.assertEqual("pass", state["verification"]["status"])
         self.assertNotIn("DO-NOT-STORE", json.dumps(state))
         failed = self.run_wrapper(["-Mode", "Cli", "session", "verify", "--session", session,
                                    "--status", "fail", "--summary", "한글 검증 실패"])

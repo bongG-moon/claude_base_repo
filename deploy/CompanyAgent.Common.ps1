@@ -1,5 +1,107 @@
 Set-StrictMode -Version 2.0
 
+function ConvertTo-CompanyAgentProcessArgument {
+    param([Parameter(Mandatory = $true)] [AllowEmptyString()] [string] $Value)
+
+    # ProcessStartInfo.ArgumentList is unavailable in Windows PowerShell 5.1.
+    # Quote argv entries using the Windows CRT rules, never a shell command.
+    # Leave simple options unquoted: older py.exe launchers inspect the raw
+    # command line and do not recognize a quoted "-3" interpreter selector.
+    if ($Value.IndexOf([char]0) -ge 0) { throw 'Process arguments cannot contain NUL.' }
+    if ($Value.Length -gt 0 -and $Value -notmatch '[\s"]') { return $Value }
+    $quoted = New-Object Text.StringBuilder
+    $null = $quoted.Append('"')
+    $backslashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq [char]'\') { $backslashes++; continue }
+        if ($character -eq [char]'"') {
+            $null = $quoted.Append(('\' * (2 * $backslashes + 1)))
+            $null = $quoted.Append('"')
+        }
+        else {
+            $null = $quoted.Append(('\' * $backslashes))
+            $null = $quoted.Append($character)
+        }
+        $backslashes = 0
+    }
+    $null = $quoted.Append(('\' * (2 * $backslashes)))
+    $null = $quoted.Append('"')
+    return $quoted.ToString()
+}
+
+function Invoke-CompanyAgentPythonProcess {
+    param(
+        [Parameter(Mandatory = $true)] [string] $Executable,
+        [AllowEmptyCollection()] [string[]] $Arguments = @(),
+        [string] $WorkingDirectory,
+        [ValidateRange(1, 600000)] [int] $TimeoutMilliseconds = 30000
+    )
+
+    # Do not invoke aliases, CMD/PowerShell wrappers, or the Store. Installation
+    # resolves an existing interpreter (or probes an existing py.exe) first.
+    if (-not [IO.Path]::IsPathRooted($Executable) -or
+        [IO.Path]::GetExtension($Executable) -ine '.exe' -or
+        -not (Test-Path -LiteralPath $Executable -PathType Leaf)) {
+        throw "Python executable must be an existing absolute .exe path: $Executable"
+    }
+    $executableItem = Get-Item -LiteralPath $Executable -Force
+    if (($executableItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and $executableItem.Length -eq 0) {
+        throw 'A Windows Store execution alias is not an installed Python interpreter. Select the existing company-approved python.exe.'
+    }
+    $process = New-Object Diagnostics.Process
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $started = $false
+    try {
+        $process.StartInfo.FileName = $Executable
+        $process.StartInfo.Arguments = (@($Arguments | ForEach-Object { ConvertTo-CompanyAgentProcessArgument -Value $_ }) -join ' ')
+        $process.StartInfo.UseShellExecute = $false
+        $process.StartInfo.CreateNoWindow = $true
+        $process.StartInfo.RedirectStandardOutput = $true
+        $process.StartInfo.RedirectStandardError = $true
+        $process.StartInfo.StandardOutputEncoding = New-Object Text.UTF8Encoding($false, $true)
+        $process.StartInfo.StandardErrorEncoding = New-Object Text.UTF8Encoding($false, $true)
+        if (-not [string]::IsNullOrWhiteSpace($WorkingDirectory)) {
+            $process.StartInfo.WorkingDirectory = $WorkingDirectory
+        }
+        # Set only the child environment. Parent consoles can remain CP949,
+        # CP932, or any other code page without corrupting our JSON boundary.
+        # Callers using Python -I must additionally pass -X utf8.
+        $process.StartInfo.EnvironmentVariables['PYTHONIOENCODING'] = 'utf-8'
+        $process.StartInfo.EnvironmentVariables.Remove('PYLAUNCHER_ALLOW_INSTALL')
+        $process.StartInfo.EnvironmentVariables.Remove('PYLAUNCHER_ALWAYS_INSTALL')
+        $process.StartInfo.EnvironmentVariables['PYTHON_MANAGER_AUTOMATIC_INSTALL'] = 'false'
+        $started = $process.Start()
+        if (-not $started) { throw 'The Python process did not start.' }
+        # Drain both streams concurrently; waiting for one stream first can
+        # deadlock when the other pipe fills (including during error reporting).
+        $stdoutTask = $process.StandardOutput.ReadToEndAsync()
+        $stderrTask = $process.StandardError.ReadToEndAsync()
+        if (-not $process.WaitForExit($TimeoutMilliseconds)) {
+            throw "Python process timed out after $TimeoutMilliseconds ms."
+        }
+        foreach ($streamTask in @($stdoutTask, $stderrTask)) {
+            $remaining = [Math]::Max(0, $TimeoutMilliseconds - [int]$timer.ElapsedMilliseconds)
+            if (-not $streamTask.Wait($remaining)) {
+                throw "Python output capture timed out after $TimeoutMilliseconds ms."
+            }
+        }
+        return [pscustomobject]@{
+            ExitCode = $process.ExitCode
+            StdOut = $stdoutTask.GetAwaiter().GetResult()
+            StdErr = $stderrTask.GetAwaiter().GetResult()
+        }
+    }
+    finally {
+        # Cleanup is bounded too. Do not wait indefinitely for inherited pipe
+        # handles held by a child of a timed-out process.
+        if ($started -and -not $process.HasExited) {
+            try { $process.Kill(); $null = $process.WaitForExit(1000) } catch { }
+        }
+        $process.Dispose()
+        $timer.Stop()
+    }
+}
+
 function Get-CompanyAgentDefaultInstallRoot {
     $basePath = $env:ProgramFiles
     if ([string]::IsNullOrWhiteSpace($basePath)) {
@@ -167,12 +269,13 @@ function Assert-CompanyAgentPrerequisites {
     if ([string]::IsNullOrWhiteSpace($pythonExecutable)) {
         $pythonExecutable = $python.Definition
     }
-    $versionText = & $pythonExecutable -c "import sys; print('.'.join(str(v) for v in sys.version_info[:3]))" 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Could not execute Python prerequisite check: $versionText"
+    $pythonResult = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-I', '-X', 'utf8', '-B', '-c', "import sys; print('.'.join(str(v) for v in sys.version_info[:3]))") -TimeoutMilliseconds 10000
+    $versionText = $pythonResult.StdOut.Trim()
+    if ($pythonResult.ExitCode -ne 0) {
+        throw "Could not execute Python prerequisite check: $($pythonResult.StdErr) $versionText"
     }
     try {
-        $pythonVersion = [version]([string]($versionText | Select-Object -Last 1))
+        $pythonVersion = [version]$versionText
     }
     catch {
         throw "Could not parse Python version: $versionText"

@@ -269,9 +269,68 @@ function Get-SetupExistingHarness {
     return [pscustomobject]@{
         scope = $Scope; scopeRoot = $scopeRoot; claudeConfigRoot = $configFull; projectRoot = $projectFull
         detected = ($items.Count -gt 0); items = @($items.ToArray())
+        hasCompanyAgent = ($null -ne $ExistingRegistration)
+        hasCustomHarness = ($replacementFiles.Count -gt 0 -or $hookSettingsPaths.Count -gt 0)
+        installedCoreVersion = Get-SetupDisplayVersion -Value (Get-SetupPropertyValue -Object $ExistingRegistration -Name 'coreVersion')
+        installedKnowledgeVersion = Get-SetupDisplayVersion -Value (Get-SetupPropertyValue -Object $ExistingRegistration -Name 'knowledgeVersion')
         replacementFiles = [string[]]@($replacementFiles.ToArray()); hookSettingsPaths = [string[]]@($hookSettingsPaths.ToArray())
         inherited = @($inherited.ToArray()); inheritedNotes = [string[]]@($notes.ToArray())
         preserved = @('Model/provider settings', 'MCP configuration', 'Personal Memory and Company Agent state', 'Standalone Skills', 'Resources outside the selected scope', 'Plugin and managed-policy settings')
+    }
+}
+
+function Get-SetupDisplayVersion {
+    param([AllowNull()][object] $Value)
+    if ($Value -is [string] -and $Value -cmatch '^[0-9A-Za-z][0-9A-Za-z._-]{0,63}$') { return $Value }
+    return 'unknown'
+}
+
+function Get-SetupInstallationIntent {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)][object] $Inventory,
+        [string] $TargetCoreVersion,
+        [string] $TargetKnowledgeVersion
+    )
+    $owned = [bool](Get-SetupPropertyValue -Object $Inventory -Name 'hasCompanyAgent')
+    $oldCore = Get-SetupDisplayVersion -Value (Get-SetupPropertyValue -Object $Inventory -Name 'installedCoreVersion')
+    $oldKnowledge = Get-SetupDisplayVersion -Value (Get-SetupPropertyValue -Object $Inventory -Name 'installedKnowledgeVersion')
+    $newCore = Get-SetupDisplayVersion -Value $TargetCoreVersion
+    $newKnowledge = Get-SetupDisplayVersion -Value $TargetKnowledgeVersion
+    $operation = 'install'
+    if ($owned) {
+        $operation = 'update'
+        if ($oldCore -cne 'unknown' -and $oldCore -ceq $newCore -and $oldKnowledge -ceq $newKnowledge) { $operation = 'reapply' }
+        $oldNumeric = $null; $newNumeric = $null
+        if ([version]::TryParse($oldCore, [ref]$oldNumeric) -and [version]::TryParse($newCore, [ref]$newNumeric) -and $newNumeric -lt $oldNumeric) {
+            throw 'This package is older than the installed Company Agent. Use the current or a newer package; ordinary setup does not downgrade an installation.'
+        }
+        $oldNumeric = $null; $newNumeric = $null
+        if ($oldCore -ceq $newCore -and [version]::TryParse($oldKnowledge, [ref]$oldNumeric) -and [version]::TryParse($newKnowledge, [ref]$newNumeric) -and $newNumeric -lt $oldNumeric) {
+            throw 'This package contains an older knowledge pack for the installed Core version. Keep the current installation and ask the package owner for a compatible release.'
+        }
+    }
+    return [pscustomobject]@{
+        operation = $operation; hasCompanyAgent = $owned
+        previousCoreVersion = $(if ($owned) { $oldCore } else { $null })
+        previousKnowledgeVersion = $(if ($owned) { $oldKnowledge } else { $null })
+        coreVersion = $newCore; knowledgeVersion = $newKnowledge
+    }
+}
+
+function Write-SetupCompanyAgentUpdateSummary {
+    param([Parameter(Mandatory = $true)][object] $Intent, [Parameter(Mandatory = $true)][object] $Inventory, [switch] $ReplaceCustomHarness)
+    Write-Host ''
+    if ($Intent.operation -eq 'reapply') { Write-Host '이 범위에는 같은 버전의 Company Agent가 이미 설치되어 있습니다.' -ForegroundColor Cyan }
+    else { Write-Host '이 범위에 설치된 Company Agent를 찾았습니다. 공통 구성 업데이트를 준비합니다.' -ForegroundColor Cyan }
+    Write-Host ("범위: {0}" -f $Inventory.scopeRoot)
+    Write-Host ("Company Agent: {0} -> {1}" -f $Intent.previousCoreVersion, $Intent.coreVersion)
+    Write-Host ("회사 지식: {0} -> {1}" -f $Intent.previousKnowledgeVersion, $Intent.knowledgeVersion)
+    Write-Host '개인 Memory·학습 이력·Skill·Knowledge, 모델 설정과 MCP 연결은 그대로 유지합니다.'
+    if ($ReplaceCustomHarness) { Write-Host '명시적인 Replace 선택: 기존 CLAUDE.md·규칙·Hook도 백업 후 비활성화합니다. 이를 보존하는 일반 업데이트는 Update입니다.' -ForegroundColor Yellow }
+    else { Write-Host '업데이트 전 백업하며, 현재 추가된 CLAUDE.md·규칙·Hook도 비활성화하지 않습니다.' }
+    if (-not $ReplaceCustomHarness -and [bool](Get-SetupPropertyValue -Object $Inventory -Name 'hasCustomHarness')) {
+        Write-Host '추가 사용자 규칙·Hook이 함께 있습니다. 업데이트와 별개이므로 보존합니다.'
     }
 }
 
@@ -279,15 +338,34 @@ function Resolve-SetupExistingHarnessAction {
     [CmdletBinding()]
     param(
         [Parameter(Mandatory = $true)][object] $Inventory,
-        [ValidateSet('Ask', 'Keep', 'Replace')][string] $Action = 'Ask',
+        [ValidateSet('Ask', 'Keep', 'Replace', 'Update')][string] $Action = 'Ask',
+        [string] $TargetCoreVersion,
+        [string] $TargetKnowledgeVersion,
         [switch] $NonInteractive,
         [switch] $DryRun
     )
 
+    $owned = [bool](Get-SetupPropertyValue -Object $Inventory -Name 'hasCompanyAgent')
+    if ($Action -eq 'Update' -and -not $owned) { throw 'Update requires a recognized Company Agent installation in the selected scope; it cannot replace another harness.' }
     if (-not [bool](Get-SetupPropertyValue -Object $Inventory -Name 'detected')) { return 'Install' }
     if ($Action -eq 'Keep') { return 'Keep' }
+    if ($Action -eq 'Update') { return 'Update' }
     if ($Action -eq 'Replace') { return 'Replace' }
     if ($NonInteractive -or $DryRun) { return 'InputRequired' }
+
+    if ($owned) {
+        $intent = Get-SetupInstallationIntent -Inventory $Inventory -TargetCoreVersion $TargetCoreVersion -TargetKnowledgeVersion $TargetKnowledgeVersion
+        Write-SetupCompanyAgentUpdateSummary -Intent $intent -Inventory $Inventory
+        if ($intent.operation -eq 'reapply') { Write-Host '1. 백업 후 같은 버전 다시 적용·복구 (개인 설정 유지, 기본값)' }
+        else { Write-Host '1. 백업 후 Company Agent 공통 구성 업데이트 (개인 설정 유지, 기본값)' }
+        Write-Host '2. 현재 버전 유지하고 종료 (변경하지 않음)'
+        while ($true) {
+            $choice = Read-Host '번호를 선택해 주세요 [1/2, Enter=1]'
+            if ([string]::IsNullOrWhiteSpace($choice) -or $choice.Trim() -eq '1') { return 'Update' }
+            if ($choice.Trim() -eq '2') { return 'Keep' }
+            Write-Host '1 또는 2를 입력해 주세요.' -ForegroundColor Yellow
+        }
+    }
 
     Write-Host ''
     Write-Host '선택한 설치 범위에 기존 하네스가 있습니다.' -ForegroundColor Yellow

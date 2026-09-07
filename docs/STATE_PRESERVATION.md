@@ -1,10 +1,12 @@
-# 업데이트와 개인 상태 보존 — 0.3.3
+# 업데이트와 개인 상태 보존 — 1.1.1
+
+최초 설치 버전 1.0.0이나 자동 개인 학습을 추가한 1.1.0에서 현재 1.1.1로 업데이트할 수 있다. 아래는 일반 Company Agent 업데이트와 별도로 요청한 기존 개인 하네스 교체를 구분한 안내다. 이전 `0.3.x`는 배포 전 개발 버전이다.
 
 ## 직원의 업데이트 방법
 
 새 배포 ZIP을 완전히 압축 해제한 뒤 `Install-CompanyAgent.cmd`를 실행한다.
 기존과 같은 **Claude 전체 / 프로젝트** 범위를 선택하고, 프로젝트라면 같은 폴더를 지정한다.
-기존 하네스 감지 화면에서 **백업 후 Company Agent 설치**를 선택한다. **기존 하네스 유지**는 갱신 없이 종료한다.
+정상 Company Agent 등록이 있으면 이전/새 버전을 보여 주는 **백업 후 업데이트**를 선택한다. 프로그램과 회사 지식 버전이 모두 같으면 **같은 버전 다시 적용·복구**다. 두 경우 모두 사용자 규칙·Hook과 개인 자료를 유지한다. **현재 버전 유지**는 갱신 없이 종료한다. 다른 하네스만 있는 경우에만 기존 유지/백업 후 교체 화면을 사용한다.
 설치 전에 Claude를 닫고, 완료되면 다시 실행한다. 개인 저장 위치를 처음에 따로 지정했어도 다시 입력할 필요가 없다.
 설치 프로그램은 기존 등록의 `userStateRoot`를 재사용한다.
 
@@ -12,7 +14,7 @@
 | --- | --- |
 | 기존 하네스 감지 후 Keep 선택 | 백업·비활성화·설치 없이 종료 |
 | 기존 하네스 감지 후 Replace 선택 | 기존 규칙·Hook을 암호화 백업 후 선택 범위에서 비활성화, 개인 상태 유지 |
-| 기존 하네스 없음 | 추가 선택 없이 설치 |
+| 기존 하네스 없음 | 하네스 유지/교체 질문 없이 진행. Skill 이름 겹침이 있으면 별도로 선택 |
 | 기본 경로에서 동일 범위 업데이트 | 공통 버전/등록 갱신, 개인 파일 유지 |
 | 기존 사용자 지정 경로, 다음 설치에서 경로 생략 | 기존 등록 경로 재사용 |
 | 기존 경로와 다른 `-UserStateRoot` 지정 | 백업/등록/배포 변경 전 중단. 자동 이동하지 않음 |
@@ -24,6 +26,13 @@
 개인 상태는 `%LOCALAPPDATA%\CompanyAgent\states\user` 또는 `states\projects\<경로해시>`에 둔다.
 등록 정보는 `CompanyAgent\installations`에 있으며 개인 학습자료는 공통 배포물에 넣지 않는다.
 회사 Knowledge/config만 변경해도 현재 scoped 패키지는 새로운 CoreVersion이 필요하다.
+
+Skill 우선 선택은 같은 개인 상태의 `config/skill-preferences.json`에 둔다.
+“기존 선택 유지”로 갱신하면 기본값과 프로젝트별 선택이 유지된다. “새 Company Agent Skill 우선”을
+선택한 경우에만 겹친 이름의 선택을 변경하며, 설치 실패 시 그 변경도 복구한다. 버전/캐시 경로가
+바뀌어도 회사 Skill의 논리적 이름과 상대 경로가 같으면 기존 선택을 새 파일로 연결한다.
+Skill 자체의 이름/구조가 바뀌어 후보를 찾지 못하면 조용히 대체하지 않고 `/company-agent:skills`로
+다시 선택하도록 안내한다. 자세한 적용 범위는 [Skill 우선 선택](SKILL_PRIORITY.md)을 참고한다.
 
 ## 설치 전 선택 백업
 
@@ -37,6 +46,8 @@
 - `knowledge/entries`, `knowledge/overlays`, `knowledge/versions`: 개인 지식과 이력
 - `personal-root/.claude/skills`: 개인 Skill 및 지원 파일
 - `config/user.json`, 존재하는 `state-format.json`: 마스킹된 설정/형식 정보
+- `config/skill-preferences.json`, `config/skill-preferences-history`: Skill 기본값·프로젝트별 선택과 변경 전 이력
+- `config/learning.json`, `learning/state.json`: 자동 학습 켜짐/중지, 관찰, 개인 자동 변경 전후 점검 영역, 다음 사용 평가와 복구 기록. 잠금 파일과 임시 제출 파일은 선택하지 않는다.
 
 이는 **선택한 학습자료 백업**이다. 전체 PC/전체 State를 복구하는 이미지가 아니다.
 대화·세션 원문, history, tmp, 캐시, 검색 인덱스, MCP 실행환경과 자격 증명, `.env`, 개인키는 제외한다.
@@ -48,7 +59,7 @@ junction/symlink는 따라가지 않는다. 필수 개인 학습자료 안에서
 
 ## 기존 하네스의 별도 암호화 백업
 
-0.3.3에서 ‘백업 후 설치’를 선택하고 교체할 기존 파일·Hook이 있으면 같은 백업 폴더의 `previous-harness`에 해당 원본을 추가 보관한다.
+‘백업 후 설치’를 선택하고 교체할 기존 파일·Hook이 있으면 같은 백업 폴더의 `previous-harness`에 해당 원본을 추가 보관한다.
 일반 선택 백업의 마스킹된 사본과 달리, 원본 전체를 **Windows DPAPI CurrentUser로 암호화**한다.
 따라서 기존 settings에 포함된 비밀값도 복구할 수 있지만 평문 자격 증명 파일을 백업 폴더에 복사하지는 않는다.
 복구는 백업을 만든 동일 Windows 사용자·PC와 **원래 백업 폴더 경로**에서 수행한다.
@@ -95,7 +106,7 @@ powershell.exe -NoProfile -File .\deploy\Restore-PreviousHarness.ps1 -BackupPath
 
 사용자 지정 경로 설치를 **제거**하면 활성 등록도 삭제된다. 제거 전에 등록/백업의 `userStateRoot`를 보관하고,
 다시 설치할 때 같은 `-UserStateRoot`를 전달한다. 제거 후 경로 자동 추정은 하지 않는다.
-0.3.1 등 이전 설치기로 이미 경로가 끊겼다면 새 설치기가 잃어버린 경로를 추측하지 않는다.
+개발 중인 이전 설치기를 로컬 검증하며 경로 연결이 끊긴 경우에도 새 설치기가 잃어버린 경로를 추측하지 않는다.
 원래 등록 백업을 확인하고, 사용자의 명시적 복구 요청 아래 해당 범위 등록과 원래 경로를 다시 연결한다.
 
 ## 형식 호환성과 한계
@@ -138,7 +149,7 @@ python -B -m unittest discover -s tests -q
 powershell.exe -NoProfile -File .\deploy\Test-PersonalStateBackup.ps1
 powershell.exe -NoProfile -File .\deploy\Test-ExistingHarness.ps1
 powershell.exe -NoProfile -File .\deploy\Test-HarnessReplacement.ps1
-powershell.exe -NoProfile -File .\deploy\Test-ScopedInstallSmoke.ps1 -IncludeBundledPython
+powershell.exe -NoProfile -File .\deploy\Test-ScopedInstallSmoke.ps1
 ```
 
 Scoped 검사는 임시 Claude 프로필·프로젝트에서 실제 Plugin CLI를 사용한다.

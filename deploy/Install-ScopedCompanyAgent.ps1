@@ -11,8 +11,10 @@ param(
     [string] $PythonCommand = 'python',
     [string] $InvokingUserProfile,
     [string] $InvokingLocalAppData,
-    [ValidateSet('Ask', 'Keep', 'Replace')]
+    [ValidateSet('Ask', 'Keep', 'Replace', 'Update')]
     [string] $ExistingHarnessAction = 'Ask',
+    [ValidateSet('Ask', 'KeepCurrent', 'PreferIncoming')]
+    [string] $SkillConflictAction = 'Ask',
     [switch] $NonInteractive,
     [switch] $DryRun,
     [switch] $SkipAdminCheck,
@@ -25,7 +27,7 @@ Set-StrictMode -Version 2.0
 $scopedEntryValues = @{}
 foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'BackupRoot', 'ClaudeConfigRoot',
     'ClaudeCommand', 'PythonCommand', 'InvokingUserProfile', 'InvokingLocalAppData', 'NonInteractive',
-    'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction')) {
+    'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction', 'SkillConflictAction')) {
     $scopedEntryValues[$name] = Get-Variable -Name $name -ValueOnly
 }
 . (Join-Path $PSScriptRoot 'Setup-CompanyAgent.ps1') -FunctionsOnly
@@ -211,6 +213,10 @@ if (Test-Path -LiteralPath $registrationPath -PathType Leaf) {
         [string](Get-SetupPropertyValue -Object $existingScopeRegistration -Name 'scope') -ine $Scope) {
         throw "The existing installation record does not match this scope or its supported schema: $registrationPath. Ask the package owner to repair the record; personal data and registration were not changed."
     }
+    if ([string](Get-SetupPropertyValue -Object $existingScopeRegistration -Name 'pluginId') -cne 'company-agent@company-agent-local' -or
+        (Get-SetupDisplayVersion -Value (Get-SetupPropertyValue -Object $existingScopeRegistration -Name 'coreVersion')) -eq 'unknown') {
+        throw "The existing installation record does not identify a supported Company Agent plugin/version: $registrationPath. No installation or personal data was changed."
+    }
     if ($Scope -eq 'Project') {
         $recordedProject = Get-SetupPropertyValue -Object $existingScopeRegistration -Name 'projectRoot'
         if ($recordedProject -isnot [string] -or $recordedProject -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$))' -or
@@ -280,58 +286,66 @@ foreach ($protected in @($BundleRoot, $ClaudeConfigRoot, $distributionRoot, $reg
         throw "UserStateRoot must be separate from package, registration, and Claude configuration folders: $protected"
     }
 }
-$existingHarness = Get-SetupExistingHarness -Scope $Scope -ClaudeConfigRoot $ClaudeConfigRoot -ProjectRoot $ProjectRoot -ExistingRegistration $existingScopeRegistration
-$harnessAction = Resolve-SetupExistingHarnessAction -Inventory $existingHarness -Action $ExistingHarnessAction -NonInteractive:$NonInteractive -DryRun:$DryRun
-if ($harnessAction -eq 'InputRequired') {
-    Write-Host '기존 하네스가 있습니다. 기존 구성을 유지할지, 백업 후 Company Agent로 설치할지 선택해 주세요.'
-    Write-Host '기존 유지: -ExistingHarnessAction Keep / 백업 후 설치: -ExistingHarnessAction Replace'
-    return [pscustomobject]@{
-        status = 'input-required'; input = 'ExistingHarnessAction'; choices = @('Keep', 'Replace')
-        scope = $Scope; projectRoot = $ProjectRoot; existingHarness = $existingHarness
-        userStateRoot = $UserStateRoot; backupRoot = $BackupRoot; dryRun = [bool]$DryRun
-        message = 'Ask the user to keep the existing harness or back it up, deactivate scoped instructions/custom hooks, and install Company Agent. No files were changed.'
-    }
-}
-if ($harnessAction -eq 'Keep') {
-    Write-Host '기존 하네스를 그대로 유지합니다. Company Agent 설치·업데이트와 설정 변경은 하지 않았습니다.'
-    return [pscustomobject]@{
-        status = 'kept'; scope = $Scope; projectRoot = $ProjectRoot; existingHarness = $existingHarness
-        userStateRoot = $UserStateRoot; changed = $false; dryRun = [bool]$DryRun
-    }
-}
 if (-not (Test-Path -LiteralPath (Join-Path $BundleRoot 'bundle-manifest.json') -PathType Leaf)) {
     throw "Extract the complete Company Agent ZIP first, then double-click Install-CompanyAgent.cmd. Checked: $BundleRoot"
 }
-Write-Host ''
-Write-Host "Company Agent setup - $Scope"
-Write-Host '[1/4] 설치 파일과 기존 Claude Code의 실행 조건을 확인합니다...'
+# Verify the proposed version before presenting it as an available update.
 $manifest = $(if ($SkipBundleVerification) { Read-CompanyAgentJson -Path (Join-Path $BundleRoot 'bundle-manifest.json') } else { Test-CompanyAgentBundleIntegrity -BundleRoot $BundleRoot })
 Assert-CompanyAgentVersion -Version ([string]$manifest.coreVersion) -Name 'CoreVersion'
 Assert-CompanyAgentVersion -Version ([string]$manifest.knowledgeVersion) -Name 'KnowledgeVersion'
+$existingHarness = Get-SetupExistingHarness -Scope $Scope -ClaudeConfigRoot $ClaudeConfigRoot -ProjectRoot $ProjectRoot -ExistingRegistration $existingScopeRegistration
+$intent = Get-SetupInstallationIntent -Inventory $existingHarness -TargetCoreVersion ([string]$manifest.coreVersion) -TargetKnowledgeVersion ([string]$manifest.knowledgeVersion)
+$harnessAction = Resolve-SetupExistingHarnessAction -Inventory $existingHarness -Action $ExistingHarnessAction -TargetCoreVersion $intent.coreVersion -TargetKnowledgeVersion $intent.knowledgeVersion -NonInteractive:$NonInteractive -DryRun:$DryRun
+if ($harnessAction -eq 'InputRequired') {
+    $choices = @('Keep', 'Replace')
+    $choiceMessage = 'Ask the user to keep the existing harness or back it up, deactivate scoped instructions/custom hooks, and install Company Agent. No files were changed.'
+    if ($intent.hasCompanyAgent) {
+        Write-SetupCompanyAgentUpdateSummary -Intent $intent -Inventory $existingHarness
+        Write-Host '백업 후 업데이트/다시 적용: -ExistingHarnessAction Update / 현재 버전 유지: -ExistingHarnessAction Keep'
+        $choices = @('Update', 'Keep')
+        $choiceMessage = 'Existing Company Agent: ask to update/reapply common components with a safety backup, or keep the current version. Update preserves all current rules/hooks and personal data. No files were changed.'
+    }
+    else {
+        Write-Host '기존 하네스가 있습니다. 기존 구성을 유지할지, 백업 후 Company Agent로 설치할지 선택해 주세요.'
+        Write-Host '기존 유지: -ExistingHarnessAction Keep / 백업 후 설치: -ExistingHarnessAction Replace'
+    }
+    return [pscustomobject]@{
+        status = 'input-required'; input = 'ExistingHarnessAction'; choices = $choices
+        operation = $intent.operation; previousCoreVersion = $intent.previousCoreVersion; coreVersion = $intent.coreVersion
+        scope = $Scope; projectRoot = $ProjectRoot; existingHarness = $existingHarness
+        userStateRoot = $UserStateRoot; backupRoot = $BackupRoot; dryRun = [bool]$DryRun
+        message = $choiceMessage
+    }
+}
+if ($harnessAction -eq 'Keep') {
+    if ($intent.hasCompanyAgent) { Write-Host ("현재 Company Agent {0} 버전을 유지합니다. 업데이트와 설정 변경은 하지 않았습니다." -f $intent.previousCoreVersion) }
+    else { Write-Host '기존 하네스를 그대로 유지합니다. Company Agent 설치·업데이트와 설정 변경은 하지 않았습니다.' }
+    return [pscustomobject]@{
+        status = 'kept'; scope = $Scope; projectRoot = $ProjectRoot; existingHarness = $existingHarness
+        userStateRoot = $UserStateRoot; changed = $false; dryRun = [bool]$DryRun
+        operation = $intent.operation; previousCoreVersion = $intent.previousCoreVersion; coreVersion = $intent.previousCoreVersion
+    }
+}
+Write-Host ''
+if ($intent.hasCompanyAgent -and ($ExistingHarnessAction -ne 'Ask' -or $NonInteractive -or $DryRun)) { Write-SetupCompanyAgentUpdateSummary -Intent $intent -Inventory $existingHarness -ReplaceCustomHarness:($harnessAction -eq 'Replace') }
+Write-Host ("Company Agent {0} - {1}" -f $intent.operation, $Scope)
+Write-Host '[1/4] 설치 파일과 기존 Claude Code의 실행 조건을 확인합니다...'
 Assert-SetupPathHasNoReparsePoint -Path (Join-Path $ClaudeConfigRoot ('plugins\cache\company-agent-local\company-agent\' + [string]$manifest.coreVersion)) -Name 'Claude plugin cache target'
 $sourcePlugin = Join-Path $BundleRoot 'payload\core\plugin'
 $sourceRuntime = Join-Path $sourcePlugin 'runtime\python\python.exe'
 $resolvedPython = $null
 if (Test-Path -LiteralPath $sourceRuntime -PathType Leaf) { $resolvedPython = Resolve-SetupApprovedPython -PreferredCommand $sourceRuntime }
-if ([string]::IsNullOrWhiteSpace($resolvedPython)) { $resolvedPython = Resolve-SetupApprovedPython -PreferredCommand $PythonCommand }
+if ([string]::IsNullOrWhiteSpace($resolvedPython)) { $resolvedPython = Get-SetupPythonForInstall -PreferredCommand $PythonCommand -NonInteractive:$NonInteractive -DryRun:$DryRun }
 $script:ScopedClaudeExecutable = Resolve-SetupCommand -Command $ClaudeCommand
 if ([string]::IsNullOrWhiteSpace($script:ScopedClaudeExecutable)) { throw 'The claude command is unavailable. Open a new terminal after installing Claude Code, then run this installer again.' }
-if ([string]::IsNullOrWhiteSpace($resolvedPython)) { throw 'This package has no working Python 3.11+ runtime. Ask the package owner for the complete Windows bundle that includes Python, then run setup again.' }
+Write-Host ("사용할 Python: {0}" -f $resolvedPython)
 if (-not $SkipPrerequisiteCheck) {
     Assert-CompanyAgentPrerequisites -ClaudeCommand $script:ScopedClaudeExecutable -PythonCommand $resolvedPython
 }
 $stateCheckScript = Join-Path $sourcePlugin 'scripts\harness_cli.py'
-$stateCheckOutput = @()
-$stateCheckExit = -1
-$previousErrorActionPreference = $ErrorActionPreference
-try {
-    $ErrorActionPreference = 'Continue'
-    $stateCheckOutput = @(& $resolvedPython -B $stateCheckScript state check --state-root $UserStateRoot 2>&1)
-    $stateCheckExit = $LASTEXITCODE
-}
-finally { $ErrorActionPreference = $previousErrorActionPreference }
-if ($stateCheckExit -ne 0) {
-    throw ("The new Company Agent package cannot read the existing personal state at '$UserStateRoot'. Keep that folder and use the previous compatible package, or ask the package owner for a supported migration. No installation or personal data was changed. Details: " + ($stateCheckOutput -join [Environment]::NewLine))
+$stateCheckResult = Invoke-CompanyAgentPythonProcess -Executable $resolvedPython -Arguments @('-B', $stateCheckScript, 'state', 'check', '--state-root', $UserStateRoot)
+if ($stateCheckResult.ExitCode -ne 0) {
+    throw ("The new Company Agent package cannot read the existing personal state at '$UserStateRoot'. Keep that folder and use the previous compatible package, or ask the package owner for a supported migration. No installation or personal data was changed. Details: " + $stateCheckResult.StdErr + [Environment]::NewLine + $stateCheckResult.StdOut)
 }
 $modelSettingsPaths = @((Join-Path $ClaudeConfigRoot 'settings.json'))
 if ($Scope -eq 'Project') {
@@ -378,6 +392,8 @@ $releaseRoot = Join-Path $marketplaceRoot ('versions\' + [string]$manifest.coreV
 $releasePlugin = Join-Path $releaseRoot 'plugin'
 $releaseKnowledge = Join-Path $releaseRoot 'knowledge'
 $releaseConfig = Join-Path $releaseRoot 'config'
+$runtimeSelectionPath = Join-Path $releaseRoot 'runtime-selection.json'
+Assert-SetupPathHasNoReparsePoint -Path $runtimeSelectionPath -Name 'Runtime selection'
 $payloadRecords = @($manifest.files | Where-Object { $_.path -like 'payload/*' } | Sort-Object path | ForEach-Object { "$($_.path)|$($_.sha256)|$($_.length)" })
 $payloadHash = Get-ScopedHash -Text ($payloadRecords -join "`n")
 $releaseReceipt = Join-Path $releaseRoot 'release.json'
@@ -385,6 +401,39 @@ if (Test-Path -LiteralPath $releaseRoot) {
     if (-not (Test-Path -LiteralPath $releaseReceipt -PathType Leaf)) { throw "An incomplete release exists at $releaseRoot. Ask the package owner to inspect this folder before retrying." }
     $existingRelease = Read-CompanyAgentJson -Path $releaseReceipt
     if ([string]$existingRelease.payloadHash -cne $payloadHash) { throw "This Core version already exists with different contents. The package owner must increase CoreVersion before redistributing ($($manifest.coreVersion))." }
+}
+
+$skillCommandParameters = @{
+    PythonExecutable = $resolvedPython; PluginRoot = $sourcePlugin; PersonalStatePath = $UserStateRoot
+    KnowledgeRoot = (Join-Path $BundleRoot 'payload\knowledge')
+    ClaudeConfigPath = $ClaudeConfigRoot; ProjectPath = $ProjectRoot; InstallScope = $Scope
+}
+$skillInventory = Invoke-SetupSkillCommand @skillCommandParameters
+$skillPreferencesPath = Join-Path $UserStateRoot 'config\skill-preferences.json'
+if ((Get-SetupFullPath -Path ([string]$skillInventory.preferencesPath)) -ine (Get-SetupFullPath -Path $skillPreferencesPath)) {
+    throw 'Skill inventory returned a preferences path outside the selected personal state. No installation changes were made.'
+}
+Assert-SetupPathHasNoReparsePoint -Path $skillPreferencesPath -Name 'Skill preferences'
+$skillConflicts = @($skillInventory.conflicts | Where-Object {
+    @($_.candidates | Where-Object { $_.incoming }).Count -gt 0 -and
+    @($_.candidates | Where-Object { -not $_.incoming }).Count -gt 0
+})
+foreach ($warning in @($skillInventory.warnings)) { Write-Warning ("Skill inventory: {0}" -f $warning) }
+$resolvedSkillAction = Resolve-SetupSkillConflictAction -Conflicts $skillConflicts -Action $SkillConflictAction -NonInteractive:$NonInteractive -DryRun:$DryRun
+if ($resolvedSkillAction -eq 'InputRequired') {
+    return [pscustomobject]@{
+        status = 'input-required'; input = 'SkillConflictAction'; choices = @('KeepCurrent', 'PreferIncoming')
+        scope = $Scope; projectRoot = $ProjectRoot; userStateRoot = $UserStateRoot
+        skillConflicts = $skillConflicts; conflicts = $skillConflicts; skillConflictAction = 'Ask'
+        skillWarnings = @($skillInventory.warnings); dryRun = [bool]$DryRun; changed = $false
+        message = 'Choose KeepCurrent to preserve current Skill preferences, or PreferIncoming to select incoming Skills for this scope. Namespaced plugin Skills coexist; no files were changed.'
+    }
+}
+if ($resolvedSkillAction -eq 'Cancel') {
+    return [pscustomobject]@{
+        status = 'cancelled'; scope = $Scope; projectRoot = $ProjectRoot; changed = $false
+        skillConflicts = $skillConflicts; skillConflictAction = 'Cancel'; dryRun = [bool]$DryRun
+    }
 }
 
 $backupItems = @(Get-SetupBackupItems -ClaudeConfigPath $ClaudeConfigRoot -PersonalStatePath $UserStateRoot -ManagedDataPath $registrationRoot -ManagedInstallPath $distributionRoot -ManagedShortcutPath '')
@@ -404,7 +453,7 @@ if ($Scope -eq 'Project') {
         }
     }
 }
-foreach ($ownedFile in @($registrationPath, (Join-Path $marketplaceRoot '.claude-plugin\marketplace.json'))) {
+foreach ($ownedFile in @($registrationPath, $runtimeSelectionPath, (Join-Path $marketplaceRoot '.claude-plugin\marketplace.json'))) {
     if (Test-Path -LiteralPath $ownedFile -PathType Leaf) {
         $backupItems += [pscustomobject]@{ source = $ownedFile; relativePath = ('company-agent\' + (Split-Path -Leaf $ownedFile)); purpose = 'Company Agent installation registration'; mode = 'sanitized-json' }
     }
@@ -412,11 +461,13 @@ foreach ($ownedFile in @($registrationPath, (Join-Path $marketplaceRoot '.claude
 if ($DryRun) {
     return [pscustomobject]@{
         status = 'dry-run'; scope = $Scope; nativeClaudeScope = $nativeScope; projectRoot = $ProjectRoot
+        operation = $intent.operation; previousCoreVersion = $intent.previousCoreVersion
         coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath
         distributionRoot = $distributionRoot; settingsPath = $settingsPath; backupRoot = $BackupRoot
         backupItems = $backupItems; needsElevation = $false; pythonCommand = $resolvedPython
         modelSource = 'existing Claude aliases: haiku/sonnet/opus'; pluginId = $pluginId
         existingHarness = $existingHarness; existingHarnessAction = $harnessAction
+        skillConflicts = $skillConflicts; skillConflictAction = $resolvedSkillAction; skillWarnings = @($skillInventory.warnings)
     }
 }
 
@@ -442,15 +493,39 @@ $oldMarketplace = $null
 if (Test-Path -LiteralPath $marketplaceManifestPath -PathType Leaf) { $oldMarketplace = Read-CompanyAgentJson -Path $marketplaceManifestPath }
 $oldRegistration = $null
 if (Test-Path -LiteralPath $registrationPath -PathType Leaf) { $oldRegistration = Read-CompanyAgentJson -Path $registrationPath }
+$oldRuntimeSelection = $null
+if (Test-Path -LiteralPath $runtimeSelectionPath -PathType Leaf) { $oldRuntimeSelection = Read-SetupHarnessBytes -Path $runtimeSelectionPath }
+$runtimeSelectionChanged = $false
+$oldSkillPreferences = $null
+$skillPreferencesChanged = $false
+if ($resolvedSkillAction -eq 'PreferIncoming' -and $skillConflicts.Count -gt 0) {
+    Assert-SetupPathHasNoReparsePoint -Path $skillPreferencesPath -Name 'Skill preferences snapshot'
+    if (Test-Path -LiteralPath $skillPreferencesPath -PathType Leaf) {
+        $oldSkillPreferences = Read-SetupHarnessBytes -Path $skillPreferencesPath
+        # Keep an exact, independently verifiable recovery copy after the overall
+        # backup succeeds and before the first installation mutation.
+        $exactPreferenceBackup = Join-Path $backupPath 'company-agent\skill-preferences.before-install.json'
+        Write-SetupHarnessBytesAtomic -Path $exactPreferenceBackup -Bytes $oldSkillPreferences -AssertMissing
+        if ((Get-SetupHarnessHash -Bytes (Read-SetupHarnessBytes -Path $exactPreferenceBackup)) -cne (Get-SetupHarnessHash -Bytes $oldSkillPreferences)) {
+            throw 'Skill preference recovery backup verification failed. Installation did not start.'
+        }
+    }
+}
 $previousConfigRoot = [Environment]::GetEnvironmentVariable('CLAUDE_CONFIG_DIR', 'Process')
 $releaseCreated = $false
 $locationPushed = $false
 try {
+    if ($resolvedSkillAction -eq 'PreferIncoming' -and $skillConflicts.Count -gt 0) {
+        $skillPreferencesChanged = $true
+        $null = Invoke-SetupSkillCommand @skillCommandParameters -Command 'prefer-incoming'
+    }
     if ($null -ne $harnessTransaction) {
         Write-Host '기존 규칙·Hook의 암호화 백업을 확인했습니다. 선택한 범위에서만 비활성화합니다.'
         $null = Invoke-SetupHarnessReplacement -Transaction $harnessTransaction
     }
-    Write-Host '[3/4] 오프라인 Plugin을 설치합니다...'
+    if ($intent.operation -eq 'update') { Write-Host '[3/4] Company Agent 공통 구성을 새 버전으로 업데이트합니다...' }
+    elseif ($intent.operation -eq 'reapply') { Write-Host '[3/4] 같은 버전의 Company Agent 등록과 실행 환경을 다시 적용합니다...' }
+    else { Write-Host '[3/4] 오프라인 Plugin을 설치합니다...' }
     if (-not (Test-Path -LiteralPath $releaseRoot)) {
         $releaseCreated = $true
         New-CompanyAgentDirectory -Path $releaseRoot
@@ -463,10 +538,19 @@ try {
             schemaVersion = 1; registrationsRoot = $registrationsRoot; coreVersion = [string]$manifest.coreVersion
             claudeConfigRoot = $ClaudeConfigRoot; claudeConfigDirOverride = [bool]$usesConfigOverride
             knowledgeBaseRoot = $releaseKnowledge; managedConfigPath = (Join-Path $releaseConfig 'managed.json')
-            pythonCommand = $runtimeForMetadata
+            pythonCommand = $runtimeForMetadata; runtimeSelectionPath = $runtimeSelectionPath
         })
         Write-CompanyAgentJsonAtomic -Path $releaseReceipt -Value ([pscustomobject]@{ coreVersion = [string]$manifest.coreVersion; knowledgeVersion = [string]$manifest.knowledgeVersion; payloadHash = $payloadHash })
     }
+    # A durable pointer also reaches already-cached copies of this release when
+    # setup is rerun after an external interpreter moves or is replaced.
+    $installedPython = $resolvedPython
+    if (Test-Path -LiteralPath (Join-Path $releasePlugin 'runtime\python\python.exe') -PathType Leaf) { $installedPython = Join-Path $releasePlugin 'runtime\python\python.exe' }
+    Assert-SetupPathHasNoReparsePoint -Path $runtimeSelectionPath -Name 'Runtime selection'
+    $runtimeSelectionChanged = $true
+    Write-CompanyAgentJsonAtomic -Path $runtimeSelectionPath -Value ([pscustomobject]@{
+        schemaVersion = 1; coreVersion = [string]$manifest.coreVersion; pythonCommand = $installedPython
+    })
     Write-CompanyAgentJsonAtomic -Path $marketplaceManifestPath -Value ([pscustomobject]@{
         name = $marketplaceName; owner = [pscustomobject]@{ name = 'Company Agent Platform Team' }
         plugins = @([pscustomobject]@{ name = 'company-agent'; source = ('./versions/' + [string]$manifest.coreVersion + '/plugin'); description = 'Company Agent organizational harness and project harness builder' })
@@ -487,10 +571,11 @@ try {
         $entryScope -eq $nativeScope -and ($Scope -eq 'User' -or ($entryProject -and (Get-SetupFullPath -Path $entryProject).TrimEnd('\') -ieq $ProjectRoot))
     })
     if ($matching.Count -eq 0) { throw 'Claude reported success but the requested plugin scope was not present in installed_plugins.json.' }
+    if ($matching.Count -ne 1 -or [string](Get-SetupPropertyValue -Object $matching[0] -Name 'version') -cne [string]$manifest.coreVersion) {
+        throw 'Claude did not register exactly the requested Company Agent version in this scope. Update was not completed; restoring the previous registration.'
+    }
     $enabledPlugins = Get-SetupPropertyValue -Object (Read-ScopedJsonOrEmpty -Path $settingsPath) -Name 'enabledPlugins'
     if ((Get-SetupPropertyValue -Object $enabledPlugins -Name $pluginId) -ne $true) { throw 'Claude did not enable the plugin in the selected settings scope.' }
-    $installedPython = $resolvedPython
-    if (Test-Path -LiteralPath (Join-Path $releasePlugin 'runtime\python\python.exe') -PathType Leaf) { $installedPython = Join-Path $releasePlugin 'runtime\python\python.exe' }
     $registration = [pscustomobject]@{
         schemaVersion = 1; scope = $Scope; nativeClaudeScope = $nativeScope; projectRoot = $ProjectRoot
         userStateRoot = $UserStateRoot; pythonCommand = $installedPython
@@ -501,7 +586,16 @@ try {
     }
     Write-CompanyAgentJsonAtomic -Path $registrationPath -Value $registration
     if ($null -ne $harnessTransaction) { $null = Complete-SetupHarnessReplacement -Transaction $harnessTransaction }
-    Write-Host '[4/4] 설치가 완료되었습니다.'
+    $resultStatus = 'installed'
+    if ($intent.operation -eq 'update') {
+        $resultStatus = 'updated'
+        Write-Host ("[4/4] Company Agent 업데이트가 완료되었습니다. {0} -> {1}" -f $intent.previousCoreVersion, $manifest.coreVersion)
+    }
+    elseif ($intent.operation -eq 'reapply') {
+        $resultStatus = 'reapplied'
+        Write-Host ("[4/4] Company Agent {0} 같은 버전 다시 적용이 완료되었습니다." -f $manifest.coreVersion)
+    }
+    else { Write-Host '[4/4] 설치가 완료되었습니다.' }
     Write-Host 'Claude Code를 닫았다 다시 열면 Company Agent가 적용됩니다.'
     if ($Scope -eq 'Project') { Write-Host "이 프로젝트 폴더에서 Claude를 열어 주세요: $ProjectRoot" }
     else { Write-Host '현재 Windows 계정의 Claude Code 작업에서 사용할 수 있습니다.' }
@@ -510,11 +604,27 @@ try {
     Write-Host "백업 위치: $backupPath"
     if ($null -ne $harnessTransaction) { Write-Host '기존 하네스 복원 자료: 백업 폴더의 previous-harness (현재 Windows 계정으로 복원)' }
     foreach ($note in @($existingHarness.inheritedNotes)) { Write-Host ([string]$note) }
-    return [pscustomobject]@{ status = 'installed'; scope = $Scope; nativeClaudeScope = $nativeScope; projectRoot = $ProjectRoot; pluginId = $pluginId; coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath; safetyBackup = $backupPath; needsElevation = $false; existingHarnessAction = $harnessAction; previousHarnessDeactivated = ($null -ne $harnessTransaction); existingHarness = $existingHarness }
+    return [pscustomobject]@{ status = $resultStatus; operation = $intent.operation; previousCoreVersion = $intent.previousCoreVersion; scope = $Scope; nativeClaudeScope = $nativeScope; projectRoot = $ProjectRoot; pluginId = $pluginId; coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath; safetyBackup = $backupPath; needsElevation = $false; existingHarnessAction = $harnessAction; previousHarnessDeactivated = ($null -ne $harnessTransaction); existingHarness = $existingHarness; skillConflicts = $skillConflicts; skillConflictAction = $resolvedSkillAction; skillWarnings = @($skillInventory.warnings) }
 }
 catch {
     $failure = $_.Exception.Message
     $recoveryErrors = @()
+    if ($skillPreferencesChanged) {
+        try {
+            Assert-SetupPathHasNoReparsePoint -Path $skillPreferencesPath -Name 'Skill preference recovery'
+            if ($null -ne $oldSkillPreferences) { Write-SetupHarnessBytesAtomic -Path $skillPreferencesPath -Bytes $oldSkillPreferences }
+            elseif (Test-Path -LiteralPath $skillPreferencesPath -PathType Leaf) { Remove-Item -LiteralPath $skillPreferencesPath -Force }
+        }
+        catch { $recoveryErrors += $_.Exception.Message }
+    }
+    if ($runtimeSelectionChanged) {
+        try {
+            Assert-SetupPathHasNoReparsePoint -Path $runtimeSelectionPath -Name 'Runtime selection recovery'
+            if ($null -ne $oldRuntimeSelection) { Write-SetupHarnessBytesAtomic -Path $runtimeSelectionPath -Bytes $oldRuntimeSelection }
+            elseif (Test-Path -LiteralPath $runtimeSelectionPath -PathType Leaf) { Remove-Item -LiteralPath $runtimeSelectionPath -Force }
+        }
+        catch { $recoveryErrors += $_.Exception.Message }
+    }
     foreach ($snapshot in $snapshots) {
         try { Restore-ScopedEntry -Snapshot $snapshot } catch { $recoveryErrors += $_.Exception.Message }
     }
@@ -535,6 +645,9 @@ catch {
         catch { $recoveryErrors += $_.Exception.Message }
     }
     if ($recoveryErrors.Count -gt 0) { throw "$failure Recovery needs attention: $($recoveryErrors -join '; '). Backup: $backupPath" }
+    if ($skillPreferencesChanged) {
+        throw "$failure Company Agent registration and any deactivated previous harness were restored. Exact prior Skill preferences were restored; Skill preference revision history remains available as recovery evidence. Other Claude registrations and personal state were preserved. Backup: $backupPath"
+    }
     throw "$failure Company Agent registration and any deactivated previous harness were restored. Other Claude registrations and personal state were preserved. Backup: $backupPath"
 }
 finally {

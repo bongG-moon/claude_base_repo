@@ -210,17 +210,16 @@ if (-not $SkipKnowledgePreparation) {
     $previousDontWriteBytecode = [Environment]::GetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', 'Process')
     try {
         [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', '1', 'Process')
-        $reconcileOutput = & $pythonExecutable $harnessCliPath knowledge reconcile `
-            --state-root $UserStateRoot `
-            --base $corporateKnowledgePath `
-            --apply-safe 2>&1
-        $reconcileExitCode = $LASTEXITCODE
+        $reconcileOutput = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @(
+            '-B', $harnessCliPath, 'knowledge', 'reconcile', '--state-root', $UserStateRoot,
+            '--base', $corporateKnowledgePath, '--apply-safe')
+        $reconcileExitCode = $reconcileOutput.ExitCode
         if ($reconcileExitCode -notin @(0, 2)) {
-            throw "Personal knowledge reconciliation failed:`r`n$($reconcileOutput -join [Environment]::NewLine)"
+            throw "Personal knowledge reconciliation failed:`r`n$($reconcileOutput.StdOut)`r`n$($reconcileOutput.StdErr)"
         }
         if ($reconcileExitCode -eq 2) {
             try {
-                $reconcileReport = ($reconcileOutput -join [Environment]::NewLine) | ConvertFrom-Json
+                $reconcileReport = $reconcileOutput.StdOut | ConvertFrom-Json
                 $knowledgeConflictCount = @($reconcileReport.conflicts).Count
                 $knowledgeDetachedCount = @($reconcileReport.detached).Count
             }
@@ -230,13 +229,12 @@ if (-not $SkipKnowledgePreparation) {
             Write-Warning ("Personal knowledge needs review after the Corporate Knowledge update. Safe changes were applied; unresolved items remain under knowledge\conflicts. conflicts={0}, detached={1}" -f $knowledgeConflictCount, $knowledgeDetachedCount)
         }
 
-        $buildOutput = & $pythonExecutable $harnessCliPath knowledge build `
-            --state-root $UserStateRoot `
-            --base $corporateKnowledgePath `
-            --personal $personalKnowledgePath `
-            --output (Join-Path $UserStateRoot 'knowledge\generated-index') 2>&1
-        if ($LASTEXITCODE -ne 0) {
-            throw "Effective Knowledge index build failed:`r`n$($buildOutput -join [Environment]::NewLine)"
+        $buildOutput = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @(
+            '-B', $harnessCliPath, 'knowledge', 'build', '--state-root', $UserStateRoot,
+            '--base', $corporateKnowledgePath, '--personal', $personalKnowledgePath,
+            '--output', (Join-Path $UserStateRoot 'knowledge\generated-index'))
+        if ($buildOutput.ExitCode -ne 0) {
+            throw "Effective Knowledge index build failed:`r`n$($buildOutput.StdOut)`r`n$($buildOutput.StdErr)"
         }
     }
     finally {

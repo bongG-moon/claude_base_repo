@@ -99,7 +99,7 @@ Skill은 업무 수행 지침이지 보안 경계가 아니다. DB SELECT-only�
 - Hallmark의 `references/assets.md`는 원격 URL을 금지하지만 `references/imagery-kit.md`에는 usehallmark.com 이미지 URL 예시가 남아 있다. 폰트 문서에도 공개 서비스 관련 잔재가 있다. 로컬 자산·사내 서체·SVG로 치환한다.
 - `idea-refine/scripts/idea-refine.sh`는 폴더 생성용 shell helper다. 기존 파일 도구 또는 PowerShell로 대체할 수 있다.
 - 브라우저·Flint Skill은 MCP 실행파일을 함께 제공하지 않는다. `npx -y ...` 또는 `npm install --offline` 문자열만으로 빈 폐쇄망 PC에 설치 가능한 것은 아니다.
-- 현재 하네스에 Python이 포함됐다고 Office 라이브러리, Node, Chrome DevTools MCP까지 설치된 것은 아니다. 각 선택팩의 실행환경과 버전별 Windows 검증이 따로 필요하다.
+- 현재 1.0.0 기본 하네스는 PC에 이미 설치된 승인 Python 3.11 이상을 사용한다. Python이 있다고 Office 라이브러리, Node, Chrome DevTools MCP까지 설치된 것은 아니다. 각 선택팩의 실행환경과 버전별 Windows 검증이 따로 필요하다.
 
 ### 4.3 설치와 의존 파일
 
