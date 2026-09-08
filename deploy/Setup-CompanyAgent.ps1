@@ -35,6 +35,8 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
 . (Join-Path $PSScriptRoot 'CompanyAgent.Common.ps1')
+. (Join-Path $PSScriptRoot 'CompanyAgent.UserContext.ps1')
+. (Join-Path $PSScriptRoot 'CompanyAgent.ClaudeDiscovery.ps1')
 
 # Some parent shells prepend PowerShell 7 module folders to PSModulePath before
 # starting Windows PowerShell 5.1. Load the matching built-in utility module by

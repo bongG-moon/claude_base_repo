@@ -1,6 +1,6 @@
-# Company Agent 설치와 배포 — Windows 1.1.1
+# Company Agent 설치와 배포 — Windows 1.1.2
 
-현재 배포 버전은 1.1.1입니다. 기존 Company Agent의 버전 비교와 업데이트 안내를 추가했으며, 1.1.0부터 제공한 자동 개인 학습은 그대로 이어집니다. 1.0.0/1.1.0 설치 PC는 같은 범위로 업데이트하고 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. 이전 `0.3.x`는 배포 전 개발 버전입니다. 아래 절차는 직원 전체에게 배포하거나 현재 PC에 실제 설치를 완료했다는 기록이 아닙니다.
+현재 배포 버전은 1.1.2입니다. 일부 회사 PC에서 일반 더블클릭도 관리자 권한으로 감지되어 중단되던 검사를 바꾸고, 현재 로그인한 사용자와 실제 설치 대상의 일치를 확인합니다. 같은 사용자로 확인되면 높은 권한 자체로 막지 않으며, Claude 실행 파일과 설정 위치도 각각 탐색합니다. 기존 1.x 설치 PC는 같은 범위로 업데이트하고 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. 이전 `0.3.x`는 배포 전 개발 버전입니다. 아래 절차는 직원 전체에게 배포하거나 실제 회사 운영 PC의 검증을 완료했다는 기록이 아닙니다.
 
 직원 PC에는 Claude Code와 사내 SMALL/MEDIUM/LARGE 연결, 회사 승인 Python 3.11 이상이 이미 준비되어 있어야 합니다. 기본 ZIP에는 Python 실행 파일과 DLL을 넣지 않고 PC의 Python을 사용합니다. 설치 과정에서 Python/pip/Git를 설치하거나 다운로드하지 않으며 PC의 PATH 설정도 바꾸지 않습니다. 설치 조건은 Claude Code CLI 2.1.220 이상, Windows PowerShell 5.1 이상, Windows 10/11입니다. 대상 PC의 운영체제와 Python 아키텍처는 사내 담당자가 확인합니다.
 
@@ -9,10 +9,10 @@
 배포 전 1.0.0 설치 파일에서 `cp949 codec can't encode character` 오류를 겪었다면 수정 ZIP을 **새 폴더에 완전히 압축 해제**하여 실행합니다. 기존 Skill 설명을 지우거나 Python/Windows 언어를 재설정하지 않습니다. 수정본은 설치기의 Python 입출력을 UTF-8로 처리하고, JSON의 한글·특수문자·경로를 손실 없이 복원합니다. Skill 검사에서 중단됐다면 백업·기존 규칙 비활성화 이전 단계입니다. 이미 다른 1.0.0 내용으로 설치에 성공한 환경에서 ‘같은 버전의 내용이 다름’ 오류가 나오면 보호 검사를 우회하거나 개인 저장 영역을 지우지 말고 담당자에게 확인합니다.
 
 1. 열려 있는 Claude Code를 닫고 ZIP을 로컬 폴더에 모두 압축 해제합니다.
-2. 최상위 `Install-CompanyAgent.cmd`를 더블클릭합니다. 관리자 권한으로 실행하지 않습니다.
+2. 최상위 `Install-CompanyAgent.cmd`를 평소처럼 더블클릭합니다. 별도로 ‘관리자 권한으로 실행’을 선택할 필요는 없습니다.
 3. **Claude 전체** 또는 **이 프로젝트만**을 선택합니다. 프로젝트라면 대상 폴더도 선택합니다.
 4. 같은 범위에 Company Agent가 있으면 **기존 버전 → 새 버전**을 확인하고 1번 업데이트 또는 2번 현재 버전 유지를 선택합니다. 같은 버전이면 다시 적용/복구로 안내합니다. 다른 하네스만 있으면 **기존 하네스 유지** 또는 **백업 후 Company Agent 설치**를 선택하고, 없으면 다음 단계로 진행합니다.
-5. Python은 자동으로 찾습니다. 찾을 수 없을 때만 회사 승인 `python.exe`의 경로를 입력합니다. 경로를 모르면 사내 담당자에게 확인합니다.
+5. 자동 확인된 본인 계정과 Claude 실행 파일·설정 위치를 확인합니다. Claude 후보 선택이 필요할 때만 평소 쓰는 파일을 고릅니다. Python도 자동으로 찾으며, 찾을 수 없을 때만 회사 승인 `python.exe`의 경로를 입력합니다. 경로를 모르면 사내 담당자에게 확인합니다.
 6. 들어오는 Skill과 같은 이름이 있으면 후보의 출처를 확인하고 **기존 선택 유지** 또는 **새 Company Agent Skill 우선**을 고릅니다. 겹침이 없으면 추가 질문 없이 진행합니다.
 7. 설치·업데이트·다시 적용이 완료되면 Claude Code를 다시 실행합니다. ‘유지’는 설치·변경 없이 종료하므로 재시작할 필요가 없습니다.
 
@@ -27,11 +27,33 @@
 
 두 범위를 함께 사용할 수 있습니다. 동일한 플러그인 ID `company-agent@company-agent-local`를 사용하고, 가장 가까운 프로젝트 등록이 개인 상태를 선택합니다. 해당 프로젝트 밖에서는 User 상태를 사용합니다. Project만 설치한 PC에서는 다른 프로젝트에 활성화되지 않습니다.
 
-현재 배포본은 한 Windows 계정에서 하나의 Claude 설정 프로필을 지원합니다. 다른 `CLAUDE_CONFIG_DIR` 프로필로 기존 등록을 덮어쓰려 하면 중단합니다.
+현재 배포본은 한 Windows 계정에서 하나의 Claude 설정 프로필을 지원합니다. 별도 지정이 없으면 같은 범위의 기존 등록에 저장된 설정 위치를 재사용합니다. 다른 `CLAUDE_CONFIG_DIR` 프로필로 기존 등록을 덮어쓰려 하면 중단합니다.
 
 전용 실행기 없이 평소처럼 Claude를 사용합니다. 프로젝트에서 다음처럼 요청할 수 있습니다.
 
 > 이 프로젝트의 내용을 먼저 확인하고, 이 일을 잘 수행할 수 있는 하네스를 구성해줘. 꼭 필요한 내용만 물어봐줘.
+
+## 계정과 Claude 위치를 확인하는 방법
+
+설치기의 확인 대상은 **지금 로그인해 사용하는 본인의 Windows 환경**입니다. Claude 실행 파일이 있는 폴더와 모델·MCP·Skill을 보관하는 개인 설정 폴더는 다를 수 있으므로 따로 확인합니다. 프로그램 위치만으로 계정이나 개인 저장 위치를 결정하지 않습니다.
+
+- 실행 중인 Windows 계정이 같은 세션에서 실제 로그인한 사용자와 일치하고, 개인 폴더도 그 사용자의 것인지 확인합니다. 같은 사용자로 확인된 높은 권한 실행은 허용합니다.
+- 다른 계정으로 실행했거나 서비스 실행, 사용자·세션·개인 폴더 확인 실패인 경우 설치 대상 파일을 변경하기 전에 중단합니다. 다른 직원의 폴더를 탐색해 그쪽에 설치하지 않습니다.
+- Claude는 현재 실행 경로(PATH)와 현재 사용자의 일반적인 설치 위치를 확인합니다. 후보가 없거나 여러 개여서 선택이 필요하면 직접 설치에서는 후보를 고르거나 실제 경로를 입력받습니다. 전체 디스크나 다른 사용자의 프로필을 무차별 검색하지 않습니다.
+- Claude 설정 위치는 명시한 `-ClaudeConfigRoot` → 현재 `CLAUDE_CONFIG_DIR` → 같은 범위의 정상 기존 설치 기록 → 본인의 기본 `%USERPROFILE%\.claude` 순으로 결정합니다. 기존 기록과 명시한 프로필이 다르면 덮어쓰지 않고 중단합니다. 화면에서 실제 사용 경로와 선택 근거를 확인할 수 있습니다.
+- 기존 등록의 개인 자료 위치는 그대로 재사용합니다. Claude 실행 파일을 새로 찾았다는 이유로 개인 Memory·Skill·Knowledge를 다른 위치로 옮기지 않습니다. 모델·MCP 설정 내용이나 비밀번호를 새로 입력할 필요도 없습니다.
+
+Claude 후보가 없거나 여러 개일 때 `-NonInteractive` 또는 `-DryRun`은 `status: input-required`, `input: ClaudeCommand`와 후보 목록을 반환합니다. 이것은 설치 완료가 아닙니다. Claude에게 설치를 맡긴 경우 사용자가 평소 사용하는 파일을 확인하고 아래처럼 실제 경로를 지정해 다시 점검합니다. 경로는 예시이며 그대로 복사하지 않습니다.
+
+```powershell
+powershell.exe -NoProfile -File .\deploy\Setup-CompanyAgent.ps1 -Scope User -ClaudeCommand "C:\Users\본인계정\.local\bin\claude.exe" -NonInteractive -DryRun
+```
+
+### 그냥 더블클릭했는데 관리자 오류가 나왔을 때
+
+1.1.1의 `Run this installer from your normal Windows account` 오류는 권한이 부족하다는 뜻이 아니라, 설치기가 높은 권한 실행을 일괄 차단했다는 뜻입니다. 회사 PC 설정에 따라 일반 더블클릭에서도 나타날 수 있습니다. **1.1.2 ZIP 전체를 새 폴더에 풀고**, 같은 최상위 `Install-CompanyAgent.cmd`를 다시 더블클릭합니다. 기존 설치가 있으면 이전과 같은 범위를 선택하여 업데이트합니다. 1.1.1의 이 사전 검사에서 실패한 것만으로 기존 자료를 지우거나 재설치할 필요는 없습니다.
+
+1.1.2에서도 사용자 확인 오류가 나면 오류 문구와 표시된 계정·설정 위치만 사내 담당자에게 전달하세요. 본인 계정인지 확인되지 않은 상태에서 진행하지 않습니다. UAC나 회사 보안 정책을 끄거나, `-SkipAdminCheck` 같은 보호 검사 생략 옵션으로 해결하지 않습니다. 이미 설치된 Claude와 Python을 삭제할 필요도 없습니다. 사전 검사에서 중단되면 백업이 아직 만들어지지 않았을 수 있으며, 화면에 백업 위치가 없다면 백업 완료로 해석하지 않습니다.
 
 ## Claude에게 설치 맡기기
 
@@ -106,7 +128,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\Setup-CompanyAg
 
 ## 자동 점검과 백업
 
-사용자 컨텍스트, Claude 버전, 승인 Python의 실행과 3.11 이상 여부, 번들 해시, 대상 경로와 기존 플러그인을 확인합니다. 기존 모델 별칭 haiku/sonnet/opus를 그대로 사용하며 API shim을 만들지 않습니다. 모든 subagent를 한 모델로 강제하는 설정이 있으면 해당 문제를 안내합니다.
+현재 로그인 사용자·실행 계정·세션·개인 폴더의 일치, Claude 실행 파일과 설정 폴더·버전, 승인 Python의 실행과 3.11 이상 여부, 번들 해시, 대상 경로와 기존 플러그인을 확인합니다. 기존 모델 별칭 haiku/sonnet/opus를 그대로 사용하며 API shim을 만들지 않습니다. 모든 subagent를 한 모델로 강제하는 설정이 있으면 해당 문제를 안내합니다.
 
 Python 경로가 바뀌면 같은 설치 파일을 다시 실행하여 새 경로를 선택할 수 있습니다. 버전별 `runtime-selection.json`에 확인된 실행 경로를 기록하므로 Claude의 캐시에 예전 경로가 남아 있어도 새 경로를 사용합니다. 같은 Core 버전을 사용하는 User/Project 범위는 이 하네스 실행용 Python 선택을 공유합니다. 설치 실패 시 이전 선택으로 복구하며 개인 Memory는 이동하지 않습니다. 별도로 생성한 개인 MCP의 실행 환경은 자동 교체하지 않으므로 [개인 MCP의 Python 경로 변경 안내](STATE_PRESERVATION.md#개인-mcp의-python-경로가-바뀐-경우)를 따릅니다.
 
@@ -119,7 +141,7 @@ Claude native CLI의 설정 저장 과정에서 정밀도가 달라질 수 있�
 %LOCALAPPDATA%\CompanyAgent-Backups\pre-install-<시각>-<ID>
 ```
 
-User는 `%USERPROFILE%\.claude`, Project는 여기에 대상 프로젝트의 `.claude`도 추가합니다. `CLAUDE_CONFIG_DIR`가 있으면 해당 경로를 사용합니다.
+User는 앞서 확인한 실제 Claude 설정 폴더를 사용하며, 기본값은 `%USERPROFILE%\.claude`입니다. Project는 여기에 대상 프로젝트의 `.claude`도 추가합니다. 명시한 설정 위치, `CLAUDE_CONFIG_DIR` 또는 기존 등록으로 별도 위치를 확인했다면 그 경로가 기준입니다.
 
 - settings*.json, Markdown 지시 파일, Skill, Agent, Command, Hook
 - 플러그인 등록 JSON과 기존 Company Agent 등록
@@ -203,10 +225,10 @@ powershell.exe -NoProfile -File .\deploy\Restore-PreviousHarness.ps1 -BackupPath
 다음 명령은 **소스 저장소 루트**에서 실행합니다. 빌드 PC에도 승인 Python 3.11 이상과 Claude Code CLI 2.1.220 이상이 준비되어 있어야 합니다. 기본 빌드는 외부에서 Python을 내려받지 않습니다.
 
 ```powershell
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.1 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.2 -KnowledgeVersion 2026.09.03
 ```
 
-결과는 로컬의 `dist\company-agent-1.1.1-2026.09.03.zip`입니다. ZIP 생성은 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 설치된 배포본을 덮어쓰지 않고 새 버전으로 전달합니다. ZIP에는 쉬운 사용자 안내서 HTML/Markdown과 자동 학습 설명서도 포함됩니다.
+결과는 로컬의 `dist\company-agent-1.1.2-2026.09.03.zip`입니다. ZIP 생성은 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 설치된 배포본을 덮어쓰지 않고 새 버전으로 전달합니다. ZIP에는 쉬운 사용자 안내서 HTML/Markdown과 자동 학습 설명서도 포함됩니다.
 
 `-WithoutBundledPython`은 기존 빌드 명령과의 호환을 위해 유지하며 현재 기본값과 같은 결과를 냅니다. 직원 ZIP에는 설치·실행·제거·복구에 필요한 파일을 넣고, `New-OfflineBundle.ps1`, `Get-EmbeddedPython.ps1`, `Test-*.ps1` 같은 빌드·테스트 도구는 제외합니다. 해당 도구와 테스트 소스는 저장소에 남아 있으며 개발 검증은 저장소에서 수행합니다.
 
@@ -219,7 +241,7 @@ Python을 함께 전달해야 하는 별도 운영 환경에서만 관리자가 
 powershell.exe -NoProfile -File .\deploy\Get-EmbeddedPython.ps1
 
 # Python 동봉을 명시적으로 선택
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.1 -KnowledgeVersion 2026.09.03 -IncludeBundledPython -OutputPath .\dist\company-agent-1.1.1-2026.09.03-with-python.zip
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.2 -KnowledgeVersion 2026.09.03 -IncludeBundledPython -OutputPath .\dist\company-agent-1.1.2-2026.09.03-with-python.zip
 ```
 
 폐쇄망 빌드 PC에는 검증된 Python ZIP을 반입할 수 있습니다. 별도 경로의 런타임은 `-IncludeBundledPython`, `-PythonRuntimeZip`, 정확한 `-PythonRuntimeSha256`을 함께 지정합니다. 동봉 패키지는 Python 라이선스와 실행 바이너리를 포함하며, 직원 설치 과정에서 다운로드하지 않습니다. 기본 패키지와 같은 CoreVersion의 다른 내용을 이미 설치한 PC에는 덮어쓸 수 없으므로, 같은 배포 대상에 전달할 구성은 릴리스 전에 확정합니다.

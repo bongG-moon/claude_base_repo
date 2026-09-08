@@ -2,7 +2,7 @@
 
 Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARGE 모델을 사용하는 개인화 하네스입니다. 공통 엔진과 개인 Knowledge·Memory·Skill을 분리하고 사용자 또는 프로젝트 범위로 설치합니다.
 
-현재 배포 버전은 **1.1.1**입니다. 1.1.0에서 추가한 자동 개인 학습을 유지하고, 이미 설치된 Company Agent를 다른 하네스와 구별하는 업데이트 화면을 추가했습니다. 기존 버전과 새 버전을 보여 주며 개인 자료와 사용자가 추가한 규칙·Hook을 유지합니다. 이전 `0.3.x` 표기는 배포 전 개발 과정의 버전입니다.
+현재 배포 버전은 **1.1.2**입니다. 일부 회사 PC에서 그냥 더블클릭해도 관리자 권한으로 감지되어 설치가 중단되던 조건을 보완했습니다. 실제 로그인한 본인의 실행·설정 환경인지 확인하고, 같은 사용자라면 권한이 높다는 이유만으로 막지 않습니다. Claude 실행 파일과 개인 설정 위치를 각각 확인하며, 기존 자동 학습과 업데이트 시 개인 자료·규칙·Hook 보존은 그대로 유지합니다. 이전 `0.3.x` 표기는 배포 전 개발 과정의 버전입니다.
 
 코딩에 익숙하지 않은 직원을 위한 [상세 사용자 안내서](docs/Company-Agent-사용자-안내서.html)를 제공합니다. HTML 파일을 내려받아 더블클릭하면 인터넷 연결 없이 읽을 수 있고, 업무 예문을 복사할 수 있습니다. [수정용 원본](docs/USER_GUIDE.md)에는 첫 사용, 보고·회의·자료 비교, 개인 기억과 지식, 반복업무 스킬, 프로젝트별 활용, 업데이트와 문제 해결을 정리했습니다.
 
@@ -11,16 +11,18 @@ Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARG
 ## 직원 설치
 
 1. 열려 있는 Claude Code를 닫고 배포 ZIP을 모두 압축 해제합니다.
-2. `Install-CompanyAgent.cmd`를 더블클릭합니다.
+2. `Install-CompanyAgent.cmd`를 평소처럼 더블클릭합니다. 별도로 ‘관리자 권한으로 실행’을 선택할 필요는 없습니다.
 3. **Claude 전체** 또는 **이 프로젝트만**을 선택합니다. 프로젝트라면 폴더도 지정합니다.
 4. 같은 범위에 Company Agent가 있으면 **기존 버전 → 새 버전**을 확인하고 업데이트를 선택합니다. 같은 버전이면 다시 적용/복구로 안내합니다. 다른 하네스만 있으면 **기존 하네스 유지** 또는 **백업 후 Company Agent 설치**를 선택하며, 아무것도 없으면 다음 단계로 진행합니다.
-5. 설치기가 `python`과 `py`에서 Python 3.11 이상을 자동으로 찾습니다. 찾지 못한 경우에만 승인된 `python.exe` 경로를 입력합니다. 경로를 모르면 사내 담당자에게 확인합니다.
+5. 설치기가 본인의 Windows 계정, Claude 실행 파일·설정 위치와 Python 3.11 이상을 확인합니다. Claude를 찾지 못하거나 후보가 여러 개면 평소 쓰는 실행 파일을 선택하고, Python을 찾지 못하면 승인된 `python.exe` 경로를 입력합니다. 경로를 모르면 사내 담당자에게 확인합니다.
 6. 들어오는 Skill과 같은 이름이 발견되면 목록을 확인하고 **기존 선택 유지** 또는 **새 Company Agent Skill 우선**을 선택합니다. 겹침이 없으면 추가 질문은 없습니다.
 7. 설치·업데이트·다시 적용이 완료되면 Claude Code를 다시 엽니다. ‘유지’를 선택하면 변경 없이 종료하므로 재시작할 필요가 없습니다.
 
 설치기는 Python이나 pip를 설치·다운로드하지 않고 PC의 PATH 설정을 바꾸지 않습니다. 모델 ID, MCP, Outlook 정보를 입력하지 않으며 평소 `claude` 명령에서도 적용됩니다. 설치 전 기존 설정·Skill·Hook·플러그인 등록과 개인 Memory·Knowledge·Skill을 선택 백업합니다. ‘백업 후 설치’에서는 선택한 범위의 기존 Markdown 지시·규칙과 설정의 Hook을 별도로 암호화 백업한 뒤 비활성화합니다. 모델·MCP·개인 Memory·기존 일반 Skill은 유지합니다. 사용자/프로젝트 설치에는 관리자 권한이 필요하지 않습니다.
 
 Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지침대로 설치해줘”라고 해도 됩니다. Markdown 파일과 실제 배포 ZIP의 나머지 파일은 같은 폴더에 있어야 합니다.
+
+1.1.1에서 `Run this installer from your normal Windows account` 오류가 나왔다면 **1.1.2 ZIP 전체를 새 폴더에 풀고** 다시 실행하세요. 기존 설치가 있으면 같은 범위로 업데이트합니다. 다른 계정이나 확인할 수 없는 실행 환경은 새 설치기도 중단하며, Claude 파일 위치만으로 다른 사용자의 설정을 선택하지 않습니다. 회사 보안 설정을 끄거나 기존 설정을 삭제할 필요가 없습니다. [계정·Claude 위치 확인과 문제 해결](docs/DEPLOYMENT.md#계정과-claude-위치를-확인하는-방법)
 
 ## 기능
 
@@ -58,10 +60,10 @@ Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지�
 
 ```powershell
 # PC에 이미 설치된 승인 Python을 사용하는 기본 직원 ZIP 생성
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.1 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.2 -KnowledgeVersion 2026.09.03
 ```
 
-결과는 `dist\company-agent-1.1.1-2026.09.03.zip`입니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
+결과는 `dist\company-agent-1.1.2-2026.09.03.zip`입니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
 
 기본 ZIP에는 `.exe`, `.dll`, `.pyd`가 없지만 설치·실행용 `.cmd`, `.ps1`, `.py` 파일은 포함됩니다. 따라서 Gmail이나 사내 보안 시스템의 첨부 허용을 보장하지 않습니다. 파일 이름·확장자를 숨기거나 바꾸지 않고 사내 승인된 배포 채널로 전달합니다. Python 실행 환경을 분리한 것이며, 하네스 자체는 코드를 실행합니다.
 

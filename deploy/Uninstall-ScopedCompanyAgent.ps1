@@ -21,9 +21,10 @@ foreach ($name in @('Scope', 'ProjectRoot', 'ClaudeCommand', 'ClaudeConfigRoot',
 }
 . (Join-Path $PSScriptRoot 'Setup-CompanyAgent.ps1') -FunctionsOnly
 foreach ($name in $uninstallValues.Keys) { Set-Variable -Name $name -Value $uninstallValues[$name] }
-if (-not $SkipAdminCheck -and (Test-CompanyAgentAdministrator)) { throw 'Run scoped uninstall from a normal Windows terminal, without administrator elevation.' }
-if (-not $InvokingUserProfile) { $InvokingUserProfile = $env:USERPROFILE }
-if (-not $InvokingLocalAppData) { $InvokingLocalAppData = $env:LOCALAPPDATA }
+$userContext = Resolve-SetupUserContext -InvokingUserProfile $InvokingUserProfile -InvokingLocalAppData $InvokingLocalAppData -SkipAdminCheck:$SkipAdminCheck
+$InvokingUserProfile = $userContext.userProfile
+$InvokingLocalAppData = $userContext.localAppData
+$explicitConfig = -not [string]::IsNullOrWhiteSpace($ClaudeConfigRoot) -or -not [string]::IsNullOrWhiteSpace($env:CLAUDE_CONFIG_DIR)
 if (-not $ClaudeConfigRoot) { $ClaudeConfigRoot = $env:CLAUDE_CONFIG_DIR }
 if (-not $ClaudeConfigRoot) { $ClaudeConfigRoot = Join-Path $InvokingUserProfile '.claude' }
 if (-not $BackupRoot) { $BackupRoot = Join-Path $InvokingLocalAppData 'CompanyAgent-Backups' }
@@ -55,11 +56,36 @@ if ($Scope -eq 'Project') {
 }
 if (-not (Test-Path -LiteralPath $registrationPath -PathType Leaf)) { throw 'No Company Agent installation record exists for this scope. No change was made.' }
 $registration = Read-CompanyAgentJson -Path $registrationPath
+if ([int](Get-SetupPropertyValue -Object $registration -Name 'schemaVersion') -ne 1 -or
+    [string](Get-SetupPropertyValue -Object $registration -Name 'pluginId') -cne 'company-agent@company-agent-local') {
+    throw 'The installation record does not identify a supported Company Agent installation. No changes were made.'
+}
+if ($Scope -eq 'Project' -and (Get-SetupFullPath -Path ([string]$registration.projectRoot)).TrimEnd([char[]]@('\', '/')) -ine $ProjectRoot) {
+    throw 'The installation record belongs to a different project. No changes were made.'
+}
+if (-not $explicitConfig) { $ClaudeConfigRoot = Get-SetupFullPath -Path ([string]$registration.claudeConfigRoot) }
 if ([string]$registration.scope -ne $Scope -or [string]$registration.claudeConfigRoot -ine $ClaudeConfigRoot) { throw 'The installation record belongs to a different Claude configuration or scope.' }
 $stateRoot = [string]$registration.userStateRoot
+foreach ($target in @($ClaudeConfigRoot, $stateRoot, $BackupRoot, $ProjectRoot) | Where-Object { $_ }) {
+    Assert-SetupPathHasNoReparsePoint -Path $target -Name 'Scoped uninstall target'
+    Assert-SetupUserProfileTarget -Path $target -Context $userContext
+}
+foreach ($target in @((Join-Path $ClaudeConfigRoot 'settings.json'),
+    (Join-Path $ClaudeConfigRoot 'plugins\installed_plugins.json'), (Join-Path $ClaudeConfigRoot 'plugins\known_marketplaces.json'))) {
+    Assert-SetupPathHasNoReparsePoint -Path $target -Name 'Resolved Claude uninstall target'
+}
+$useConfigOverride = Get-SetupPropertyValue -Object $registration -Name 'claudeConfigDirOverride'
+if ($null -ne $useConfigOverride -and $useConfigOverride -isnot [bool]) {
+    throw 'The installation record contains an invalid Claude configuration override flag. No changes were made.'
+}
+if ($useConfigOverride -eq $false -and $ClaudeConfigRoot -ine (Get-SetupFullPath -Path (Join-Path $InvokingUserProfile '.claude'))) {
+    throw 'The installation record has an inconsistent custom Claude configuration path. No changes were made.'
+}
 if ($DryRun) { return [pscustomobject]@{ status = 'dry-run'; scope = $Scope; nativeClaudeScope = $nativeScope; registrationPath = $registrationPath; preservedUserStateRoot = $stateRoot } }
-$resolvedClaude = Resolve-SetupCommand -Command $ClaudeCommand
-if (-not $resolvedClaude) { throw 'The claude command is unavailable. Open a normal terminal where Claude Code works and try again.' }
+$claudeSelection = Get-SetupClaudeForInstall -PreferredCommand $ClaudeCommand -UserProfile $InvokingUserProfile -NonInteractive:$NonInteractive
+if ($claudeSelection.status -eq 'input-required') { return $claudeSelection }
+$resolvedClaude = $claudeSelection.path
+Assert-SetupUserProfileTarget -Path $resolvedClaude -Context $userContext
 $items = @(Get-SetupBackupItems -ClaudeConfigPath $ClaudeConfigRoot -PersonalStatePath $stateRoot -ManagedDataPath $registrationRoot -ManagedInstallPath $distributionRoot -ManagedShortcutPath '')
 $items += [pscustomobject]@{ source = $registrationPath; relativePath = 'company-agent\company-agent-install.json'; purpose = 'Scope registration before uninstall'; mode = 'sanitized-json' }
 if ($Scope -eq 'Project' -and (Test-Path -LiteralPath (Join-Path $ProjectRoot '.claude') -PathType Container)) {
@@ -71,7 +97,6 @@ if ($Scope -eq 'Project' -and (Test-Path -LiteralPath (Join-Path $ProjectRoot '.
 $backup = New-SetupBackup -BackupBase $BackupRoot -Items $items -ClaudeConfigPath $ClaudeConfigRoot -PersonalStatePath $stateRoot -ManagedDataPath $registrationRoot -ManagedInstallPath $distributionRoot
 $previousConfig = $env:CLAUDE_CONFIG_DIR
 try {
-    $useConfigOverride = Get-SetupPropertyValue -Object $registration -Name 'claudeConfigDirOverride'
     $env:CLAUDE_CONFIG_DIR = $(if ($useConfigOverride -eq $false) { $null } else { $ClaudeConfigRoot })
     Push-Location -LiteralPath $(if ($Scope -eq 'Project') { $ProjectRoot } else { $InvokingUserProfile })
     try {

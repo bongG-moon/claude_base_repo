@@ -8,6 +8,8 @@ echo ========================
 echo Choose all Claude sessions for your Windows account or one project.
 echo Setup checks requirements, backs up existing customizations, and
 echo installs the offline plugin. User/Project installation needs no UAC.
+echo Setup verifies your current Windows account and existing Claude paths.
+echo Elevated same-user sessions are supported; other accounts are blocked.
 echo Existing Company Agent: shows current-to-new version and offers Update.
 echo Update backs up and preserves personal data, custom rules, and hooks.
 echo Same version: reapply/repair. Other harness: Keep or Backup and replace.

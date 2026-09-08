@@ -36,6 +36,7 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle ($nativeFiles.Count -eq 0) 'Employee bundle contains native binaries.'
     foreach ($name in @(
         'CompanyAgent.Common.ps1', 'ExistingHarness.ps1', 'HarnessReplacement.ps1',
+        'CompanyAgent.UserContext.ps1', 'CompanyAgent.ClaudeDiscovery.ps1',
         'Initialize-CompanyAgentUser.ps1', 'Install-CompanyAgent.cmd', 'Install-CompanyAgent.ps1',
         'Install-ScopedCompanyAgent.ps1', 'Restore-PreviousHarness.ps1', 'Rollback-CompanyAgent.ps1',
         'Setup-CompanyAgent.ps1', 'Start-CompanyAgent.ps1', 'Uninstall-CompanyAgent.ps1',
@@ -44,7 +45,7 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('deploy\' + $name)) -PathType Leaf) "Required deployment dependency is absent: $name"
     }
     $deployFiles = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'deploy') -File -Force)
-    Assert-OfflineBundle ($deployFiles.Count -eq 14) 'Unexpected deploy tools were included.'
+    Assert-OfflineBundle ($deployFiles.Count -eq 16) 'Unexpected deploy tools were included.'
     foreach ($name in @(
         'New-OfflineBundle.ps1', 'Get-EmbeddedPython.ps1', 'Test-DeploymentSmoke.ps1',
         'Test-ExistingHarness.ps1', 'Test-HarnessReplacement.ps1', 'Test-PersonalStateBackup.ps1',
@@ -159,7 +160,7 @@ try {
         status = 'passed'
         defaultRuntimeMode = $defaultManifest.runtime.mode
         minimumPythonVersion = $defaultManifest.runtime.minimumVersion
-        productionDeployFiles = 14
+        productionDeployFiles = 16
         testRoot = $testRoot
         artifactsKept = [bool]$KeepArtifacts
     }

@@ -171,12 +171,11 @@ function Invoke-ScopedClaude {
     foreach ($line in @($output)) { Write-Host ([string]$line) }
 }
 
-if (-not $SkipAdminCheck -and (Test-CompanyAgentAdministrator)) {
-    throw 'Run this installer from your normal Windows account without Run as administrator. User and Project installation do not require administrator rights.'
-}
+$userContext = Resolve-SetupUserContext -InvokingUserProfile $InvokingUserProfile -InvokingLocalAppData $InvokingLocalAppData -SkipAdminCheck:$SkipAdminCheck
+$InvokingUserProfile = $userContext.userProfile
+$InvokingLocalAppData = $userContext.localAppData
+$configSource = $(if ($usesConfigOverride) { 'explicit setting / CLAUDE_CONFIG_DIR' } else { 'Windows user default' })
 if ([string]::IsNullOrWhiteSpace($BundleRoot)) { $BundleRoot = Split-Path -Parent $PSScriptRoot }
-if ([string]::IsNullOrWhiteSpace($InvokingUserProfile)) { $InvokingUserProfile = $env:USERPROFILE }
-if ([string]::IsNullOrWhiteSpace($InvokingLocalAppData)) { $InvokingLocalAppData = $env:LOCALAPPDATA }
 if ([string]::IsNullOrWhiteSpace($ClaudeConfigRoot)) { $ClaudeConfigRoot = $env:CLAUDE_CONFIG_DIR }
 if ([string]::IsNullOrWhiteSpace($ClaudeConfigRoot)) { $ClaudeConfigRoot = Join-Path $InvokingUserProfile '.claude' }
 if ([string]::IsNullOrWhiteSpace($BackupRoot)) { $BackupRoot = Join-Path $InvokingLocalAppData 'CompanyAgent-Backups' }
@@ -239,6 +238,16 @@ if (Test-Path -LiteralPath $registrationPath -PathType Leaf) {
     # Reuse the recorded location for both ordinary and custom-path updates.
     # The old record is also retained below as the rollback snapshot.
     $UserStateRoot = $recordedState
+    $recordedConfig = Get-SetupPropertyValue -Object $existingScopeRegistration -Name 'claudeConfigRoot'
+    if ($recordedConfig -isnot [string] -or $recordedConfig -notmatch '^(?:[A-Za-z]:[\\/]|\\\\[^\\/]+[\\/][^\\/]+(?:[\\/]|$))') {
+        throw 'The existing installation record has no valid Claude configuration path. No installation or personal data was changed.'
+    }
+    if (-not $usesConfigOverride) {
+        $ClaudeConfigRoot = Get-SetupFullPath -Path $recordedConfig
+        $configSource = 'existing Company Agent registration'
+        $recordedOverride = Get-SetupPropertyValue -Object $existingScopeRegistration -Name 'claudeConfigDirOverride'
+        $usesConfigOverride = ($recordedOverride -eq $true -or $ClaudeConfigRoot -ine (Get-SetupFullPath -Path (Join-Path $InvokingUserProfile '.claude')))
+    }
 }
 if ([string]::IsNullOrWhiteSpace($UserStateRoot)) { $UserStateRoot = Join-Path (Join-Path $InvokingLocalAppData 'CompanyAgent\states') $scopeRelative }
 $UserStateRoot = Get-ScopedNormalizedStateRoot -Path $UserStateRoot
@@ -246,6 +255,10 @@ $nativeScope = $(if ($Scope -eq 'Project') { 'local' } else { 'user' })
 $settingsPath = $(if ($Scope -eq 'Project') { Join-Path $ProjectRoot '.claude\settings.local.json' } else { Join-Path $ClaudeConfigRoot 'settings.json' })
 $marketplaceName = 'company-agent-local'
 $pluginId = 'company-agent@company-agent-local'
+foreach ($target in @($ClaudeConfigRoot, $UserStateRoot, $BackupRoot, $ProjectRoot) | Where-Object { $_ }) {
+    Assert-SetupPathHasNoReparsePoint -Path $target -Name 'Personal installation target'
+    Assert-SetupUserProfileTarget -Path $target -Context $userContext
+}
 foreach ($path in @($BundleRoot, $ClaudeConfigRoot, $distributionRoot, $registrationsRoot, $UserStateRoot, $BackupRoot)) {
     Assert-SetupPathHasNoReparsePoint -Path $path -Name 'Installation path'
 }
@@ -336,8 +349,18 @@ $sourceRuntime = Join-Path $sourcePlugin 'runtime\python\python.exe'
 $resolvedPython = $null
 if (Test-Path -LiteralPath $sourceRuntime -PathType Leaf) { $resolvedPython = Resolve-SetupApprovedPython -PreferredCommand $sourceRuntime }
 if ([string]::IsNullOrWhiteSpace($resolvedPython)) { $resolvedPython = Get-SetupPythonForInstall -PreferredCommand $PythonCommand -NonInteractive:$NonInteractive -DryRun:$DryRun }
-$script:ScopedClaudeExecutable = Resolve-SetupCommand -Command $ClaudeCommand
-if ([string]::IsNullOrWhiteSpace($script:ScopedClaudeExecutable)) { throw 'The claude command is unavailable. Open a new terminal after installing Claude Code, then run this installer again.' }
+$claudeSelection = Get-SetupClaudeForInstall -PreferredCommand $ClaudeCommand -UserProfile $InvokingUserProfile -NonInteractive:$NonInteractive -DryRun:$DryRun
+if ($claudeSelection.status -eq 'input-required') { return $claudeSelection }
+$script:ScopedClaudeExecutable = $claudeSelection.path
+Assert-SetupUserProfileTarget -Path $script:ScopedClaudeExecutable -Context $userContext
+Write-Host ("사용할 Claude Code: {0}" -f $script:ScopedClaudeExecutable)
+Write-Host ("확인된 Windows 계정: {0}" -f $userContext.accountName)
+Write-Host ("Claude 개인 설정: {0}" -f $ClaudeConfigRoot)
+Write-Host ("설정 위치 확인 기준: {0}" -f $configSource)
+Write-Host ("개인 자료 저장 위치: {0}" -f $UserStateRoot)
+if ($userContext.verified -and $userContext.isAdministrator) {
+    Write-Host '관리자 권한으로 감지되었지만 현재 로그인한 본인의 환경임을 확인했습니다. 본인 환경에만 적용합니다.'
+}
 Write-Host ("사용할 Python: {0}" -f $resolvedPython)
 if (-not $SkipPrerequisiteCheck) {
     Assert-CompanyAgentPrerequisites -ClaudeCommand $script:ScopedClaudeExecutable -PythonCommand $resolvedPython
@@ -465,6 +488,7 @@ if ($DryRun) {
         coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath
         distributionRoot = $distributionRoot; settingsPath = $settingsPath; backupRoot = $BackupRoot
         backupItems = $backupItems; needsElevation = $false; pythonCommand = $resolvedPython
+        claudeCommand = $script:ScopedClaudeExecutable; claudeConfigRoot = $ClaudeConfigRoot; userContext = $userContext
         modelSource = 'existing Claude aliases: haiku/sonnet/opus'; pluginId = $pluginId
         existingHarness = $existingHarness; existingHarnessAction = $harnessAction
         skillConflicts = $skillConflicts; skillConflictAction = $resolvedSkillAction; skillWarnings = @($skillInventory.warnings)

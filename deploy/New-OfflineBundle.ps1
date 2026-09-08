@@ -36,6 +36,8 @@ if (-not $IncludeBundledPython -and
 # Build/download helpers and regression scripts remain on the build PC.
 $productionDeployFiles = @(
     'CompanyAgent.Common.ps1',
+    'CompanyAgent.UserContext.ps1',
+    'CompanyAgent.ClaudeDiscovery.ps1',
     'ExistingHarness.ps1',
     'HarnessReplacement.ps1',
     'Initialize-CompanyAgentUser.ps1',

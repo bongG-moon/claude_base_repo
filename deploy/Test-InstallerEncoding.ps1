@@ -181,6 +181,9 @@ print(json.dumps({'message': chr(92) + 'u literal: ' + sys.argv[1]}, ensure_asci
         BundleRoot = $bundle; Scope = 'Project'; ProjectRoot = $project; UserStateRoot = $state
         ClaudeConfigRoot = $config; InvokingUserProfile = $profile; InvokingLocalAppData = $localData
         PythonCommand = $python; NonInteractive = $true; DryRun = $true; SkipPrerequisiteCheck = $true
+        # This regression tests encoding, not the interactive choice among
+        # multiple installed CLIs (covered by Test-ClaudeDiscovery.ps1).
+        ClaudeCommand = (Resolve-SetupCommand -Command 'claude')
         SkipAdminCheck = $true; ExistingHarnessAction = 'Replace'; SkillConflictAction = 'KeepCurrent'
         BackupRoot = (Join-Path $testRoot 'backups')
     }
