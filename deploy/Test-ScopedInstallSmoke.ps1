@@ -25,6 +25,20 @@ $originalPythonUtf8 = $env:PYTHONUTF8
 $originalConsoleEncoding = [Console]::OutputEncoding
 $originalPipeEncoding = $OutputEncoding
 try {
+    # This integration suite tests one known CLI, not the interactive chooser.
+    # Pin the command PowerShell would run before passing it into the installer:
+    # development PCs may legitimately have multiple native/npm installations.
+    # Discovery ambiguity is covered separately by Test-ClaudeDiscovery.ps1.
+    $testClaudeCommand = Get-Command $ClaudeCommand -CommandType Application,ExternalScript -ErrorAction Stop | Select-Object -First 1
+    $testClaudePath = [string]$testClaudeCommand.Source
+    if ([string]::IsNullOrWhiteSpace($testClaudePath) -or
+        -not [IO.Path]::IsPathRooted($testClaudePath) -or
+        -not (Test-Path -LiteralPath $testClaudePath -PathType Leaf) -or
+        [IO.Path]::GetExtension($testClaudePath) -notin @('.exe', '.cmd', '.bat', '.ps1')) {
+        throw 'Scoped smoke needs an existing Claude Code executable. Pass its absolute path with -ClaudeCommand.'
+    }
+    $ClaudeCommand = [IO.Path]::GetFullPath($testClaudePath)
+    Write-Host ("Scoped smoke Claude CLI: {0}" -f $ClaudeCommand)
     New-CompanyAgentDirectory -Path $testRoot
     if ($BundleRoot -and $BundleZip) { throw 'Use BundleRoot or BundleZip, not both.' }
     if ([string]::IsNullOrWhiteSpace($BundleRoot)) {
@@ -141,7 +155,12 @@ try {
     $unsafeSettingsHash = (Get-FileHash -LiteralPath $userSettingsPath -Algorithm SHA256).Hash
     $unsafeIntegerBlocked = $false
     try {
-        try { $null = & $setup @common -Scope User }
+        try {
+            $unsafeResult = & $setup @common -Scope User
+            if ($null -ne $unsafeResult -and $unsafeResult.status -eq 'input-required') {
+                throw ("Scoped smoke fixture still needs '{0}' before the settings safety check. Resolve that prerequisite; no native registration was attempted." -f $unsafeResult.input)
+            }
+        }
         catch {
             if ($_.Exception.Message -notmatch '(?i)(integer|numeric|precision)') { throw }
             $unsafeIntegerBlocked = $true
@@ -494,7 +513,7 @@ try {
     Assert-ScopedSmoke ($afterRecovery.hooks.SessionStart[0].hooks[0].command -eq 'echo PREVIOUS_HARNESS_FIXTURE') 'Packaged recovery did not restore original hooks'
     Assert-ScopedSmoke ($afterRecovery.env.API_TOKEN -eq 'fixture-not-a-real-secret' -and $afterRecovery.enabledPlugins.'unrelated@fixture' -eq $true) 'Packaged recovery changed unrelated settings'
     Write-Host "Scoped install smoke PASS (real offline Claude plugin CLI): $testRoot"
-    [pscustomobject]@{ status = 'pass'; testRoot = $testRoot; nativeClaude = $true; scopes = @('user', 'local'); registrations = 3; nativeSessionStart = $true; embeddedPython = [bool]$IncludeBundledPython; customStatePreserved = $true; conflictingStateBlocked = $true; futureStateBlocked = $true; distinctVersionUpdate = $updateVersion; existingHarnessChoice = $true; replacementRollback = $true; legacyCp949 = [bool]$LegacyEncoding; unicodePaths = $true }
+    [pscustomobject]@{ status = 'pass'; testRoot = $testRoot; nativeClaude = $true; claudeCommand = $ClaudeCommand; unsafeIntegerBlocked = $unsafeIntegerBlocked; scopes = @('user', 'local'); registrations = 3; nativeSessionStart = $true; embeddedPython = [bool]$IncludeBundledPython; customStatePreserved = $true; conflictingStateBlocked = $true; futureStateBlocked = $true; distinctVersionUpdate = $updateVersion; existingHarnessChoice = $true; replacementRollback = $true; legacyCp949 = [bool]$LegacyEncoding; unicodePaths = $true }
 }
 finally {
     $env:CLAUDE_CONFIG_DIR = $originalConfig

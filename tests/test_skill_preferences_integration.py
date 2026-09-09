@@ -60,6 +60,11 @@ class SkillPreferenceIntegrationTests(unittest.TestCase):
         report = self.cli("inventory")
         return {item["source"]: item for item in report["skills"] if item["name"] == "report"}
 
+    def startup(self, project=None):
+        result = session_start(self.plugin, project or self.project)
+        context = json.loads(result["hookSpecificOutput"]["additionalContext"])["company_agent_runtime"]
+        return context["skillSelection"], result.get("systemMessage", "")
+
     def test_inventory_is_read_only_and_project_preference_drives_search_and_hook(self):
         before = {file: file.read_bytes() for file in (self.user_skill, self.project_skill, self.company_skill)}
         candidates = self.candidates()
@@ -85,6 +90,113 @@ class SkillPreferenceIntegrationTests(unittest.TestCase):
         self.assertEqual(candidates["user"]["id"], elsewhere["resolution"]["selectedId"])
         self.cli("reset", "--name", "report", "--scope", "project")
         self.assertEqual(candidates["user"]["id"], self.cli("resolve", "report")["resolution"]["selectedId"])
+
+    def test_selected_overlap_keeps_inventory_but_has_no_repeated_startup_warning(self):
+        candidate = self.candidates()["project"]
+        self.cli("prefer", "--name", "report", "--candidate", candidate["id"], "--scope", "project")
+        before = {path: path.read_bytes() for path in (self.user_skill, self.project_skill, self.company_skill)}
+        for _ in range(2):
+            selection, message = self.startup()
+            self.assertEqual(1, selection["conflictCount"])
+            self.assertEqual(1, selection["resolvedOverlapCount"])
+            self.assertEqual(0, selection["unresolvedCount"])
+            self.assertEqual("selected", selection["conflicts"][0]["status"])
+            self.assertNotIn("/company-agent:skills", message)
+        self.assertEqual(before, {path: path.read_bytes() for path in before})
+
+    def test_source_order_resolved_overlap_has_no_startup_warning(self):
+        self.cli("order", "--sources", "project", "user", "company", "--scope", "project")
+        selection, message = self.startup()
+        self.assertEqual(1, selection["resolvedOverlapCount"])
+        self.assertEqual(0, selection["unresolvedCount"])
+        self.assertNotIn("/company-agent:skills", message)
+
+    def test_distinct_namespaced_overlap_is_quiet_but_still_requires_workflow_choice(self):
+        selection, message = self.startup(self.other)
+        self.assertEqual(1, selection["conflictCount"])
+        self.assertEqual(1, selection["namespacedOverlapCount"])
+        self.assertEqual("unresolved", selection["conflicts"][0]["status"])
+        self.assertEqual(0, selection["unresolvedCount"])
+        self.assertNotIn("/company-agent:skills", message)
+        self.assertEqual([], self.cli("search", "report", project=self.other)["skills"])
+
+    def test_same_namespaced_invocation_from_two_plugins_still_warns(self):
+        plugins = {}
+        for number in (1, 2):
+            root = self.root / f"vendor-{number}"
+            atomic_write_json(root / ".claude-plugin" / "plugin.json", {"name": "vendor", "version": "1.0.0"})
+            self.skill(root / "skills" / "report", "report", "Vendor report workflow")
+            plugins[f"vendor@market-{number}"] = [{"scope": "user", "installPath": str(root)}]
+        atomic_write_json(self.claude / "plugins" / "installed_plugins.json", {"plugins": plugins})
+        atomic_write_json(self.claude / "settings.json", {"enabledPlugins": {name: True for name in plugins}})
+        selection, message = self.startup(self.other)
+        self.assertEqual("namespaced-overlap", selection["conflicts"][0]["kind"])
+        self.assertEqual(1, selection["unresolvedCount"])
+        self.assertIn("같은 이름으로 사용할 수 있는 Skill", message)
+
+    def test_unresolved_native_collision_has_specific_startup_warning(self):
+        selection, message = self.startup()
+        self.assertEqual(1, selection["unresolvedCount"])
+        self.assertEqual(0, selection["scanWarningCount"])
+        self.assertIn("우선 Skill을 선택", message)
+        self.assertNotIn("일부 Skill 정보를 확인하지 못했습니다", message)
+        self.assertIn("/company-agent:skills", message)
+
+    def test_stale_preference_warns_even_when_only_one_candidate_remains(self):
+        candidate = self.candidates()["company"]
+        self.cli("prefer", "--name", "report", "--candidate", candidate["id"], "--scope", "default")
+        self.company_skill.unlink()
+        selection, message = self.startup(self.other)
+        self.assertEqual(0, selection["conflictCount"])
+        self.assertEqual(1, selection["stalePreferenceCount"])
+        self.assertEqual(0, selection["scanWarningCount"])
+        self.assertEqual(1, selection["warningCount"])
+        self.assertIn("이전에 선택한 Skill을 찾지 못했습니다", message)
+        self.assertNotIn("일부 Skill 정보를 확인하지 못했습니다", message)
+
+    def test_scan_failure_remains_visible_after_overlap_is_resolved(self):
+        candidate = self.candidates()["project"]
+        self.cli("prefer", "--name", "report", "--candidate", candidate["id"], "--scope", "project")
+        atomic_write_text(self.claude / "settings.json", "{INVALID-PRIVATE-SETTINGS")
+        selection, message = self.startup()
+        self.assertEqual("incomplete", selection["status"])
+        self.assertEqual(1, selection["resolvedOverlapCount"])
+        self.assertEqual(0, selection["unresolvedCount"])
+        self.assertGreater(selection["scanWarningCount"], 0)
+        self.assertIn("일부 Skill 정보를 확인하지 못했습니다", message)
+        self.assertNotIn("INVALID-PRIVATE-SETTINGS", message)
+        self.assertNotIn("우선 Skill을 선택", message)
+
+    def test_unavailable_preferences_have_specific_non_destructive_warning(self):
+        path = self.state / "config" / "skill-preferences.json"
+        atomic_write_json(path, {"schemaVersion": 999, "private": "DO-NOT-LEAK"})
+        before = path.read_bytes()
+        selection, message = self.startup()
+        self.assertEqual("unavailable", selection["status"])
+        self.assertIn("Skill 우선 설정을 읽지 못했습니다", message)
+        self.assertIn("기존 설정은 보존했습니다", message)
+        self.assertNotIn("DO-NOT-LEAK", message)
+        self.assertEqual(before, path.read_bytes())
+
+    def test_unclassified_warning_is_not_silenced_by_ready_status(self):
+        found = {"skills": [], "conflicts": [], "complete": True, "warnings": ["A new inventory warning type."]}
+        with patch("company_agent.skill_registry.search_skills", return_value=found):
+            selection, message = self.startup()
+        self.assertEqual("ready", selection["status"])
+        self.assertEqual(1, selection["warningCount"])
+        self.assertEqual(1, selection["scanWarningCount"])
+        self.assertIn("일부 Skill 정보를 확인하지 못했습니다", message)
+
+    def test_stale_choice_and_incomplete_scan_both_remain_visible(self):
+        candidate = self.candidates()["company"]
+        self.cli("prefer", "--name", "report", "--candidate", candidate["id"], "--scope", "default")
+        self.company_skill.unlink()
+        atomic_write_text(self.claude / "settings.json", "{INVALID-PRIVATE-SETTINGS")
+        selection, message = self.startup(self.other)
+        self.assertEqual(1, selection["stalePreferenceCount"])
+        self.assertGreater(selection["scanWarningCount"], 0)
+        self.assertIn("일부 Skill 정보를 확인하지 못했습니다", message)
+        self.assertIn("이전에 선택한 Skill을 찾지 못했습니다", message)
 
     def test_unresolved_and_stale_choices_do_not_inject_arbitrary_workflows(self):
         self.assertEqual([], self.cli("search", "report")["skills"])

@@ -55,11 +55,26 @@ function Assert-EmployeeBundle {
     }
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Install-CompanyAgent.cmd') -PathType Leaf) 'Root installer is missing.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'INSTALL_WITH_CLAUDE.md') -PathType Leaf) 'Installation guide is missing.'
-    foreach ($relative in @('docs\SELF_LEARNING.md', 'docs\USER_GUIDE.md',
+    foreach ($relative in @('docs\SELF_LEARNING.md', 'docs\USER_GUIDE.md', 'docs\BUSINESS_PILOT_GUIDE.md',
         'payload\core\plugin\scripts\company_agent\learning.py',
         'payload\core\plugin\commands\learning.md',
+        'payload\core\plugin\commands\business-check.md',
+        'payload\core\plugin\scripts\company_agent\business.py',
+        'payload\core\plugin\scripts\company_agent\business_safety.py',
+        'payload\core\plugin\scripts\company_agent\business_files.py',
+        'payload\core\plugin\scripts\company_agent\business_mail.py',
+        'payload\core\plugin\scripts\company_agent\business_artifacts.py',
+        'payload\core\plugin\scripts\Confirm-BusinessAction.ps1',
+        'payload\core\plugin\scripts\Invoke-BusinessOutlook.ps1',
+        'payload\core\plugin\scripts\Invoke-BusinessPowerPoint.ps1',
+        'payload\core\plugin\skills\file-organizer\SKILL.md',
+        'payload\core\plugin\skills\outlook-assistant\SKILL.md',
+        'payload\core\plugin\skills\html-report\SKILL.md',
+        'payload\core\plugin\skills\presentation\SKILL.md',
+        'payload\core\plugin\skills\company-agent\references\business-protection.md',
+        'payload\core\plugin\templates\business\report.spec.json',
         'payload\core\plugin\skills\self-learning\SKILL.md')) {
-        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Learning/user guide release file is missing: $relative"
+        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
     }
     $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter 'Company-Agent-*.html' -File)
     Assert-OfflineBundle ($htmlGuides.Count -eq 1) 'Offline HTML user guide (including its Unicode filename) is missing.'

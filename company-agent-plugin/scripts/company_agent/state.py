@@ -633,6 +633,12 @@ def record_activity(
     with _locked_session(session_id, root) as (state, path):
         if _stale_native_prompt(payload, state):
             return state
+        from .business_safety import protection_notice
+        if protection_notice(payload):
+            # Metadata only. Never preserve the offending response/document.
+            state["protectionRestricted"] = True
+            if isinstance(state.get("verification"), dict):
+                state["verification"]["summary"] = "보호 제한 항목이 있어 상세 검증 설명은 보존하지 않습니다."
         collect_learning = _collect_learning_observations(state, root or user_state_root())
         bookkeeping = False
         if tool_name.casefold().strip() in {"bash", "powershell"}:
@@ -692,6 +698,8 @@ def mark_verified(
 
     with _locked_session(session_id, root) as (state, path):
         collect_learning = _collect_learning_observations(state, root or user_state_root())
+        if state.get("protectionRestricted"):
+            compact_summary = "보호 제한 항목을 제외한 범위의 검증 상태만 기록했습니다."
         state["verification"] = {
             "status": status,
             "at": _now(),

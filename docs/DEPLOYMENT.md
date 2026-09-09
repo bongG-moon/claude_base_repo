@@ -1,6 +1,6 @@
-# Company Agent 설치와 배포 — Windows 1.1.2
+# Company Agent 설치와 배포 — Windows 1.2.0
 
-현재 배포 버전은 1.1.2입니다. 일부 회사 PC에서 일반 더블클릭도 관리자 권한으로 감지되어 중단되던 검사를 바꾸고, 현재 로그인한 사용자와 실제 설치 대상의 일치를 확인합니다. 같은 사용자로 확인되면 높은 권한 자체로 막지 않으며, Claude 실행 파일과 설정 위치도 각각 탐색합니다. 기존 1.x 설치 PC는 같은 범위로 업데이트하고 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. 이전 `0.3.x`는 배포 전 개발 버전입니다. 아래 절차는 직원 전체에게 배포하거나 실제 회사 운영 PC의 검증을 완료했다는 기록이 아닙니다.
+현재 시범 운영 버전은 1.2.0입니다. 파일 정리, Outlook 읽기, HTML 보고서, 편집 가능한 PPT의 기본 업무 흐름과 보호 자료의 부분 중단 안내를 추가했습니다. 실제 회사 DRM·Office 연동은 운영 PC에서 별도 확인해야 합니다. 이전 1.1.2의 본인 사용자·설치 경로 확인을 유지하며, 같은 사용자로 확인되면 높은 권한 자체로 막지 않습니다. 기존 1.x 설치 PC는 같은 범위로 업데이트하고 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. 이전 `0.3.x`는 배포 전 개발 버전입니다. ZIP 생성 자체는 게시를 수행하지 않습니다. 공개 설치본은 [1.2.0 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.2.0)를 확인하고, 실제 회사 검증은 `BUSINESS_PILOT_GUIDE.md` 순서로 진행하세요.
 
 직원 PC에는 Claude Code와 사내 SMALL/MEDIUM/LARGE 연결, 회사 승인 Python 3.11 이상이 이미 준비되어 있어야 합니다. 기본 ZIP에는 Python 실행 파일과 DLL을 넣지 않고 PC의 Python을 사용합니다. 설치 과정에서 Python/pip/Git를 설치하거나 다운로드하지 않으며 PC의 PATH 설정도 바꾸지 않습니다. 설치 조건은 Claude Code CLI 2.1.220 이상, Windows PowerShell 5.1 이상, Windows 10/11입니다. 대상 PC의 운영체제와 Python 아키텍처는 사내 담당자가 확인합니다.
 
@@ -225,10 +225,10 @@ powershell.exe -NoProfile -File .\deploy\Restore-PreviousHarness.ps1 -BackupPath
 다음 명령은 **소스 저장소 루트**에서 실행합니다. 빌드 PC에도 승인 Python 3.11 이상과 Claude Code CLI 2.1.220 이상이 준비되어 있어야 합니다. 기본 빌드는 외부에서 Python을 내려받지 않습니다.
 
 ```powershell
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.2 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.2.0 -KnowledgeVersion 2026.09.03
 ```
 
-결과는 로컬의 `dist\company-agent-1.1.2-2026.09.03.zip`입니다. ZIP 생성은 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 설치된 배포본을 덮어쓰지 않고 새 버전으로 전달합니다. ZIP에는 쉬운 사용자 안내서 HTML/Markdown과 자동 학습 설명서도 포함됩니다.
+결과는 로컬의 `dist\company-agent-1.2.0-2026.09.03.zip`입니다. 마지막 날짜는 공통 지식 묶음의 버전이며 파일 생성일이 아닙니다. ZIP 생성은 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 설치된 배포본을 덮어쓰지 않고 새 버전으로 전달합니다. ZIP에는 쉬운 사용자 안내서 HTML/Markdown, 자동 학습 설명서와 업무 시범 운영 안내서도 포함됩니다.
 
 `-WithoutBundledPython`은 기존 빌드 명령과의 호환을 위해 유지하며 현재 기본값과 같은 결과를 냅니다. 직원 ZIP에는 설치·실행·제거·복구에 필요한 파일을 넣고, `New-OfflineBundle.ps1`, `Get-EmbeddedPython.ps1`, `Test-*.ps1` 같은 빌드·테스트 도구는 제외합니다. 해당 도구와 테스트 소스는 저장소에 남아 있으며 개발 검증은 저장소에서 수행합니다.
 
@@ -241,7 +241,7 @@ Python을 함께 전달해야 하는 별도 운영 환경에서만 관리자가 
 powershell.exe -NoProfile -File .\deploy\Get-EmbeddedPython.ps1
 
 # Python 동봉을 명시적으로 선택
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.2 -KnowledgeVersion 2026.09.03 -IncludeBundledPython -OutputPath .\dist\company-agent-1.1.2-2026.09.03-with-python.zip
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.2.0 -KnowledgeVersion 2026.09.03 -IncludeBundledPython -OutputPath .\dist\company-agent-1.2.0-2026.09.03-with-python.zip
 ```
 
 폐쇄망 빌드 PC에는 검증된 Python ZIP을 반입할 수 있습니다. 별도 경로의 런타임은 `-IncludeBundledPython`, `-PythonRuntimeZip`, 정확한 `-PythonRuntimeSha256`을 함께 지정합니다. 동봉 패키지는 Python 라이선스와 실행 바이너리를 포함하며, 직원 설치 과정에서 다운로드하지 않습니다. 기본 패키지와 같은 CoreVersion의 다른 내용을 이미 설치한 PC에는 덮어쓸 수 없으므로, 같은 배포 대상에 전달할 구성은 릴리스 전에 확정합니다.

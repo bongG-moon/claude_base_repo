@@ -195,15 +195,55 @@ def _skill_routing(root: Path, plugin: Path, cwd: Path, prompt: str) -> tuple[li
             card["invocation"] = invocation if len(invocation) <= 160 else ""
             cards.append(card)
     conflicts = found.get("conflicts", [])
+    warnings = found.get("warnings", [])
+    # Overlaps stay in the inventory after a preference has been selected.
+    # Distinct namespaced invocations also coexist normally: defer their
+    # workflow choice until relevant work, rather than alarming every startup.
+    def needs_choice(item: dict[str, Any]) -> bool:
+        if item.get("resolution", {}).get("status") != "unresolved":
+            return False
+        if item.get("kind") != "namespaced-overlap":
+            return True
+        invocations = [candidate.get("invocation") for candidate in item.get("candidates", [])
+                       if candidate.get("invocation")]
+        # Two enabled plugins can declare the same namespace. That is a real
+        # invocation collision, unlike /report and /company-agent:report.
+        return len(invocations) != len(set(invocations))
+
+    stale_warnings = sum(isinstance(message, str) and message.startswith("Stale skill preference for ")
+                         for message in warnings)
     summary = {
         "status": "ready" if complete else "incomplete", "manager": "/company-agent:skills", "nativePrecedenceChanged": False,
-        "conflictCount": len(conflicts), "warningCount": len(found.get("warnings", [])),
+        "conflictCount": len(conflicts), "warningCount": len(warnings),
+        "unresolvedCount": sum(needs_choice(item) for item in conflicts),
+        "resolvedOverlapCount": sum(item.get("resolution", {}).get("status") == "selected" for item in conflicts),
+        "namespacedOverlapCount": sum(item.get("kind") == "namespaced-overlap" for item in conflicts),
+        # Unknown warning kinds remain visible as scan warnings. Do not hide
+        # them merely because another overlap was successfully resolved.
+        "scanWarningCount": len(warnings) - stale_warnings,
+        "stalePreferenceCount": max(stale_warnings, sum(item.get("resolution", {}).get("status") == "stale-choice" for item in conflicts)),
         "conflicts": [{"name": _short(item.get("name"), 100), "kind": item.get("kind"),
                        "status": item.get("resolution", {}).get("status"),
                        "selectedId": _short(item.get("resolution", {}).get("selectedId"), 160)}
                       for item in conflicts[:4]],
     }
     return cards, summary
+
+
+def _skill_startup_message(selection: dict[str, Any]) -> str:
+    messages = []
+    if selection.get("status") == "unavailable":
+        messages.append("Skill 우선 설정을 읽지 못했습니다. 기존 설정은 보존했습니다.")
+    else:
+        if selection.get("scanWarningCount") or selection.get("status") == "incomplete":
+            messages.append("일부 Skill 정보를 확인하지 못했습니다. 목록 확인이 필요합니다.")
+        if selection.get("stalePreferenceCount"):
+            messages.append("이전에 선택한 Skill을 찾지 못했습니다. 사용할 Skill을 다시 확인해 주세요.")
+        if selection.get("unresolvedCount"):
+            messages.append("같은 이름으로 사용할 수 있는 Skill이 여러 개입니다. 이 프로젝트의 우선 Skill을 선택해 주세요.")
+    if messages:
+        messages.append("/company-agent:skills 에서 확인할 수 있습니다. 기존 Skill 파일은 변경하지 않았습니다.")
+    return " ".join(messages)
 
 
 def bounded_prompt_context(route_text: str, runtime_text: str) -> str:
@@ -247,7 +287,10 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
                 "Use one primary workflow; pass workers only task, constraints, source paths and verification, not full history. "
                 "After each user turn, follow company-agent:self-learning with the current learning turn ID; no remember request is needed. "
                 "Read personal Skills using Read so the exact version can be observed. Learning status/pause/resume are available through /company-agent:learning. "
-                "Corporate DB access is SELECT-only and Outlook uses only the authenticated user's mailbox."
+                "Corporate DB access is SELECT-only and Outlook uses only the authenticated user's mailbox. "
+                "Business workflows: file-organizer, outlook-assistant, html-report, presentation. Read the relevant Skill only. "
+                "On DRM/permission denial stop only the denied item: no alternate capture/OCR/app/extraction or repeated denial attempts. "
+                "Report exactly which bodies/attachments/sources were excluded; never infer unread content or store protected source text as learning."
             ),
     }
     if source == "compact":
@@ -305,8 +348,9 @@ def session_start(plugin: Path, cwd: Path, *, session_id: str = "", source: str 
             stream.write("company-agent() { " + cli_command(plugin) + ' "$@"; }\nexport -f company-agent\n')
     result: dict[str, Any] = {"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": runtime_context(plugin, cwd, session_id=session_id, source=source)}}
     selection = json.loads(result["hookSpecificOutput"]["additionalContext"]).get("company_agent_runtime", {}).get("skillSelection", {})
-    if selection.get("conflictCount") or selection.get("warningCount") or selection.get("status") == "unavailable":
-        result["systemMessage"] = "Skill 이름 중복 또는 확인이 필요한 우선 설정이 있습니다. /company-agent:skills 에서 출처와 이 프로젝트의 우선 Skill을 확인하세요. 기존 Skill 파일은 변경하지 않았습니다."
+    skill_message = _skill_startup_message(selection)
+    if skill_message:
+        result["systemMessage"] = skill_message
     if any(issue.level == "error" for issue in issues):
         result["systemMessage"] = (result.get("systemMessage", "") + " Company knowledge has validation errors. Run company-agent knowledge validate before relying on it.").strip()
     if source != "compact":

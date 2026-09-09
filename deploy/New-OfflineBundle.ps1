@@ -267,7 +267,7 @@ try {
         }
     }
 
-    foreach ($docName in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md', 'PROJECT_HARNESS.md', 'IMPLEMENTATION_REVIEW.md', 'CONTEXT_OPTIMIZATION.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md', 'SELF_LEARNING.md', 'USER_GUIDE.md', 'Company-Agent-사용자-안내서.html')) {
+    foreach ($docName in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md', 'PROJECT_HARNESS.md', 'IMPLEMENTATION_REVIEW.md', 'CONTEXT_OPTIMIZATION.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md', 'SELF_LEARNING.md', 'BUSINESS_PILOT_GUIDE.md', 'USER_GUIDE.md', 'Company-Agent-사용자-안내서.html')) {
         $deploymentDoc = Join-Path $SourceRoot ('docs\' + $docName)
         if (Test-Path -LiteralPath $deploymentDoc -PathType Leaf) {
             New-CompanyAgentDirectory -Path (Join-Path $stagePath 'docs')

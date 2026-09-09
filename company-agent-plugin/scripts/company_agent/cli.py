@@ -644,6 +644,8 @@ def build_parser() -> argparse.ArgumentParser:
     _add_state_argument(doctor)
     _add_base_argument(doctor)
     doctor.set_defaults(func=cmd_doctor)
+    from .business import register as register_business
+    register_business(subparsers)
     return parser
 
 

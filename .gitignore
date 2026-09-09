@@ -2,7 +2,7 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .coverage
-dist/
+dist/*
 build/
 .smoke/
 *.zip
@@ -13,3 +13,6 @@ build/
 .credentials.json
 *.pem
 *.key
+
+# Explicitly requested installer release; other local build archives stay ignored.
+!dist/company-agent-1.2.0-2026.09.03.zip

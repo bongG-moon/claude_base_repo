@@ -24,7 +24,13 @@ If `managed-mcp.json` is absent/empty and the personal registry has no active se
 - Return a confirmation preview before any send if the managed MCP itself is configured to require it.
 - Record only the minimum operational receipt required by existing company policy; the Harness stores no message body.
 
-## Personal MCP
+## Business pilot in 1.2.0
+
+The bundled Outlook helper is a separate, read-only local pilot, not an implementation or automatic registration of `corp-outlook-self`. It attaches only to an already-running Classic Outlook session. Selecting an account and matching its delivery store is profile mapping, not proof of corporate identity or DRM permission. Reading a body requires the trusted native confirmation dialog; a model-supplied JSON approval flag is ignored. Attachments are metadata-only. Sending, moving messages, creating PST files and mailbox cleanup remain capabilities of a separately implemented, authorized corporate MCP.
+
+Corporate adapters should return structured per-item errors such as `protection_blocked`, `protection_unknown` or `permission_denied`, with sanitized operational messages. Do not return protected plaintext with the error. Distinguish the readable mail body from an unreadable attachment; return partial results for authorized items only. The Harness adds guidance to exclude restricted sources, disclose omissions and stop that subtask without decryption, capture, OCR, application switching or disabling security. It conservatively suppresses free-text automatic learning in that session. This is not universal DRM detection, an OS sandbox or control of Claude's own transcript retention.
+
+## Personal MCP validation
 
 The Asset Factory scaffolds personal MCP servers as `candidate`. They are not added to the launch registry until all of the following pass:
 

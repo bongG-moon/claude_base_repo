@@ -1,0 +1,550 @@
+"""Offline business reports and editable presentations, without runtime downloads.
+
+The public functions accept data, never generated code. All output is new-file-only.
+PowerPoint rendering is optional and cannot bypass Office protection or DRM.
+"""
+from __future__ import annotations
+
+import base64
+import ctypes
+import hashlib
+import html
+import importlib.util
+import json
+import math
+import os
+from io import BytesIO
+from pathlib import Path
+import shutil
+import subprocess
+import tempfile
+from typing import Any
+import xml.etree.ElementTree as ET
+import zipfile
+
+from .business_safety import safe_path
+
+STYLES = ("glassmorphism", "brutalism", "neumorphism", "minimalism", "bento-grid",
+          "gradient-mesh", "editorial", "freeform")
+MODES = ("scroll", "slides", "both")
+LIMIT = 40 * 1024 * 1024
+MAX_PARTS = 3000
+MAX_EXPANDED = 160 * 1024 * 1024
+P = "http://schemas.openxmlformats.org/presentationml/2006/main"
+A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+R = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+
+class ArtifactError(Exception):
+    def __init__(self, code: str, message: str, status: str = "blocked"):
+        super().__init__(message)
+        self.code, self.message, self.status = code, message, status
+
+
+def _failure(error: Exception) -> dict[str, Any]:
+    if isinstance(error, ArtifactError):
+        return {"ok": False, "status": error.status, "code": error.code, "message": error.message}
+    if isinstance(error, PermissionError):
+        return {"ok": False, "status": "blocked", "code": "permission_denied",
+                "message": "파일 접근 권한을 확인해 주세요. 보호 정책을 우회하지 않았습니다."}
+    if isinstance(error, FileExistsError):
+        return {"ok": False, "status": "blocked", "code": "output_exists",
+                "message": "같은 이름의 결과물이 생겨 기존 파일을 보존했습니다. 새 이름을 선택해 주세요."}
+    return {"ok": False, "status": "unknown", "code": "artifact_failed",
+            "message": "결과물을 완성하지 못했습니다. 원본을 유지했습니다. 입력 형식과 실행 조건을 확인해 주세요."}
+
+
+def _reject_reparse(path: Path) -> None:
+    for ancestor in (path, *path.parents):
+        if ancestor.exists() and (ancestor.is_symlink() or
+                getattr(ancestor.lstat(), "st_file_attributes", 0) & 0x400):
+            raise ArtifactError("linked_path", "연결된 폴더나 파일은 자동 처리하지 않습니다. 실제 로컬 경로를 선택해 주세요.")
+
+
+def _source(path: Path, suffixes: tuple[str, ...]) -> Path:
+    # Nested image paths come from the specification, not only CLI arguments.
+    # Reject UNC/device/ADS before any stat/open can touch a remote resource.
+    try:
+        path = safe_path(path)
+    except ValueError:
+        raise ArtifactError("unsupported_path", "실제 PC 로컬 경로를 선택해 주세요. 네트워크·장치·연결 경로는 처리하지 않습니다.") from None
+    _reject_reparse(path)
+    if path.suffix.lower() not in suffixes:
+        raise ArtifactError("unsupported_format", "지원하는 원본 파일 형식을 선택해 주세요.")
+    if not path.is_file():
+        raise ArtifactError("input_missing", "입력 파일을 찾을 수 없습니다.")
+    if path.stat().st_size > LIMIT:
+        raise ArtifactError("input_too_large", "입력 파일은 40 MB 이하로 나누어 주세요.")
+    return path
+
+
+def _target(path: Path, suffix: str) -> Path:
+    try:
+        path = safe_path(path)
+    except ValueError:
+        raise ArtifactError("unsupported_path", "실제 PC 로컬 경로에 저장해 주세요. 네트워크·장치·연결 경로는 처리하지 않습니다.") from None
+    _reject_reparse(path)
+    if path.suffix.lower() != suffix:
+        raise ArtifactError("output_format", f"결과 파일의 확장자는 {suffix}이어야 합니다.")
+    if path.exists():
+        raise ArtifactError("output_exists", "같은 이름의 결과물이 있습니다. 새 파일 이름을 선택해 주세요.")
+    if not path.parent.is_dir():
+        raise ArtifactError("output_folder_missing", "결과물을 저장할 기존 폴더를 선택해 주세요.")
+    return path
+
+
+def _publish(source: Path, output: Path) -> None:
+    # Exclusive create also checks races after preflight. Never replace another file.
+    created = False
+    try:
+        with output.open("xb") as dest:
+            created = True
+            with source.open("rb") as src:
+                shutil.copyfileobj(src, dest)
+            dest.flush()
+            os.fsync(dest.fileno())
+    except Exception:
+        if created:
+            output.unlink(missing_ok=True)
+        raise
+
+
+def _text(value: Any, maximum: int = 10000) -> str:
+    if not isinstance(value, (str, int, float)) or isinstance(value, bool):
+        raise ArtifactError("invalid_spec", "본문과 제목에는 글자 또는 숫자만 사용할 수 있습니다.")
+    result = str(value)
+    if len(result) > maximum or any(ord(c) < 32 and c not in "\n\r\t" for c in result):
+        raise ArtifactError("invalid_spec", "입력 글자가 너무 길거나 지원하지 않는 제어 문자를 포함합니다.")
+    return result
+
+
+def _image(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict) or not isinstance(value.get("path"), str):
+        raise ArtifactError("invalid_image", "이미지는 로컬 PNG/JPEG 파일 경로로 지정해 주세요.")
+    path = _source(Path(value["path"]), (".png", ".jpg", ".jpeg"))
+    raw = path.read_bytes()
+    if len(raw) > 10 * 1024 * 1024:
+        raise ArtifactError("image_too_large", "이미지는 10 MB 이하로 준비해 주세요.")
+    mime = "image/png" if raw.startswith(b"\x89PNG\r\n\x1a\n") else "image/jpeg" if raw.startswith(b"\xff\xd8\xff") else None
+    if mime is None:
+        raise ArtifactError("invalid_image", "이미지의 실제 형식이 PNG/JPEG가 아닙니다.")
+    return {"path": str(path), "alt": _text(value.get("alt", "참고 이미지"), 1000),
+            "data": base64.b64encode(raw).decode("ascii"), "mime": mime}
+
+
+def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(spec, dict):
+        raise ArtifactError("invalid_spec", "작업 내용은 JSON 객체로 전달해 주세요.")
+    if (spec.get("drmRestricted") or spec.get("protected") or spec.get("permissionGranted") is False or
+            str(spec.get("accessStatus", "")).lower() in ("blocked", "denied", "protected")):
+        raise ArtifactError("protected_input", "보호 또는 접근 제한이 표시된 자료는 자동 처리하지 않습니다.")
+    style = spec.get("style", "minimalism")
+    aliases = {"글래스모피즘": "glassmorphism", "브루탈리즘": "brutalism", "뉴모피즘": "neumorphism",
+               "미니멀리즘": "minimalism", "벤토그리드": "bento-grid", "그라디언트 메시": "gradient-mesh",
+               "에디토리얼": "editorial", "자유양식": "freeform", "minimal": "minimalism", "bento": "bento-grid", "gradient_mesh": "gradient-mesh"}
+    style = aliases.get(style, style)
+    mode = spec.get("mode", "scroll")
+    length = spec.get("length", "standard")
+    if style not in STYLES or mode not in MODES or length not in ("short", "standard", "detailed"):
+        raise ArtifactError("invalid_choice", "지원하는 디자인, 보기 방식, 분량을 선택해 주세요.")
+    rows = spec.get("sections", spec.get("slides", []))
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 60:
+        raise ArtifactError("invalid_sections", "본문은 1~60개 페이지 또는 구역으로 구성해 주세요.")
+    result = {"title": _text(spec.get("title", "업무 보고서"), 300), "subtitle": _text(spec.get("subtitle", ""), 1000),
+              "style": style, "mode": mode, "length": length, "sections": []}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise ArtifactError("invalid_section", "각 페이지에는 제목과 본문을 객체로 지정해 주세요.")
+        if row.get("drmRestricted") or row.get("protected") or row.get("permissionGranted") is False:
+            raise ArtifactError("protected_input", "보호 또는 접근 제한이 표시된 자료는 자동 처리하지 않습니다.")
+        section: dict[str, Any] = {"title": _text(row.get("title", ""), 300), "body": _text(row.get("body", ""))}
+        bullets = row.get("bullets", [])
+        if not isinstance(bullets, list) or len(bullets) > 30:
+            raise ArtifactError("invalid_bullets", "한 페이지의 목록은 30개 이하로 나누어 주세요.")
+        section["bullets"] = [_text(value, 2000) for value in bullets]
+        if "table" in row:
+            table = row["table"]
+            if not isinstance(table, dict) or not isinstance(table.get("headers"), list) or not 1 <= len(table["headers"]) <= 12:
+                raise ArtifactError("invalid_table", "표에는 1~12개의 열 제목이 필요합니다.")
+            headers = [_text(value, 1000) for value in table["headers"]]
+            cells = table.get("rows", [])
+            if not isinstance(cells, list) or len(cells) > 100 or any(not isinstance(v, list) or len(v) != len(headers) for v in cells):
+                raise ArtifactError("invalid_table", "표는 열 수가 일치하는 100행 이하의 데이터가 필요합니다.")
+            section["table"] = {"headers": headers, "rows": [[_text(v, 2000) for v in r] for r in cells]}
+        if "chart" in row:
+            chart = row["chart"]
+            if not isinstance(chart, dict) or chart.get("type", "column") not in ("column", "bar", "line", "pie"):
+                raise ArtifactError("invalid_chart", "차트 유형은 column, bar, line, pie 중 하나를 선택해 주세요.")
+            categories, series = chart.get("categories"), chart.get("series")
+            if not isinstance(categories, list) or not 1 <= len(categories) <= 30 or not isinstance(series, list) or not 1 <= len(series) <= 6:
+                raise ArtifactError("invalid_chart", "차트는 1~30개 항목과 1~6개 수치 계열을 지원합니다.")
+            checked = []
+            for serie in series:
+                if not isinstance(serie, dict) or not isinstance(serie.get("values"), list) or len(serie["values"]) != len(categories):
+                    raise ArtifactError("invalid_chart", "차트 항목과 수치의 개수가 같아야 합니다.")
+                values = serie["values"]
+                if any(isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v) or abs(v) > 1e15 for v in values):
+                    raise ArtifactError("invalid_chart", "차트에는 유한한 숫자만 사용할 수 있습니다.")
+                checked.append({"name": _text(serie.get("name", "값"), 200), "values": values})
+            if chart.get("type") == "pie" and (len(checked) != 1 or any(v < 0 for v in checked[0]["values"]) or sum(checked[0]["values"]) == 0):
+                raise ArtifactError("invalid_chart", "원형 차트는 합계가 양수인 한 개의 음수 없는 계열만 지원합니다.")
+            section["chart"] = {"type": chart.get("type", "column"), "categories": [_text(v, 200) for v in categories], "series": checked}
+        if "image" in row:
+            section["image"] = _image(row["image"])
+        result["sections"].append(section)
+    if len(json.dumps(result, ensure_ascii=True)) > 32 * 1024 * 1024:
+        raise ArtifactError("spec_too_large", "전체 자료가 너무 큽니다. 보고서를 나누어 주세요.")
+    return result
+
+
+_CSS = """
+:root{color-scheme:light;--bg:#f5f6f8;--paper:#fff;--ink:#172132;--muted:#526075;--accent:#315da8;--line:#dce1e9;--radius:14px}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.65 'Malgun Gothic','Segoe UI',sans-serif}
+header,main,footer{max-width:1150px;margin:auto;padding:24px}header{padding-top:48px}h1{font-size:clamp(30px,5vw,52px);line-height:1.2;margin:0 0 16px}
+h2{font-size:clamp(24px,3vw,34px);line-height:1.3;margin:0 0 22px}h1,h2{overflow-wrap:anywhere}p{white-space:pre-line;overflow-wrap:anywhere}li,td,th{overflow-wrap:anywhere}
+.subtitle,.page-number,footer{color:var(--muted)}.section{background:var(--paper);padding:40px;margin:0 0 24px;border:1px solid var(--line);border-radius:var(--radius)}
+.page-number{display:block;font-size:13px;margin-bottom:14px}.text{max-width:80ch}.table-wrap{overflow:auto;margin:24px 0}table{border-collapse:collapse;width:100%;text-align:left}
+th,td{border-bottom:1px solid var(--line);padding:12px;vertical-align:top}th{color:var(--accent);font-weight:700}figure{margin:24px 0}img{max-width:100%;max-height:65vh;object-fit:contain}figcaption{font-size:14px;color:var(--muted)}
+nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px}button{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer}button:disabled{opacity:.4}button:focus-visible{outline:3px solid var(--accent)}
+body[data-view=slides] main>.section{display:none}body[data-view=slides] main>.section.active{display:block;min-height:60vh}body[data-view=scroll] .slide-controls{display:none}.chart-data caption{text-align:left;font-weight:700;color:var(--accent)}
+body[data-style=glassmorphism]{--bg:#dfeaf6;--paper:#ffffffbb;--line:#ffffff;--accent:#36528d;background:linear-gradient(125deg,#dbeef9,#e9e2f7)}body[data-style=glassmorphism] .section{backdrop-filter:blur(12px);box-shadow:0 14px 38px #25365514}
+body[data-style=brutalism]{--bg:#f2f058;--paper:#fffef6;--ink:#111;--line:#111;--accent:#1717be;--radius:0}body[data-style=brutalism] .section{border-width:3px;box-shadow:8px 8px 0 #111}body[data-style=brutalism] h1{font-weight:900}
+body[data-style=neumorphism]{--bg:#e5e9ee;--paper:#e5e9ee;--line:transparent;--radius:24px}body[data-style=neumorphism] .section{box-shadow:12px 12px 26px #bac0c8,-12px -12px 26px #fff}
+body[data-style=minimalism]{--bg:#fff;--paper:#fff;--line:#e5e5e5;--radius:0}body[data-style=minimalism] .section{border-width:0 0 1px;padding-left:0;padding-right:0}
+body[data-style=bento-grid]{--bg:#eef0e9;--accent:#31573b;--radius:24px}body[data-style=bento-grid][data-view=scroll] main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}body[data-style=bento-grid] .section{margin:0}body[data-style=bento-grid] .section:first-child{grid-column:1/-1}
+body[data-style=gradient-mesh]{--bg:#f5e9fd;--paper:#ffffffd9;--accent:#693b8f;background:radial-gradient(at 15% 5%,#c8e8fa,transparent 55%),radial-gradient(at 80% 35%,#f7c7e3,transparent 60%),radial-gradient(at 40% 90%,#f8e8b8,transparent 65%),#ede3f9}
+body[data-style=editorial]{--bg:#f6f1e8;--paper:#f6f1e8;--ink:#29251e;--accent:#91432e;--line:#c7bdad;--radius:0}body[data-style=editorial] h1,body[data-style=editorial] h2{font-family:Georgia,'Batang',serif}body[data-style=editorial] .section{border-width:2px 0 0;padding-left:0;padding-right:0}
+body[data-style=freeform]{--bg:#f0f6f5;--paper:#fff;--accent:#12665b;--radius:12px}body[data-style=freeform] .section{border-left:6px solid var(--accent)}
+body[data-length=short] .text{max-width:58ch}body[data-length=detailed] .text{max-width:95ch}body[data-length=detailed] .section{padding:32px}
+@media(max-width:700px){header,main,footer{padding:20px}.section{padding:24px}body[data-style=bento-grid][data-view=scroll] main{display:block}.section{margin-bottom:24px!important}}
+@media print{body{background:white!important}header{padding-top:0}nav,footer{display:none!important}main{display:block!important}.section{display:block!important;box-shadow:none!important;backdrop-filter:none!important;break-inside:avoid;border-color:#ccc!important}body[data-view=slides] .section{break-after:page;min-height:0}img{max-height:600px}}
+"""
+_JS = """'use strict';(()=>{const sections=[...document.querySelectorAll('main>.section')];let index=0;const count=document.getElementById('slide-count');const prev=document.getElementById('previous');const next=document.getElementById('next');function show(){sections.forEach((s,i)=>s.classList.toggle('active',i===index));count.textContent=(index+1)+' / '+sections.length;prev.disabled=index===0;next.disabled=index===sections.length-1}prev.addEventListener('click',()=>{index=Math.max(0,index-1);show()});next.addEventListener('click',()=>{index=Math.min(sections.length-1,index+1);show()});const toggle=document.getElementById('toggle-view');if(toggle)toggle.addEventListener('click',()=>{const scroll=document.body.dataset.view==='scroll';document.body.dataset.view=scroll?'slides':'scroll';toggle.textContent=scroll?'스크롤로 보기':'페이지로 보기';show()});document.getElementById('print').addEventListener('click',()=>window.print());document.addEventListener('keydown',event=>{if(document.body.dataset.view!=='slides'||/INPUT|TEXTAREA|BUTTON/.test(event.target.tagName))return;if(event.key==='ArrowRight')next.click();if(event.key==='ArrowLeft')prev.click()});show()})();"""
+
+
+def _html_table(headers: list[str], rows: list[list[Any]], caption: str = "") -> str:
+    esc = lambda value: html.escape(str(value), quote=True)
+    return ('<div class="table-wrap"><table>' + (f'<caption>{esc(caption)}</caption>' if caption else '') +
+            '<thead><tr>' + ''.join(f'<th scope="col">{esc(v)}</th>' for v in headers) + '</tr></thead><tbody>' +
+            ''.join('<tr>' + ''.join(f'<td>{esc(v)}</td>' for v in row) + '</tr>' for row in rows) + '</tbody></table></div>')
+
+
+def create_html(spec: dict[str, Any], output: Path) -> dict[str, Any]:
+    try:
+        output = _target(output, ".html")
+        data = _normalize(spec)
+        esc = lambda value: html.escape(str(value), quote=True)
+        sections = []
+        for index, row in enumerate(data["sections"], 1):
+            fragment = f'<section class="section" id="section-{index}"><span class="page-number">{index:02d}</span><h2>{esc(row["title"])}</h2>'
+            if row["body"]:
+                fragment += f'<p class="text">{esc(row["body"])}</p>'
+            if row["bullets"]:
+                fragment += '<ul class="text">' + ''.join(f'<li>{esc(v)}</li>' for v in row["bullets"]) + '</ul>'
+            if "table" in row:
+                fragment += _html_table(row["table"]["headers"], row["table"]["rows"])
+            if "chart" in row:
+                chart = row["chart"]
+                fragment += _html_table(["항목"] + [v["name"] for v in chart["series"]],
+                                        [[cat] + [v["values"][i] for v in chart["series"]] for i, cat in enumerate(chart["categories"])], "차트 원자료")
+            if "image" in row:
+                im = row["image"]
+                fragment += f'<figure><img src="data:{im["mime"]};base64,{im["data"]}" alt="{esc(im["alt"])}"><figcaption>{esc(im["alt"])}</figcaption></figure>'
+            sections.append(fragment + '</section>')
+        script_hash = base64.b64encode(hashlib.sha256(_JS.encode()).digest()).decode()
+        csp = f"default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'sha256-{script_hash}'; base-uri 'none'; form-action 'none'"
+        view = "slides" if data["mode"] == "slides" else "scroll"
+        toggle = '<button id="toggle-view" type="button">페이지로 보기</button>' if data["mode"] == "both" else ''
+        document = ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+                    f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title><style>{_CSS}</style></head>' +
+                    f'<body data-style="{data["style"]}" data-view="{view}" data-length="{data["length"]}"><header><h1>{esc(data["title"])}</h1><p class="subtitle">{esc(data["subtitle"])}</p><nav aria-label="보고서 보기">{toggle}<button id="print" type="button">인쇄 / PDF 저장</button><span class="slide-controls"><button id="previous" type="button">이전</button> <span id="slide-count" aria-live="polite"></span> <button id="next" type="button">다음</button></span></nav></header>' +
+                    '<main>' + ''.join(sections) + '</main><footer>이 파일은 인터넷 연결 없이 열 수 있습니다.</footer><script>' + _JS + '</script></body></html>')
+        with tempfile.TemporaryDirectory(prefix="company-report-") as temp:
+            draft = Path(temp) / "report.html"
+            draft.write_text(document, encoding="utf-8")
+            _publish(draft, output)
+        return {"ok": True, "status": "created", "outputPath": str(output), "style": data["style"], "mode": data["mode"],
+                "sections": len(sections), "offline": True, "warnings": ["HTML 차트 입력은 접근 가능한 수치 표로 표시합니다." ] if any("chart" in r for r in data["sections"]) else []}
+    except Exception as exc:
+        return _failure(exc)
+
+
+def _xml(raw: bytes) -> ET.Element:
+    if b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
+        raise ArtifactError("unsafe_package", "지원하지 않는 XML 선언이 포함된 파일은 처리하지 않습니다.")
+    return ET.fromstring(raw)
+
+
+def _check_embedded_workbook(raw: bytes) -> None:
+    """Allow chart data workbooks, but not hidden macros/external-data fetches."""
+    try:
+        with zipfile.ZipFile(BytesIO(raw)) as workbook:
+            entries = workbook.infolist()
+            if len(entries) > 1000 or sum(v.file_size for v in entries) > LIMIT:
+                raise ArtifactError("unsafe_workbook", "삽입된 차트 데이터가 안전 처리 한도를 초과합니다.")
+            names = {v.filename for v in entries}
+            if len(names) != len(entries):
+                raise ArtifactError("unsafe_workbook", "삽입된 차트 데이터에 중복 내부 파일이 있습니다.")
+            for part in entries:
+                name = part.filename.lower()
+                if (part.flag_bits & 1 or "vbaproject" in name or "/externalLinks/".lower() in name or
+                        "/embeddings/" in name or "/activex/" in name or "connections.xml" in name):
+                    raise ArtifactError("unsafe_workbook", "삽입된 차트 데이터에 외부 연결 또는 실행 개체가 있습니다.")
+                if name.endswith(".rels"):
+                    if any(v.get("TargetMode", "").lower() == "external" for v in _xml(workbook.read(part))):
+                        raise ArtifactError("unsafe_workbook", "삽입된 차트 데이터의 외부 연결은 자동 처리하지 않습니다.")
+    except zipfile.BadZipFile:
+        raise ArtifactError("unsafe_workbook", "삽입된 차트 데이터의 형식을 확인할 수 없습니다.") from None
+
+
+def inspect_template(path: Path) -> dict[str, Any]:
+    try:
+        path = _source(path, (".pptx",))
+        with path.open("rb") as stream:
+            if stream.read(8) == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
+                raise ArtifactError("protected_or_unsupported", "암호화·보호되었거나 지원하지 않는 형식입니다. 복호화나 화면 캡처를 시도하지 않습니다.")
+        with zipfile.ZipFile(path) as package:
+            entries = package.infolist()
+            if len(entries) > MAX_PARTS or sum(v.file_size for v in entries) > MAX_EXPANDED:
+                raise ArtifactError("package_too_large", "PPT 내부 파일이 안전 처리 한도를 초과합니다.")
+            names = {v.filename for v in entries}
+            if len(names) != len(entries) or any(v.flag_bits & 1 or v.file_size > LIMIT or v.filename.startswith(("/", "\\")) or ".." in v.filename.replace("\\", "/").split("/") for v in entries):
+                raise ArtifactError("unsafe_package", "PPT 내부 경로나 압축 구조가 안전 처리 기준에 맞지 않습니다.")
+            if any("vbaproject" in n.lower() or "/activex/" in n.lower() or "/embeddings/" in n.lower() and not n.lower().endswith(".xlsx") for n in names):
+                raise ArtifactError("active_content", "매크로 또는 실행 가능한 삽입 개체가 포함된 양식은 자동 처리하지 않습니다.")
+            if "ppt/presentation.xml" not in names or "[Content_Types].xml" not in names:
+                raise ArtifactError("invalid_template", "정상적인 PPTX 양식 구조를 찾지 못했습니다.")
+            slides, layouts = [], []
+            external = False
+            for name in sorted(names):
+                if name.startswith("ppt/embeddings/") and name.lower().endswith(".xlsx"):
+                    _check_embedded_workbook(package.read(name))
+                elif name.endswith(".rels"):
+                    root = _xml(package.read(name))
+                    external |= any(v.get("TargetMode", "").lower() == "external" for v in root)
+                elif name.startswith("ppt/slides/slide") and name.endswith(".xml"):
+                    root = _xml(package.read(name))
+                    slides.append({"part": name, "textShapes": len(root.findall(f".//{{{P}}}sp")),
+                                   "tables": len(root.findall(f".//{{{A}}}tbl")), "pictures": len(root.findall(f".//{{{P}}}pic"))})
+                elif name.startswith("ppt/slideLayouts/") and name.endswith(".xml"):
+                    root = _xml(package.read(name))
+                    common = root.find(f"{{{P}}}cSld")
+                    layouts.append({"part": name, "name": common.get("name", "") if common is not None else ""})
+            presentation = _xml(package.read("ppt/presentation.xml"))
+            size = presentation.find(f"{{{P}}}sldSz")
+            warnings = ["이미지나 지원하지 않는 원본 개체까지 편집 가능하다고 보장하지 않습니다."]
+            if external:
+                warnings.append("외부 연결이 있습니다. 자동 제작은 중단되며 연결 해제는 원본 작성자가 결정해야 합니다.")
+            return {"ok": True, "status": "inspected", "path": str(path), "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
+                    "slides": slides, "layouts": layouts, "slideCount": len(slides), "hasExternalRelationships": external,
+                    "sizeEmu": {"width": int(size.get("cx", "0")), "height": int(size.get("cy", "0"))} if size is not None else None,
+                    "warnings": warnings, "editability": "native-objects-detected-not-full-reconstruction"}
+    except zipfile.BadZipFile:
+        return _failure(ArtifactError("protected_or_invalid", "파일이 보호되었거나 정상 PPTX가 아닙니다. 다른 방식으로 내용을 추출하지 않았습니다.", "unknown"))
+    except Exception as exc:
+        return _failure(exc)
+
+
+def capabilities() -> dict[str, Any]:
+    found = importlib.util.find_spec("pptx") is not None
+    shell = _windows_powershell()
+    return {"ok": True, "html": {"available": True, "styles": list(STYLES), "modes": list(MODES), "offline": True},
+            "ppt": {"pythonPptxAvailable": found, "powerShellAvailable": shell is not None,
+                    "powerPointInstalled": "checked-when-requested" if shell else "unavailable",
+                    "automaticDownload": False, "templateFormats": [".pptx"],
+                    "notes": "생성은 python-pptx 또는 Windows PowerPoint가 필요합니다. 이미지 미리보기는 PowerPoint가 있어야 합니다."}}
+
+
+def _windows_powershell() -> str | None:
+    """Resolve the Windows binary without consulting PATH or the current folder."""
+    if os.name != "nt":
+        return None
+    try:
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        directory = ctypes.create_unicode_buffer(32768)
+        size = kernel.GetSystemDirectoryW(directory, len(directory))
+        if not 0 < size < len(directory):
+            return None
+        executable = Path(directory.value) / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+        _reject_reparse(executable)
+        return str(executable) if executable.is_absolute() and executable.is_file() else None
+    except Exception:
+        return None
+
+
+def _fit_preflight(data: dict[str, Any]) -> None:
+    for row in data["sections"]:
+        count = sum(bool(row.get(k)) for k in ("body", "bullets", "table", "chart", "image"))
+        if count > 3 or len(row["title"]) > 90 or len(row["body"]) > 900 or len(row["bullets"]) > 8 or any(len(v) > 160 for v in row["bullets"]):
+            raise ArtifactError("slide_too_dense", "한 슬라이드의 내용이 많습니다. 제목·본문을 줄이거나 여러 장으로 나누어 주세요.")
+        if "table" in row and (len(row["table"]["rows"]) > 10 or len(row["table"]["headers"]) > 8 or any(len(v) > 100 for r in row["table"]["rows"] for v in r)):
+            raise ArtifactError("slide_table_too_dense", "PPT 표는 10행·8열 이하로 나누고 긴 셀 내용을 줄여 주세요.")
+
+
+def _python_ppt(data: dict[str, Any], draft: Path, template: Path | None) -> dict[str, Any]:
+    from pptx import Presentation
+    from pptx.chart.data import CategoryChartData
+    from pptx.enum.chart import XL_CHART_TYPE
+    from pptx.dml.color import RGBColor
+    from pptx.util import Inches, Pt
+    prs = Presentation(str(template)) if template else Presentation()
+    if not template:
+        prs.slide_width, prs.slide_height = Inches(13.333333), Inches(7.5)
+    else:
+        # Work on the copy only. Drop slide relationships so discarded sample data
+        # is not silently retained as orphaned ZIP parts by the library serializer.
+        for relation in list(prs.slides._sldIdLst):
+            prs.part.drop_rel(relation.rId)
+            prs.slides._sldIdLst.remove(relation)
+    blank = min(prs.slide_layouts, key=lambda layout: len(layout.placeholders))
+    width, height = prs.slide_width / 914400, prs.slide_height / 914400
+    native = {"text": 0, "tables": 0, "charts": 0, "images": 0}
+    for row in data["sections"]:
+        slide = prs.slides.add_slide(blank)
+        for shape in list(slide.placeholders):
+            element = shape._element
+            element.getparent().remove(element)
+        def textbox(text: str, x: float, y: float, w: float, h: float, size: int, bold: bool = False) -> None:
+            shape = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+            shape.text_frame.word_wrap = True
+            shape.text_frame.text = text
+            for paragraph in shape.text_frame.paragraphs:
+                paragraph.font.name = "Malgun Gothic"
+                paragraph.font.size = Pt(size)
+                paragraph.font.bold = bold
+                if not template:
+                    paragraph.font.color.rgb = RGBColor.from_string("17324D")
+            native["text"] += 1
+        textbox(row["title"], .55, .3, width - 1.1, .8, 28, True)
+        blocks = [key for key in ("body", "bullets", "table", "chart", "image") if row.get(key)]
+        available, top = max(1.0, height - 1.8), 1.35
+        block_height = available / max(1, len(blocks))
+        for key in blocks:
+            usable = max(.5, block_height - .12)
+            if key in ("body", "bullets"):
+                textbox(row[key] if key == "body" else "\n".join("• " + v for v in row[key]), .6, top, width - 1.2, usable, 17)
+            elif key == "table":
+                content = row[key]
+                table = slide.shapes.add_table(len(content["rows"]) + 1, len(content["headers"]), Inches(.6), Inches(top), Inches(width - 1.2), Inches(usable)).table
+                for i, values in enumerate([content["headers"], *content["rows"]]):
+                    for j, value in enumerate(values):
+                        table.cell(i, j).text = value
+                        for paragraph in table.cell(i, j).text_frame.paragraphs:
+                            paragraph.font.name = "Malgun Gothic"
+                            paragraph.font.size = Pt(12)
+                native["tables"] += 1
+            elif key == "chart":
+                chart = row[key]
+                chart_data = CategoryChartData()
+                chart_data.categories = chart["categories"]
+                for serie in chart["series"]:
+                    chart_data.add_series(serie["name"], serie["values"])
+                kinds = {"column": XL_CHART_TYPE.COLUMN_CLUSTERED, "bar": XL_CHART_TYPE.BAR_CLUSTERED,
+                         "line": XL_CHART_TYPE.LINE, "pie": XL_CHART_TYPE.PIE}
+                slide.shapes.add_chart(kinds[chart["type"]], Inches(.6), Inches(top), Inches(width - 1.2), Inches(usable), chart_data)
+                native["charts"] += 1
+            elif key == "image":
+                im = row[key]
+                # Embed the already inspected bytes, not a possibly changed path.
+                from io import BytesIO
+                image = slide.shapes.add_picture(BytesIO(base64.b64decode(im["data"])), Inches(.6), Inches(top), height=Inches(usable))
+                if image.width > Inches(width - 1.2):
+                    ratio = Inches(width - 1.2) / image.width
+                    image.width, image.height = int(image.width * ratio), int(image.height * ratio)
+                native["images"] += 1
+            top += block_height
+    prs.core_properties.title = data["title"]
+    prs.core_properties.subject = data["subtitle"]
+    prs.save(str(draft))
+    return native
+
+
+def _office(data: dict[str, Any], draft: Path, template: Path | None, work: Path, render_only: bool) -> dict[str, Any]:
+    shell = _windows_powershell()
+    if not shell:
+        return {"ok": False, "status": "unavailable", "code": "powerpoint_unavailable", "message": "Windows PowerPoint 실행 환경이 없어 이미지 미리보기를 만들지 못했습니다."}
+    request = work / "office-request.json"
+    payload = {"spec": data, "output": str(draft), "template": str(template) if template else None,
+               "renderOnly": render_only, "previewDirectory": str(work / "preview")}
+    request.write_text(json.dumps(payload, ensure_ascii=True), encoding="utf-8")
+    runner = Path(__file__).resolve().parents[1] / "Invoke-BusinessPowerPoint.ps1"
+    try:
+        process = subprocess.run([shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(runner), "-RequestPath", str(request)],
+                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=90, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        answer = json.loads(process.stdout.decode("utf-8-sig"))
+        if not isinstance(answer, dict) or "ok" not in answer:
+            raise ValueError("invalid office result")
+        # Never return raw Office errors or stderr: these may contain private paths/content.
+        allowed = {"ok", "status", "code", "message", "rendered", "slides", "editability"}
+        return {key: answer[key] for key in allowed if key in answer}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "status": "unknown", "code": "office_timeout", "message": "PowerPoint 작업 제한 시간을 초과했습니다. 사용 중인 PowerPoint를 종료하지 않았습니다."}
+    except Exception:
+        return {"ok": False, "status": "unknown", "code": "office_failed", "message": "PowerPoint 작업을 확인하지 못했습니다. 보안 설정을 변경하거나 다른 캡처 방식으로 재시도하지 않았습니다."}
+
+
+def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None) -> dict[str, Any]:
+    try:
+        output = _target(output, ".pptx")
+        data = _normalize(spec)
+        _fit_preflight(data)
+        inspected = inspect_template(template) if template else None
+        if inspected and not inspected["ok"]:
+            return inspected
+        if inspected and inspected["hasExternalRelationships"]:
+            raise ArtifactError("external_template_links", "양식에 외부 연결이 있어 자동 제작을 중단했습니다. 보호된 연결을 우회하지 않습니다.")
+        python_available = importlib.util.find_spec("pptx") is not None
+        # Office can retain a handle after a timeout. Do not kill its process or
+        # mask a saved output with cleanup errors when a temporary file is locked.
+        with tempfile.TemporaryDirectory(prefix="company-presentation-", ignore_cleanup_errors=True) as temp:
+            work = Path(temp)
+            draft = work / "draft.pptx"
+            copy = None
+            if template:
+                copy = work / "template.pptx"
+                copy.write_bytes(Path(template).read_bytes())
+                if hashlib.sha256(copy.read_bytes()).hexdigest() != inspected["sha256"]:
+                    raise ArtifactError("template_changed", "확인 후 원본 양식이 변경되었습니다. 다시 확인해 주세요.")
+            if python_available:
+                native = _python_ppt(data, draft, copy)
+                engine = "python-pptx"
+                visual = _office(data, draft, None, work, True)
+            else:
+                visual = _office(data, draft, copy, work, False)
+                if not draft.exists() or (not visual.get("ok") and visual.get("code") != "render_refused"):
+                    return visual
+                native = {"text": "native", "tables": "native", "charts": "native", "images": "raster"}
+                engine = "powerpoint-com"
+            structure = inspect_template(draft)
+            if not structure["ok"] or structure["slideCount"] != len(data["sections"]):
+                raise ArtifactError("ppt_validation_failed", "생성한 PPT의 구조 검증에 실패해 결과물을 저장하지 않았습니다.", "unknown")
+            # Rendering refusal is reported as partial, never retried through an alternate capture path.
+            _publish(draft, output)
+            previews = []
+            preview_source = work / "preview"
+            if visual.get("ok") and preview_source.is_dir():
+                preview_target = output.parent / (output.stem + "-preview")
+                try:
+                    preview_target.mkdir(exist_ok=False)
+                    for picture in sorted(preview_source.glob("slide-*.png")):
+                        _publish(picture, preview_target / picture.name)
+                        previews.append(str(preview_target / picture.name))
+                except FileExistsError:
+                    visual = {"ok": False, "status": "blocked", "code": "preview_exists", "message": "기존 미리보기 파일·폴더를 보존했습니다. PPT 파일은 생성했습니다."}
+                except OSError as error:
+                    # The presentation was already published. Do not hide it or
+                    # retry an export after an independent preview failure.
+                    visual = _failure(error)
+                    visual["message"] = "PPT 파일은 생성했지만 미리보기 저장은 완료하지 못했습니다. 다른 경로로 재출력하지 않았습니다."
+            warnings = ["사진·배경 이미지와 원본의 지원하지 않는 개체는 개별 편집을 보장하지 않습니다.",
+                        "이미지 출력은 육안 품질 검토를 돕습니다. 글자 잘림과 회사 양식 일치 여부는 미리보기에서 확인해 주세요."]
+            if template:
+                warnings.append("원본 테마·마스터·레이아웃을 재사용하며 예시 슬라이드는 제거합니다. 원본 화면의 정확한 재구성은 보장하지 않습니다.")
+            if not visual.get("ok"):
+                warnings.append(visual.get("message", "이미지 미리보기를 만들지 못했습니다."))
+            return {"ok": True, "status": "created" if visual.get("ok") else "partial", "outputPath": str(output),
+                    "engine": engine, "slides": len(data["sections"]), "editability": native,
+                    "validation": {"structure": "passed", "render": visual, "visualReview": "required"},
+                    "previews": previews, "warnings": warnings}
+    except Exception as exc:
+        return _failure(exc)

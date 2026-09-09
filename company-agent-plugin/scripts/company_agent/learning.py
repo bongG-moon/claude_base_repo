@@ -646,6 +646,12 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
         raise ValueError("priorFeedback must reference the immediately previous user turn")
     if not learning_enabled(root):
         return {"status": "disabled", "changes": [], "assessments": []}
+    if session.get("protectionRestricted"):
+        # Protected-source turns may finish, but cannot feed free text or
+        # evaluations into automatic personal learning. Existing state survives.
+        spec = {"schemaVersion": 1, "taskType": "protected-material", "outcome": "partial",
+                "summary": "보호 또는 접근 제한 항목을 제외했습니다. 이 세션의 자동 개인화 자료는 저장하지 않았습니다.",
+                "observations": [], "evaluations": []}
     review_id = _hash(session_id + "\0" + turn_id)
     with _locked(root) as data:
         if session.get("learningDeferredReason") == "late-business-activity":

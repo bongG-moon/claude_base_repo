@@ -1,0 +1,115 @@
+"""Shared, conservative business-tool boundaries. Not a DRM bypass or OS sandbox."""
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import stat
+import subprocess
+from typing import Any
+
+
+def windows_powershell() -> Path:
+    if os.name != "nt":
+        raise OSError("Windows is required.")
+    import ctypes
+    buffer = ctypes.create_unicode_buffer(32768)
+    length = ctypes.windll.kernel32.GetSystemDirectoryW(buffer, len(buffer))
+    if not length or length >= len(buffer):
+        raise OSError("Windows system directory is unavailable.")
+    executable = Path(buffer.value) / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if not executable.is_absolute() or not executable.is_file():
+        raise OSError("Windows PowerShell is unavailable.")
+    return executable
+
+
+def safe_path(value: str | Path, *, exists: bool = False) -> Path:
+    """Reject links/reparse ancestors before resolving, including output parents."""
+    path = Path(os.path.abspath(os.fspath(value)))
+    if os.name == "nt" and (str(path).startswith("\\\\") or ":" in str(path)[2:]):
+        raise ValueError("Network/device paths and alternate data streams are not supported.")
+    for part in (path, *path.parents):
+        try:
+            info = part.lstat()
+        except FileNotFoundError:
+            continue
+        if stat.S_ISLNK(info.st_mode) or getattr(info, "st_file_attributes", 0) & 0x400:
+            raise ValueError("Linked folders and reparse points are not supported.")
+    if exists and not path.exists():
+        raise ValueError("The selected path no longer exists.")
+    return path
+
+
+def failure_result(exc: BaseException, *, item: str = "선택한 항목") -> dict[str, Any]:
+    # Inspect error text locally; never return Office error text/body/addresses.
+    message = str(exc).lower()
+    protected = any(word in message for word in ("drm", "rights management", "irm protected", "보호 설정", "권한 관리"))
+    denied = isinstance(exc, PermissionError) or getattr(exc, "winerror", None) == 5 or any(
+        word in message for word in ("access denied", "access is denied", "permission denied", "접근이 거부", "액세스가 거부"))
+    code = "protection_blocked" if protected else "permission_denied" if denied else "operation_failed"
+    reason = "보호 설정" if protected else "접근 권한" if denied else "작업 오류"
+    return {"ok": False, "status": "blocked" if protected or denied else "failed", "code": code,
+            "message": f"{item}은(는) {reason} 때문에 처리하지 못했습니다. 다른 경로로 재추출하지 않았습니다.",
+            "retryAllowed": not (protected or denied), "rawContentStored": False}
+
+
+def protection_notice(payload: Any) -> str:
+    """Bounded hint for hook error/results; no document content echoed."""
+    if not isinstance(payload, dict):
+        return ""
+    codes = {"protection_blocked", "permission_denied", "drm_blocked", "protected_or_unsupported", "protection_unknown", "protected_input"}
+    def restricted(value: Any, depth: int = 0) -> bool:
+        if depth > 8:
+            return False
+        if isinstance(value, dict):
+            if isinstance(value.get("code"), str) and value["code"] in codes:
+                return True
+            return any(restricted(v, depth + 1) for k, v in list(value.items())[:100]
+                       if k not in {"body", "subject", "contentHtml", "tool_input"})
+        if isinstance(value, list):
+            return any(restricted(v, depth + 1) for v in value[:500])
+        if isinstance(value, str) and len(value) <= 2 * 1024 * 1024:
+            try:
+                return restricted(json.loads(value), depth + 1)
+            except (ValueError, TypeError):
+                pass
+        return False
+    error = str(payload.get("error") or payload.get("tool_error") or "")[:10000].lower()
+    if restricted(payload.get("tool_response")) or any(token in error for token in (
+            "rights management", "access is denied", "access denied", "permission denied", "drm",
+            "protection_blocked", "permission_denied", "액세스가 거부", "접근이 거부")):
+        return ("보호 설정 또는 접근 제한 신호가 있습니다. 실패한 항목만 중단하고, 허용된 항목은 계속 처리하세요. "
+                "본문 조회 성공은 첨부 조회 성공이 아닙니다. 첨부가 차단되면 '메일 본문은 확인했지만 첨부파일은 보호 설정 때문에 "
+                "분석하지 못했습니다. 첨부 내용은 제외하고 요약했습니다.'처럼 실제 확인 범위에 맞게 설명하세요. "
+                "캡처/OCR/다른 앱/보호 해제로 우회하거나 같은 제한을 재시도하지 마세요. 보호된 원문을 Memory/Knowledge에 저장하지 마세요.")
+    return ""
+
+
+def confirm_action(title: str, details: str) -> bool:
+    """A real local user click, never an LLM-supplied approved:true flag."""
+    if os.name != "nt" or len(details) > 512 * 1024:
+        return False
+    helper = Path(__file__).resolve().parents[1] / "Confirm-BusinessAction.ps1"
+    # Never approve operations omitted from a silently truncated preview.
+    request = json.dumps({"title": title[:160], "details": details}, ensure_ascii=True)
+    try:
+        result = subprocess.run([str(windows_powershell()), "-NoLogo", "-NoProfile", "-STA", "-File", str(helper)],
+                                input=request, encoding="utf-8", capture_output=True, timeout=300,
+                                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        return result.returncode == 0 and json.loads(result.stdout.lstrip("\ufeff")).get("approved") is True
+    except (OSError, subprocess.TimeoutExpired, ValueError):
+        return False
+
+
+def cancelled() -> dict[str, Any]:
+    return {"ok": False, "status": "cancelled", "code": "confirmation_required_or_cancelled",
+            "message": "사용자 확인이 완료되지 않아 실행하지 않았습니다. 확인 창이 지원되는 현재 Windows 세션에서 다시 요청하세요."}
+
+
+def blocked_input(spec: dict[str, Any]) -> dict[str, Any] | None:
+    """A supplied restriction may tighten policy, never grant extraction rights."""
+    if spec.get("protection") in ("protected", "blocked", "unknown"):
+        return {"ok": False, "status": "blocked", "code": "protection_blocked",
+                "message": "자료의 AI 처리·출력 권한이 확인되지 않아 이 자료의 처리를 중단했습니다. 보호되지 않은 자료로 바꾸거나 담당자 확인이 필요합니다.",
+                "retryAllowed": False}
+    return None

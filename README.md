@@ -2,7 +2,9 @@
 
 Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARGE 모델을 사용하는 개인화 하네스입니다. 공통 엔진과 개인 Knowledge·Memory·Skill을 분리하고 사용자 또는 프로젝트 범위로 설치합니다.
 
-현재 배포 버전은 **1.1.2**입니다. 일부 회사 PC에서 그냥 더블클릭해도 관리자 권한으로 감지되어 설치가 중단되던 조건을 보완했습니다. 실제 로그인한 본인의 실행·설정 환경인지 확인하고, 같은 사용자라면 권한이 높다는 이유만으로 막지 않습니다. Claude 실행 파일과 개인 설정 위치를 각각 확인하며, 기존 자동 학습과 업데이트 시 개인 자료·규칙·Hook 보존은 그대로 유지합니다. 이전 `0.3.x` 표기는 배포 전 개발 과정의 버전입니다.
+현재 버전은 **1.2.0 업무팩 시범 적용판**입니다. 파일 정리, Outlook 조회 안내, HTML 보고서, 편집 가능한 PPT 제작과 Skill 시작 경고 개선을 포함합니다. 설치 파일은 [1.2.0 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.2.0) 또는 [저장소의 설치 ZIP](dist/company-agent-1.2.0-2026.09.03.zip)을 사용하세요. 실제 회사 Office·DRM 검증 전이므로 Release는 시범 운영용으로 표시합니다. 일부 회사 PC의 관리자 권한 감지 보완, 본인 Claude 실행·설정 위치 확인, 자동 학습과 업데이트 시 개인 자료·규칙·Hook 보존은 유지합니다. 이전 `0.3.x` 표기는 배포 전 개발 과정의 버전입니다.
+
+업무팩은 새 앱을 따로 여는 대신 Claude에 한국어로 요청하는 방식입니다. 파일은 정리안을 먼저 보여주고 본인의 확인 창 승인 후 이동하며, HTML은 8가지 분위기와 스크롤/슬라이드 방식을 고릅니다. PPT는 승인된 Python 환경과 설치된 PowerPoint 또는 이미 준비된 제작 도구를 사용합니다. Outlook은 기존 `corp-outlook-self` 연결을 우선하고, 선택적인 로컬 조회는 읽기 전용입니다. 새 메일 발송·PST 이동 연결이나 외부 이미지 생성 API를 자동 설치하지 않습니다. 실제 회사 Office·메일 환경의 통합 검증은 별도로 필요합니다. [업무팩 시범 사용 안내](docs/BUSINESS_PILOT_GUIDE.md)에서 네 가지 업무 예시, 보호된 자료 처리, 준비물과 미지원 범위를 확인하세요.
 
 코딩에 익숙하지 않은 직원을 위한 [상세 사용자 안내서](docs/Company-Agent-사용자-안내서.html)를 제공합니다. HTML 파일을 내려받아 더블클릭하면 인터넷 연결 없이 읽을 수 있고, 업무 예문을 복사할 수 있습니다. [수정용 원본](docs/USER_GUIDE.md)에는 첫 사용, 보고·회의·자료 비교, 개인 기억과 지식, 반복업무 스킬, 프로젝트별 활용, 업데이트와 문제 해결을 정리했습니다.
 
@@ -60,16 +62,18 @@ Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지�
 
 ```powershell
 # PC에 이미 설치된 승인 Python을 사용하는 기본 직원 ZIP 생성
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.1.2 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.2.0 -KnowledgeVersion 2026.09.03
 ```
 
-결과는 `dist\company-agent-1.1.2-2026.09.03.zip`입니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
+결과는 `dist\company-agent-1.2.0-2026.09.03.zip`입니다. 뒤의 날짜는 회사 지식팩 버전이며 ZIP 생성일이 아닙니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
+
+1.2.0은 사용자 요청에 따라 이 ZIP 하나를 소스와 함께 Git에 기록하고 동일 파일을 Release에도 제공합니다. 다른 로컬 빌드 ZIP은 계속 제외됩니다. ZIP을 갱신할 때는 안내서와 소스를 먼저 검증하고 다시 빌드한 뒤, 커밋의 파일과 Release 첨부 파일이 같은지 SHA-256으로 확인해야 합니다.
 
 기본 ZIP에는 `.exe`, `.dll`, `.pyd`가 없지만 설치·실행용 `.cmd`, `.ps1`, `.py` 파일은 포함됩니다. 따라서 Gmail이나 사내 보안 시스템의 첨부 허용을 보장하지 않습니다. 파일 이름·확장자를 숨기거나 바꾸지 않고 사내 승인된 배포 채널로 전달합니다. Python 실행 환경을 분리한 것이며, 하네스 자체는 코드를 실행합니다.
 
 Core/설정/Knowledge 변경 시 새 버전을 부여합니다. 정식 배포에는 회사 서명과 배포 채널을 사용합니다. 기본 ZIP이 자동으로 회사 서명되는 것은 아닙니다. MCP는 별도 개발·배포하며 DB와 Outlook 권한은 해당 서버에서 강제합니다.
 
-[컨텍스트·Compact·실패 복구](docs/CONTEXT_OPTIMIZATION.md)에서 구현 범위와 native Rewind의 차이를 확인할 수 있습니다. 자동 대화 rewind나 업무 파일 rollback은 구현하지 않으며, 원본 기억을 지우는 압축도 하지 않습니다.
+[컨텍스트·Compact·실패 복구](docs/CONTEXT_OPTIMIZATION.md)에서 구현 범위와 native Rewind의 차이를 확인할 수 있습니다. 자동 대화 rewind나 임의의 업무 전체를 되돌리는 기능은 구현하지 않으며, 원본 기억을 지우는 압축도 하지 않습니다. 1.2.0의 파일 정리에는 별도의 명시적 되돌리기가 있지만, 해당 정리 기록에 포함되고 이후 변경되지 않은 파일만 대상으로 합니다.
 
 ## 개발 검증
 

@@ -32,6 +32,14 @@ For “이 프로젝트 하네스를 구성해줘” or equivalent, invoke
 missing goals/choices, and generates project-local agents, Skills and QA rules.
 Pass runtime context and the sanitized session ID explicitly to every worker.
 
+For folder cleanup, mail work, HTML reports or editable PPTs, use the selected
+`file-organizer`, `outlook-assistant`, `html-report` or `presentation` workflow.
+Check supported capabilities with `/company-agent:business-check` when needed.
+On DRM/access denial, stop that item without extraction/capture/OCR/app-switch
+workarounds; continue independent allowed items and explicitly report omissions.
+Follow `references/business-protection.md`; do not store protected source content
+in personal learning or claim a pilot connector guarantees corporate DRM access.
+
 ## Route work
 
 If a generated project orchestrator is active, keep that orchestrator in the MAIN
