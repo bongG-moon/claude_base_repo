@@ -1,6 +1,10 @@
 {
   "description": "Routes each prompt to a model tier and enforces Company Agent policy, activity capture, and completion feedback.",
   "hooks": {
+    "PermissionRequest": [
+      {"matcher": "Bash", "hooks": [{"type": "command", "command": "powershell.exe",
+        "args": ["-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-CompanyAgent.ps1", "-Mode", "Hook", "-Event", "PermissionRequest"], "timeout": 5}]}
+    ],
     "SessionStart": [
       {
         "hooks": [
@@ -31,7 +35,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(?:mcp__corp-db-read__.*|mcp__corp-outlook-self__.*)$",
+        "matcher": "^(?:Agent|Task|mcp__corp-db-read__.*|mcp__corp-outlook-self__.*)$",
         "hooks": [
           {
             "type": "command",
@@ -48,7 +52,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(?:Read|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*)$",
+        "matcher": "^(?:Read|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|mcp__.*)$",
         "hooks": [
           {
             "type": "command",
@@ -65,7 +69,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "^(?:Read|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|mcp__.*)$",
+        "matcher": "^(?:Read|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|mcp__.*)$",
         "hooks": [
           {
             "type": "command",

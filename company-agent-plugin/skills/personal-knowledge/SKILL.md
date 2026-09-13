@@ -1,11 +1,15 @@
 ---
 name: personal-knowledge
-description: Create, update, search, reconcile, or share a user's local company terminology, table knowledge, join rules, metric definitions, examples, and work conventions. Trigger when the user says to remember a business fact or corrects how future work should be done.
+description: 회사 용어·테이블·연결 규칙·지표 정의·업무 기준을 개인 지식으로 기록하고 검색·보완합니다. 회사 공통 원본은 유지하며 개인 적용 기준을 구분합니다.
 ---
 
 # Personal Knowledge writer
 
 Personal Knowledge is a writable overlay under the active `company_agent_runtime.stateRoot` (or `COMPANY_AGENT_USER_STATE`) plus `knowledge`. User and Project installations have distinct state roots. The administrator's Corporate Base remains immutable.
+
+When authoring or reconciling terminology, table meanings or business definitions, read `references/term-quality.md`. Ordinary lookup does not load this authoring reference.
+
+Use the exact `company_agent_runtime.cliCommand` prefix and `stateRoot` for the argument examples below. Write the compact spec with Write under `<stateRoot>/tmp/knowledge-<unique-id>.json`; never guess a bare command, global state directory, or shell redirection. If runtime context is missing, resolve the installed runtime before writing.
 
 ## Decide what to store
 

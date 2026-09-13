@@ -48,7 +48,8 @@ Never copy this illustrative report as evidence of a real user preference.
 - Do not add unknown fields, transcripts, arbitrary file paths or command text.
   Session/turn IDs are command arguments, not part of this spec.
 
-Repeated-choice observations need evidence on separate user turns before
-activation. A single broad preference inferred by the model is not durable fact.
+Repeated-choice observations need evidence from independent completed work units
+before activation. Different replies, retries or user turns within the same work
+unit are not independent evidence. A single broad preference inferred by the model is not durable fact.
 The engine may defer a valid review's candidate due to conflicts or insufficient
 evidence; review completion does not imply every proposal was applied.

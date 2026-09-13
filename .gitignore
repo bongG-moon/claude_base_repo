@@ -14,5 +14,5 @@ build/
 *.pem
 *.key
 
-# Explicitly requested installer release; other local build archives stay ignored.
+# Historical tracked installer; new installers are published as GitHub Release assets.
 !dist/company-agent-1.2.0-2026.09.03.zip

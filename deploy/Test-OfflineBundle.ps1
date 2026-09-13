@@ -28,6 +28,41 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle ($manifest.runtime.mode -ceq 'external') 'Default runtime mode is not external.'
     Assert-OfflineBundle ($manifest.runtime.minimumVersion -ceq '3.11') 'Minimum Python version is not 3.11.'
     Assert-OfflineBundle ($manifest.runtime.command -ceq 'python') 'Default Python command is not recorded.'
+    foreach ($relative in @(
+        'payload/core/plugin/THIRD_PARTY_NOTICES.md',
+        'payload/core/plugin/scripts/company_agent/skill_catalog.py',
+        'payload/core/plugin/scripts/company_agent/completion_feedback.py',
+        'payload/core/plugin/scripts/company_agent/user_language.py',
+        'payload/core/plugin/scripts/company_agent/report_design.py',
+        'payload/core/plugin/scripts/company_agent/report_facts.py',
+        'payload/core/plugin/scripts/company_agent/report_styles.py',
+        'payload/core/plugin/skills/html-report/assets/design-picker.html',
+        'payload/core/plugin/scripts/company_agent/presentation_design.py',
+        'payload/core/plugin/skills/presentation/references/design-and-quality.md',
+        'payload/core/plugin/skills/html-report/references/design-and-numbers.md',
+        'docs/UPDATE_1.3.6.md',
+        'docs/UPDATE_1.3.7.md',
+        'docs/UPDATE_1.3.8.md',
+        'docs/UPDATE_1.3.9.md',
+        'docs/VALIDATION_1.3.9.md',
+        'docs/HTML_DESIGN_SELECTION.md',
+        'docs/VALIDATION_1.3.8.md',
+        'docs/VALIDATION_1.3.7.md',
+        'docs/Claude-Code-필수-사용법.html',
+        'payload/core/plugin/skills/company-agent/references/completion.md',
+        'deploy/CompanyAgent.PluginCompatibility.ps1',
+        'docs/SKILL_CATALOG.md',
+        'docs/UPDATE_1.3.3.md',
+        'docs/UPDATE_1.3.4.md',
+        'docs/UPDATE_1.3.5.md',
+        'payload/core/plugin/skills/asset-factory/references/authoring.md',
+        'payload/core/plugin/skills/asset-factory/references/windows-setup.md',
+        'payload/core/plugin/skills/personal-knowledge/references/term-quality.md',
+        'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md',
+        'docs/LEAN_SKILL_INTEGRATION.md'
+    )) {
+        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Lean guidance/provenance is absent: $relative"
+    }
     Assert-OfflineBundle ($manifest.runtime.description -match 'existing Python') 'External runtime requirement is not explained.'
     Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath 'payload\core\plugin\runtime'))) 'Source runtime directory leaked into the bundle.'
     $nativeFiles = @(Get-ChildItem -LiteralPath $ExpandedPath -Recurse -Force | Where-Object {
@@ -45,7 +80,7 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('deploy\' + $name)) -PathType Leaf) "Required deployment dependency is absent: $name"
     }
     $deployFiles = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'deploy') -File -Force)
-    Assert-OfflineBundle ($deployFiles.Count -eq 16) 'Unexpected deploy tools were included.'
+    Assert-OfflineBundle ($deployFiles.Count -eq 17) 'Unexpected deploy tools were included.'
     foreach ($name in @(
         'New-OfflineBundle.ps1', 'Get-EmbeddedPython.ps1', 'Test-DeploymentSmoke.ps1',
         'Test-ExistingHarness.ps1', 'Test-HarnessReplacement.ps1', 'Test-PersonalStateBackup.ps1',
@@ -77,9 +112,11 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
     }
     $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter 'Company-Agent-*.html' -File)
-    Assert-OfflineBundle ($htmlGuides.Count -eq 1) 'Offline HTML user guide (including its Unicode filename) is missing.'
-    Assert-OfflineBundle ((Get-FileHash -LiteralPath $htmlGuides[0].FullName -Algorithm SHA256).Hash -ceq
-        (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $htmlGuides[0].Name)) -Algorithm SHA256).Hash) 'HTML guide content changed during packaging.'
+    Assert-OfflineBundle ($htmlGuides.Count -eq 2) 'Expected offline user guide and validation chat reader.'
+    foreach ($htmlGuide in $htmlGuides) {
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath $htmlGuide.FullName -Algorithm SHA256).Hash -ceq
+            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $htmlGuide.Name)) -Algorithm SHA256).Hash) 'HTML guide content changed during packaging.'
+    }
     return $manifest
 }
 
@@ -123,6 +160,21 @@ try {
     Assert-OfflineBundle ((Get-FileHash -LiteralPath $defaultZip -Algorithm SHA256).Hash -ieq $defaultResult.sha256) 'Reported ZIP digest does not match.'
     $runtimeAfter = @(Get-CompanyAgentTreeRecords -Root (Join-Path $pluginRoot 'runtime') | ConvertTo-Json -Depth 10 -Compress) -join ''
     Assert-OfflineBundle ($runtimeBefore -ceq $runtimeAfter) 'Packaging changed or deleted source runtime files.'
+
+    # Identical payload rebuilds remain possible; changed same-version payloads
+    # are rejected even with Force, before damaging the previous output.
+    $null = & $buildScript @common -OutputPath $defaultZip -Force
+    $immutableHash = (Get-FileHash -LiteralPath $defaultZip -Algorithm SHA256).Hash
+    $changedPayloadFixture = Join-Path $pluginRoot 'same-version-change.txt'
+    Write-CompanyAgentUtf8File -Path $changedPayloadFixture -Content 'This payload needs a new CoreVersion.'
+    try {
+        $sameVersion = $common.Clone()
+        $sameVersion.OutputPath = $defaultZip
+        $sameVersion.Force = $true
+        Assert-BundleBuildRejected $sameVersion 'Increase CoreVersion'
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath $defaultZip -Algorithm SHA256).Hash -ceq $immutableHash) 'Same-version rejection overwrote the existing ZIP.'
+    }
+    finally { Remove-Item -LiteralPath $changedPayloadFixture -Force }
 
     $explicitZip = Join-Path $testRoot 'explicit-external.zip'
     $null = & $buildScript @common -OutputPath $explicitZip -WithoutBundledPython
@@ -175,7 +227,7 @@ try {
         status = 'passed'
         defaultRuntimeMode = $defaultManifest.runtime.mode
         minimumPythonVersion = $defaultManifest.runtime.minimumVersion
-        productionDeployFiles = 16
+        productionDeployFiles = 17
         testRoot = $testRoot
         artifactsKept = [bool]$KeepArtifacts
     }

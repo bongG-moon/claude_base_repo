@@ -29,6 +29,15 @@ class SkillRegistryTests(unittest.TestCase):
         self.project.mkdir()
         self.options = {"claude_root": self.claude}
 
+    def test_inventory_summary_counts_exact_observed_candidates(self):
+        self.skill(self.claude / "skills", "alpha")
+        self.skill(self.claude / "skills", "beta")
+        result = inventory_skills(self.state, **self.options)
+        self.assertEqual(len(result["skills"]), result["summary"]["total"])
+        self.assertEqual(2, result["summary"]["bySource"]["user"])
+        self.assertEqual(result["summary"]["total"], sum(result["summary"]["bySource"].values()))
+        self.assertFalse(self.state.exists())
+
     def json_file(self, path: Path, value: object) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(json.dumps(value), encoding="utf-8")

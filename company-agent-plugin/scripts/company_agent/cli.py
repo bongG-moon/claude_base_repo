@@ -268,11 +268,18 @@ def cmd_learning(args: argparse.Namespace) -> int:
         if len(raw) > 32_768:
             raise ValueError("Learning review spec exceeds 32 KiB.")
         cleanup = "retained_unavailable"
+        submission_error = None
         try:
             spec = json.loads(raw.decode("utf-8-sig"))
             if not isinstance(spec, dict):
                 raise ValueError("Learning review must be a JSON object.")
-            result = submit_review(root, args.session, args.turn, spec)
+            if operation == "stage":
+                from .work import checkpoint
+                result = checkpoint(root, args.session, args.turn, "active", spec=spec)
+            else:
+                result = submit_review(root, args.session, args.turn, spec)
+        except (OSError, ValueError) as exc:
+            submission_error = str(exc)
         finally:
             # This exact current-turn input is disposable, including rejected
             # sensitive/malformed input. Never delete a subsequently edited
@@ -294,13 +301,55 @@ def cmd_learning(args: argparse.Namespace) -> int:
                     cleanup = "retained_changed"
             except OSError:
                 pass
+        if submission_error is not None:
+            _print_json({"ok": False, "error": submission_error, "stagingCleanup": cleanup,
+                         "needsSpecRewrite": cleanup == "removed",
+                         "nextAction": "Check learning status and the completed work checkpoint before retrying. Rewrite a removed spec only within the existing review budget; do not rerun business work."})
+            return 1
         result["stagingCleanup"] = cleanup
     _print_json(result)
     return 0
 
 
+def cmd_work(args: argparse.Namespace) -> int:
+    from .work import checkpoint, resolve_unfinished
+    if args.work_command == "resolve":
+        _print_json(resolve_unfinished(_state_root(args), args.session, args.turn, args.work_id))
+    else:
+        _print_json(checkpoint(_state_root(args), args.session, args.turn, args.status,
+                               new=args.new == "yes", learn=args.learn == "yes"))
+    return 0
+
+
 def cmd_context_audit(args: argparse.Namespace) -> int:
     _print_json(audit_context(Path(args.project)))
+    return 0
+
+
+def cmd_handoff(args: argparse.Namespace) -> int:
+    from .handoff import create_handoff, read_handoff, safe_path
+    # Validate redirect identity BEFORE resolve() in the general _state_root helper.
+    root = safe_path(Path(args.state_root).expanduser() if args.state_root else user_state_root())
+    if args.handoff_command == "create":
+        check_state_compatibility(root)
+        spec_path = safe_path(Path(args.spec).expanduser())
+        if spec_path.stat().st_size > 32768:
+            raise ValueError("handoff spec too large")
+        result = create_handoff(root, Path(args.project), args.session, load_json(spec_path))
+    else:
+        result = read_handoff(root, Path(args.project), args.id)
+    _print_json(result)
+    return 0
+
+
+def cmd_setup_helper(args: argparse.Namespace) -> int:
+    from .setup_helper import create_setup_helper, _safe_path
+    root = _safe_path(Path(args.state_root).expanduser() if args.state_root else user_state_root())
+    check_state_compatibility(root)
+    spec_path = _safe_path(Path(args.spec).expanduser())
+    if spec_path.stat().st_size > 32768:
+        raise ValueError("setup helper spec too large")
+    _print_json(create_setup_helper(root, load_json(spec_path)))
     return 0
 
 
@@ -458,6 +507,26 @@ def build_parser() -> argparse.ArgumentParser:
     _add_state_argument(state_check)
     state_check.set_defaults(func=cmd_state_check)
 
+    handoff = subparsers.add_parser("handoff", help="Create or read a project-bound continuation note without resetting work.")
+    handoff_sub = handoff.add_subparsers(dest="handoff_command", required=True)
+    for operation in ("create", "read"):
+        action = handoff_sub.add_parser(operation)
+        _add_state_argument(action)
+        action.add_argument("--project", required=True)
+        if operation == "create":
+            action.add_argument("--session", required=True)
+            action.add_argument("--spec", required=True)
+        else:
+            action.add_argument("--id", required=True)
+        action.set_defaults(func=cmd_handoff)
+
+    helper = subparsers.add_parser("setup-helper", help="Generate a bounded offline questionnaire; never execute installation commands.")
+    helper_sub = helper.add_subparsers(dest="helper_command", required=True)
+    create = helper_sub.add_parser("create")
+    _add_state_argument(create)
+    create.add_argument("--spec", required=True)
+    create.set_defaults(func=cmd_setup_helper)
+
     skill = subparsers.add_parser("skill", help="Inspect Skill overlaps and select state/project workflow preferences.")
     skill_sub = skill.add_subparsers(dest="skill_command", required=True)
     for operation in ("inventory", "list", "conflicts", "search", "resolve", "prefer", "prefer-incoming", "order", "reset"):
@@ -605,10 +674,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     learning = subparsers.add_parser("learning", help="Automatic personal learning review, observations, effects, and reversible changes.")
     learning_sub = learning.add_subparsers(dest="learning_command", required=True)
-    for operation in ("review", "status", "pause", "resume", "rollback"):
+    for operation in ("review", "stage", "status", "pause", "resume", "rollback"):
         action = learning_sub.add_parser(operation)
         _add_state_argument(action)
-        if operation == "review":
+        if operation in {"review", "stage"}:
             action.add_argument("--session", required=True)
             action.add_argument("--turn", required=True)
             action.add_argument("--spec", required=True)
@@ -618,12 +687,29 @@ def build_parser() -> argparse.ArgumentParser:
             action.add_argument("--change", required=True)
         action.set_defaults(func=cmd_learning)
 
+    work = subparsers.add_parser("work", help="Mark business milestones, not every chat reply.")
+    work_sub = work.add_subparsers(dest="work_command", required=True)
+    checkpoint = work_sub.add_parser("checkpoint")
+    _add_state_argument(checkpoint)
+    checkpoint.add_argument("--session", required=True)
+    checkpoint.add_argument("--turn", required=True)
+    checkpoint.add_argument("--status", choices=("active", "waiting", "complete", "cancelled"), required=True)
+    checkpoint.add_argument("--learn", choices=("yes", "no"), default="no")
+    checkpoint.add_argument("--new", choices=("yes", "no"), default="no")
+    checkpoint.set_defaults(func=cmd_work)
+    resolve_work = work_sub.add_parser("resolve", help="Link a current verified remediation to one prior unresolved work ID.")
+    _add_state_argument(resolve_work)
+    resolve_work.add_argument("--session", required=True)
+    resolve_work.add_argument("--turn", required=True)
+    resolve_work.add_argument("--work-id", required=True)
+    resolve_work.set_defaults(func=cmd_work)
+
     session = subparsers.add_parser("session", help="Manage compact verification state; no transcript content is stored.")
     session_sub = session.add_subparsers(dest="session_command", required=True)
     verify = session_sub.add_parser("verify")
     _add_state_argument(verify)
     verify.add_argument("--session", required=True)
-    verify.add_argument("--status", choices=("pass", "fail"), required=True)
+    verify.add_argument("--status", choices=("pass", "fail", "not_applicable", "partial", "unavailable"), required=True)
     verify.add_argument("--summary", required=True)
     verify.set_defaults(func=cmd_session_verify)
     status = session_sub.add_parser("status")

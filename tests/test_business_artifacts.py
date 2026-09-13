@@ -62,6 +62,19 @@ class BusinessArtifactTests(unittest.TestCase):
                     self.assertIn("월간 실적 — 검토", text)
                     self.assertEqual(mode == "both", 'id="toggle-view"' in text)
 
+    def test_report_table_preserves_readable_columns_inside_scroll_region(self):
+        spec = self.spec()
+        spec["sections"] = [{"title": "장비 현황", "table": {
+            "headers": ["장비 이름", "지금 빌려줄 수 있는 수량", "오늘 확인할 일"],
+            "rows": [["노트북", "4", "반납 확인"]]}}]
+        output = self.root / "table.html"
+        self.assertTrue(artifacts.create_html(spec, output)["ok"])
+        text = output.read_text(encoding="utf-8")
+        self.assertIn('style="--columns:3"', text)
+        self.assertIn('tabindex="0" role="region"', text)
+        self.assertIn('min-width:calc(var(--columns,1)*7rem)', text)
+        self.assertIn('word-break:keep-all', text)
+
     def test_user_content_cannot_inject_html_css_or_script(self):
         evil = '<img src=x onerror=alert(1)></script><script>alert("x")</script>'
         spec = self.spec()

@@ -1,9 +1,11 @@
 ---
-description: Show what Company Agent learned, pause or resume automatic learning, and safely undo one automatic personal change.
+description: 학습 내용을 확인하고 자동 학습을 일시 중지·재개하거나 개인 변경을 되돌립니다.
 argument-hint: "[학습 내용, 일시 중지, 다시 시작, 또는 되돌릴 내용]"
 ---
 
 # Personal learning controls
+
+Default to Korean for all questions, choices and result explanations unless the user explicitly requests another language. Preserve exact identifiers and explain English tool results in Korean.
 
 Use the installed `company_agent_runtime.cliCommand` prefix and active `stateRoot`.
 Never assume `company-agent` is on PATH or select another installation's state.

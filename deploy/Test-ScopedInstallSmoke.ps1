@@ -2,6 +2,7 @@
 param(
     [string] $BundleRoot,
     [string] $BundleZip,
+    [string] $UpdateBundleZip,
     [string] $ClaudeCommand = 'claude',
     [string] $PythonCommand = 'python',
     [switch] $IncludeBundledPython,
@@ -266,6 +267,8 @@ try {
     Write-CompanyAgentUtf8File -Path (Join-Path $customStateRoot 'personal-root\.claude\skills\personal-example\SKILL.md') -Content 'Personal skill must survive.'
     Write-CompanyAgentJsonAtomic -Path (Join-Path $customStateRoot 'config\learning.json') -Value @{ schemaVersion = 1; enabled = $false }
     Write-CompanyAgentJsonAtomic -Path (Join-Path $customStateRoot 'learning\state.json') -Value @{ schemaVersion = 1; preservationFixture = 'Local learning observations and rollback journal must survive.' }
+    Write-CompanyAgentUtf8File -Path (Join-Path $customStateRoot 'handoffs\fixture\handoff.md') -Content 'Unfinished work note must survive.'
+    Write-CompanyAgentJsonAtomic -Path (Join-Path $customStateRoot 'setup-helpers\fixture\answers.json') -Value @{ style = 'summary' }
     # Save a real project-specific candidate through the packaged CLI. The ID
     # must survive repeated installation and a new version/cache directory.
     $skillPluginRoot = Join-Path $BundleRoot 'payload\core\plugin'
@@ -446,19 +449,28 @@ try {
     # This tests actual Claude update registration without changing the release
     # version or payload in the checkout, distribution ZIP, or user profile.
     $updateBundleRoot = Join-Path $testRoot 'new-version-bundle'
-    Copy-CompanyAgentDirectoryContents -Source $BundleRoot -Destination $updateBundleRoot
     $updateManifestPath = Join-Path $updateBundleRoot 'bundle-manifest.json'
-    $updateManifest = Read-CompanyAgentJson -Path $updateManifestPath
-    $baselineVersion = [version]$updateManifest.coreVersion
-    $updateVersion = '{0}.{1}.{2}' -f $baselineVersion.Major, $baselineVersion.Minor, ($baselineVersion.Build + 1)
-    $updatePluginManifestPath = Join-Path $updateBundleRoot 'payload\core\plugin\.claude-plugin\plugin.json'
-    $updatePluginManifest = Read-CompanyAgentJson -Path $updatePluginManifestPath
-    $updatePluginManifest.version = $updateVersion
-    Write-CompanyAgentJsonAtomic -Path $updatePluginManifestPath -Value $updatePluginManifest
-    $updateManifest.coreVersion = $updateVersion
-    $updateManifest.bundleVersion = $updateVersion + '+' + [string]$updateManifest.knowledgeVersion
-    $updateManifest.files = @(Get-CompanyAgentTreeRecords -Root $updateBundleRoot | Where-Object { $_.path -ne 'bundle-manifest.json' })
-    Write-CompanyAgentJsonAtomic -Path $updateManifestPath -Value $updateManifest
+    $baselineVersion = [version](Read-CompanyAgentJson -Path (Join-Path $BundleRoot 'bundle-manifest.json')).coreVersion
+    if ($UpdateBundleZip) {
+        Expand-Archive -LiteralPath (Resolve-Path -LiteralPath $UpdateBundleZip).Path -DestinationPath $updateBundleRoot
+        $updateManifest = Read-CompanyAgentJson -Path $updateManifestPath
+        $updateVersion = [string]$updateManifest.coreVersion
+        Assert-ScopedSmoke ([version]$updateVersion -gt $baselineVersion) 'Supplied update package must have a newer CoreVersion'
+    }
+    else {
+        Copy-CompanyAgentDirectoryContents -Source $BundleRoot -Destination $updateBundleRoot
+        $updateManifest = Read-CompanyAgentJson -Path $updateManifestPath
+        $updateVersion = '{0}.{1}.{2}' -f $baselineVersion.Major, $baselineVersion.Minor, ($baselineVersion.Build + 1)
+        $updatePluginManifestPath = Join-Path $updateBundleRoot 'payload\core\plugin\.claude-plugin\plugin.json'
+        $updatePluginManifest = Read-CompanyAgentJson -Path $updatePluginManifestPath
+        $updatePluginManifest.version = $updateVersion
+        Write-CompanyAgentJsonAtomic -Path $updatePluginManifestPath -Value $updatePluginManifest
+        $updateManifest.coreVersion = $updateVersion
+        $updateManifest.bundleVersion = $updateVersion + '+' + [string]$updateManifest.knowledgeVersion
+        $updateManifest.files = @(Get-CompanyAgentTreeRecords -Root $updateBundleRoot | Where-Object { $_.path -ne 'bundle-manifest.json' })
+        Write-CompanyAgentJsonAtomic -Path $updateManifestPath -Value $updateManifest
+    }
+    Write-Host ("Testing actual update: {0} -> {1}" -f $baselineVersion, $updateVersion)
     $updateCommon = $common.Clone()
     $updateCommon.BundleRoot = $updateBundleRoot
     $updateCommon.ExistingHarnessAction = 'Update'

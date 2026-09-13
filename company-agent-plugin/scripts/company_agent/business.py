@@ -41,6 +41,9 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     state = safe_path(args.state_root or user_state_root())
     if action == "doctor":
         return doctor()
+    if action == "html-designs":
+        from .business_artifacts import html_designs
+        return html_designs(Path(args.output) if args.output else None)
     if action == "files-plan":
         from .business_files import create_plan
         return create_plan(state, Path(args.folder))
@@ -50,6 +53,9 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action == "mail-capabilities":
         from .business_mail import capabilities
         return capabilities()
+    if action == "eml-read":
+        from .business_eml import read_eml
+        return read_eml(Path(args.file))
     if action == "ppt-inspect":
         from .business_artifacts import inspect_template
         return inspect_template(safe_path(args.template, exists=True))
@@ -57,13 +63,16 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if (blocked := blocked_input(spec)) is not None:
         return blocked
     spec.pop("protection", None)
+    if action == 'html-choices':
+        from .business_artifacts import html_choices
+        return html_choices(spec)
     if action in {"html", "ppt"}:
         from .business_artifacts import create_html, create_ppt
         output = safe_path(args.output)
         if output.exists():
             raise ValueError("The output exists. Choose a new filename; it was not overwritten.")
         if action == "html":
-            return create_html(spec, output)
+            return create_html(spec, output, require_choices=True)
         template = safe_path(args.template, exists=True) if args.template else None
         return create_ppt(spec, output, template)
     if action == "mail-search":
@@ -94,21 +103,25 @@ def run(args: argparse.Namespace) -> int:
     print(json.dumps(result, ensure_ascii=True, indent=2))
     # Partial/cancelled results remain machine-readable rather than causing a
     # shell-driven retry of a potentially completed external action.
-    return 0 if result.get("ok") or result.get("status") in {"partial", "cancelled", "blocked"} else 1
+    return 0 if result.get("ok") or result.get("status") in {"partial", "cancelled", "blocked", "input_required"} else 1
 
 
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
-    for action in ("doctor", "files-plan", "files-execute", "files-undo", "html", "ppt", "ppt-inspect",
-                   "mail-capabilities", "mail-search", "mail-read"):
+    for action in ("doctor", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-choices", "ppt", "ppt-inspect",
+                   "mail-capabilities", "mail-search", "mail-read", "eml-read"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
+        if action == 'html-designs':
+            command.add_argument('--output')
+        if action == "eml-read":
+            command.add_argument("--file", required=True)
         if action == "files-plan":
             command.add_argument("--folder", required=True)
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
-        if action in {"html", "ppt", "mail-search", "mail-read"}:
+        if action in {"html", "html-choices", "ppt", "mail-search", "mail-read"}:
             command.add_argument("--spec", required=True)
         if action in {"html", "ppt"}:
             command.add_argument("--output", required=True)

@@ -1,11 +1,35 @@
 ---
-description: Show available and incoming Skills, explain same-name overlaps, and choose the preferred Skill for this project or the current state default.
+description: 사용 가능한 스킬과 이름 중복을 확인하고 프로젝트별 우선 스킬을 선택합니다.
 argument-hint: "[목록, 겹침 확인, Skill 이름, 또는 원하는 변경]"
 ---
 
 # Company Agent Skill choices
 
 Help the user inspect Skills and choose which candidate Company Agent should read. User request: $ARGUMENTS
+
+## User-facing result
+
+This is a list/selection command, not an installer or a setup interview. Default
+to Korean for this corporate command unless the user explicitly requests another
+language; the English instructions here are not the user's language choice.
+For a plain invocation, show the useful Skill list with brief Korean descriptions
+and origins, followed by one short overlap summary. No changes means stop there:
+do not install, choose defaults, write a verify pass, or run learning just to finish
+a lookup. If a separate legitimate hook continuation occurs, preserve the requested
+list in the final answer; do not replace it with an internal status or a one-line
+"nothing to configure" receipt. Never clear earlier unverified changes to suppress
+a hook. Native tool/hook UI is controlled by Claude, not this command.
+Use the inventory's `summary.bySource` and `summary.byPlugin` counts exactly;
+do not estimate counts or fill a numbered list with "none/other" placeholders.
+List each Company Agent Skill once. For other plugin groups show the observed
+plugin name and count only, unless the user asks for their individual Skills.
+Do not supplement the scan with familiar Skill names from memory. Use plain
+Korean labels instead of source/internal lifecycle terminology.
+If asked to show the automatic Markdown catalogue, use the ready
+`company_agent_runtime.skillSelection.catalog.path` and explain its folder scope.
+The hook refreshes it at startup/next interaction when installed metadata or
+preferences change; opening the catalogue is not an installation or a learning task.
+For a live list after changes in this turn, inventory remains authoritative.
 
 Use the exact `company_agent_runtime.cliCommand` as the prefix for every `company-agent` example below and invoke it through Bash. It selects the installed runtime; do not assume Python or `company-agent` is on PATH. Use the current runtime `stateRoot`, `project`, and `knowledgeBase` when available. If runtime context is missing, use only a verified installed command; otherwise explain that an installed Company Agent session is needed. Never guess another installation's state.
 

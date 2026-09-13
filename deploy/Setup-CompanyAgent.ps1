@@ -149,6 +149,7 @@ function Invoke-SetupPythonProbe {
     if (-not [IO.Path]::IsPathRooted($Executable) -or
         [IO.Path]::GetExtension($Executable) -ine '.exe' -or
         -not (Test-Path -LiteralPath $Executable -PathType Leaf)) { return $null }
+    if ($Executable -match '(?i)[\\/]Microsoft[\\/]WindowsApps[\\/]') { return $null }
     $item = Get-Item -LiteralPath $Executable -Force
     if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -and $item.Length -eq 0) { return $null }
     try {
@@ -173,7 +174,24 @@ function Resolve-SetupApprovedPython {
     # Approval is an organization policy, not something this compatibility
     # probe can certify. Pin sys.executable, never the mutable py launcher.
     $candidates = @($PreferredCommand)
-    if (-not $OnlyPreferred) { $candidates += @('python', 'py') }
+    if (-not $OnlyPreferred) {
+        $candidates += @('python', 'py')
+        # A Store alias can precede a real interpreter on PATH. Check all native
+        # candidates, then standard registrations belonging to this PC/user.
+        foreach ($name in @('python.exe', 'python3.exe', 'py.exe')) {
+            $candidates += @(Get-Command $name -CommandType Application -All -ErrorAction SilentlyContinue | ForEach-Object { $_.Source })
+        }
+        foreach ($registryRoot in @('HKCU:\Software\Python\PythonCore', 'HKLM:\Software\Python\PythonCore', 'HKLM:\Software\WOW6432Node\Python\PythonCore')) {
+            foreach ($versionKey in @(Get-ChildItem -LiteralPath $registryRoot -ErrorAction SilentlyContinue)) {
+                $installKey = Get-Item -LiteralPath ($versionKey.PSPath + '\InstallPath') -ErrorAction SilentlyContinue
+                if ($null -eq $installKey) { continue }
+                $registeredExecutable = [string]$installKey.GetValue('ExecutablePath')
+                if (-not [string]::IsNullOrWhiteSpace($registeredExecutable)) { $candidates += $registeredExecutable }
+                $registeredDirectory = [string]$installKey.GetValue('')
+                if (-not [string]::IsNullOrWhiteSpace($registeredDirectory)) { $candidates += (Join-Path $registeredDirectory 'python.exe') }
+            }
+        }
+    }
     foreach ($candidate in @($candidates | Select-Object -Unique)) {
         if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
         $resolved = Resolve-SetupCommand -Command $candidate

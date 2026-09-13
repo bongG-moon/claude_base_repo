@@ -18,6 +18,7 @@ from company_agent.frontmatter import load_markdown
 from company_agent.memory import search_memory, upsert_memory
 from company_agent.paths import atomic_write_json, ensure_user_layout
 from company_agent.state import begin_turn, load_session, session_path
+from company_agent.work import checkpoint
 
 
 def digest(path: Path) -> str:
@@ -34,6 +35,10 @@ class LearningTests(unittest.TestCase):
 
     def turn(self, *, used=None, failure=0, verification="unknown", verification_failures=0):
         state = begin_turn(self.session, "medium", False, [], self.root)
+        # Each fixture represents an independent completed business task, not
+        # several replies correcting the same work (which must not add votes).
+        checkpoint(self.root, self.session, state["turnId"], "active", new=True)
+        state = load_session(self.session, self.root)
         self.turn_number += 1
         state.setdefault("turnId", f"turn-{self.turn_number}")
         state.update({"learningStatus": "pending", "taskToolCount": 3, "taskFailureCount": failure,
@@ -66,6 +71,10 @@ class LearningTests(unittest.TestCase):
                 "body": body, "skillName": "weekly-report"}
 
     def submit(self, turn, spec):
+        path = self.root / "sessions" / f"{self.session}.json"
+        current = load_session(self.session, self.root) if path.exists() else {}
+        if current.get("turnId") == turn and current.get("learningStatus") == "pending":
+            checkpoint(self.root, self.session, turn, "complete", learn=True)
         return learning.submit_review(self.root, self.session, turn, spec)
 
     def test_status_is_readonly_and_enabled_by_default(self):
@@ -74,7 +83,7 @@ class LearningTests(unittest.TestCase):
         self.assertFalse(self.root.exists())
         self.assertTrue(status["claims"]["evaluationIsObservational"])
 
-    def test_repeated_user_choice_needs_distinct_turns_and_is_reused_as_memory(self):
+    def test_repeated_user_choice_needs_distinct_work_and_is_reused_as_memory(self):
         first = self.turn()
         result = self.submit(first, self.spec([self.preference()]))
         self.assertEqual("observing", result["changes"][0]["status"])
@@ -366,13 +375,13 @@ class LearningTests(unittest.TestCase):
         self.assertFalse((self.root / "learning" / "state.json").exists())
         state["stopRetryCount"] = 2
         atomic_write_json(session_path(self.session, self.root), state)
-        result = self.submit(turn, self.spec())
+        result = self.submit(turn, self.spec([self.preference()]))
         self.assertEqual("accepted", result["status"])
         self.assertEqual("unknown", result["evidence"]["verification"])
 
     def test_duplicate_review_does_not_hide_late_business_activity(self):
         turn = self.turn()
-        self.submit(turn, self.spec())
+        self.submit(turn, self.spec([self.preference()]))
         state = load_session(self.session, self.root)
         state["learningStatus"] = "deferred"
         state["learningDeferredReason"] = "late-business-activity"
@@ -393,7 +402,7 @@ class LearningTests(unittest.TestCase):
         self.assertEqual([], search_memory(self.root, "보고서"))
 
     def test_malformed_nested_state_fails_as_valueerror_without_mutating_memories(self):
-        self.submit(self.turn(), self.spec())
+        self.submit(self.turn(), self.spec([self.preference()]))
         path = self.root / "learning" / "state.json"
         original = path.read_text(encoding="utf-8")
         mutations = (("reviews", [{}]), ("changes", [{}]), ("candidates", {"bad": {}}), ("assessments", [{}]))

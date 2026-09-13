@@ -1,6 +1,6 @@
 ---
 name: karpathy-guidelines
-description: Apply simple, scoped, evidence-based implementation when creating, editing, or reviewing code, scripts, MCP tools, or executable Skill resources. Use as supporting guidance for the current Company Agent workflow; do not start it for ordinary summaries, business writing, or factual questions.
+description: 코드·스크립트·MCP·실행형 스킬을 만들거나 검토할 때 범위를 작게 유지하고 근거로 확인하는 개발 지침입니다. 일반 요약이나 업무 문서 작성에는 별도로 실행하지 않습니다.
 license: MIT
 ---
 
@@ -29,6 +29,7 @@ The user does not need to name this Skill when the task matches its description.
   configuration the task does not need. Reuse the project's existing tools.
 - Keep necessary input validation, error handling, and the company's tool
   permission boundaries. Simplicity is not a reason to bypass them.
+- After tracing the relevant flow, prefer existing code, then standard-library or native platform features, then installed dependencies, before new code. Choose the smallest readable solution that meets all explicit requirements, not the fewest lines. Document a deliberate limitation and its measured upgrade condition only when one actually exists.
 - Use the installed Windows/offline runtime and project conventions. If a
   necessary dependency is unavailable, identify it rather than downloading
   executable code from the public internet.
@@ -46,6 +47,7 @@ The user does not need to name this Skill when the task matches its description.
 - Commit, push, or deploy only within the user's requested scope. This Skill
   does not authorize automatic commits or introduce a new approval gate.
 - A request to review or diagnose stays read-only unless it also requests a fix.
+- For a reported code/runtime defect, read `references/evidence-diagnosis.md`; do not load it for ordinary feature work or business summaries. It supports the current workflow and retry budget, not another review loop.
 
 ## 4. Goal-driven execution
 

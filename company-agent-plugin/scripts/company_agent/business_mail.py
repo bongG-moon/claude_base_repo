@@ -23,7 +23,7 @@ _READ_TIMEOUT = 45
 _REF_PATTERN = re.compile(r"[A-Fa-f0-9]{8,4096}\Z")
 _MESSAGES = {
     "connection_required": "실행 중인 Classic Outlook과 본인 계정 연결을 확인해 주세요. 메일은 변경하지 않았습니다.",
-    "invalid_request": "조회할 본인 계정과 선택한 메일함/PST 범위를 확인해 주세요.",
+    "invalid_request": "조회 요청의 입력 형식을 확인해 주세요. 오류 코드에 표시된 항목만 수정하고 계정이나 검색 범위를 임의로 바꾸지 마세요.",
     "permission_denied": "메일 접근 권한을 확인할 수 없거나 허용되지 않아 해당 작업을 건너뛰었습니다.",
     "blocked": "보호된 메일이거나 보안 정책에서 허용하지 않아 해당 내용을 읽지 않았습니다.",
     "unknown": "접근 상태를 확인할 수 없어 해당 내용을 읽지 않았습니다.",
@@ -31,6 +31,34 @@ _MESSAGES = {
     "ok": "선택한 범위에서 읽기 전용 조회를 완료했습니다.",
 }
 _DRM_NOTICE = "Outlook IRM 상태만 확인합니다. 외부 문서 DRM의 허용 여부를 증명하지 않으며, 첨부는 내려받지 않습니다."
+
+_VALIDATION_REASONS = {
+    "invalid account": "account_format_invalid",
+    "invalid references": "references_required_or_invalid",
+    "invalid reference": "reference_format_invalid",
+    "invalid date": "date_format_invalid",
+    "invalid date range": "date_range_invalid",
+    "invalid limit": "limit_invalid",
+    "unknown request fields": "unsupported_request_fields",
+    "PST selection must be in requested stores": "pst_outside_selected_stores",
+    "message outside selected stores": "message_outside_selected_stores",
+    "invalid message references": "message_references_required",
+    "invalid message reference": "message_reference_invalid",
+    "invalid query": "query_format_invalid",
+    "invalid recursion option": "recursion_option_invalid",
+    "invalid body option": "body_option_invalid",
+}
+
+
+def _validation_error(error: Exception) -> dict:
+    # Only fixed identifiers escape this boundary, never raw input/exception text.
+    code = _VALIDATION_REASONS.get(str(error), "request_format_invalid")
+    result = _result("invalid_request", reason=code, stage="request_validation", bridge_called=False)
+    if code == "date_format_invalid":
+        result["message"] = "날짜는 2026-09-08T00:00:00+09:00처럼 시각을 포함해 주세요. 시간대 생략 시 PC의 해당 날짜 기준 현지 시간대를 사용합니다."
+    elif code == "date_range_invalid":
+        result["message"] = "검색 시작 시각은 종료 시각보다 빨라야 합니다. 종료 시각 자체는 검색 범위에서 제외됩니다."
+    return result
 
 
 def _result(status: str, **details) -> dict:
@@ -60,14 +88,22 @@ def _refs(value, *, maximum: int = 20, allow_empty: bool = False) -> list[str]:
     return list(dict.fromkeys(item.upper() for item in value))
 
 
-def _date(value) -> str | None:
+def _date(value, *, field: str = "date", assumptions: list | None = None) -> str | None:
     if value is None:
         return None
-    if not isinstance(value, str) or len(value) > 40:
+    if not isinstance(value, str) or len(value) > 40 or not re.match(r"^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}", value):
         raise ValueError("invalid date")
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise ValueError("invalid date") from None
     if parsed.tzinfo is None:
-        raise ValueError("date requires timezone")
+        # astimezone() applies the PC's local rules at this date, not today's
+        # fixed offset. Do not silently treat a Korean wall-clock time as UTC.
+        parsed = parsed.astimezone()
+        if assumptions is not None:
+            assumptions.append({"field": field, "basis": "pc_local_timezone_at_requested_date",
+                                "normalized_local": parsed.isoformat()})
     return parsed.astimezone(timezone.utc).isoformat()
 
 
@@ -88,6 +124,7 @@ def _normalize_spec(operation: str, spec: dict) -> dict:
     if not set(normalized["pst_store_ids"]).issubset(normalized["store_ids"]):
         raise ValueError("PST selection must be in requested stores")
     if operation == "search":
+        assumptions = []
         query = spec.get("query", "")
         if not isinstance(query, str) or len(query) > 200 or any(ord(char) < 32 for char in query):
             raise ValueError("invalid query")
@@ -98,11 +135,12 @@ def _normalize_spec(operation: str, spec: dict) -> dict:
                           include_subfolders=descend, limit=_bounded_int(spec.get("limit"), 20, 50),
                           scan_limit=_bounded_int(spec.get("scan_limit"), 500, 2000),
                           folder_limit=_bounded_int(spec.get("folder_limit"), 30, 100),
-                          received_after=_date(spec.get("received_after")),
-                          received_before=_date(spec.get("received_before")))
+                          received_after=_date(spec.get("received_after"), field="received_after", assumptions=assumptions),
+                          received_before=_date(spec.get("received_before"), field="received_before", assumptions=assumptions))
         if normalized["received_after"] and normalized["received_before"]:
             if normalized["received_after"] >= normalized["received_before"]:
                 raise ValueError("invalid date range")
+        normalized["_date_assumptions"] = assumptions
     else:
         refs = spec.get("message_refs")
         if not isinstance(refs, list) or not 1 <= len(refs) <= 20:
@@ -129,14 +167,14 @@ def _normalize_spec(operation: str, spec: dict) -> dict:
 
 def _invoke(operation: str, spec: dict) -> dict:
     if os.name != "nt" or not HELPER.is_file():
-        return _result("connection_required", reason="classic_outlook_bridge_unavailable")
+        return _result("connection_required", reason="classic_outlook_bridge_unavailable", stage="bridge_preflight", bridge_called=False)
     try:
         powershell = windows_powershell()
     except (OSError, ValueError):
-        return _result("connection_required", reason="windows_powershell_unavailable")
+        return _result("connection_required", reason="windows_powershell_unavailable", stage="bridge_preflight", bridge_called=False)
     payload = json.dumps(spec, ensure_ascii=True, separators=(",", ":")).encode("ascii")
     if len(payload) > _MAX_INPUT:
-        return _result("invalid_request", reason="request_limit")
+        return _result("invalid_request", reason="request_limit", stage="request_validation", bridge_called=False)
     try:
         process = subprocess.run(
             [str(powershell), "-NoLogo", "-NoProfile", "-NonInteractive", "-File", str(HELPER),
@@ -144,17 +182,17 @@ def _invoke(operation: str, spec: dict) -> dict:
             creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0), check=False,
         )
         if process.returncode or len(process.stdout) > _MAX_OUTPUT:
-            return _result("connection_required", reason="bridge_unavailable_or_policy_blocked")
+            return _result("connection_required", reason="bridge_unavailable_or_policy_blocked", stage="outlook_bridge", bridge_called=True)
         response = json.loads(process.stdout.decode("utf-8-sig"))
         if not isinstance(response, dict) or response.get("status") not in _MESSAGES:
-            return _result("unknown", reason="invalid_bridge_response")
+            return _result("unknown", reason="invalid_bridge_response", stage="outlook_bridge", bridge_called=True)
         status = response.pop("status")
         # Helper-owned data cannot override this adapter's safety/identity claims.
         for key in ("ok", "message", "read_only", "sending_supported", "identity_assurance", "external_drm", "drm_notice"):
             response.pop(key, None)
         items = response.get("items", [])
         if not isinstance(items, list) or len(items) > 50 or any(not isinstance(item, dict) for item in items):
-            return _result("unknown", reason="invalid_bridge_response")
+            return _result("unknown", reason="invalid_bridge_response", stage="outlook_bridge", bridge_called=True)
         for item in items:
             if isinstance(item, dict):
                 # The learning hook consumes fixed structured restriction codes,
@@ -178,12 +216,16 @@ def _invoke(operation: str, spec: dict) -> dict:
                 warnings.append({"code": code, "count": count})
         if warnings:
             response["restriction_warnings"] = warnings
+        response["stage"] = "outlook_bridge"
+        response["bridge_called"] = True
         return _result(status, **response)
     except subprocess.TimeoutExpired:
-        return _result("unknown", reason="outlook_timeout_no_automatic_retry")
-    except (OSError, UnicodeError, ValueError, TypeError):
+        return _result("unknown", reason="outlook_timeout_no_automatic_retry", stage="outlook_bridge", bridge_called=True)
+    except OSError:
+        return _result("connection_required", reason="bridge_launch_failed", stage="bridge_preflight", bridge_called=False)
+    except (UnicodeError, ValueError, TypeError):
         # Exception text may contain mailbox names, subjects, or local paths.
-        return _result("unknown", reason="bridge_read_failed")
+        return _result("unknown", reason="bridge_read_failed", stage="outlook_bridge", bridge_called=True)
 
 
 def capabilities() -> dict:
@@ -195,9 +237,20 @@ def search_mail(spec: dict) -> dict:
     """Bounded subject/sender/date search, never body or attachment extraction."""
     try:
         request = _normalize_spec("search", spec)
-    except (ValueError, TypeError):
-        return _result("invalid_request")
-    return _invoke("search", request)
+    except (ValueError, TypeError, OverflowError, OSError) as error:
+        return _validation_error(error)
+    assumptions = request.pop("_date_assumptions", [])
+    result = _invoke("search", request)
+    result["search_scope"] = {
+        "received_after_inclusive": request["received_after"],
+        "received_before_exclusive": request["received_before"],
+        "query_fields": ["subject", "sender_name", "sender_address"],
+        "body_searched": False, "query_matching": "literal_substring_case_insensitive",
+        "selected_store_count": len(request["store_ids"]),
+        "limit": request["limit"], "scan_limit": request["scan_limit"],
+        "folder_limit": request["folder_limit"], "timezone_assumptions": assumptions,
+    }
+    return result
 
 
 def read_mail(spec: dict) -> dict:
@@ -205,7 +258,7 @@ def read_mail(spec: dict) -> dict:
     try:
         request = _normalize_spec("read", spec)
     except PermissionError:
-        return _result("permission_denied", reason="body_policy_approval_required")
-    except (ValueError, TypeError):
-        return _result("invalid_request")
+        return _result("permission_denied", reason="body_policy_approval_required", stage="request_validation", bridge_called=False)
+    except (ValueError, TypeError) as error:
+        return _validation_error(error)
     return _invoke("read", request)

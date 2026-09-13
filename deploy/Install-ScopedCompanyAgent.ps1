@@ -34,6 +34,7 @@ foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'Back
 foreach ($name in $scopedEntryValues.Keys) { Set-Variable -Name $name -Value $scopedEntryValues[$name] }
 . (Join-Path $PSScriptRoot 'ExistingHarness.ps1')
 . (Join-Path $PSScriptRoot 'HarnessReplacement.ps1')
+. (Join-Path $PSScriptRoot 'CompanyAgent.PluginCompatibility.ps1')
 $usesConfigOverride = -not [string]::IsNullOrWhiteSpace([string]$scopedEntryValues['ClaudeConfigRoot']) -or
     -not [string]::IsNullOrWhiteSpace($env:CLAUDE_CONFIG_DIR)
 
@@ -610,6 +611,15 @@ try {
     }
     Write-CompanyAgentJsonAtomic -Path $registrationPath -Value $registration
     if ($null -ne $harnessTransaction) { $null = Complete-SetupHarnessReplacement -Transaction $harnessTransaction }
+    # A separate, recoverable compatibility repair after Company Agent commits.
+    # Failure here must not roll back an otherwise successful installation.
+    try {
+        $pluginRepairs = @(Repair-CompanyAgentPluginPython -ClaudeConfigRoot $ClaudeConfigRoot -PythonCommand $resolvedPython -BackupBase $backupPath -Scope $Scope -ProjectRoot $ProjectRoot)
+        foreach ($repair in $pluginRepairs) {
+            Write-Host ("Ouroboros Python connection repaired: {0}. Backup: {1}" -f $repair.python, $repair.backup)
+        }
+    }
+    catch { Write-Warning ("Company Agent installed, but optional plugin Python repair needs attention: " + $_.Exception.Message) }
     $resultStatus = 'installed'
     if ($intent.operation -eq 'update') {
         $resultStatus = 'updated'

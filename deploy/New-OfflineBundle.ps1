@@ -38,6 +38,7 @@ $productionDeployFiles = @(
     'CompanyAgent.Common.ps1',
     'CompanyAgent.UserContext.ps1',
     'CompanyAgent.ClaudeDiscovery.ps1',
+    'CompanyAgent.PluginCompatibility.ps1',
     'ExistingHarness.ps1',
     'HarnessReplacement.ps1',
     'Initialize-CompanyAgentUser.ps1',
@@ -267,7 +268,7 @@ try {
         }
     }
 
-    foreach ($docName in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md', 'PROJECT_HARNESS.md', 'IMPLEMENTATION_REVIEW.md', 'CONTEXT_OPTIMIZATION.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md', 'SELF_LEARNING.md', 'BUSINESS_PILOT_GUIDE.md', 'USER_GUIDE.md', 'Company-Agent-사용자-안내서.html')) {
+    foreach ($docName in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md', 'PROJECT_HARNESS.md', 'IMPLEMENTATION_REVIEW.md', 'CONTEXT_OPTIMIZATION.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md', 'SELF_LEARNING.md', 'BUSINESS_PILOT_GUIDE.md', 'USER_GUIDE.md', 'Company-Agent-사용자-안내서.html', 'VALIDATION_CHAT_SET.md', 'VALIDATION_RESULTS_TEMPLATE.md', 'Company-Agent-운영-검증-채팅.html', 'UPDATE_1.3.2.md', 'LEAN_SKILL_INTEGRATION.md', 'VALIDATION_1.3.2.md', 'UPDATE_1.3.3.md', 'VALIDATION_1.3.3.md', 'SKILL_CATALOG.md', 'UPDATE_1.3.4.md', 'UPDATE_1.3.5.md', 'UPDATE_1.3.6.md', 'UPDATE_1.3.7.md', 'UPDATE_1.3.8.md', 'VALIDATION_1.3.8.md', 'UPDATE_1.3.9.md', 'VALIDATION_1.3.9.md', 'HTML_DESIGN_SELECTION.md', 'VALIDATION_1.3.7.md', 'Claude-Code-필수-사용법.html')) {
         $deploymentDoc = Join-Path $SourceRoot ('docs\' + $docName)
         if (Test-Path -LiteralPath $deploymentDoc -PathType Leaf) {
             New-CompanyAgentDirectory -Path (Join-Path $stagePath 'docs')
@@ -313,6 +314,24 @@ try {
     Write-CompanyAgentJsonAtomic -Path (Join-Path $stagePath 'bundle-manifest.json') -Value $manifest
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
+    if (Test-Path -LiteralPath $OutputPath) {
+        # Force may rebuild an identical payload, but must not manufacture the
+        # same-version/different-content package rejected by scoped installation.
+        $previousZip = [System.IO.Compression.ZipFile]::OpenRead($OutputPath)
+        try {
+            $previousEntry = $previousZip.GetEntry('bundle-manifest.json')
+            if ($null -eq $previousEntry -or $previousEntry.Length -gt 4194304) { throw 'Existing bundle manifest is missing or too large. Preserve it and use a new version/output.' }
+            $previousReader = New-Object IO.StreamReader($previousEntry.Open())
+            try { $previousManifest = $previousReader.ReadToEnd() | ConvertFrom-Json }
+            finally { $previousReader.Dispose() }
+            if ([string]$previousManifest.coreVersion -ceq $CoreVersion) {
+                $oldPayload = @($previousManifest.files | Where-Object { $_.path -like 'payload/*' } | Sort-Object path | ForEach-Object { "$($_.path)|$($_.sha256)|$($_.length)" }) -join "`n"
+                $newPayload = @($manifest.files | Where-Object { $_.path -like 'payload/*' } | Sort-Object path | ForEach-Object { "$($_.path)|$($_.sha256)|$($_.length)" }) -join "`n"
+                if ($oldPayload -cne $newPayload) { throw "CoreVersion $CoreVersion already has different payload contents in this output. Increase CoreVersion; -Force cannot replace a different same-version payload." }
+            }
+        }
+        finally { $previousZip.Dispose() }
+    }
     $temporaryZip = Join-Path $outputParent ((Split-Path -Leaf $OutputPath) + '.tmp.' + [guid]::NewGuid().ToString('N'))
     try {
         [System.IO.Compression.ZipFile]::CreateFromDirectory(

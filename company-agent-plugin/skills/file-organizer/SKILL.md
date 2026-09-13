@@ -1,6 +1,6 @@
 ---
 name: file-organizer
-description: Preview and organize a selected Windows work folder with an explicit local approval window, no deletion or overwrite, and receipt-based undo. Use for downloads or folder cleanup requests.
+description: Windows 폴더 정리 계획을 먼저 보여주고 승인 후 파일을 종류별로 옮깁니다. 삭제·덮어쓰기 없이 정리하며 이동 기록으로 되돌릴 수 있습니다.
 ---
 
 # File organizer

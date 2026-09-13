@@ -376,6 +376,7 @@ class FeedbackStateTests(unittest.TestCase):
             {"session_id": "session-loop", "stop_hook_active": False},
             self.state,
         )
+        record_activity({"session_id": "session-loop", "tool_name": "Read"}, self.state)
         second = stop_decision(
             {"session_id": "session-loop", "stop_hook_active": True},
             self.state,
@@ -475,14 +476,14 @@ class FeedbackStateTests(unittest.TestCase):
         ]
         for command in commands:
             with self.subTest(command=command):
-                begin_turn(session, "MEDIUM", True, [], self.state)
+                before = begin_turn(session, "MEDIUM", True, [], self.state)
                 record_activity({"session_id": session, "tool_name": "Write", "tool_input": {}}, self.state)
                 mark_verified(session, "pass", "검증 성공", self.state)
                 updated = record_activity(
                     {"session_id": session, "tool_name": "PowerShell", "tool_input": {"command": command}},
                     self.state,
                 )
-                self.assertEqual(1, updated["mutationCount"])
+                self.assertEqual(before["mutationCount"] + 1, updated["mutationCount"])
                 self.assertEqual("pass", updated["verification"]["status"])
                 self.assertEqual({}, stop_decision({"session_id": session}, self.state))
 
@@ -508,13 +509,13 @@ class FeedbackStateTests(unittest.TestCase):
         ]
         for command in commands:
             with self.subTest(command=command):
-                begin_turn(session, "MEDIUM", True, [], self.state)
+                before = begin_turn(session, "MEDIUM", True, [], self.state)
                 mark_verified(session, "pass", "earlier check", self.state)
                 updated = record_activity(
                     {"session_id": session, "tool_name": "PowerShell", "tool_input": {"command": command}},
                     self.state,
                 )
-                self.assertEqual(1, updated["mutationCount"])
+                self.assertEqual(before["mutationCount"] + 1, updated["mutationCount"])
                 self.assertIsNone(updated["verification"])
                 self.assertEqual("block", stop_decision({"session_id": session}, self.state)["decision"])
 
@@ -612,7 +613,7 @@ class FeedbackStateTests(unittest.TestCase):
         self.assertEqual(0, result.returncode)
         output = json.loads(result.stdout)
         self.assertNotIn("decision", output)
-        self.assertIn("not verified", output["systemMessage"])
+        self.assertIn("검증되지 않은", output["systemMessage"])
         self.assertEqual("", result.stderr)
 
 

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'none'; img-src 'none'; base-uri 'none'; form-action 'none'">
+<title>Company Agent 연습실</title><style>
+*{box-sizing:border-box}body{margin:0;background:#f4f6f9;color:#172d43;font:16px/1.8 'Malgun Gothic',system-ui,sans-serif}main{max-width:1050px;margin:auto;padding:32px 24px 80px}h1{font-size:34px;line-height:1.4}h2{font-size:24px;margin:36px 0 12px}h3{font-size:19px}a{color:#096575}button,select{font:inherit;padding:9px 13px;border:1px solid #b8c9cf;border-radius:6px;background:white;color:#193e4f;cursor:pointer}button.primary{background:#155e6e;color:white;border:0}.notice{background:#fff1d9;padding:18px 22px;border-left:4px solid #bd7611}.lead{font-size:19px}.steps{padding:20px 28px;background:white;border:1px solid #d6e1e8;border-radius:10px}.steps li{margin:10px 0}nav{display:flex;gap:8px;flex-wrap:wrap;margin:16px 0}nav a{text-decoration:none;border:1px solid #c5d4dd;background:white;padding:3px 10px;border-radius:5px}article{background:white;padding:24px;border:1px solid #d6e1e8;border-radius:10px;margin:22px 0;scroll-margin-top:18px}article h2{margin:0}pre{background:#edf4f6;padding:18px;white-space:pre-wrap;overflow-wrap:anywhere;font:15px/1.9 inherit;border-radius:7px}textarea{width:100%;min-height:95px;font:inherit;padding:10px;resize:vertical;border:1px solid #bdcdd4;border-radius:6px}details{margin:18px 0}summary{cursor:pointer;color:#4c586b;font-weight:700}.muted{font-size:14px;color:#526774}.tag{display:inline-block;background:#e4efec;color:#285146;padding:3px 10px;border-radius:4px;margin:8px 0}.external .tag{background:#ffefd4;color:#754d0b}.toolbar{display:flex;gap:12px;flex-wrap:wrap;align-items:center}.status{color:#155e6e;min-height:28px}label{display:block;font-size:14px;margin-top:12px}p,li,h1,h2,h3{overflow-wrap:anywhere}.readme{white-space:pre-wrap;overflow-wrap:anywhere}.prompt{margin:20px 0;border-top:1px solid #dce5e9;padding-top:12px}@media(max-width:600px){main{padding:18px 14px}h1{font-size:27px}article{padding:17px}h2{font-size:21px}}@media print{button,nav,textarea,.toolbar{display:none}article{break-inside:avoid}details{display:block}}
+</style></head><body><main>
+<p class="muted">Company Agent @@VERSION@@ · 가상 업무 전용 · 인터넷 없이 열리는 안내 화면</p>
+<h1>파일은 준비됐습니다.<br>이제 한 가지씩 시켜보세요.</h1>
+<p class="lead">실제 회사 자료 대신 준비된 연습 자료로, 답변뿐 아니라 파일·기억·학습 결과도 확인합니다.</p>
+<div class="steps"><ol>
+<li>이 화면 옆에 있는 <strong>01_START_TEST.cmd</strong>를 더블클릭하세요. 메뉴에서 <strong>3</strong>을 선택합니다.</li>
+<li>처음이면 테스트 프로젝트 설치를 안내합니다. 설치에 동의하면 <strong>1</strong>을 입력하세요. 필요한 조건과 기존 설정 충돌은 설치 프로그램이 확인합니다.</li>
+<li>Claude 창이 열리면 아래에서 <strong>T01 → T02 → T03 → T04 → T09 → T10 → T11 → T12</strong> 순서로 요청을 복사하세요.</li>
+<li>‘새 대화’ 시험은 Claude에서 <strong>/exit</strong> 후 실행 메뉴 <strong>3</strong>으로 다시 여세요. 작업 폴더는 계속 workspace입니다.</li>
+<li>최초 응답을 아래 기록란에 적고 <strong>결과 내려받기</strong>를 누르세요. 질문 화면을 닫기 전에 꼭 저장하세요.</li>
+</ol></div>
+<p class="notice">아직 Claude 업무 시험을 실행한 것은 아닙니다. 준비 상태 검사는 파일과 설치 정보만 확인합니다.
+실제 Outlook·사내 DB·DRM·이미지 모델은 해당 회사 환경이 있어야 시험할 수 있습니다. 이 폴더는 보안 샌드박스가 아닙니다.</p>
+<h2>어디에 무엇이 있나요?</h2>
+<ul><li><strong>workspace</strong>: Claude에서 열 연습 작업 폴더. 정리할 파일, 가상 실적 JSON, 회의 메모, 로컬 메일 예시, 프로젝트 제작용 폴더가 있습니다.</li>
+<li><strong>personal-state</strong>: 이 테스트 프로젝트 설치 후 생성될 연습 기억·개인 스킬·지식. 지금은 기억을 미리 심어두지 않았습니다.</li>
+<li><strong>operator</strong>: 사람이 볼 원래 검증 질문 전체, 정상 기준, 빈 결과지, 파일 비교 기준. 전체를 Claude에 전달하지 마세요.</li>
+<li><strong>installer</strong>: 검증된 로컬 @@VERSION@@ 설치 묶음. 회사 PC로 옮길 때는 이 연습실 폴더 전체를 승인된 경로로 복사하세요. 옮긴 뒤 프로젝트 설치를 다시 합니다.</li></ul>
+<p>기존 모델 설정은 재사용합니다. 설치 과정은 프로젝트 등록과 공통 플러그인 캐시를 갱신할 수 있으므로 진행 중인 다른 Claude 작업은 먼저 마무리하세요. 기존 개인 자료를 삭제하거나 백업 폴더를 정리하지 마세요.</p>
+<p><a href="operator/ORIGINAL_CHAT_SET.html">원래 34개 검증 질문과 자세한 판정 기준</a> · <a href="operator/USER_GUIDE.html">상세 사용자 안내서</a> · <a href="workspace/02-report-input/monthly-results.json">가상 실적 원본 보기</a></p>
+<h2>질문과 실행 기록</h2><p>회색 상자의 요청만 한 번에 하나씩 복사하세요. 여러 단계가 있는 시험은 각 단계가 끝난 뒤 다음 요청을 보냅니다. 접힌 ‘진행 안내·판정 기준’에서 새 대화 시점을 먼저 확인하세요.</p>
+<div class="toolbar"><button class="primary" id="download">결과 내려받기 (.md)</button><button id="confirm-saved" disabled>파일 저장을 확인했어요</button><label>보기 <select id="filter"><option value="all">전체</option><option value="local">로컬 자료 / 개인화 시험</option><option value="external">회사 환경이 필요한 선택 시험</option></select></label></div>
+<p class="muted">기록은 현재 화면 메모리에만 있습니다. 자동 저장·전송하지 않습니다. 내려받은 파일은 보통 다운로드 폴더에 저장됩니다. 메일 주소·본문·계정 ID·비밀값은 붙여 넣지 마세요.</p>
+<p class="status" role="status" aria-live="polite" id="status"></p><nav>@@NAV@@</nav>
+@@CASES@@
+<h2>다시 시험할 때</h2><p>같은 폴더는 삭제하거나 자동 초기화하지 않습니다. 정리 시험은 T11의 승인된 되돌리기로 복구할 수 있습니다. ‘03_CHECK_FILES.cmd’를 실행하면 원래 위치와 파일 내용이 같은지 확인할 수 있습니다. 개인 기억을 초기화하면 새 대화 기억 시험이 무효가 되므로 유지하세요.</p>
+<p>자료를 처음 상태로 다시 준비해야 하면 새 이름의 연습실을 요청하세요. 설치 후 이 폴더를 이동·삭제하면 연습 기억 또는 설치 경로가 끊길 수 있습니다. 아직 설치 전이라면 전체 복사본을 다른 PC로 옮겨도 됩니다.</p>
+</main><script>
+document.querySelectorAll('.copy').forEach(button=>button.addEventListener('click',async()=>{
+const code=document.getElementById(button.dataset.target);let ok=false;
+try{await navigator.clipboard.writeText(code.textContent);ok=true}catch(_){const s=window.getSelection(),r=document.createRange();r.selectNodeContents(code);s.removeAllRanges();s.addRange(r);try{ok=document.execCommand('copy')}catch(_){}if(ok)s.removeAllRanges()}
+document.getElementById('status').textContent=ok?'요청 하나를 복사했습니다. Claude 대화창에 붙여 넣으세요.':'자동 복사가 제한됩니다. 회색 상자의 요청을 직접 선택해 복사하세요.';
+}));
+document.getElementById('filter').addEventListener('change',e=>document.querySelectorAll('article').forEach(a=>a.hidden=e.target.value!=='all'&&a.dataset.group!==e.target.value));
+let dirty=false;const savedButton=document.getElementById('confirm-saved');
+document.querySelectorAll('textarea,article select').forEach(e=>e.addEventListener('input',()=>{dirty=true;savedButton.disabled=true}));
+window.addEventListener('beforeunload',e=>{if(dirty){e.preventDefault();e.returnValue=''}});
+savedButton.addEventListener('click',()=>{if(savedButton.disabled)return;dirty=false;savedButton.disabled=true;document.getElementById('status').textContent='저장 확인을 기록했습니다. 이후 내용을 바꾸면 다시 내려받아 주세요.'});
+document.getElementById('download').addEventListener('click',()=>{
+let out='# Company Agent 연습실 실행 결과\n\n저장 시각: '+new Date().toISOString()+'\n\n설치 버전은 T01 실제 응답으로 확인하세요. 기본 판정은 모두 미실행입니다.\n';
+document.querySelectorAll('article').forEach(a=>{out+='\n## '+a.querySelector('h2').textContent+'\n\n판정: '+a.querySelector('select').value+'\n\n'+(a.querySelector('textarea').value||'(기록 없음)')+'\n'});
+const url=URL.createObjectURL(new Blob([out],{type:'text/markdown;charset=utf-8'}));const link=document.createElement('a');link.href=url;link.download='Company-Agent-결과-'+new Date().toISOString().replace(/[:.]/g,'-')+'.md';document.body.append(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);savedButton.disabled=false;
+document.getElementById('status').textContent='내려받기를 요청했습니다. 파일이 실제 저장된 것을 확인한 뒤 “파일 저장을 확인했어요”를 누르세요. 취소·차단되었다면 다시 내려받으세요.';
+});
+</script></body></html>

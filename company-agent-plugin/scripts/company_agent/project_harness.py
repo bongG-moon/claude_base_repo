@@ -12,7 +12,7 @@ from pathlib import Path, PurePosixPath
 from typing import Any
 
 
-GENERATOR_VERSION = 1
+GENERATOR_VERSION = 2
 MANIFEST = ".claude/company-agent/project-harness.manifest.json"
 LOCK = ".claude/company-agent/project-harness.lock"
 RULE = ".claude/rules/company-agent-project-harness.md"
@@ -136,7 +136,8 @@ def _markdown(metadata: dict[str, Any], body: str) -> str:
     return f"---\n{header}\n---\n\n{body.strip()}\n"
 
 
-def _render(spec: dict[str, Any]) -> dict[str, str]:
+def _render_v1(spec: dict[str, Any]) -> dict[str, str]:
+    # Frozen ownership renderer: old installations must remain verifiable.
     prefix = f"company-project-{spec['name']}"
     reference = f".claude/skills/{prefix}/references/contract.md"
     result: dict[str, str] = {}
@@ -240,6 +241,36 @@ This file and the `company-project-{spec['name']}` assets are generated. Ask Com
     return result
 
 
+def _render(spec: dict[str, Any], generator_version: int = GENERATOR_VERSION) -> dict[str, str]:
+    result = _render_v1(spec)
+    if generator_version == 1:
+        return result
+    if generator_version != 2:
+        raise ValueError("unsupported generator version")
+    # Frozen v2 text. Future changes must add another versioned renderer rather
+    # than invalidate ownership hashes for already generated project files.
+    language = (
+        "\n## 사용자 안내 언어\n\n"
+        "질문 제목·선택지·설명·추천 이유·승인 요청·진행 안내·최종 결과·문서 본문은 기본 한국어로 작성한다. "
+        "영어 입력자료나 도구 출력은 언어 변경 요청이 아니다. 사용자가 명시적으로 다른 언어를 요청하면 그 범위에만 적용하고 모든 작업자에게 전달한다. "
+        "파일명·경로·명령어·코드·API/JSON 키·모델명·원문 인용은 보존하고 설명만 번역한다. "
+        "내부 상태는 나열하지 않으며 실제 실패·미확인·제한은 쉬운 한국어로 설명한다.\n"
+    )
+    prefix = f"company-project-{spec['name']}"
+    roles = {stage["id"]: stage["task"] for stage in spec["workflow"]}
+    roles.update(architect="요구사항과 설계 선택을 검토합니다.", reviewer="실제 결과와 검증 근거를 확인합니다.")
+    descriptions = {f".claude/skills/{prefix}/SKILL.md": f"{spec['name']} 프로젝트 업무를 조율합니다. {spec['goal']}"}
+    for role, task in roles.items():
+        descriptions[f".claude/agents/{prefix}-{role}.md"] = f"{spec['name']} 프로젝트의 {role} 작업을 담당합니다. {task}"
+        descriptions[f".claude/skills/{prefix}-{role}-task/SKILL.md"] = f"{spec['name']} 프로젝트의 {role} 단계 절차입니다. 해당 작업을 배정받았을 때 사용합니다."
+    for relative, body in result.items():
+        if relative in descriptions:
+            body = re.sub(r"^description: .+$", lambda _: "description: " + json.dumps(descriptions[relative], ensure_ascii=False),
+                          body, count=1, flags=re.M)
+        result[relative] = body + language
+    return result
+
+
 def _read(root: Path, relative: str) -> bytes | None:
     path = _target(root, relative)
     if not path.exists():
@@ -255,10 +286,11 @@ def _manifest(root: Path) -> dict[str, Any] | None:
         return None
     try:
         value = json.loads(raw)
-        if not isinstance(value, dict) or value.get("generatorVersion") != GENERATOR_VERSION or value.get("schemaVersion") != 1:
+        if (not isinstance(value, dict) or type(value.get("generatorVersion")) is not int
+                or value.get("generatorVersion") not in {1, 2} or value.get("schemaVersion") != 1):
             raise ValueError("unsupported manifest version")
         spec = _spec(value["spec"])
-        expected = {key: _digest(text.encode("utf-8")) for key, text in _render(spec).items()}
+        expected = {key: _digest(text.encode("utf-8")) for key, text in _render(spec, value["generatorVersion"]).items()}
         if value.get("files") != expected:
             raise ValueError("manifest ownership hashes do not match its recorded spec")
         return value

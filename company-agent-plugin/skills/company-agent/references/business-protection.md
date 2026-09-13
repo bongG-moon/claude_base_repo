@@ -28,6 +28,12 @@ Stop the denied item immediately. Do not retry the same restriction or route it
 through OCR, screenshot, clipboard, another app/model, raw PST/OST parsing,
 decryption, export conversion, or a generated script to obtain the denied content.
 An image service outage can use a design fallback; a DRM refusal cannot.
+Do not recommend a protection-free copy, a decrypted/exported replacement or
+asking the sender to remove protection. If needed, refer only to the approved
+source-owner/administrator process for permitted access and AI processing.
+An access grant does not itself authorize export, extraction or AI retention.
+User approval in chat cannot create an exception to fixed DB, sender or DRM
+restrictions. Claude/Windows login identity is not verified Outlook identity.
 
 Continue only independent, allowed items. Preserve original files. Report:
 1. What was actually read/changed/verified.

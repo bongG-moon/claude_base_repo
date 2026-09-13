@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -97,6 +98,35 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
         self.assertEqual("LARGE", json.loads(first)["company_agent_route"]["tier"])
         self.assertEqual("test", json.loads(first)["company_agent_session_id"])
         self.assertIn("company_agent_runtime", json.loads(second))
+
+    def test_long_windows_runtime_paths_keep_commands_and_context_budget(self) -> None:
+        # No filesystem access: realistic cached-plugin/state path lengths with
+        # quoted spaces/Korean names and the maximum discovery-card workload.
+        for length in (140, 225):
+            prefix = Path("C:/Users/2069026/AppData/Local")
+            plugin = prefix / ("plugin-cache-" + "p" * (length - 50)) / "company agent"
+            state = prefix / ("personal-state-" + "s" * (length - 55)) / "개인 상태"
+            project = prefix / ("projects-" + "w" * (length - 45))
+            cards = [{"name": f"report-{n}", "source": "personal", "path": str(state / f"skills/{n}/SKILL.md"),
+                      "description": "보고서 작성 " * 40} for n in range(8)]
+            with self.subTest(length=length), patch.dict(os.environ, {
+                "COMPANY_AGENT_USER_STATE": str(state), "COMPANY_AGENT_KNOWLEDGE_BASE": str(prefix / "knowledge")}), \
+                 patch("company_agent.native_runtime._skill_routing", return_value=(cards, {})), \
+                 patch("company_agent.native_runtime._knowledge_matches", return_value=[]):
+                text = runtime_context(plugin, project, "보고서")
+                context = json.loads(text)["company_agent_runtime"]
+                self.assertLessEqual(len(text), MAX_RUNTIME_CONTEXT_CHARS)
+                self.assertNotIn("contextStatus", context)
+                self.assertEqual(cli_command(plugin), context["cliCommand"])
+                self.assertEqual(str(state), context["stateRoot"])
+                metadata = shlex.split(context["metadataCommand"])
+                self.assertEqual(Path(sys.executable), Path(metadata[0]))
+                self.assertEqual(plugin / "scripts" / "harness_cli.py", Path(metadata[2]))
+                route = json.dumps({"company_agent_route": {"tier": "MEDIUM"},
+                                    "company_agent_personal_memory_context": "한글" * 5000})
+                combined = bounded_prompt_context(route, text)
+                self.assertLessEqual(len(combined), MAX_HOOK_CONTEXT_CHARS)
+                self.assertEqual(context, json.loads(combined.split("\n", 1)[1])["company_agent_runtime"])
 
     def test_compaction_rehydrates_verification_without_resetting_retry_budget(self) -> None:
         begin_turn("compact-test", "LARGE", True, (), self.state)
@@ -266,6 +296,18 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
         self.assertEqual("specific-report", exact["personalSkills"][0]["name"])
         self.assertIn("skill search", exact["instructions"])
 
+    def test_budget_trims_extra_skill_cards_before_losing_only_knowledge_card(self):
+        from company_agent.native_runtime import _encode_runtime
+        data = {"instructions": "i" * 200, "knowledgeMatches": [{"id": "knowledge", "title": "k" * 80}],
+                "preferredSkills": [], "personalSkills": [{"name": str(n), "description": "s" * 180} for n in range(3)],
+                "skillSelection": {"conflicts": []}}
+        with patch("company_agent.native_runtime.MAX_RUNTIME_CONTEXT_CHARS", 800):
+            text = _encode_runtime(data)
+        self.assertLessEqual(len(text), 800)
+        runtime = json.loads(text)["company_agent_runtime"]
+        self.assertEqual("knowledge", runtime["knowledgeMatches"][0]["id"])
+        self.assertTrue(runtime["personalSkills"])
+
 
 @unittest.skipUnless(os.name == "nt" and shutil.which("powershell.exe"), "Native Windows PowerShell required")
 class NativePowerShellTests(NativeRuntimeTestBase):
@@ -295,6 +337,90 @@ class NativePowerShellTests(NativeRuntimeTestBase):
             input=json.dumps(payload, ensure_ascii=False) if payload is not None else None,
             text=True, encoding="utf-8", capture_output=True, timeout=30, check=False,
         )
+
+    def test_native_permission_request_allows_only_registered_metadata_command(self) -> None:
+        payload = {"session_id": "permission-fixture", "cwd": str(self.project)}
+        started = self.run_wrapper(["-Mode", "Hook", "-Event", "SessionStart"], payload)
+        self.assertEqual(0, started.returncode, started.stderr)
+        runtime = json.loads(json.loads(started.stdout)["hookSpecificOutput"]["additionalContext"])["company_agent_runtime"]
+        self.assertEqual(self.record["userStateRoot"], runtime["stateRoot"])
+        base_command = runtime["metadataCommand"]
+        for operation in ("doctor", "mail-capabilities"):
+            command = f'{base_command} business {operation} --state-root "{runtime["stateRoot"]}"'
+            result = self.run_wrapper(["-Mode", "Hook", "-Event", "PermissionRequest"], {
+                **payload, "tool_name": "Bash", "tool_input": {"command": command,
+                "description": "PRIVATE-PERMISSION-DETAIL-MUST-NOT-ECHO"},
+            })
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("", result.stderr)
+            self.assertEqual({"hookSpecificOutput": {"hookEventName": "PermissionRequest", "decision": {"behavior": "allow"}}},
+                             json.loads(result.stdout))
+            self.assertNotIn("PRIVATE-", result.stdout)
+            self.assertNotIn(runtime["stateRoot"], result.stdout)
+
+        # Execute only business doctor. Do not touch an actual Outlook instance.
+        command = shlex.split(base_command) + ["business", "doctor", "--state-root", runtime["stateRoot"]]
+        env = dict(os.environ, COMPANY_AGENT_USER_STATE=str(self.root / "wrong-state"),
+                   PYTHONIOENCODING="cp949:strict", PYTHONUTF8="0")
+        completed = subprocess.run(command, cwd=self.project, env=env, capture_output=True, timeout=30)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual(b"", completed.stderr)
+        doctor = json.loads(completed.stdout)
+        self.assertEqual("diagnostic_only", doctor["status"])
+        self.assertEqual("connection_not_tested", doctor["outlook"]["status"])
+        self.assertFalse((self.root / "wrong-state").exists())
+
+    def test_native_hooks_refresh_catalog_without_business_verification_obligation(self) -> None:
+        session = "catalog-only-session"
+        payload = {"session_id": session, "cwd": str(self.project)}
+        isolated_claude = self.root / "isolated-claude"
+        overrides = {"CLAUDE_CONFIG_DIR": str(isolated_claude)}
+        def context(event, **extra):
+            result = self.run_wrapper(["-Mode", "Hook", "-Event", event], {**payload, **extra}, env_overrides=overrides)
+            self.assertEqual(0, result.returncode, result.stderr)
+            self.assertEqual("", result.stderr)
+            envelope = json.loads(result.stdout)
+            # Native prompt output contains route JSON followed by runtime JSON.
+            text = envelope["hookSpecificOutput"]["additionalContext"].splitlines()[-1]
+            return json.loads(text)["company_agent_runtime"]
+        started = context("SessionStart")
+        first = started["skillSelection"]["catalog"]
+        self.assertEqual("ready", first["status"])
+        file = Path(first["path"])
+        before = file.stat().st_mtime_ns
+        unchanged = context("UserPromptSubmit", prompt="사용 가능한 기능만 설명해줘")
+        self.assertEqual(first["revision"], unchanged["skillSelection"]["catalog"]["revision"])
+        self.assertEqual(before, file.stat().st_mtime_ns)
+        incoming = isolated_claude / "skills" / "deck" / "SKILL.md"
+        atomic_write_text(incoming, dump_frontmatter({"name": "deck", "description": "Editable PowerPoint presentations"}, "PRIVATE-BODY"))
+        added = context("UserPromptSubmit", prompt="발표자료를 만들 수 있는지 설명해줘")
+        self.assertNotEqual(first["revision"], added["skillSelection"]["catalog"]["revision"])
+        self.assertIn("Editable PowerPoint", file.read_text(encoding="utf-8"))
+        self.assertNotIn("PRIVATE-BODY", file.read_text(encoding="utf-8"))
+        incoming.unlink()
+        deleted = context("UserPromptSubmit", prompt="목록만 확인해줘")
+        self.assertEqual(first["revision"], deleted["skillSelection"]["catalog"]["revision"])
+        self.assertEqual(0, load_session(session, Path(self.record["userStateRoot"]))["mutationCount"])
+
+    def test_native_permission_request_keeps_untrusted_body_and_malformed_requests_pending(self) -> None:
+        payload = {"session_id": "permission-deny-fixture", "cwd": str(self.project), "tool_name": "Bash"}
+        command = f'"{sys.executable}" -B "{self.plugin / "scripts" / "harness_cli.py"}"'
+        cases = [
+            {"command": f'{command} business mail-read --spec "{self.root / "PRIVATE-body.json"}"'},
+            {"command": f'{command} business mail-search --spec "{self.root / "PRIVATE-search.json"}"'},
+            {"command": f'{command} business doctor --state-root "{self.root / "PRIVATE-foreign-state"}"'},
+            {"command": f'{command} business doctor; echo PRIVATE-COMPOUND'},
+            {"command": 'company-agent business doctor'},
+            {"command": f'"{self.root / "PRIVATE-python.exe"}" "{self.plugin / "scripts" / "harness_cli.py"}" business doctor'},
+            {"command": None}, {"command": ["PRIVATE-MALFORMED"]}, {},
+        ]
+        for tool_input in cases:
+            with self.subTest(tool_input=tool_input):
+                result = self.run_wrapper(["-Mode", "Hook", "-Event", "PermissionRequest"], {**payload, "tool_input": tool_input})
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("", result.stderr)
+                self.assertEqual({}, json.loads(result.stdout))
+                self.assertNotIn("PRIVATE-", result.stdout)
 
     def test_native_wrapper_reads_korean_stdin_and_cli_verification_survives_hook(self) -> None:
         session = "native-session"
@@ -327,8 +453,17 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         state = load_session(session, Path(self.record["userStateRoot"]))
         self.assertEqual("pass", state["verification"]["status"])
         stopped = self.run_wrapper(["-Mode", "Hook", "-Event", "Stop"], payload)
+        self.assertEqual({}, json.loads(stopped.stdout))
+        milestone = self.run_wrapper(["-Mode", "Cli", "work", "checkpoint", "--session", session,
+                                      "--turn", state["turnId"], "--status", "complete", "--learn", "yes"])
+        self.assertEqual(0, milestone.returncode, milestone.stderr)
+        stopped = self.run_wrapper(["-Mode", "Hook", "-Event", "Stop"], payload)
         self.assertEqual("block", json.loads(stopped.stdout)["decision"])
-        self.assertIn("learning review", json.loads(stopped.stdout)["reason"])
+        self.assertIn("업무 마무리", json.loads(stopped.stdout)["reason"])
+        self.assertIn("completionGuide", context)
+        self.assertTrue(Path(context["completionGuide"]).is_file())
+        self.assertNotIn("learning review", json.loads(stopped.stdout)["reason"])
+        self.assertLessEqual(len(json.loads(stopped.stdout)["reason"]), 100)
         turn_id = state["turnId"]
         spec_path = Path(self.record["userStateRoot"]) / "tmp" / f"learning-review-{turn_id}.json"
         atomic_write_json(spec_path, {"schemaVersion": 1, "taskType": "native-file-test", "outcome": "success",
@@ -340,7 +475,8 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         reviewed = self.run_wrapper(["-Mode", "Cli", "learning", "review", "--session", session,
                                      "--turn", turn_id, "--spec", str(spec_path)])
         self.assertEqual(0, reviewed.returncode, reviewed.stderr)
-        self.assertEqual("accepted", json.loads(reviewed.stdout)["status"])
+        self.assertEqual("skipped", json.loads(reviewed.stdout)["status"])
+        self.assertFalse((Path(self.record["userStateRoot"]) / "learning" / "state.json").exists())
         review_command = cli_command(self.plugin) + f' learning review --session {session} --turn {turn_id} --spec "{spec_path}"'
         review_activity = self.run_wrapper(["-Mode", "Hook", "-Event", "PostToolUse"], {
             **payload, "tool_name": "PowerShell", "tool_input": {"command": review_command},

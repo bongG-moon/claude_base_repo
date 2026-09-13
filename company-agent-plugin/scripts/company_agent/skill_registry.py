@@ -535,7 +535,14 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
     for name, candidate_id in effective["skills"].items():
         if not any(item["id"] == candidate_id for item in groups.get(name, [])):
             _warn(warnings, f"Stale skill preference for {name}: {candidate_id}; no replacement selected.")
+    source_counts: dict[str, int] = {}
+    plugin_counts: dict[str, int] = {}
+    for item in skills:
+        source_counts[item["source"]] = source_counts.get(item["source"], 0) + 1
+        if item["source"] == "plugin":
+            plugin_counts[item["origin"]] = plugin_counts.get(item["origin"], 0) + 1
     return {"skills": skills, "conflicts": conflicts, "warnings": warnings, "complete": complete,
+            "summary": {"total": len(skills), "bySource": source_counts, "byPlugin": plugin_counts},
             "preferencesPath": str(preference_file), "preferences": preferences, "effectivePreferences": effective,
             "note": "Exact names only; descriptions do not prove semantic duplication. Preferences guide Company Agent recommendations and do not change native Claude precedence. Personal and corporate candidates require reading the selected SKILL.md; they are not registered native invocations."}
 
@@ -549,7 +556,8 @@ def resolve_skill(state_root: Path, name: str, **inventory_options: Any) -> dict
             "warnings": inventory["warnings"], "complete": inventory["complete"], "preferencesPath": inventory["preferencesPath"]}
 
 
-def search_skills(state_root: Path, query: str = "", *, limit: int = 50, **inventory_options: Any) -> dict[str, Any]:
+def search_skills(state_root: Path, query: str = "", *, limit: int = 50, include_inventory: bool = False,
+                  **inventory_options: Any) -> dict[str, Any]:
     if not isinstance(query, str) or len(query) > 2000 or type(limit) is not int or not 1 <= limit <= MAX_SKILLS:
         raise ValueError(f"Search requires a query up to 2000 characters and a limit from 1 to {MAX_SKILLS}.")
     inventory = inventory_skills(state_root, **inventory_options)
@@ -568,9 +576,12 @@ def search_skills(state_root: Path, query: str = "", *, limit: int = 50, **inven
         return sum(1 + 2 * (token in title) for token in tokens if token in text)
     matching = [item for item in available if not tokens or score(item) > 0]
     matching.sort(key=lambda item: (-score(item), _name(item["name"]), item["id"]))
-    return {"query": query, "skills": matching[:limit], "total": len(matching),
+    result = {"query": query, "skills": matching[:limit], "total": len(matching),
             "conflicts": [item for item in inventory["conflicts"] if not tokens or any(score(candidate) > 0 for candidate in item["candidates"])],
             "warnings": inventory["warnings"], "complete": inventory["complete"], "preferencesPath": inventory["preferencesPath"]}
+    if include_inventory:
+        result["inventory"] = inventory
+    return result
 
 
 def _scope(preferences: dict[str, Any], project_root: Path | None, *, create: bool = True) -> tuple[str, dict[str, Any] | None]:

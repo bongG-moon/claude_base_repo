@@ -1,14 +1,24 @@
 # Company Agent Harness
 
+현재 버전은 **1.3.9**입니다. 기존 공통 Skill 11개를 유지하면서 HTML 디자인 먼저 확정 → 남은 분량·보기 방식 선택의 순서, 추가 디자인 즉시 채팅 안내, 기존 테마·PPT 개선을 포함합니다. [설치 안내](docs/UPDATE_1.3.9.md)를 확인하세요.
+
+설치 파일은 [최신 Release](https://github.com/bongG-moon/claude_base_repo/releases/latest) 또는 [1.3.9 설치 ZIP 바로 받기](https://github.com/bongG-moon/claude_base_repo/releases/download/v1.3.9/company-agent-1.3.9-2026.09.03.zip)에서 받으세요. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다.
+[폴더별 자동 스킬 목록](docs/SKILL_CATALOG.md), 각 PC의 Python 탐색과 Ouroboros 연결 교정을 포함합니다.
+기존 코어와 ZIP은 덮어쓰지 않으며, 1.3.9로 백업 후 업데이트합니다.
+
 Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARGE 모델을 사용하는 개인화 하네스입니다. 공통 엔진과 개인 Knowledge·Memory·Skill을 분리하고 사용자 또는 프로젝트 범위로 설치합니다.
 
-현재 버전은 **1.2.0 업무팩 시범 적용판**입니다. 파일 정리, Outlook 조회 안내, HTML 보고서, 편집 가능한 PPT 제작과 Skill 시작 경고 개선을 포함합니다. 설치 파일은 [1.2.0 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.2.0) 또는 [저장소의 설치 ZIP](dist/company-agent-1.2.0-2026.09.03.zip)을 사용하세요. 실제 회사 Office·DRM 검증 전이므로 Release는 시범 운영용으로 표시합니다. 일부 회사 PC의 관리자 권한 감지 보완, 본인 Claude 실행·설정 위치 확인, 자동 학습과 업데이트 시 개인 자료·규칙·Hook 보존은 유지합니다. 이전 `0.3.x` 표기는 배포 전 개발 과정의 버전입니다.
+1.2.0에서 시작한 파일 정리, Outlook 조회 안내, HTML 보고서와 편집 가능한 PPT 업무팩을 계속 개선했습니다. 실제 회사 Office·DRM 통합 검증은 별도로 필요하므로 시범 운영 범위를 유지합니다. 일부 회사 PC의 관리자 권한 감지 보완, 본인 Claude 실행·설정 위치 확인, 자동 학습과 업데이트 시 개인 자료·규칙·Hook 보존을 포함합니다. 이전 버전은 [Release 이력](https://github.com/bongG-moon/claude_base_repo/releases)에서 확인할 수 있습니다.
 
 업무팩은 새 앱을 따로 여는 대신 Claude에 한국어로 요청하는 방식입니다. 파일은 정리안을 먼저 보여주고 본인의 확인 창 승인 후 이동하며, HTML은 8가지 분위기와 스크롤/슬라이드 방식을 고릅니다. PPT는 승인된 Python 환경과 설치된 PowerPoint 또는 이미 준비된 제작 도구를 사용합니다. Outlook은 기존 `corp-outlook-self` 연결을 우선하고, 선택적인 로컬 조회는 읽기 전용입니다. 새 메일 발송·PST 이동 연결이나 외부 이미지 생성 API를 자동 설치하지 않습니다. 실제 회사 Office·메일 환경의 통합 검증은 별도로 필요합니다. [업무팩 시범 사용 안내](docs/BUSINESS_PILOT_GUIDE.md)에서 네 가지 업무 예시, 보호된 자료 처리, 준비물과 미지원 범위를 확인하세요.
 
 코딩에 익숙하지 않은 직원을 위한 [상세 사용자 안내서](docs/Company-Agent-사용자-안내서.html)를 제공합니다. HTML 파일을 내려받아 더블클릭하면 인터넷 연결 없이 읽을 수 있고, 업무 예문을 복사할 수 있습니다. [수정용 원본](docs/USER_GUIDE.md)에는 첫 사용, 보고·회의·자료 비교, 개인 기억과 지식, 반복업무 스킬, 프로젝트별 활용, 업데이트와 문제 해결을 정리했습니다.
 
+[Claude Code 필수 사용법·단축키 검색 안내서](docs/Claude-Code-필수-사용법.html)는 별도 설치 없이 HTML 하나로 열 수 있습니다. 핵심 8개와 상황별 20개 안내, 실행 중 메시지·대기 요청의 차이, 여러 세션, 예시 복사와 현재 목록 인쇄를 포함하며 1.3.9 설치 ZIP에도 들어 있습니다.
+
 기본 배포 ZIP은 **회사 PC에 이미 설치된 승인 Python 3.11 이상**을 사용합니다. Claude Code 설치와 사내 모델 연결도 미리 준비되어 있어야 합니다. Python 실행 파일과 DLL은 ZIP에 넣지 않습니다.
+
+실제 자료를 준비하지 않고 시험하려면 [로컬 연습실 안내](docs/TEST_LAB.md)를 사용하세요. 바탕화면에 가상 파일·메일 예시·보고서 입력과 질문 복사 화면을 생성하고, 사용자가 실행하면 테스트 프로젝트 설치를 안내합니다. 실제 업무용 개인 기억으로 자동 대체하지 않으며 Outlook·DRM·사내 DB 통합 시험은 별도로 구분합니다.
 
 ## 직원 설치
 

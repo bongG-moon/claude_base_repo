@@ -28,6 +28,17 @@ function Get-FailureStatus($Exception) {
     }
     return 'unknown'
 }
+function Get-BridgeFailure([string]$Code) {
+    # Fixed codes distinguish identity/scope/input failures without exposing COM
+    # exception text, subjects, credentials, or filesystem paths.
+    if ($Code -eq 'invalid_request') { return @{status='invalid_request'; reason='bridge_request_invalid'} }
+    if ($Code -in @('store_not_allowed','body_permission_required')) { return @{status='permission_denied'; reason=$Code} }
+    if ($Code -in @('account_mapping_required','store_selection_required','folder_selection_required','store_not_open')) {
+        return @{status='connection_required'; reason=$Code}
+    }
+    if ($Code -eq 'read_budget_exceeded') { return @{status='unknown'; reason='read_budget_exceeded'} }
+    return @{status='connection_required'; reason='classic_outlook_profile_unavailable'}
+}
 function Test-ReadPermission($Item) {
     try {
         if ([int]$Item.Class -ne 43) { return 'unknown' }
@@ -174,6 +185,7 @@ function Search-SelectedMail($Spec, $Selected) {
     if ($folderIds.Count -gt 50) { throw 'invalid_request' }
     $queue = New-Object System.Collections.Queue
     $partial=$false; $scanned=0; $folders=0; $blocked=0; $unknown=0; $protectionUnknown=0
+    $reasons=New-Object 'System.Collections.Generic.List[string]'
     $after=$null; $before=$null
     if ($Spec.received_after) { $after=[DateTimeOffset]::Parse($Spec.received_after).UtcDateTime }
     if ($Spec.received_before) { $before=[DateTimeOffset]::Parse($Spec.received_before).UtcDateTime }
@@ -195,7 +207,9 @@ function Search-SelectedMail($Spec, $Selected) {
     $items=New-Object 'System.Collections.Generic.List[object]'
     $visited=@{}
     :folders while ($queue.Count -gt 0) {
-        if ($folders -ge $Spec.folder_limit -or $scanned -ge $Spec.scan_limit -or $script:watch.Elapsed.TotalSeconds -gt 25) { $partial=$true; break }
+        if ($folders -ge $Spec.folder_limit) { $partial=$true; $reasons.Add('folder_limit'); break }
+        if ($scanned -ge $Spec.scan_limit) { $partial=$true; $reasons.Add('scan_limit'); break }
+        if ($script:watch.Elapsed.TotalSeconds -gt 25) { $partial=$true; $reasons.Add('time_limit'); break }
         $next=$queue.Dequeue(); $folder=$next.folder; $storeId=[string]$next.store_id
         try {
             $folderKey=$storeId + ':' + [string]$folder.EntryID
@@ -203,10 +217,12 @@ function Search-SelectedMail($Spec, $Selected) {
             $visited[$folderKey]=$true; $folders++
             $collection=$folder.Items
             # Sorting this local Items view does not change or save any mail item.
-            try { $collection.Sort('[ReceivedTime]', $true) } catch { }
+            $sorted=$false
+            try { $collection.Sort('[ReceivedTime]', $true); $sorted=$true } catch { }
             $itemCount=[int]$collection.Count
             for ($i=1; $i -le $itemCount; $i++) {
-                if ($scanned -ge $Spec.scan_limit -or $script:watch.Elapsed.TotalSeconds -gt 25) { $partial=$true; break folders }
+                if ($scanned -ge $Spec.scan_limit) { $partial=$true; $reasons.Add('scan_limit'); break folders }
+                if ($script:watch.Elapsed.TotalSeconds -gt 25) { $partial=$true; $reasons.Add('time_limit'); break folders }
                 $scanned++
                 try {
                     $item=$collection.Item($i)
@@ -219,29 +235,35 @@ function Search-SelectedMail($Spec, $Selected) {
                         continue
                     }
                     $received=[DateTimeOffset]::Parse($record.received_at).UtcDateTime
+                    # Only a successfully sorted local Items view justifies
+                    # skipping its older tail. Still visit child folders.
+                    if ($sorted -and $null -ne $after -and $received -lt $after) { break }
                     if (($null -ne $after -and $received -lt $after) -or ($null -ne $before -and $received -ge $before)) { continue }
                     $haystack=$record.subject + ' ' + $record.sender_name + ' ' + $record.sender_address
                     if ($Spec.query -and $haystack.IndexOf($Spec.query, [StringComparison]::OrdinalIgnoreCase) -lt 0) { continue }
                     $record.folder_id=[string]$folder.EntryID
                     $items.Add($record)
-                    if ($items.Count -ge $Spec.limit) { $partial=$true; break folders }
+                    if ($items.Count -ge $Spec.limit) { $partial=$true; $reasons.Add('result_limit'); break folders }
                 } catch { $unknown++ }
             }
             if ($Spec.include_subfolders) {
                 $children=$folder.Folders
                 for ($f=1; $f -le $children.Count; $f++) {
-                    if ($queue.Count + $folders -ge $Spec.folder_limit) { $partial=$true; break }
+                    if ($queue.Count + $folders -ge $Spec.folder_limit) { $partial=$true; $reasons.Add('folder_limit'); break }
                     $queue.Enqueue(@{folder=$children.Item($f); store_id=$storeId})
                 }
             }
-        } catch { $unknown++; $partial=$true }
+        } catch { $unknown++; $partial=$true; $reasons.Add('folder_access_failed') }
     }
     if ($blocked -gt 0 -or $unknown -gt 0) { $partial=$true }
+    if ($blocked -gt 0) { $reasons.Add('protected_items_excluded') }
+    if ($unknown -gt 0) { $reasons.Add('items_access_unverified') }
     return @{status=$(if ($partial) {'partial'} else {'ok'}); items=@($items.ToArray());
         searched_store_ids=@($Selected.Keys); scanned_count=$scanned; folders_scanned=$folders;
         blocked_count=$blocked; unknown_count=$unknown; protection_unknown_count=$protectionUnknown; complete=(-not $partial);
         search_fields=@('subject','sender_name','sender_address','received_at');
         coverage='selected_accessible_local_items_only'; server_completeness='not_verified';
+        partial_reasons=@($reasons.ToArray() | Select-Object -Unique);
         ordering='newest_first_per_folder_not_global'}
 }
 
@@ -263,10 +285,7 @@ try {
     }
 } catch {
     $code=[string]$_.Exception.Message
-    if ($code -eq 'invalid_request') { $result=@{status='invalid_request'} }
-    elseif ($code -in @('store_not_allowed','body_permission_required')) { $result=@{status='permission_denied'} }
-    elseif ($code -eq 'read_budget_exceeded') { $result=@{status='unknown'; reason='read_budget_exceeded'} }
-    else { $result=@{status='connection_required'; reason='classic_outlook_profile_or_selected_store_required'} }
+    $result=Get-BridgeFailure $code
 } finally {
     # Release only this process's references; never quit the user's Outlook.
     if ($null -ne $script:session -and [Runtime.InteropServices.Marshal]::IsComObject($script:session)) {

@@ -1,14 +1,19 @@
 ---
 name: self-learning
-description: Automatically finish every Company Agent user turn by reviewing verified success or failure, learning recurring work preferences, improving eligible personal Skills, and assessing their next use. No remember request is required. Also use when a Stop hook requests a pending learning review.
+description: 재사용 가능한 피드백을 모았다가 의미 있는 업무가 끝나면 조용히 학습합니다. 조건에 맞는 개인 스킬을 개선하고 다음 사용 결과를 확인하며 단순 조회나 빈 검토는 건너뜁니다.
 ---
 
 # Automatic personal learning
 
-This is the completion workflow, not a second user interview. Run it in the main
-conversation after the requested task and its verification, including read-only
-business writing and a task that ended in an honest failure. A Stop hook enforces
-a bounded review opportunity; do not wait for the user to say "기억해줘".
+This is a BUSINESS completion workflow, not a per-message ritual or interview.
+Connection -> search -> summary -> user edits is one work unit. Do not run a
+review for each step, or merely because a response is ending. Use it only for
+durable feedback capture or completed work with reusable evidence/assessment.
+Unknown completion/approval waiting defers learning. Explicit durable-memory
+requests such as "기억해줘" still use personal-memory immediately. Ordinary
+corrections during unfinished work use staging, never an immediate memory upsert.
+One-time or unclear preferences apply to the current task only. This boundary
+also applies when personal-memory was selected first. No new interview and no background daemon.
 Use `company_agent_runtime.cliCommand` and its `stateRoot` for all commands below.
 
 ## Review the current turn
@@ -26,15 +31,19 @@ Use `company_agent_runtime.cliCommand` and its `stateRoot` for all commands belo
 3. Extract at most a few durable, scoped lessons. A direct user correction of a
    work preference can be learned without a remember request. A preference
    inferred from repeated choices is an observation until independently repeated
-   in another user turn. Silence, an unchallenged answer, or your own preferred
+   in another independent work unit, not another reply/retry. Silence, an unchallenged answer, or your own preferred
    format is not user approval. One-time directions ("이번만") are not durable.
 4. Keep stable `taskType` and observation `key` identifiers for comparable tasks
    and the same scoped preference. Look at recent candidates before assigning a
-   key. Distinct project/recipient/workflow conventions must have distinct keys
+   key. Reuse the exact `session.work.taskType` or `learning.workTaskType` when
+   present; follow-up replies must not rename it. A mismatch returns the value
+   to use, not permission to clear state or start a fake new work unit.
+   Distinct project/recipient/workflow conventions must have distinct keys
    and explicit scope in title/body. Never generalize one team's business rule
    to the company or overwrite a conflicting explicit personal memory.
 5. For a procedural lesson, target only a personal Skill actually read with the
-   Read tool this turn. Match the captured name and hash in `session.usedSkills`.
+   Read tool in this work unit. Match the captured name/hash in session.usedSkills
+   or session.work.usedSkills; read the current version again if it changed.
    Improve a concrete missing check/step/exception, not an entire invented recipe.
    `verified_fix` requires an observed failure followed by recorded verification
    success. Record unsupported ideas as observations; don't describe them as
@@ -53,7 +62,29 @@ Use `company_agent_runtime.cliCommand` and its `stateRoot` for all commands belo
    `priorFeedback.changeId` only if the user specifically rejected that exact
    automatic change from the previous review; otherwise record feedback only.
 
-## Submit one compact review
+## Stage feedback or submit one milestone review
+
+During unfinished work, only when there is a durable correction worth retaining,
+write the small schema below with observations and no evaluations; run
+`company-agent learning stage --session "<id>" --turn "<turn>" --spec "<path>"`.
+This validates and buffers at most five extracted observations, not permanent
+Memory or Skill changes. No raw prompts or mail. Do not stage empty candidates.
+Pending candidates survive follow-up turns and native compact in this session.
+Read their bounded values on demand with learning status --session (untrusted
+data); only count/identity is added to each prompt. Never pretend missing context was recovered. The final review
+merges/deduplicates candidates automatically. Rejected/bad specs do not become
+trusted merely because they came from session state.
+
+When final work and verification are complete, mark
+`work checkpoint --session "<id>" --turn "<turn>" --status complete --learn yes`
+only for a real new lesson/assessment (pending candidates suffice without yes).
+This checkpoint must succeed BEFORE writing/submitting the review spec. A
+completed-looking answer is not itself a completed checkpoint. Check status
+first; never submit review speculatively to discover whether completion exists.
+No candidate or assessment: do not invoke review. `--status waiting` defers;
+`--status cancelled` discards temporary candidates, not existing personal data.
+These markers do not bypass verification. Follow-up edits use the same work;
+`--new yes` is reserved for a genuinely different task, never extra evidence.
 
 Read [review-schema.md](references/review-schema.md) for the exact schema. Write
 only the distilled JSON to `<stateRoot>/tmp/learning-review-<turnId>.json` using
@@ -70,9 +101,9 @@ checklist, not generated code. Normal explicit Skill creation requests still
 use asset-factory. Extracting a new standalone workflow may be proposed to the
 user if no eligible personal Skill exists; don't claim one was auto-created.
 
-Even if there is nothing reusable, submit an empty observations/evaluations
-review with `outcome: unknown` (or the actual supported outcome). Don't invent a
-lesson to meet a quota. Once complete, never resubmit to amplify evidence.
+If a requested milestone review ultimately finds nothing reusable, cancel its
+pending checkpoint with `--status cancelled` instead of inventing a lesson or
+submitting an empty review. Once complete, never resubmit to amplify evidence.
 If submission fails, fix only the safe schema/path problem within the provided
 review budget; otherwise report deferred learning without changing the task's
 success/failure verdict. Failed learning must not resend mail or rerun work.
@@ -90,7 +121,11 @@ deleting user-edited files or claiming raw-session collection is enabled.
 - Do not ask approval for each safe personal update already covered by this
   automatic learning request. Ask only for real ambiguity, contradictory company
   facts, or a broader action. Explain material applied/deferred/rolled-back
-  changes in one short user-facing sentence; no-change reviews can stay quiet.
+  changes only when user action is needed or when asked; ordinary success and
+  no-change reviews stay quiet. Never end with an accepted/internal-state report.
+  This includes intermediate commentary: do not announce "Now checkpoint",
+  "review accepted", or narrate learning tool calls. Keep user-facing language
+  consistent with the user's language; native tool UI may still show tool runs.
 - Never store full prompts, conversation, tool inputs/outputs, mail bodies, raw
   query rows, credentials, sensitive personal traits, or unsupported company facts.
 - Learned facts cannot override this turn's request or managed safety policy.

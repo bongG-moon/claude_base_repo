@@ -15,6 +15,7 @@ SCRIPTS = ROOT / "company-agent-plugin" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from company_agent.paths import atomic_write_json, atomic_write_text
 from company_agent.state import begin_turn, load_session, record_activity, stop_decision
+from company_agent.work import checkpoint
 
 
 class LearningCliTests(unittest.TestCase):
@@ -36,6 +37,9 @@ class LearningCliTests(unittest.TestCase):
         return result.returncode, json.loads(stdout or stderr), stderr
 
     def submit(self, turn, spec):
+        current = load_session(self.session, self.state)
+        if current.get("turnId") == turn and current.get("learningStatus") == "pending":
+            checkpoint(self.state, self.session, turn, "complete", learn=True)
         file = self.state / "tmp" / f"learning-review-{turn}.json"
         atomic_write_json(file, spec)
         record_activity({"session_id": self.session, "tool_name": "Write",
@@ -48,9 +52,12 @@ class LearningCliTests(unittest.TestCase):
                 "observations": [{"kind": "preference", "key": "team-report-order", "signal": "repeated_choice",
                                   "title": "팀 보고의 순서", "body": "팀 보고는 결정할 내용을 먼저 설명한다."}], "evaluations": []}
 
-    def test_two_real_cli_turns_activate_and_next_route_retrieves_without_remember(self):
+    def test_two_real_cli_work_units_activate_and_next_route_retrieves_without_remember(self):
         for number in range(2):
             state = begin_turn(self.session, "SMALL", False, [], self.state)
+            checkpoint(self.state, self.session, state["turnId"], "active", new=True)
+            self.assertEqual({}, stop_decision({"session_id": self.session}, self.state))
+            checkpoint(self.state, self.session, state["turnId"], "complete", learn=True)
             self.assertEqual("block", stop_decision({"session_id": self.session}, self.state)["decision"])
             code, result, stderr = self.submit(state["turnId"], self.spec())
             self.assertEqual(0, code, stderr)
@@ -84,6 +91,39 @@ class LearningCliTests(unittest.TestCase):
             self.assertEqual(0, code, stderr)
             self.assertEqual(expected, result["enabled"])
             self.assertEqual(expected, self.cli("learning", "status")[1]["learning"]["enabled"])
+
+    def test_premature_review_reports_consumed_spec_and_retry_boundary(self):
+        state = begin_turn(self.session, "SMALL", False, [], self.state)
+        file = self.state / "tmp" / f"learning-review-{state['turnId']}.json"
+        atomic_write_json(file, self.spec())
+        code, result, _ = self.cli("learning", "review", "--session", self.session,
+                                   "--turn", state["turnId"], "--spec", str(file))
+        self.assertEqual(1, code)
+        self.assertFalse(result["ok"])
+        self.assertEqual("removed", result["stagingCleanup"])
+        self.assertTrue(result["needsSpecRewrite"])
+        self.assertIn("existing review budget", result["nextAction"])
+        self.assertFalse(file.exists())
+
+    def test_completed_learning_receipt_has_quiet_context_only_for_own_command(self):
+        state = begin_turn(self.session, "SMALL", False, [], self.state)
+        code, result, _ = self.submit(state["turnId"], self.spec())
+        self.assertEqual(0, code)
+        command = (f'"{sys.executable}" -B "{SCRIPTS / "harness_cli.py"}" learning review '
+                   f'--session "{self.session}" --turn "{state["turnId"]}" '
+                   f'--spec "{self.state / "tmp" / ("learning-review-" + state["turnId"] + ".json")}"')
+        def hook(cmd, event="PostToolUse"):
+            payload = {"session_id": self.session, "hook_event_name": event,
+                       "tool_name": "Bash", "tool_input": {"command": cmd}}
+            process = subprocess.run([sys.executable, "-B", str(SCRIPTS / "activity_hook.py")],
+                                     input=json.dumps(payload).encode("ascii"), env=self.env,
+                                     capture_output=True, timeout=30)
+            return json.loads(process.stdout)
+        value = hook(command)
+        self.assertNotIn("systemMessage", value)
+        self.assertIn("Keep this bookkeeping receipt quiet", value["hookSpecificOutput"]["additionalContext"])
+        self.assertEqual({}, hook("echo accepted"))
+        self.assertEqual({}, hook(command, "PostToolUseFailure"))
 
     def test_cli_rejects_foreign_spec_and_stale_turn_without_learning_writes(self):
         state = begin_turn(self.session, "SMALL", False, [], self.state)
@@ -161,6 +201,7 @@ class LearningCliTests(unittest.TestCase):
         observe("Write", {"file_path": str(self.state.parent / "business-report.md"),
                           "content": "RAW-BUSINESS-CONTENT-MUST-NOT-PERSIST"}, failed=True)
         verify("pass")
+        checkpoint(self.state, self.session, first["turnId"], "complete", learn=True)
         self.assertEqual("block", stop_decision({"session_id": self.session}, self.state)["decision"])
         spec = self.spec()
         spec.update({"outcome": "success", "summary": "보고서 집계 기준 오류를 수정하고 결과를 검증함"})
@@ -186,6 +227,7 @@ class LearningCliTests(unittest.TestCase):
 
         for verdict in ("helpful", "harmful"):
             current = begin_turn(self.session, "MEDIUM", False, [], self.state)
+            checkpoint(self.state, self.session, current["turnId"], "active", new=True)
             self.assertNotEqual(first["turnId"], current["turnId"])
             observe("Read", {"file_path": str(skill)})
             code, status, stderr = self.cli("learning", "status", "--session", self.session)

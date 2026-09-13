@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
 import subprocess
@@ -26,11 +27,49 @@ class MailValidationTests(unittest.TestCase):
     def test_search_normalizes_explicit_selection_and_defaults(self):
         spec = self.spec() | {"store_ids": [STORE.lower()], "query": "주간 — 보고"}
         with patch.object(mail, "_invoke", return_value={"ok": True}) as invoke:
-            self.assertEqual({"ok": True}, mail.search_mail(spec))
+            result = mail.search_mail(spec)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["search_scope"]["body_searched"])
         normalized = invoke.call_args.args[1]
         self.assertEqual([STORE], normalized["store_ids"])
         self.assertEqual(500, normalized["scan_limit"])
         self.assertNotIn("include_body", normalized)
+        self.assertNotIn("_date_assumptions", normalized)
+
+    def test_operator_naive_dates_use_pc_local_timezone_and_expose_assumption(self):
+        class KoreanPCDateTime(datetime):
+            def astimezone(self, tz=None):
+                if self.tzinfo is None:
+                    return self.replace(tzinfo=timezone(timedelta(hours=9))).astimezone(tz or timezone(timedelta(hours=9)))
+                return super().astimezone(tz)
+        spec = self.spec() | {"received_after": "2026-09-08T00:00:00", "received_before": "2026-09-12T00:00:00"}
+        with patch.object(mail, "datetime", KoreanPCDateTime), patch.object(mail, "_invoke", return_value={"ok": True}) as invoke:
+            result = mail.search_mail(spec)
+        request = invoke.call_args.args[1]
+        self.assertEqual("2026-09-07T15:00:00+00:00", request["received_after"])
+        self.assertEqual("2026-09-11T15:00:00+00:00", request["received_before"])
+        self.assertEqual(2, len(result["search_scope"]["timezone_assumptions"]))
+        self.assertEqual("pc_local_timezone_at_requested_date", result["search_scope"]["timezone_assumptions"][0]["basis"])
+
+    def test_explicit_timezone_date_range_is_utc_with_no_assumptions(self):
+        with patch.object(mail, "_invoke", return_value={"ok": True}) as invoke:
+            result = mail.search_mail(self.spec() | {
+                "received_after": "2026-09-08T00:00:00+09:00", "received_before": "2026-09-12T00:00:00+09:00"})
+        self.assertEqual("2026-09-11T15:00:00+00:00", invoke.call_args.args[1]["received_before"])
+        self.assertEqual([], result["search_scope"]["timezone_assumptions"])
+
+    def test_validation_stage_codes_are_specific_and_never_expose_input(self):
+        with patch.object(mail, "_invoke") as invoke:
+            for extra, reason in [({"received_after": "PRIVATE-invalid-date"}, "date_format_invalid"),
+                                  ({"account_smtp": "PRIVATE-invalid-account"}, "account_format_invalid"),
+                                  ({"limit": 0}, "limit_invalid"),
+                                  ({"received_after": "2026-09-12T00:00:00Z", "received_before": "2026-09-08T00:00:00Z"}, "date_range_invalid")]:
+                response = mail.search_mail(self.spec() | extra)
+                self.assertEqual(reason, response["reason"])
+                self.assertEqual("request_validation", response["stage"])
+                self.assertFalse(response["bridge_called"])
+                self.assertNotIn("PRIVATE", json.dumps(response))
+            invoke.assert_not_called()
 
     def test_body_needs_explicit_and_internal_guard_grant(self):
         spec = self.spec() | {"message_refs": [{"store_id": STORE, "entry_id": MESSAGE}], "include_body": True}
@@ -91,6 +130,15 @@ class MailTransportTests(unittest.TestCase):
         self.assertNotIn("-Command", args)
         self.assertEqual({}, json.loads(run.call_args.kwargs["input"].decode("ascii")))
         self.assertEqual(45, run.call_args.kwargs["timeout"])
+        self.assertEqual("outlook_bridge", result["stage"])
+        self.assertTrue(result["bridge_called"])
+
+    def test_bridge_scope_failure_is_distinct_from_request_validation(self):
+        raw = {"status": "connection_required", "reason": "account_mapping_required"}
+        result, _ = self.invoke_mock(subprocess.CompletedProcess([], 0, json.dumps(raw).encode(), b""))
+        self.assertEqual("account_mapping_required", result["reason"])
+        self.assertEqual("outlook_bridge", result["stage"])
+        self.assertTrue(result["bridge_called"])
 
     def test_errors_and_stderr_do_not_leak_private_information(self):
         private = "PRIVATE subject mailbox token C:\\private"
@@ -193,6 +241,18 @@ $out | ConvertTo-Json -Compress
         self.assertEqual("store_not_allowed", result["AABB0033"])
         self.assertEqual("store_not_allowed", result["AABB0044"])
 
+    def test_fixed_bridge_failure_codes_do_not_leak_exception_text(self):
+        result = self.run_fixture(r"""
+@{account=(Get-BridgeFailure 'account_mapping_required'); store=(Get-BridgeFailure 'store_not_open');
+  denied=(Get-BridgeFailure 'store_not_allowed'); invalid=(Get-BridgeFailure 'invalid_request');
+  private=(Get-BridgeFailure 'PRIVATE mail subject')} | ConvertTo-Json -Depth 5 -Compress
+""")
+        self.assertEqual("account_mapping_required", result["account"]["reason"])
+        self.assertEqual("store_not_open", result["store"]["reason"])
+        self.assertEqual("permission_denied", result["denied"]["status"])
+        self.assertEqual("bridge_request_invalid", result["invalid"]["reason"])
+        self.assertNotIn("PRIVATE", json.dumps(result))
+
     def test_unselected_pst_and_ambiguous_accounts_fail_closed(self):
         result = self.run_fixture(r"""
 $context=@{accounts=@(@{smtp='self@example.invalid';delivery_store_id='AABB0011'});
@@ -281,6 +341,40 @@ Search-SelectedMail $spec @{'AABB0011'=$store} | ConvertTo-Json -Depth 10 -Compr
         self.assertEqual(3, len(result["items"]))
         self.assertNotIn("body", result["items"][0])
         self.assertEqual("not_verified", result["server_completeness"])
+        self.assertEqual(["scan_limit"], result["partial_reasons"])
+
+    def test_sorted_old_tail_skips_to_child_but_failed_sort_scans_boundedly(self):
+        result = self.run_fixture(r"""
+$old=[pscustomobject]@{Class=43;Permission=0;PermissionTemplateGuid='';EntryID='AABB0033';
+    Subject='report';SenderName='test';SenderEmailAddress='test@example.invalid';
+    ReceivedTime=[datetime]'2026-09-01T00:00:00Z';Size=20;Attachments=[pscustomobject]@{Count=0}}
+$old | Add-Member ScriptProperty Body {throw 'BODY-MUST-NOT-BE-READ'}
+$recent=$old.PSObject.Copy(); $recent.ReceivedTime=[datetime]'2026-09-10T00:00:00Z'
+$childItems=[pscustomobject]@{Count=1;Data=@($recent)}
+$childItems | Add-Member ScriptMethod Item {param($index) return $this.Data[$index-1]}
+$childItems | Add-Member ScriptMethod Sort {param($field,$descending)}
+$child=[pscustomobject]@{EntryID='AABB0055';Items=$childItems;Folders=[pscustomobject]@{Count=0}}
+$children=[pscustomobject]@{Count=1;Data=@($child)}
+$children | Add-Member ScriptMethod Item {param($index) return $this.Data[$index-1]}
+$collection=[pscustomobject]@{Count=1000;Data=@($old);FailSort=$false}
+$collection | Add-Member ScriptMethod Item {param($index) return $this.Data[0]}
+$collection | Add-Member ScriptMethod Sort {param($field,$descending) if ($this.FailSort) {throw 'sort_unavailable'}}
+$folder=[pscustomobject]@{EntryID='AABB0044';Items=$collection;Folders=$children}
+$store=[pscustomobject]@{Root=$folder}
+$store | Add-Member ScriptMethod GetRootFolder {return $this.Root}
+$spec=[pscustomobject]@{limit=20;scan_limit=3;folder_limit=2;query='report';include_subfolders=$true;
+    folder_ids=@();received_after='2026-09-08T00:00:00Z';received_before='2026-09-12T00:00:00Z'}
+$sorted=Search-SelectedMail $spec @{'AABB0011'=$store}
+$collection.FailSort=$true
+$unsorted=Search-SelectedMail $spec @{'AABB0011'=$store}
+@{sorted=$sorted;unsorted=$unsorted} | ConvertTo-Json -Depth 10 -Compress
+""")
+        self.assertEqual("ok", result["sorted"]["status"])
+        self.assertEqual(2, result["sorted"]["scanned_count"])
+        self.assertEqual("AABB0055", result["sorted"]["items"][0]["folder_id"])
+        self.assertEqual("partial", result["unsorted"]["status"])
+        self.assertEqual(3, result["unsorted"]["scanned_count"])
+        self.assertEqual(["scan_limit"], result["unsorted"]["partial_reasons"])
 
 
 if __name__ == "__main__":

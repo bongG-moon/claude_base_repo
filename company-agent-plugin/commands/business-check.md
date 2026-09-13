@@ -1,8 +1,10 @@
 ---
-description: Check the business pilot prerequisites without moving files, reading mail bodies, changing DRM, or installing dependencies.
+description: 파일이나 설정을 바꾸지 않고 업무 기능의 사용 조건을 확인합니다.
 ---
 
 # Business pilot check
+
+Default to Korean for all questions, choices and result explanations unless the user explicitly requests another language. Preserve exact identifiers and explain English tool results in Korean.
 
 Use the exact `company_agent_runtime.cliCommand` prefix and active stateRoot.
 Run `business doctor --state-root "<stateRoot>"`. Translate each result into

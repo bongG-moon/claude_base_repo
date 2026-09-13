@@ -203,7 +203,8 @@ _CSS = """
 header,main,footer{max-width:1150px;margin:auto;padding:24px}header{padding-top:48px}h1{font-size:clamp(30px,5vw,52px);line-height:1.2;margin:0 0 16px}
 h2{font-size:clamp(24px,3vw,34px);line-height:1.3;margin:0 0 22px}h1,h2{overflow-wrap:anywhere}p{white-space:pre-line;overflow-wrap:anywhere}li,td,th{overflow-wrap:anywhere}
 .subtitle,.page-number,footer{color:var(--muted)}.section{background:var(--paper);padding:40px;margin:0 0 24px;border:1px solid var(--line);border-radius:var(--radius)}
-.page-number{display:block;font-size:13px;margin-bottom:14px}.text{max-width:80ch}.table-wrap{overflow:auto;margin:24px 0}table{border-collapse:collapse;width:100%;text-align:left}
+.page-number{display:block;font-size:13px;margin-bottom:14px}.text{max-width:80ch}.section{min-width:0}.table-wrap{overflow:auto;max-width:100%;margin:24px 0}table{border-collapse:collapse;width:100%;text-align:left}
+@media screen{table{min-width:calc(var(--columns,1)*7rem)}th{word-break:keep-all;overflow-wrap:normal}.table-wrap:focus-visible{outline:3px solid var(--accent)}}
 th,td{border-bottom:1px solid var(--line);padding:12px;vertical-align:top}th{color:var(--accent);font-weight:700}figure{margin:24px 0}img{max-width:100%;max-height:65vh;object-fit:contain}figcaption{font-size:14px;color:var(--muted)}
 nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px}button{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer}button:disabled{opacity:.4}button:focus-visible{outline:3px solid var(--accent)}
 body[data-view=slides] main>.section{display:none}body[data-view=slides] main>.section.active{display:block;min-height:60vh}body[data-view=scroll] .slide-controls{display:none}.chart-data caption{text-align:left;font-weight:700;color:var(--accent)}
@@ -224,47 +225,93 @@ _JS = """'use strict';(()=>{const sections=[...document.querySelectorAll('main>.
 
 def _html_table(headers: list[str], rows: list[list[Any]], caption: str = "") -> str:
     esc = lambda value: html.escape(str(value), quote=True)
-    return ('<div class="table-wrap"><table>' + (f'<caption>{esc(caption)}</caption>' if caption else '') +
+    return (f'<div class="table-wrap" tabindex="0" role="region" aria-label="가로로 스크롤할 수 있는 표"><table style="--columns:{len(headers)}">' + (f'<caption>{esc(caption)}</caption>' if caption else '') +
             '<thead><tr>' + ''.join(f'<th scope="col">{esc(v)}</th>' for v in headers) + '</tr></thead><tbody>' +
             ''.join('<tr>' + ''.join(f'<td>{esc(v)}</td>' for v in row) + '</tr>' for row in rows) + '</tbody></table></div>')
 
 
-def create_html(spec: dict[str, Any], output: Path) -> dict[str, Any]:
+def html_choices(spec: dict[str, Any]) -> dict[str, Any]:
+    """Read-only next-question contract, without reading report source assets."""
+    try:
+        if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional'):
+            raise ArtifactError('invalid_choice', '디자인 선택 단계의 형식을 확인해 주세요.')
+        fields = {key: spec[key] for key in ('style','length','mode','protected','drmRestricted','permissionGranted','accessStatus') if key in spec}
+        normalized = _normalize({**fields, 'sections': [{}]})
+        from .report_styles import choices
+        pending = choices(spec)
+        return pending or {'ok': True, 'status': 'choices_ready', 'stage': 'ready',
+                           'selection': {key: normalized[key] for key in ('style','length','mode')},
+                           'message': '디자인·분량·보기 방식이 정해졌습니다. 같은 조건을 다시 묻지 않고 제작합니다.'}
+    except Exception as exc:
+        return _failure(exc)
+
+
+def html_designs(output: Path | None = None) -> dict[str, Any]:
+    """Expose the shipped static picker. Never launch browsers or edit user state."""
+    try:
+        source = Path(__file__).resolve().parents[2] / 'skills/html-report/assets/design-picker.html'
+        source = _source(source, ('.html',))
+        target = _target(output, '.html') if output else source
+        if output:
+            _publish(source, target)
+        return {'ok': True, 'status': 'choices_available', 'outputPath': str(target),
+                'message': '추천 디자인만 먼저 표시합니다. 추가 디자인을 펼쳐 비교한 뒤 선택 내용을 Claude 채팅에 붙여 넣어 주세요.',
+                'settingsChanged': False, 'browserOpened': False}
+    except Exception as exc:
+        return _failure(exc)
+
+
+def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = False) -> dict[str, Any]:
     try:
         output = _target(output, ".html")
         data = _normalize(spec)
-        esc = lambda value: html.escape(str(value), quote=True)
-        sections = []
-        for index, row in enumerate(data["sections"], 1):
-            fragment = f'<section class="section" id="section-{index}"><span class="page-number">{index:02d}</span><h2>{esc(row["title"])}</h2>'
-            if row["body"]:
-                fragment += f'<p class="text">{esc(row["body"])}</p>'
-            if row["bullets"]:
-                fragment += '<ul class="text">' + ''.join(f'<li>{esc(v)}</li>' for v in row["bullets"]) + '</ul>'
-            if "table" in row:
-                fragment += _html_table(row["table"]["headers"], row["table"]["rows"])
-            if "chart" in row:
-                chart = row["chart"]
-                fragment += _html_table(["항목"] + [v["name"] for v in chart["series"]],
-                                        [[cat] + [v["values"][i] for v in chart["series"]] for i, cat in enumerate(chart["categories"])], "차트 원자료")
-            if "image" in row:
-                im = row["image"]
-                fragment += f'<figure><img src="data:{im["mime"]};base64,{im["data"]}" alt="{esc(im["alt"])}"><figcaption>{esc(im["alt"])}</figcaption></figure>'
-            sections.append(fragment + '</section>')
-        script_hash = base64.b64encode(hashlib.sha256(_JS.encode()).digest()).decode()
-        csp = f"default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'sha256-{script_hash}'; base-uri 'none'; form-action 'none'"
-        view = "slides" if data["mode"] == "slides" else "scroll"
-        toggle = '<button id="toggle-view" type="button">페이지로 보기</button>' if data["mode"] == "both" else ''
-        document = ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-                    f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title><style>{_CSS}</style></head>' +
-                    f'<body data-style="{data["style"]}" data-view="{view}" data-length="{data["length"]}"><header><h1>{esc(data["title"])}</h1><p class="subtitle">{esc(data["subtitle"])}</p><nav aria-label="보고서 보기">{toggle}<button id="print" type="button">인쇄 / PDF 저장</button><span class="slide-controls"><button id="previous" type="button">이전</button> <span id="slide-count" aria-live="polite"></span> <button id="next" type="button">다음</button></span></nav></header>' +
-                    '<main>' + ''.join(sections) + '</main><footer>이 파일은 인터넷 연결 없이 열 수 있습니다.</footer><script>' + _JS + '</script></body></html>')
+        if require_choices:
+            from .report_styles import choices
+            pending = choices(spec)
+            if pending:
+                return pending
+        from .report_facts import FactError, resolve, bind
+        from .report_design import render
+        try:
+            facts, validation = resolve(spec, data["sections"])
+            data["title"] = bind(data["title"], facts)
+            data["subtitle"] = bind(data["subtitle"], facts)
+            for raw, row in zip(spec.get("sections", spec.get("slides", [])), data["sections"]):
+                layout = raw.get("layout")
+                if layout is not None:
+                    if layout not in ("cover", "dashboard", "split", "table", "summary"):
+                        raise ArtifactError("invalid_layout", "지원하는 페이지 구성 방식을 선택해 주세요.")
+                    row["layout"] = layout
+                for field in ("eyebrow", "takeaway", "source"):
+                    row[field] = bind(_text(raw.get(field, ""), 2000), facts)
+                for field in ("title", "body"):
+                    row[field] = bind(row[field], facts)
+                row["bullets"] = [bind(value, facts) for value in row["bullets"]]
+                if "table" in row:
+                    row["table"]["rows"] = [[bind(v, facts) for v in cells] for cells in row["table"]["rows"]]
+                if "chart" in row:
+                    row["chart"]["title"] = bind(_text(raw["chart"].get("title", "지표 비교"), 300), facts)
+                kpis = raw.get("kpis", [])
+                if not isinstance(kpis, list) or len(kpis) > 6:
+                    raise ArtifactError("invalid_kpi", "한 페이지의 핵심 지표는 6개 이하로 구성해 주세요.")
+                row["kpis"] = []
+                for kpi in kpis:
+                    if not isinstance(kpi, dict) or not isinstance(kpi.get("fact"), str) or kpi["fact"] not in facts:
+                        raise ArtifactError("invalid_kpi", "핵심 지표는 계산된 공통 수치를 참조해야 합니다.")
+                    fact = facts[kpi["fact"]]
+                    row["kpis"].append({"label": _text(kpi.get("label", fact["label"]), 200),
+                                        "display": fact["display"], "unit": fact["unit"],
+                                        "note": bind(_text(kpi.get("note", ""), 500), facts)})
+        except FactError as exc:
+            raise ArtifactError("numeric_validation_failed", str(exc)) from None
+        document = render(data, _CSS, _JS, _html_table)
         with tempfile.TemporaryDirectory(prefix="company-report-") as temp:
             draft = Path(temp) / "report.html"
             draft.write_text(document, encoding="utf-8")
             _publish(draft, output)
         return {"ok": True, "status": "created", "outputPath": str(output), "style": data["style"], "mode": data["mode"],
-                "sections": len(sections), "offline": True, "warnings": ["HTML 차트 입력은 접근 가능한 수치 표로 표시합니다." ] if any("chart" in r for r in data["sections"]) else []}
+                "sections": len(data["sections"]), "offline": True, "validation": validation,
+                "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."]}
     except Exception as exc:
         return _failure(exc)
 
@@ -382,81 +429,8 @@ def _fit_preflight(data: dict[str, Any]) -> None:
 
 
 def _python_ppt(data: dict[str, Any], draft: Path, template: Path | None) -> dict[str, Any]:
-    from pptx import Presentation
-    from pptx.chart.data import CategoryChartData
-    from pptx.enum.chart import XL_CHART_TYPE
-    from pptx.dml.color import RGBColor
-    from pptx.util import Inches, Pt
-    prs = Presentation(str(template)) if template else Presentation()
-    if not template:
-        prs.slide_width, prs.slide_height = Inches(13.333333), Inches(7.5)
-    else:
-        # Work on the copy only. Drop slide relationships so discarded sample data
-        # is not silently retained as orphaned ZIP parts by the library serializer.
-        for relation in list(prs.slides._sldIdLst):
-            prs.part.drop_rel(relation.rId)
-            prs.slides._sldIdLst.remove(relation)
-    blank = min(prs.slide_layouts, key=lambda layout: len(layout.placeholders))
-    width, height = prs.slide_width / 914400, prs.slide_height / 914400
-    native = {"text": 0, "tables": 0, "charts": 0, "images": 0}
-    for row in data["sections"]:
-        slide = prs.slides.add_slide(blank)
-        for shape in list(slide.placeholders):
-            element = shape._element
-            element.getparent().remove(element)
-        def textbox(text: str, x: float, y: float, w: float, h: float, size: int, bold: bool = False) -> None:
-            shape = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
-            shape.text_frame.word_wrap = True
-            shape.text_frame.text = text
-            for paragraph in shape.text_frame.paragraphs:
-                paragraph.font.name = "Malgun Gothic"
-                paragraph.font.size = Pt(size)
-                paragraph.font.bold = bold
-                if not template:
-                    paragraph.font.color.rgb = RGBColor.from_string("17324D")
-            native["text"] += 1
-        textbox(row["title"], .55, .3, width - 1.1, .8, 28, True)
-        blocks = [key for key in ("body", "bullets", "table", "chart", "image") if row.get(key)]
-        available, top = max(1.0, height - 1.8), 1.35
-        block_height = available / max(1, len(blocks))
-        for key in blocks:
-            usable = max(.5, block_height - .12)
-            if key in ("body", "bullets"):
-                textbox(row[key] if key == "body" else "\n".join("• " + v for v in row[key]), .6, top, width - 1.2, usable, 17)
-            elif key == "table":
-                content = row[key]
-                table = slide.shapes.add_table(len(content["rows"]) + 1, len(content["headers"]), Inches(.6), Inches(top), Inches(width - 1.2), Inches(usable)).table
-                for i, values in enumerate([content["headers"], *content["rows"]]):
-                    for j, value in enumerate(values):
-                        table.cell(i, j).text = value
-                        for paragraph in table.cell(i, j).text_frame.paragraphs:
-                            paragraph.font.name = "Malgun Gothic"
-                            paragraph.font.size = Pt(12)
-                native["tables"] += 1
-            elif key == "chart":
-                chart = row[key]
-                chart_data = CategoryChartData()
-                chart_data.categories = chart["categories"]
-                for serie in chart["series"]:
-                    chart_data.add_series(serie["name"], serie["values"])
-                kinds = {"column": XL_CHART_TYPE.COLUMN_CLUSTERED, "bar": XL_CHART_TYPE.BAR_CLUSTERED,
-                         "line": XL_CHART_TYPE.LINE, "pie": XL_CHART_TYPE.PIE}
-                slide.shapes.add_chart(kinds[chart["type"]], Inches(.6), Inches(top), Inches(width - 1.2), Inches(usable), chart_data)
-                native["charts"] += 1
-            elif key == "image":
-                im = row[key]
-                # Embed the already inspected bytes, not a possibly changed path.
-                from io import BytesIO
-                image = slide.shapes.add_picture(BytesIO(base64.b64decode(im["data"])), Inches(.6), Inches(top), height=Inches(usable))
-                if image.width > Inches(width - 1.2):
-                    ratio = Inches(width - 1.2) / image.width
-                    image.width, image.height = int(image.width * ratio), int(image.height * ratio)
-                native["images"] += 1
-            top += block_height
-    prs.core_properties.title = data["title"]
-    prs.core_properties.subject = data["subtitle"]
-    prs.save(str(draft))
-    return native
+    from .presentation_design import render_python
+    return render_python(data, draft, template)
 
 
 def _office(data: dict[str, Any], draft: Path, template: Path | None, work: Path, render_only: bool) -> dict[str, Any]:
@@ -475,7 +449,7 @@ def _office(data: dict[str, Any], draft: Path, template: Path | None, work: Path
         if not isinstance(answer, dict) or "ok" not in answer:
             raise ValueError("invalid office result")
         # Never return raw Office errors or stderr: these may contain private paths/content.
-        allowed = {"ok", "status", "code", "message", "rendered", "slides", "editability"}
+        allowed = {"ok", "status", "code", "message", "rendered", "slides", "editability", "diagnostic"}
         return {key: answer[key] for key in allowed if key in answer}
     except subprocess.TimeoutExpired:
         return {"ok": False, "status": "unknown", "code": "office_timeout", "message": "PowerPoint 작업 제한 시간을 초과했습니다. 사용 중인 PowerPoint를 종료하지 않았습니다."}
@@ -487,12 +461,23 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None)
     try:
         output = _target(output, ".pptx")
         data = _normalize(spec)
+        from . import presentation_design, report_facts
+        try:
+            arithmetic = presentation_design.prepare(spec, data)
+        except (presentation_design.DesignError, report_facts.FactError) as exc:
+            raise ArtifactError("ppt_design_invalid", str(exc)) from None
         _fit_preflight(data)
         inspected = inspect_template(template) if template else None
         if inspected and not inspected["ok"]:
             return inspected
         if inspected and inspected["hasExternalRelationships"]:
             raise ArtifactError("external_template_links", "양식에 외부 연결이 있어 자동 제작을 중단했습니다. 보호된 연결을 우회하지 않습니다.")
+        size = inspected.get("sizeEmu", {}) if inspected else {}
+        try:
+            data['presentationPlan'] = presentation_design.plan(
+                data, size.get('width', 12192000) / 12700, size.get('height', 6858000) / 12700)
+        except presentation_design.DesignError as exc:
+            raise ArtifactError("ppt_design_invalid", str(exc)) from None
         python_available = importlib.util.find_spec("pptx") is not None
         # Office can retain a handle after a timeout. Do not kill its process or
         # mask a saved output with cleanup errors when a temporary file is locked.
@@ -544,7 +529,8 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None)
                 warnings.append(visual.get("message", "이미지 미리보기를 만들지 못했습니다."))
             return {"ok": True, "status": "created" if visual.get("ok") else "partial", "outputPath": str(output),
                     "engine": engine, "slides": len(data["sections"]), "editability": native,
-                    "validation": {"structure": "passed", "render": visual, "visualReview": "required"},
+                    "validation": {"structure": "passed", "render": visual, "visualReview": "required",
+                                   "arithmetic": arithmetic, "layout": "bounded-plan-checked-not-visual-proof"},
                     "previews": previews, "warnings": warnings}
     except Exception as exc:
         return _failure(exc)

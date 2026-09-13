@@ -256,6 +256,19 @@ def begin_turn(
             # new verification/review budgets or amplify learning observations.
             return state
         previous_turn = state.get("turnId")
+        from .work import new_work
+        work = state.setdefault("work", new_work())
+        if not enabled:
+            work["pending"] = []
+            work["reviewRequested"] = False
+        # Continue the same work until the coordinator explicitly begins a new
+        # topic. User replies and compaction must not amplify learning samples.
+        if work.get("status") == "complete":
+            work["status"] = "active"
+            work["reviewRequested"] = False
+        outstanding = state.get("mutationCount", 0) and (state.get("verification") or {}).get("status") != "pass"
+        obligation = {key: state.get(key) for key in ("mutationCount", "verification", "stopRetryCount",
+                      "sameFailureCount", "lastFailureFingerprint")} if outstanding else {}
         state.update(
             {
                 "turnId": uuid.uuid4().hex,
@@ -267,11 +280,15 @@ def begin_turn(
                 "learningAttempts": 0,
                 "usedSkills": [],
                 "taskToolCount": 0,
+                "approvalUnavailable": False,
+                "lastStopActivityCount": None,
                 "taskFailureCount": 0,
                 "taskVerificationFailures": 0,
                 "turnStartedAt": _now(),
                 "route": {
                     "tier": tier,
+                    "modelAlias": {"LARGE": "opus", "MEDIUM": "sonnet", "SMALL": "haiku"}.get(tier.upper()),
+                    "actualModel": "unverified",
                     "verificationRequired": bool(verification_required),
                     "reasonCodes": list(reason_codes),
                 },
@@ -281,8 +298,10 @@ def begin_turn(
                 "sameFailureCount": 0,
                 "lastFailureFingerprint": None,
                 "recentTools": [],
+                "workerExecutions": [],
             }
         )
+        state.update(obligation)
         atomic_write_json(path, state)
         return state
 
@@ -293,7 +312,10 @@ def learning_context(state: dict[str, Any]) -> dict[str, Any] | None:
     if not isinstance(turn_id, str) or not _TURN_ID_RE.fullmatch(turn_id):
         return None
     previous = state.get("previousTurnId")
+    from .work import context as work_context
     return {
+        "policy": "work-milestone",
+        "work": work_context(state),
         "turnId": turn_id,
         "previousTurnId": previous if isinstance(previous, str) and _TURN_ID_RE.fullmatch(previous) else None,
         "status": state.get("learningStatus") if state.get("learningStatus") in {"pending", "disabled", "complete", "deferred"} else "disabled",
@@ -349,10 +371,10 @@ def _mcp_operation_is_read_only(operation: str) -> bool:
     return first_word in _READ_ONLY_MCP_OPERATION_PREFIXES
 
 
-def _literal_command_words(command: str) -> list[str] | None:
+def _literal_command_words(command: str, *, allow_percent: bool = False) -> list[str] | None:
     """Accept only literal command words, never shell programs or expansions."""
 
-    if any(character in command for character in "\r\n\0$`%"):
+    if any(character in command for character in ("\r\n\0$`" if allow_percent else "\r\n\0$`%")):
         return None
     value = command.strip()
     # PowerShell's call operator is safe only before the one literal command.
@@ -422,6 +444,14 @@ def _own_cli_arguments(command: str) -> list[str] | None:
     """
 
     words = _literal_command_words(command)
+    if not words and "%" in command:
+        # A literal percentage in a summary is not an expansion for a directly
+        # invoked trusted .exe. Never extend this to cmd/batch/PATH wrappers.
+        candidate = _literal_command_words(command, allow_percent=True)
+        if candidate and Path(candidate[0]).is_absolute() and Path(candidate[0]).suffix.casefold() == ".exe":
+            if (_known_runtime(candidate[0], {"python", "python.exe"})
+                    or _known_runtime(candidate[0], {"powershell", "powershell.exe", "pwsh", "pwsh.exe"})):
+                words = candidate
     if not words:
         return None
     program, *arguments = words
@@ -465,7 +495,7 @@ def _is_own_context_audit(command: str) -> bool:
                 and Path(arguments[3]).is_absolute())
 
 
-def _is_own_verification_command(command: str, session_id: str) -> bool:
+def _is_own_verification_command(command: str, session_id: str, root: Path | None = None) -> bool:
     """Do not invalidate a verification marker while recording its own call."""
     arguments = _own_cli_arguments(command)
     if not arguments:
@@ -473,15 +503,45 @@ def _is_own_verification_command(command: str, session_id: str) -> bool:
     if arguments[:2] != ["session", "verify"]:
         return False
     arguments = arguments[2:]
-    if len(arguments) != 6:
+    if len(arguments) not in {6, 8}:
         return False
     fields: dict[str, str] = {}
     for index in range(0, len(arguments), 2):
         key, value = arguments[index:index + 2]
-        if key not in {"--session", "--status", "--summary"} or key in fields or not value:
+        if key not in {"--session", "--status", "--summary", "--state-root"} or key in fields or not value:
             return False
         fields[key] = value
-    return fields.get("--session") == safe_session_id(session_id) and fields.get("--status") in {"pass", "fail"}
+    return (bool(fields.get("--summary")) and fields.get("--session") == safe_session_id(session_id)
+            and fields.get("--status") in {"pass", "fail", "not_applicable", "partial", "unavailable"}
+            and ("--state-root" not in fields or (root is not None and _same_absolute_path(fields["--state-root"], root))))
+
+
+def _is_own_work_command(command: str, session_id: str, state: dict, root: Path) -> bool:
+    args = _own_cli_arguments(command)
+    if not args or len(args) < 2 or args[0] != "work" or args[1] not in {"checkpoint", "resolve"}:
+        return False
+    words = _literal_command_words(command)
+    if words and words[0] == "company-agent":
+        resolved = shutil.which("company-agent")
+        if not resolved or not _same_absolute_path(resolved, Path(__file__).resolve().parents[2] / "bin" / "company-agent.cmd"):
+            return False
+    values = {}
+    tail = args[2:]
+    if len(tail) % 2:
+        return False
+    for key, value in zip(tail[::2], tail[1::2]):
+        allowed = {"--session", "--turn", "--work-id", "--state-root"} if args[1] == "resolve" else {"--session", "--turn", "--status", "--learn", "--new", "--state-root"}
+        if key in values or key not in allowed:
+            return False
+        values[key] = value
+    if args[1] == "resolve":
+        return (values.get("--session") == safe_session_id(session_id) and values.get("--turn") == state.get("turnId")
+                and any(item.get("workId") == values.get("--work-id") for item in state.get("resolvedChanges", []) + state.get("unresolvedChanges", []))
+                and ("--state-root" not in values or _same_absolute_path(values["--state-root"], root)))
+    return (values.get("--session") == safe_session_id(session_id) and values.get("--turn") == state.get("turnId")
+            and values.get("--status") in {"active", "waiting", "complete", "cancelled"}
+            and values.get("--learn", "no") in {"yes", "no"} and values.get("--new", "no") in {"yes", "no"}
+            and ("--state-root" not in values or _same_absolute_path(values["--state-root"], root)))
 
 
 def _safe_local_path(path: Path, boundary: Path, *, allow_missing_leaf: bool = False) -> bool:
@@ -524,10 +584,40 @@ def _is_learning_spec_write(tool_name: str, tool_input: dict[str, Any], state: d
     return path == _learning_spec_path(root, turn_id) and _safe_local_path(path, root, allow_missing_leaf=True)
 
 
+def _is_mail_search_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
+    """A typed disposable search request is not a business artifact change.
+
+    Classification only, NOT file write permission. No arbitrary tmp exception.
+    """
+    import json
+    if tool_name.casefold() != "write":
+        return False
+    value, content = tool_input.get("file_path"), tool_input.get("content")
+    if not isinstance(value, str) or not isinstance(content, str) or len(content.encode("utf-8")) > 32768:
+        return False
+    path = Path(value)
+    if (path.parent != root.absolute() / "tmp" or
+            not re.fullmatch(r"mail-search-[a-zA-Z0-9_-]{1,80}\.json", path.name) or
+            not _safe_local_path(path, root, allow_missing_leaf=True)):
+        return False
+    try:
+        from .business_mail import _normalize_spec
+        _normalize_spec("search", json.loads(content))
+        return True
+    except (ValueError, TypeError, OSError, OverflowError):
+        return False
+
+
 def _is_own_learning_command(command: str, session_id: str, state: dict[str, Any], root: Path) -> bool:
     arguments = _own_cli_arguments(command)
     if not arguments:
         return False
+    if "--state-root" in arguments:
+        index = arguments.index("--state-root")
+        if (arguments.count("--state-root") != 1 or index + 1 >= len(arguments)
+                or not _same_absolute_path(arguments[index + 1], root)):
+            return False
+        arguments = arguments[:index] + arguments[index + 2:]
     words = _literal_command_words(command)
     if words and words[0].casefold() == "company-agent":
         # A similarly named program on PATH must not bypass business checks.
@@ -537,7 +627,7 @@ def _is_own_learning_command(command: str, session_id: str, state: dict[str, Any
             return False
     if arguments == ["learning", "status"] or arguments == ["learning", "status", "--session", safe_session_id(session_id)]:
         return True
-    if len(arguments) != 8 or arguments[:2] != ["learning", "review"]:
+    if len(arguments) != 8 or arguments[0] != "learning" or arguments[1] not in {"review", "stage"}:
         return False
     fields: dict[str, str] = {}
     for index in range(2, len(arguments), 2):
@@ -607,6 +697,21 @@ def _tool_mutated(tool_name: str, tool_input: dict[str, Any]) -> bool:
     return False
 
 
+def _native_action_not_performed(payload: dict[str, Any]) -> bool:
+    """Recognize the host's explicit pre-execution rejection, not tool failures.
+
+    A generic PermissionError can follow partial writes. Never exempt those.
+    Only metadata is retained, and existing unverified changes stay outstanding.
+    """
+    if (payload.get("hook_event_name") != "PostToolUseFailure"
+            or payload.get("tool_name") not in {"Bash", "Write", "Edit", "Read", "Glob", "Grep"}):
+        return False
+    error = payload.get("error")
+    return (isinstance(error, str)
+            and error.startswith("Permission for this tool use was denied.")
+            and "The action was NOT performed" in error)
+
+
 def record_activity(
     payload: dict[str, Any],
     root: Path | None = None,
@@ -621,6 +726,7 @@ def record_activity(
         else {}
     )
     mutated = _tool_mutated(tool_name, tool_input)
+    not_performed = _native_action_not_performed(payload)
     response = payload.get("tool_response")
     failed = (
         str(payload.get("hook_event_name") or "").casefold()
@@ -633,6 +739,9 @@ def record_activity(
     with _locked_session(session_id, root) as (state, path):
         if _stale_native_prompt(payload, state):
             return state
+        if not_performed:
+            mutated = False
+            state["approvalUnavailable"] = True
         from .business_safety import protection_notice
         if protection_notice(payload):
             # Metadata only. Never preserve the offending response/document.
@@ -644,11 +753,23 @@ def record_activity(
         if tool_name.casefold().strip() in {"bash", "powershell"}:
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
             bookkeeping = (
-                _is_own_verification_command(command, session_id)
+                _is_own_verification_command(command, session_id, root or user_state_root())
                 or _is_own_context_audit(command)
                 or _is_own_learning_command(command, session_id, state, root or user_state_root())
             )
         bookkeeping = bookkeeping or _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
+        bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
+        if tool_name.casefold().strip() in {"bash", "powershell"}:
+            command = str(tool_input.get("command") or tool_input.get("cmd") or "")
+            from .execution_contract import classify_command, internal_plan_command
+            classification = classify_command(command)
+            if classification == "read_only":
+                mutated = False
+            if internal_plan_command(command, root or user_state_root()):
+                bookkeeping = True
+            # Only exact current-session lifecycle commands are bookkeeping.
+            if _is_own_work_command(command, session_id, state, root or user_state_root()):
+                bookkeeping = True
         if bookkeeping:
             mutated = False
         elif collect_learning:
@@ -663,12 +784,33 @@ def record_activity(
                 if observed:
                     skills = [item for item in state.get("usedSkills", []) if isinstance(item, dict) and item.get("name") != observed["name"]]
                     state["usedSkills"] = (skills + [observed])[-MAX_OBSERVED_SKILLS:]
+            work = state.get("work")
+            if isinstance(work, dict):
+                work["toolCount"] = min(1_000_000, work.get("toolCount", 0) + 1)
+                work["failures"] = min(1_000_000, work.get("failures", 0) + int(failed))
+                work["revision"] = work.get("revision", 0) + 1
+                work["usedSkills"] = list({item["name"]: item for item in
+                    work.get("usedSkills", []) + state.get("usedSkills", [])}.values())[-MAX_OBSERVED_SKILLS:]
+                if state.get("protectionRestricted"):
+                    work["pending"] = []
+                    work["reviewRequested"] = False
         event = {"at": at, "tool": tool_name[:120], "success": not failed, "mutation": mutated}
+        if tool_name in {"Agent", "Task"}:
+            worker = tool_input.get("subagent_type")
+            if worker in {"company-agent:small-worker", "company-agent:medium-worker", "company-agent:large-worker"}:
+                alias = tool_input.get("model")
+                executions = state.get("workerExecutions", [])
+                state["workerExecutions"] = (executions + [{"agent": worker,
+                    "requestedAlias": alias if alias in {"haiku", "sonnet", "opus"} else "agent-default",
+                    "toolSucceeded": not failed, "actualModel": "unverified"}])[-8:]
         recent = list(state.get("recentTools", []))[-19:]
         recent.append(event)
         state["recentTools"] = recent
         state["lastActivityAt"] = at
+        state["activityCount"] = _safe_nonnegative_int(state.get("activityCount")) + 1
         if mutated:
+            if isinstance(state.get("work"), dict):
+                state["work"]["closed"] = False
             previous_verification = state.get("verification")
             state["mutationCount"] = _safe_nonnegative_int(
                 state.get("mutationCount")
@@ -692,11 +834,13 @@ def mark_verified(
     summary: str,
     root: Path | None = None,
 ) -> dict[str, Any]:
-    if status not in {"pass", "fail"}:
-        raise ValueError("verification status must be pass or fail")
+    if status not in {"pass", "fail", "not_applicable", "partial", "unavailable"}:
+        raise ValueError("invalid verification status")
     compact_summary = summary.strip()[:500]
 
     with _locked_session(session_id, root) as (state, path):
+        if status == "not_applicable" and state.get("mutationCount", 0):
+            raise ValueError("not_applicable cannot clear recorded business changes")
         collect_learning = _collect_learning_observations(state, root or user_state_root())
         if state.get("protectionRestricted"):
             compact_summary = "보호 제한 항목을 제외한 범위의 검증 상태만 기록했습니다."
@@ -705,13 +849,16 @@ def mark_verified(
             "at": _now(),
             "summary": compact_summary,
         }
+        state["verificationRevision"] = _safe_nonnegative_int(state.get("verificationRevision")) + 1
         if status == "pass":
             state["stopRetryCount"] = 0
             state["sameFailureCount"] = 0
             state["lastFailureFingerprint"] = None
-        else:
+        elif status == "fail":
             if collect_learning:
                 state["taskVerificationFailures"] = _safe_nonnegative_int(state.get("taskVerificationFailures")) + 1
+                if isinstance(state.get("work"), dict):
+                    state["work"]["verificationFailures"] = min(1_000_000, state["work"].get("verificationFailures", 0) + 1)
             fingerprint = hashlib.sha256(
                 compact_summary.casefold().encode("utf-8")
             ).hexdigest()[:16]
@@ -747,13 +894,13 @@ def _learning_stop(
     completion: dict[str, Any],
 ) -> dict[str, Any]:
     context = learning_context(state)
+    # Stopping a response is not completing a business task. No empty review,
+    # no continuation for lookups, choices or waiting. Verification is separate.
+    work = state.get("work") or {}
+    if work.get("status") != "complete" or not work.get("reviewRequested"):
+        return completion
     if context and context["status"] == "deferred" and state.get("learningDeferredReason") == "late-business-activity":
-        warning = (
-            "Company Agent observed additional business work after this turn's learning review. "
-            "The earlier review does not cover the final work; do not claim all work was learned. "
-            "The automatic review remains deferred until a later user turn; report the final task outcome honestly."
-        )
-        return {"systemMessage": " ".join(filter(None, [completion.get("systemMessage"), warning]))}
+        return completion
     if not context or context["status"] != "pending":
         return completion
     from .learning import learning_enabled
@@ -777,13 +924,15 @@ def _learning_stop(
     atomic_write_json(path, state)
     turn_id = context["turnId"]
     spec_path = _learning_spec_path(root, turn_id)
+    from .native_runtime import cli_command
+    prefix = cli_command(Path(__file__).resolve().parents[2])
     reason = (
-        "최종 답변 전에 company-agent:self-learning Skill을 사용해 이번 업무의 성공·실패와 사용자 수정 요구를 짧게 검토하십시오. "
+        "완료 표시된 업무의 새 피드백만 company-agent:self-learning Skill로 조용히 검토하십시오. "
         "사용자가 '기억해줘'라고 하지 않았어도 적용합니다. 대화 원문·비밀·일회성 업무값은 저장하지 마십시오. "
-        "근거 없는 선호를 확정하거나 검사 실패를 성공으로 바꾸지 마십시오. 재사용할 내용이 없으면 빈 학습 내용으로 완료하십시오. "
+        "근거 없는 선호를 확정하거나 검사 실패를 성공으로 바꾸지 마십시오. 학습 accepted/관찰 없음 등 내부 상태를 최종 답변에 나열하지 마십시오. "
         f'현재 session은 "{safe_session_id(session_id)}", turn은 "{turn_id}"입니다. '
         f'Skill의 양식에 맞춘 검토 JSON을 "{spec_path}"에 Write로 저장한 뒤, 설치된 CLI로 '
-        f'learning review --session "{safe_session_id(session_id)}" --turn "{turn_id}" --spec "{spec_path}"를 실행하십시오. '
+        f'{prefix} learning review --session "{safe_session_id(session_id)}" --turn "{turn_id}" --spec "{spec_path}"를 실행하십시오. '
         "검토를 위해 업무 파일을 더 수정하거나 외부 전송을 다시 실행하지 마십시오. "
         f"학습 처리 기회는 최대 {MAX_LEARNING_CONTINUATIONS}회이며 실패하면 완료했다고 주장하지 마십시오."
     )
@@ -810,9 +959,17 @@ def stop_decision(
     with _locked_session(session_id, root) as (state, path):
         if _stale_native_prompt(payload, state):
             return {}
+        if state.get("approvalUnavailable"):
+            return {"systemMessage": "승인되지 않아 실행하지 못한 항목과 이미 변경한 것 중 미검증 내용을 간단히 알리고 가능한 결과를 전달하세요. 같은 작업이나 학습 기록을 반복 요청하지 마세요."}
         if _safe_nonnegative_int(state.get("mutationCount")) == 0:
             return _learning_stop(state, path, session_id, root or user_state_root(), {})
         verification = state.get("verification")
+        if (
+            isinstance(verification, dict) and verification.get("status") in {"unavailable", "partial"}
+        ):
+            # End honestly, without a fake pass or a futile correction loop.
+            # Keep the outstanding mutation obligation for a later user turn.
+            return {"systemMessage": "완료한 결과와 확인하지 못한 부분만 간단히 안내하세요. 승인/검증 제한을 성공으로 기록하거나 같은 작업을 반복하지 마세요."}
         if (
             isinstance(verification, dict)
             and verification.get("status") == "pass"
@@ -830,16 +987,30 @@ def stop_decision(
         if retry_count >= retry_budget:
             return _learning_stop(state, path, session_id, root or user_state_root(), _failure_message("budget"))
 
+        if (payload.get("stop_hook_active") is True and retry_count > 0
+                and state.get("lastStopActivityCount") == state.get("activityCount", 0)
+                and state.get("lastStopVerificationRevision") == state.get("verificationRevision", 0)):
+            # Some Claude versions emit no activity hook for a permission
+            # rejection. With no new tool evidence, repeating Stop cannot help.
+            # Do not infer why it stopped, clear changes, or fabricate a pass.
+            return {"systemMessage": "추가 실행 증거가 없어 반복 보정을 종료합니다. 완료한 결과와 남은 미검증 사항만 간단히 알리세요. 성공 기록을 만들거나 사용자에게 내부 기록 명령 실행을 떠넘기지 마세요."}
+
         # `stop_hook_active` means this is a corrective continuation. It must
         # not disable the second bounded attempt; the persisted counter is the
         # loop guard for both initial and active Stop events.
         state["stopRetryCount"] = retry_count + 1
+        state["lastStopActivityCount"] = state.get("activityCount", 0)
+        state["lastStopVerificationRevision"] = state.get("verificationRevision", 0)
         atomic_write_json(path, state)
 
+    from .native_runtime import cli_command
+    command_prefix = cli_command(Path(__file__).resolve().parents[2])
     reason = (
-        "변경 사항에 대한 검증 성공 기록이 없습니다. 관련 테스트나 정적 검사를 실행한 뒤 다음 명령으로 결과를 기록하세요: "
-        f'company-agent session verify --session "{safe_session_id(session_id)}" --status pass --summary "검증 내용". '
+        "기록된 업무 변경에 대한 결과 확인이 남아 있습니다. 코드면 관련 테스트, 문서면 생성/구조 확인, 파일 이동이면 이동 기록/실제 경로를 확인하십시오. 단순 조회를 코드 검증 실패라고 보고하지 마십시오. 확인 후 다음 명령으로 기록하세요: "
+        f'{command_prefix} session verify --session "{safe_session_id(session_id)}" --status pass --summary "검증 내용". '
         "검증에 실패하면 status fail로 기록하고 원인을 수정하십시오. "
+        "필수 명령이 승인 대기/거절 또는 환경 제약으로 실행되지 못했다면 검증 실패와 구분해 status unavailable(일부만 확인했으면 partial)을 기록하고 그 작업만 대기하십시오. 승인 없는 대체 실행이나 같은 확인 반복을 하지 마십시오. "
+        "이 기록은 내부 절차입니다. 성공·실패·대기 어느 경우에도 pass/fail/unavailable/partial 기록 등의 상태 보고를 출력하지 마십시오. 원래 요청의 산출물·업무 결과 또는 '실행 승인 대기'처럼 사용자가 해결할 사항만 일상 언어로 전달하십시오. "
         f"보정 기회는 최대 {MAX_CORRECTIVE_CONTINUATIONS}회이며, 이후에는 실패를 성공으로 표현하지 말고 남은 위험을 명확히 보고하십시오."
     )
     if isinstance(verification, dict) and verification.get("status") == "fail":

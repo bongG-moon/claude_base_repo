@@ -66,10 +66,12 @@ import sys
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 from company_agent.state import begin_turn
+from company_agent.work import checkpoint
 from company_agent.learning import submit_review, set_learning_enabled
 root = Path(sys.argv[2])
 for body in ('Reports start with the conclusion.', 'Reports start with decisions needed.'):
     turn = begin_turn('backup-test', 'SMALL', False, [], root)
+    checkpoint(root, 'backup-test', turn['turnId'], 'complete', learn=True)
     result = submit_review(root, 'backup-test', turn['turnId'], {'schemaVersion': 1, 'taskType': 'weekly-report', 'outcome': 'unknown', 'summary': 'A durable reporting preference was corrected.', 'observations': [{'kind': 'preference', 'key': 'report-order', 'signal': 'explicit_correction', 'title': 'Report order', 'body': body}], 'evaluations': []})
     assert result['changes'][0]['status'] == 'active', result['changes'][0]
 set_learning_enabled(root, False)

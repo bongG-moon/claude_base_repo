@@ -609,9 +609,17 @@ def _assess(root: Path, data: dict[str, Any], review: dict[str, Any], spec: dict
         baseline = [r for r in data["reviews"] if r["taskType"] == review["taskType"] and r["id"] != review["id"]
                     and any(u.get("name") == evaluation["skillName"] and u.get("sha256") == change["beforeSha256"]
                             for u in r.get("usedSkills", []))][-20:]
+        baseline = list({r.get("workFingerprint", r["id"]): r for r in baseline
+                         if r.get("workFingerprint", r["id"]) != review.get("workFingerprint", review["id"])}.values())
         after = [a for a in data["assessments"] if a.get("changeId") == change["id"]
                  and a.get("taskType") == review["taskType"]][-19:]
+        work_fingerprint = review.get("workFingerprint", review["id"])
+        # Re-evaluation may amend the verdict but cannot create independent
+        # samples from repeated replies in one work unit.
+        after = list({a.get("workFingerprint", a["reviewId"]): a for a in after
+                      if a.get("workFingerprint", a["reviewId"]) != work_fingerprint}.values())
         assessment = {"changeId": change["id"], "reviewId": review["id"], "taskType": review["taskType"],
+                      "workFingerprint": work_fingerprint,
                       "skillName": evaluation["skillName"], "sha256": digest, "verdict": evaluation["verdict"],
                       "verdictSource": "agent_interpretation", "evidence": review["evidence"],
                       "baselineSamples": len(baseline), "afterSamples": len(after) + 1,
@@ -622,6 +630,9 @@ def _assess(root: Path, data: dict[str, Any], review: dict[str, Any], spec: dict
             assessment["afterAverageFailures"] = sum(a["evidence"]["failures"] + a["evidence"]["verificationFailures"] for a in after + [assessment]) / (len(after) + 1)
         if evaluation["verdict"] == "harmful":
             assessment["rollback"] = _rollback(root, data, change, "next_use_reported_harmful")
+        data["assessments"] = [a for a in data["assessments"] if not
+            (a.get("changeId") == change["id"] and a.get("taskType") == review["taskType"] and
+             a.get("workFingerprint", a.get("reviewId")) == work_fingerprint)]
         data["assessments"].append(assessment)
         results.append(assessment)
     prior = spec.get("priorFeedback")
@@ -658,6 +669,10 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
             raise ValueError("business activity followed the recorded review; learning remains deferred until the next user turn")
         existing = next((r for r in data["reviews"] if r["id"] == review_id), None)
         if existing:
+            # An interrupted first review may predate the session-side identity
+            # write. The persisted review remains the authority for that turn.
+            if existing["taskType"] != spec["taskType"]:
+                raise ValueError(f"taskType mismatch for existing review; use taskType '{existing['taskType']}'")
             return {"status": "duplicate" if existing["status"] == "complete" else "deferred",
                     "reviewId": review_id, "originalStatus": existing["status"],
                     "changes": [], "assessments": []}
@@ -683,6 +698,8 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
         review = {"id": review_id, "sessionFingerprint": _hash(session_id), "turnId": turn_id, "at": _now(),
                   "status": "processing", "taskType": spec["taskType"], "reportedOutcome": spec["outcome"],
                   "summary": spec["summary"], "evidence": _evidence(session), "usedSkills": used}
+        if isinstance(session.get("work"), dict):
+            review["workFingerprint"] = _hash(session_id + "\0work\0" + session["work"]["id"])
         data["reviews"].append(review)
         data["totals"]["reviews"] += 1
         _save(root, data)
@@ -708,8 +725,11 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
                 candidate["reviews"] = (candidate["reviews"] + [review_id])[-8:]
             candidate["lastSeen"] = _now()
             candidate["signal"] = observation["signal"]
-            if observation["signal"] == "repeated_choice" and review_id not in candidate.get("choiceReviews", []):
-                candidate["choiceReviews"] = (candidate.get("choiceReviews", []) + [review_id])[-8:]
+            # Several corrections/retries in one business task are one sample,
+            # even if the model submits them in different user turns.
+            choice_id = _hash(session_id + "\0work\0" + session["work"]["id"]) if isinstance(session.get("work"), dict) else review_id
+            if observation["signal"] == "repeated_choice" and choice_id not in candidate.get("choiceReviews", []):
+                candidate["choiceReviews"] = (candidate.get("choiceReviews", []) + [choice_id])[-8:]
             evidence = review["evidence"]
             eligible = (observation["signal"] == "explicit_correction"
                         or observation["signal"] == "repeated_choice" and len(candidate.get("choiceReviews", [])) >= 2
@@ -738,12 +758,51 @@ def submit_review(root: Path, session_id: str, turn_id: str, spec: dict[str, Any
     # Consistent lock order: session first, then learning. begin_turn cannot
     # replace the user-turn evidence halfway through a review or activation.
     with _locked_session(session_id, root) as (session, path):
-        result = _submit_locked(root, session_id, turn_id, spec, session)
-        if result["status"] in {"accepted", "duplicate"}:
+        from .work import merge_observations, review_finished, task_type
+        if session.get("turnId") != turn_id:
+            raise ValueError("stale or unknown learning turn; submit the current turn only")
+        if not learning_enabled(root):
+            return {"status": "disabled", "changes": [], "assessments": []}
+        if session.get("protectionRestricted"):
+            return {"status": "disabled", "reason": "protected_session", "changes": [], "assessments": []}
+        if session.get("learningDeferredReason") == "late-business-activity":
+            raise ValueError("business activity followed the recorded review; learning remains deferred until the next user turn")
+        work = session.get("work") or {}
+        if (work and session.get("learningStatus") != "complete" and
+                (work.get("status") != "complete" or not work.get("reviewRequested"))):
+            raise ValueError("learning requires a completed work milestone with new evidence; stage unfinished feedback instead")
+        identity = task_type(work, spec["taskType"])
+        spec["observations"] = merge_observations(work.get("pending", []), spec["observations"], work.get("processed", []))
+        # Revalidate persisted candidates too; local state is not trusted input.
+        spec = _validate(spec)
+        evidence_session = dict(session)
+        if work:
+            evidence_session["taskToolCount"] = max(session.get("taskToolCount", 0), work.get("toolCount", 0))
+            evidence_session["taskFailureCount"] = max(session.get("taskFailureCount", 0), work.get("failures", 0))
+            evidence_session["taskVerificationFailures"] = max(session.get("taskVerificationFailures", 0), work.get("verificationFailures", 0))
+            evidence_session["usedSkills"] = list({item["name"]: item for item in
+                work.get("usedSkills", []) + session.get("usedSkills", [])}.values())[-8:]
+        # A caller that discovers no reusable evidence creates no empty ledger
+        # row. Still require current identity and completed verification.
+        if (not spec["observations"] and not spec["evaluations"] and not spec.get("priorFeedback")
+                and session.get("learningStatus") != "complete"):
+            if session.get("turnId") != turn_id:
+                raise ValueError("stale learning turn")
+            if session.get("mutationCount", 0) and (session.get("verification") or {}).get("status") != "pass":
+                raise ValueError("verify business changes before closing the milestone")
+            result = {"status": "skipped", "reason": "no_new_evidence", "changes": [], "assessments": []}
+        else:
+            result = _submit_locked(root, session_id, turn_id, spec, evidence_session)
+        if result["status"] in {"accepted", "duplicate", "skipped"}:
+            if work:
+                work["taskType"] = identity
             session["learningStatus"] = "complete"
             session["learningCompletedAt"] = _now()
+            review_finished(session, spec["observations"])
             atomic_write_json(path, session)
         elif result["status"] == "deferred":
+            if work:
+                work["taskType"] = identity
             session["learningStatus"] = "deferred"
             session["learningDeferredReason"] = "interrupted-review"
             atomic_write_json(path, session)
@@ -765,7 +824,8 @@ def learning_status(root: Path, *, session: dict[str, Any] | None = None) -> dic
     data = _load(root)
     relevant: list[dict[str, Any]] = []
     if isinstance(session, dict):
-        used = session.get("usedSkills", [])
+        used = list({item["name"]: item for item in (session.get("work") or {}).get("usedSkills", []) +
+                     session.get("usedSkills", []) if isinstance(item, dict) and "name" in item}.values())[-8:]
         if isinstance(used, list):
             for observed in used[:8]:
                 if not isinstance(observed, dict):
@@ -782,7 +842,9 @@ def learning_status(root: Path, *, session: dict[str, Any] | None = None) -> dic
             for change in previous_changes:
                 if not any(item["id"] == change["id"] for item in relevant):
                     relevant.append(_change_summary(change))
+    from .work import task_type
     return {"enabled": learning_enabled(root), "schemaVersion": 1, "totals": data["totals"],
+            "workTaskType": task_type((session or {}).get("work") or {}),
             "retainedReviews": len(data["reviews"]), "candidateCount": len(data["candidates"]),
             "activeChanges": sum(c["status"] == "active" for c in data["changes"]),
             "recentCandidates": [{"key": c["key"], "kind": c["kind"], "title": c["title"], "body": c["body"],

@@ -56,12 +56,14 @@ class RouteDecision:
         envelope = {
             "company_agent_route": self.as_dict(),
             "company_agent_instruction": (
-                f"For this turn, use {self.agent} as the primary execution worker, unless a project orchestrator is active. "
+                f"For substantive work invoke the Agent tool with subagent_type={self.agent} BEFORE writing the business deliverable; it is the primary execution worker, not merely a label. Trivial lookups/choices stay in the coordinator. Unless a project orchestrator is active. "
                 "In that case keep the orchestrator in the main conversation, invoke its project agents directly, "
                 "and apply the routed tier as a minimum for substantive work. "
                 "Keep the parent conversation as coordinator, apply managed policy and effective knowledge, "
+                "Each Agent prompt MUST include the exact company_agent_runtime.cliCommand, stateRoot, selected Skill absolute path, source/output scope and current sanitized session ID. A Skill name alone is not executable context. "
                 "and verify durable changes before reporting completion. If company_agent_session_id is present, "
-                "use that exact sanitized identifier when recording verification."
+                "use that exact sanitized identifier when recording verification. "
+                "If the routed agent is missing, denied or fails, report that specific limit; do not claim the tier switched when no worker ran. Never have an execution subagent delegate again."
             ),
         }
         if session_id:

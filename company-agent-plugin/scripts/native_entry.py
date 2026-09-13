@@ -13,7 +13,7 @@ import sys
 # plugin cache live in different directories or versions.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from company_agent.native_runtime import bounded_prompt_context, configure_runtime, runtime_context, session_start
+from company_agent.native_runtime import COMPANY_WORKERS, bounded_prompt_context, configure_runtime, runtime_context, session_start
 
 
 def main() -> int:
@@ -29,6 +29,13 @@ def main() -> int:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             raise ValueError("Hook input is not an object")
+        if event == "PreToolUse" and payload.get("tool_name") in {"Agent", "Task"}:
+            inputs = payload.get("tool_input")
+            if not isinstance(inputs, dict) or inputs.get("subagent_type") not in COMPANY_WORKERS:
+                # An unrelated agent must remain usable even if our own
+                # installation record is broken. Do not configure its runtime.
+                print("{}")
+                return 0
         cwd = Path(str(payload.get("cwd") or os.getcwd()))
         active = configure_runtime(plugin, cwd)
         if not active:
@@ -36,6 +43,15 @@ def main() -> int:
             return 0
         if event == "SessionStart":
             result = session_start(plugin, cwd, session_id=str(payload.get("session_id") or ""), source=str(payload.get("source") or ""))
+        elif event == "PermissionRequest":
+            from company_agent.execution_contract import safe_permission
+            from company_agent.paths import user_state_root
+            payload["hook_event_name"] = event
+            decision = safe_permission(payload, user_state_root())
+            result = {"hookSpecificOutput": {"hookEventName": event, "decision": decision}} if decision else {}
+        elif event == "PreToolUse" and payload.get("tool_name") in {"Agent", "Task"}:
+            from company_agent.native_runtime import worker_runtime_input
+            result = worker_runtime_input(plugin, cwd, payload)
         else:
             handlers = {
                 "UserPromptSubmit": "model_route_hook",
@@ -70,7 +86,7 @@ def main() -> int:
             result = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                       "permissionDecisionReason": "Company Agent runtime unavailable; reinstall the package before using corporate tools."}}
         else:
-            result = {"systemMessage": "Company Agent initialization failed. Run the installer again; this session's harness checks are unavailable."}
+            result = {"systemMessage": "Company Agent를 준비하지 못했습니다. 설치 상태를 확인해 주세요. 이 대화의 하네스 검사는 사용할 수 없습니다."}
         print(json.dumps(result))
         return 0
 

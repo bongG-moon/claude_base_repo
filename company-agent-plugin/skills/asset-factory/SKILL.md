@@ -1,11 +1,13 @@
 ---
 name: asset-factory
-description: Design, create, repair, validate, or package a personal Claude Code Skill, script Tool, or MCP server from a natural-language request. Use for reusable automation and route the implementation through the LARGE worker.
+description: 자연어 요청으로 개인 스킬·스크립트 도구·MCP를 만들고 수정·검증합니다. 반복 업무를 재사용 가능한 기능으로 구성하며 LARGE 작업자를 활용합니다.
 ---
 
 # Personal Asset Factory
 
 Turn a user's natural-language automation request into the smallest reusable asset that solves it.
+
+For Skill creation or repair, read `references/authoring.md` before drafting. For a requested interactive setup helper, also read `references/windows-setup.md`. These are supporting references, not additional Skills or workflows; other tasks do not load them.
 
 For each `company-agent` example, use the exact `company_agent_runtime.cliCommand` prefix from the current session and safely quote names and paths as arguments. Use its `stateRoot` and clearly identified absolute project path; do not assume Python or the CLI is on PATH. A request only to inspect, explain, or review permits read-only discovery, not asset creation, activation, or preference writes.
 
@@ -19,6 +21,7 @@ For each `company-agent` example, use the exact `company_agent_runtime.cliComman
 ## Build contract
 
 1. Consult Effective Knowledge before defining inputs, table meanings, or business rules.
+   Search relevant existing Skills and tools for the same capability before creating another asset; a different name does not prove a different purpose. Reuse a compatible selected candidate when it satisfies the request. If the user explicitly requests a separate asset, honor that scope without overwriting the existing one.
 2. Ask only for missing material choices, using at most three simple options.
 3. Before creating a personal Skill or Script Tool wrapper, run `company-agent skill resolve "<proposed-name>" --project-root "<absolute project>"`. Show any same-name candidates by name and origin, plus the current selection. If discovery is incomplete, explain its warnings rather than claiming no overlaps. The create/activate command's existing asset-name and personal/user Skill collision guards still apply: never overwrite, disable, or rename an existing asset to bypass them. If a requested new name is rejected, clearly propose an alternative such as `company-personal-<name>` and obtain the naming choice before retrying; do not silently rename it. Other same-name sources may coexist. Preserve any explicit priority choice and apply it after creation, when the new candidate ID exists.
 4. Define success cases, invalid-input cases, JSON input/output schemas, permission boundaries, and offline dependencies before writing code.
