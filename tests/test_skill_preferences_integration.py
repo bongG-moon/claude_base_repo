@@ -74,8 +74,11 @@ class SkillPreferenceIntegrationTests(unittest.TestCase):
         found = self.cli("search", "report")
         self.assertEqual([candidates["project"]["id"]], [item["id"] for item in found["skills"]])
         context = json.loads(runtime_context(self.plugin, self.project, "report"))["company_agent_runtime"]
-        self.assertEqual(str(self.project_skill), context["preferredSkills"][0]["path"])
-        self.assertEqual("project", context["preferredSkills"][0]["source"])
+        self.assertEqual([], context["preferredSkills"])
+        catalog=Path(context['skillSelection']['catalog']['path']).read_text(encoding='utf-8')
+        project_section=catalog.split('## 프로젝트 스킬')[1].split('## ')[0]
+        self.assertIn('우선 선택됨',project_section)
+        self.assertEqual(candidates['project']['id'],self.cli('resolve','report')['resolution']['selectedId'])
         self.assertFalse(context["skillSelection"]["nativePrecedenceChanged"])
         self.assertNotIn("BODY-MUST-STAY", json.dumps(context))
         self.assertEqual(before, {file: file.read_bytes() for file in before})
@@ -252,7 +255,10 @@ class SkillPreferenceIntegrationTests(unittest.TestCase):
         text = runtime_context(self.plugin, self.project, "report please follow this workflow " + "long-task-input " * 1000)
         data = json.loads(text)["company_agent_runtime"]
         self.assertEqual("ready", data["skillSelection"]["status"])
-        self.assertEqual(str(self.project_skill), data["preferredSkills"][0]["path"])
+        self.assertEqual([], data["preferredSkills"])
+        catalog=Path(data['skillSelection']['catalog']['path']).read_text(encoding='utf-8')
+        self.assertIn('우선 선택됨',catalog.split('## 프로젝트 스킬')[1].split('## ')[0])
+        self.assertEqual(candidate['id'],self.cli('resolve','report')['resolution']['selectedId'])
         self.assertLessEqual(len(text), MAX_RUNTIME_CONTEXT_CHARS)
 
     def test_project_only_candidate_cannot_be_mistaken_for_global_default(self):

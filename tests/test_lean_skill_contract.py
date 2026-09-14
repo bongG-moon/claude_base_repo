@@ -12,7 +12,7 @@ class LeanSkillContractTests(unittest.TestCase):
     def read(self, relative):
         return (SKILLS / relative).read_text(encoding="utf-8")
 
-    def test_no_new_skill_names_or_upstream_wrappers(self):
+    def test_only_expected_skill_names_and_no_upstream_wrappers(self):
         names = []
         for file in SKILLS.glob("*/SKILL.md"):
             names.append(re.search(r"^name: (.+)$", file.read_text(encoding="utf-8"), re.M).group(1))
@@ -20,7 +20,7 @@ class LeanSkillContractTests(unittest.TestCase):
         self.assertEqual(set(names), {
             "company-agent", "asset-factory", "file-organizer", "html-report",
             "karpathy-guidelines", "outlook-assistant", "personal-knowledge",
-            "personal-memory", "presentation", "project-harness", "self-learning",
+            "personal-memory", "presentation", "project-harness", "self-learning", "office-reader",
         })
 
     def test_conditional_reference_links_exist_inside_plugin(self):

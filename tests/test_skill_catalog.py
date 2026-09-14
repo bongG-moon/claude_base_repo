@@ -165,6 +165,14 @@ class SkillCatalogTests(unittest.TestCase):
         self.assertEqual("unavailable", context["skillSelection"]["catalog"]["status"])
         self.assertEqual("mail", context["preferredSkills"][0]["name"])
 
+    def test_ready_catalog_omits_even_keyword_matched_cards(self):
+        context=json.loads(runtime_context(self.plugin,self.project,'mail'))['company_agent_runtime']
+        self.assertEqual('ready',context['skillSelection']['catalog']['status'])
+        self.assertEqual([],context['preferredSkills'])
+        self.assertNotIn('Search and summarize Outlook email',json.dumps(context))
+        self.assertIn('reuse the same revision',context['instructions'])
+        self.assertNotIn('후보 식별값',Path(context['skillSelection']['catalog']['path']).read_text(encoding='utf-8'))
+
     def test_future_state_is_not_written(self):
         first = self.refresh()
         original = Path(first["path"]).read_bytes()

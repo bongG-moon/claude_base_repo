@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([switch] $KeepArtifacts)
 
 $ErrorActionPreference = 'Stop'
@@ -38,6 +38,23 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/scripts/company_agent/report_styles.py',
         'payload/core/plugin/skills/html-report/assets/design-picker.html',
         'payload/core/plugin/scripts/company_agent/presentation_design.py',
+        'payload/core/plugin/scripts/company_agent/ppt_workflow.py',
+        'payload/core/plugin/scripts/company_agent/runtime_diagnostics.py',
+        'payload/core/plugin/scripts/Inspect-ClaudeRuntime.ps1',
+        'payload/core/plugin/skills/presentation/references/sources.md',
+        'docs/UPDATE_1.4.0.md',
+        'docs/VALIDATION_1.4.0.md',
+        'payload/core/plugin/scripts/company_agent/office_reader.py',
+        'payload/core/plugin/scripts/Read-CompanyOffice.py',
+        'payload/core/plugin/scripts/company_agent/office_pywin32.py',
+        'payload/core/plugin/scripts/Read-CompanyExcel.py',
+        'payload/core/plugin/scripts/company_agent/excel_xlwings.py',
+        'payload/core/plugin/skills/office-reader/SKILL.md',
+        'payload/core/plugin/skills/office-reader/references/reading.md',
+        'payload/core/plugin/skills/office-reader/references/excel-fixed-recipe.md',
+        'payload/core/plugin/skills/office-reader/references/office-fixed-recipe.md',
+        'docs/UPDATE_1.4.1.md',
+        'docs/VALIDATION_1.4.1.md',
         'payload/core/plugin/skills/presentation/references/design-and-quality.md',
         'payload/core/plugin/skills/html-report/references/design-and-numbers.md',
         'docs/UPDATE_1.3.6.md',

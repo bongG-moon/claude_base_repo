@@ -77,6 +77,14 @@ def prepare(spec, data):
         if (b+.05)/(a+.05) < 4.5:
             raise DesignError("글자와 배경 색상이 너무 비슷합니다. 읽기 쉬운 대비의 색상을 선택해 주세요.")
     data['presentationTheme'] = tokens
+    font = spec.get('presentationFont', 'Malgun Gothic')
+    if not isinstance(font,str) or not font.strip() or len(font)>80:
+        raise DesignError('글꼴 이름을 확인해 주세요.')
+    if font != 'Malgun Gothic':
+        from .ppt_workflow import installed_fonts
+        if font not in installed_fonts():
+            raise DesignError('양식의 글꼴을 이 PC에서 확인하지 못했습니다. 설치된 글꼴을 선택해 주세요. 자동 다운로드하지 않습니다.')
+    data['presentationFont'] = font
     return validation
 
 
@@ -157,7 +165,7 @@ def plan(data, width=960., height=540.):
             if min(e['x'], e['y']) < 0 or e['x']+e['w'] > width+.01 or e['y']+e['h'] > height+.01:
                 raise DesignError("슬라이드 영역을 벗어나는 배치를 저장하지 않았습니다.")
         pages.append({'elements': elements})
-    return {'width': width, 'height': height, 'pages': pages, 'font': 'Malgun Gothic', 'theme': data['presentationTheme']}
+    return {'width': width, 'height': height, 'pages': pages, 'font': data.get('presentationFont','Malgun Gothic'), 'theme': data['presentationTheme']}
 
 
 def render_python(data, draft, template):

@@ -5,6 +5,12 @@ description: 부서장 보고·실적 발표·제안 PPT를 만듭니다. 기존
 
 # Editable presentation
 
+Use this Skill to create/edit a deck. For reading or summarizing an existing
+corporate Office document without creating slides, use the selected office-reader
+workflow instead; do not ask presentation design/slide-count questions for a read.
+Template geometry inspection below is a separate authoring operation, not a way
+to extract denied source content or a replacement for corporate document reading.
+
 For PPT work, read `references/design-and-quality.md` BEFORE drafting or delegating.
 Pass that exact path and the selected design references to the worker; require
 the worker to read them. Inspect the current catalog for a relevant installed
@@ -16,14 +22,37 @@ readable evidence and deliberate composition; do not claim all styles/templates
 are exactly reproducible by the built-in factory.
 
 Read `../company-agent/references/business-protection.md` first. Ask only missing
-purpose/audience, slide count and template choice. Do not require company templates
-to start; use a native-object draft when no template is provided. Retain original
-files, never replace output without a new explicit action.
+purpose/audience, slide count and template choice. Retain original files.
+Before building, run `business ppt-choices --spec "<choices.json>" [--template
+"<confirmed reference.pptx>"] --state-root "<stateRoot>"` using the installed
+cliCommand. Follow ONLY the returned stage. AskUserQuestion must not bundle the
+method or reference-file question with later audience/count questions.
+First offer: 새 디자인 / 기존 PPT·회사 양식 첨부 / 저장한 내 양식.
+For reference/saved, request the actual file immediately, then ask 분위기 참고 /
+기존 배치 유지. Only then ask missing purpose/audience/slideCount. Merge answers;
+do not discard known values or assume a saved template exists. The helper checks
+question order, not user authorization or the existence of an unprovided file.
+Keep the selected creationMode (new/reference/saved), referenceMode (style/preserve),
+purpose, audience and slideCount in the final job. CLI rejects missing choices or
+silently changed slide counts. Internal Python defaults are compatibility only.
+New mode needs no template. Show a representative design for substantial work,
+then retain the confirmed choices through generation; never ask them all again.
 
 Use `business doctor` for runtime hints and `business ppt-inspect --template
 "<source.pptx>"` for allowed template structure. Inspection failure may mean DRM
 or an unsupported/corrupt format: do not assert a cause without evidence. Never
 decrypt, use OCR/capture, enable macros or bypass Protected View to keep going.
+For actual design analysis run `business ppt-analyze --template "<source.pptx>"`.
+It returns declared colors/fonts and shape geometry, NOT a guarantee that inherited
+styles were fully resolved. Read only relevant slides. For allowed previews use
+`business ppt-preview --template "<source.pptx>" --output "<new preview folder>"`.
+This uses a temporary copy and installed PowerPoint only. If it fails, report the
+limit; never generate another COM/Python script or capture a protected window.
+For style reference apply verified tokens to presentationTheme and an available
+font to presentationFont. Preserve mode uses templateSlides slot mapping described
+in the reference. If unsupported, ask whether the user wants style reference;
+do not silently switch modes. Store abstract style preferences in existing personal
+Knowledge only when allowed; do not retain the original company deck by default.
 
 Prepare permitted content as JSON:
 `{title, subtitle?, style:"minimal", slides:[{title,body?,bullets?,
@@ -41,6 +70,14 @@ Run `business ppt --spec "<job.json>" --output "<new.pptx>" [--template
 Python dispatches to an already available library or the packaged PowerPoint COM
 helper. Do not pip-install dependencies, execute model-written Python/VBA, start
 an unrelated Office instance, close user presentations, or bypass the CLI safety.
+This prohibition includes `cat > /tmp/ppt_com.py`, here-doc Python, inline COM,
+and calling another generator after this approved operation is denied. If a
+selected external Skill recommends those paths, adapt its design principles to
+the shipped API or report the missing capability. A list lookup alone never proves
+this Skill was read; pass its full path and the confirmed choices to the worker.
+On a classifier timeout, it is the approval check that failed, not PPT execution.
+Keep inputs, retry at most once for a transient outage, then leave the operation
+pending with one Korean sentence. Do not bypass permissions or narrate learning.
 If rendering is unavailable or prohibited, say that visual validation was not
 performed. Ordinary static checks do not prove perfect template reproduction.
 
@@ -49,6 +86,9 @@ new file with precise limitations. SmartArt, animations, masters and arbitrary
 complex source layouts are not universally reconstructible by this pilot.
 Render and visually inspect EVERY slide when the approved route is available.
 Check title/table readability, chart labels/units, clipping and source totals.
+Use validation.quality issues as findings, not proof of visual fidelity. An optional
+approved Archforge adapter can augment checks; absence must be disclosed, never
+auto-install it. Font/position estimates cannot replace inspecting every slide.
 `created` means saved and rendered, not visually approved. A geometry estimate
 does not certify typography. If anything is too dense, shorten without losing
 required content or ask to split the slide; never silently shrink it to tiny text.

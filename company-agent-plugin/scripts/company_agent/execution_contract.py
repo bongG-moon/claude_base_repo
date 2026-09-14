@@ -92,10 +92,12 @@ def _fields(arguments: list[str], allowed: set[str], required: set[str] | None =
         fields[key] = value
     if not (required or set()).issubset(fields):
         return None
-    for name in ("--state-root", "--spec", "--project", "--file"):
+    for name in ("--state-root", "--spec", "--project", "--file", "--template"):
         if name in fields and not _absolute(fields[name]):
             return None
     if "--spec" in fields and Path(fields["--spec"]).suffix.casefold() != ".json":
+        return None
+    if '--template' in fields and Path(fields['--template']).suffix.casefold() != '.pptx':
         return None
     if "--session" in fields and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", fields["--session"]):
         return None
@@ -202,10 +204,14 @@ def classify_command(command: str) -> str:
         return "read_only"
     allowed: set[str]
     required: set[str] = set()
-    if head in {("business", "doctor"), ("business", "mail-capabilities"), ("business", "html-designs")}:
+    if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "html-designs")}:
         allowed = {"--state-root"}
-    elif head in {("business", "mail-search"), ("business", "html-choices")}:
+    elif head in {("business", "mail-search"), ("business", "html-choices"), ("business", "office-read")}:
         allowed, required = {"--state-root", "--spec"}, {"--spec"}
+    elif head == ('business','ppt-choices'):
+        allowed, required = {'--state-root','--spec','--template'}, {'--spec'}
+    elif head in {('business','ppt-analyze'),('business','ppt-inspect')}:
+        allowed, required = {'--state-root','--template'}, {'--template'}
     elif head == ("business", "eml-read"):
         allowed, required = {"--state-root", "--file"}, {"--file"}
     elif head == ("session", "status"):

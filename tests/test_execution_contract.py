@@ -59,6 +59,17 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertEqual('unknown',classify_command(command+suffix))
             self.assertIsNone(self.permission(command+suffix))
 
+    def test_ppt_helpers_and_diagnostic_do_not_widen_permissions(self):
+        for args in ('business runtime-check',
+                     f'business ppt-choices --spec "{self.root / "s.json"}"',
+                     f'business ppt-analyze --template "{self.root / "ref.pptx"}"'):
+            command=f'{self.cli} {args}'
+            self.assertEqual('read_only',classify_command(command))
+            self.assertIsNone(self.permission(command))
+        command=f'{self.cli} business ppt-preview --template "{self.root / "ref.pptx"}" --output "{self.root / "preview"}"'
+        self.assertEqual('unknown',classify_command(command))
+        self.assertIsNone(self.permission(command))
+
     def test_permission_only_exact_metadata_and_current_root(self) -> None:
         for operation in ("doctor", "mail-capabilities"):
             command = f"{self.cli} business {operation}"

@@ -293,8 +293,11 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
         self.assertLess(len(serialized), 16000)
         self.assertNotIn("RAW-SKILL-BODY", serialized)
         exact = json.loads(runtime_context(PLUGIN, self.project, "specific-report"))["company_agent_runtime"]
-        self.assertEqual("specific-report", exact["personalSkills"][0]["name"])
-        self.assertIn("skill search", exact["instructions"])
+        self.assertEqual([], exact["personalSkills"])
+        catalog=Path(exact['skillSelection']['catalog']['path']).read_text(encoding='utf-8')
+        self.assertIn('specific-report',catalog)
+        self.assertNotIn('RAW-SKILL-BODY',catalog)
+        self.assertIn('reuse the same revision', exact["instructions"])
 
     def test_budget_trims_extra_skill_cards_before_losing_only_knowledge_card(self):
         from company_agent.native_runtime import _encode_runtime

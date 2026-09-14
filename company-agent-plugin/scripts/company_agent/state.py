@@ -608,6 +608,26 @@ def _is_mail_search_spec_write(tool_name: str, tool_input: dict, root: Path) -> 
         return False
 
 
+def _is_office_read_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
+    """Only the bounded source-selection request, never arbitrary tmp content."""
+    import json
+    if tool_name.casefold() != 'write':
+        return False
+    value, content = tool_input.get('file_path'), tool_input.get('content')
+    if not isinstance(value,str) or not isinstance(content,str) or len(content.encode('utf-8'))>32768:
+        return False
+    path=Path(value)
+    if (path.parent != root.absolute()/'tmp' or not re.fullmatch(r'office-read-[a-zA-Z0-9_-]{1,80}\.json',path.name)
+            or not _safe_local_path(path,root,allow_missing_leaf=True)):
+        return False
+    try:
+        from .office_reader import normalize
+        normalize(json.loads(content))
+        return True
+    except (ValueError,TypeError,OSError):
+        return False
+
+
 def _is_own_learning_command(command: str, session_id: str, state: dict[str, Any], root: Path) -> bool:
     arguments = _own_cli_arguments(command)
     if not arguments:
@@ -727,6 +747,9 @@ def record_activity(
     )
     mutated = _tool_mutated(tool_name, tool_input)
     not_performed = _native_action_not_performed(payload)
+    from .runtime_diagnostics import classifier_unavailable
+    approval_timeout = classifier_unavailable(payload)
+    not_performed = not_performed or approval_timeout
     response = payload.get("tool_response")
     failed = (
         str(payload.get("hook_event_name") or "").casefold()
@@ -749,16 +772,17 @@ def record_activity(
             if isinstance(state.get("verification"), dict):
                 state["verification"]["summary"] = "보호 제한 항목이 있어 상세 검증 설명은 보존하지 않습니다."
         collect_learning = _collect_learning_observations(state, root or user_state_root())
-        bookkeeping = False
+        bookkeeping = approval_timeout
         if tool_name.casefold().strip() in {"bash", "powershell"}:
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
-            bookkeeping = (
+            bookkeeping = bookkeeping or (
                 _is_own_verification_command(command, session_id, root or user_state_root())
                 or _is_own_context_audit(command)
                 or _is_own_learning_command(command, session_id, state, root or user_state_root())
             )
         bookkeeping = bookkeeping or _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
         bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
+        bookkeeping = bookkeeping or _is_office_read_spec_write(tool_name, tool_input, root or user_state_root())
         if tool_name.casefold().strip() in {"bash", "powershell"}:
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
             from .execution_contract import classify_command, internal_plan_command

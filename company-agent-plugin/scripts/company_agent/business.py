@@ -41,6 +41,9 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     state = safe_path(args.state_root or user_state_root())
     if action == "doctor":
         return doctor()
+    if action == 'runtime-check':
+        from .runtime_diagnostics import inspect_runtime
+        return inspect_runtime()
     if action == "html-designs":
         from .business_artifacts import html_designs
         return html_designs(Path(args.output) if args.output else None)
@@ -59,10 +62,22 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action == "ppt-inspect":
         from .business_artifacts import inspect_template
         return inspect_template(safe_path(args.template, exists=True))
+    if action == 'ppt-analyze':
+        from .ppt_workflow import analyze
+        return analyze(safe_path(args.template, exists=True))
+    if action == 'ppt-preview':
+        from .business_artifacts import preview_template
+        return preview_template(safe_path(args.template, exists=True), safe_path(args.output))
     spec = _spec(args.spec)
     if (blocked := blocked_input(spec)) is not None:
         return blocked
     spec.pop("protection", None)
+    if action == 'office-read':
+        from .office_reader import read_office
+        return read_office(spec)
+    if action == 'ppt-choices':
+        from .ppt_workflow import choices
+        return choices(spec, args.template)
     if action == 'html-choices':
         from .business_artifacts import html_choices
         return html_choices(spec)
@@ -74,7 +89,7 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
         if action == "html":
             return create_html(spec, output, require_choices=True)
         template = safe_path(args.template, exists=True) if args.template else None
-        return create_ppt(spec, output, template)
+        return create_ppt(spec, output, template, require_choices=True)
     if action == "mail-search":
         from .business_mail import search_mail
         return search_mail(spec)
@@ -109,8 +124,8 @@ def run(args: argparse.Namespace) -> int:
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
-    for action in ("doctor", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-choices", "ppt", "ppt-inspect",
-                   "mail-capabilities", "mail-search", "mail-read", "eml-read"):
+    for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview",
+                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "office-read"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
         if action == 'html-designs':
@@ -121,10 +136,10 @@ def register(subparsers: Any) -> None:
             command.add_argument("--folder", required=True)
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
-        if action in {"html", "html-choices", "ppt", "mail-search", "mail-read"}:
+        if action in {"html", "html-choices", "ppt-choices", "ppt", "mail-search", "mail-read", "office-read"}:
             command.add_argument("--spec", required=True)
-        if action in {"html", "ppt"}:
+        if action in {"html", "ppt", "ppt-preview"}:
             command.add_argument("--output", required=True)
-        if action in {"ppt", "ppt-inspect"}:
-            command.add_argument("--template", required=action == "ppt-inspect")
+        if action in {"ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview"}:
+            command.add_argument("--template", required=action in {'ppt-inspect','ppt-analyze','ppt-preview'})
         command.set_defaults(func=run)

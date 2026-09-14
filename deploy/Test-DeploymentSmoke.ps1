@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $TestRoot,
     [string] $InstallRoot,
@@ -74,6 +74,9 @@ try {
     Copy-CompanyAgentDirectoryContents -Source (Join-Path $repositoryRoot 'company-agent-plugin') -Destination $pluginRoot
     Copy-CompanyAgentDirectoryContents -Source (Join-Path $repositoryRoot 'corporate-knowledge') -Destination $knowledgeRoot
     Copy-CompanyAgentDirectoryContents -Source (Join-Path $repositoryRoot 'config') -Destination $configRoot
+    # Release notes are required by the bundle builder; exercise the real source
+    # contract instead of constructing an incomplete historical-version fixture.
+    Copy-CompanyAgentDirectoryContents -Source (Join-Path $repositoryRoot 'docs') -Destination (Join-Path $sourceRoot 'docs')
     # This lifecycle fixture deliberately exercises 0.3.0 -> 0.3.1 even when
     # the real release advances. Set versions only in the temporary source
     # copy so bundle validation does not depend on the checkout's version.

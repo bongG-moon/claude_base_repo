@@ -276,6 +276,9 @@ try {
         }
     }
 
+    foreach ($docName in @('UPDATE_1.4.0.md','VALIDATION_1.4.0.md','UPDATE_1.4.1.md','VALIDATION_1.4.1.md')) {
+        Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
+    }
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
 

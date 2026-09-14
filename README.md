@@ -1,10 +1,12 @@
 # Company Agent Harness
 
-현재 버전은 **1.3.9**입니다. 기존 공통 Skill 11개를 유지하면서 HTML 디자인 먼저 확정 → 남은 분량·보기 방식 선택의 순서, 추가 디자인 즉시 채팅 안내, 기존 테마·PPT 개선을 포함합니다. [설치 안내](docs/UPDATE_1.3.9.md)를 확인하세요.
+현재 배포 버전은 **1.4.1**입니다. PPT 제작 순차 선택·양식 유지, 스킬 목록 MD 우선 읽기, 실행 전 승인 지연 구분을 포함합니다. Excel·CSV는 xlwings, PPT·Word는 pywin32로 설치된 Office를 여는 `office-reader`를 추가했습니다. 공통 Skill은 12개이며 DRM 해제·접근 거절 우회 기능은 아닙니다. [변경·설치 안내](docs/UPDATE_1.4.1.md)를 확인하세요.
 
-설치 파일은 [최신 Release](https://github.com/bongG-moon/claude_base_repo/releases/latest) 또는 [1.3.9 설치 ZIP 바로 받기](https://github.com/bongG-moon/claude_base_repo/releases/download/v1.3.9/company-agent-1.3.9-2026.09.03.zip)에서 받으세요. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다.
+설치 파일은 [최신 Release](https://github.com/bongG-moon/claude_base_repo/releases/latest) 또는 [1.4.1 설치 ZIP 바로 받기](https://github.com/bongG-moon/claude_base_repo/releases/download/v1.4.1/company-agent-1.4.1-2026.09.03.zip)에서 받으세요. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다.
 [폴더별 자동 스킬 목록](docs/SKILL_CATALOG.md), 각 PC의 Python 탐색과 Ouroboros 연결 교정을 포함합니다.
-기존 코어와 ZIP은 덮어쓰지 않으며, 1.3.9로 백업 후 업데이트합니다.
+기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.1 묶음에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.1`입니다.
+
+Office 읽기는 별도 준비물이 필요합니다: Excel/CSV는 선택한 Python의 xlwings·pandas와 Excel, PPT/Word는 pywin32와 해당 Office. ZIP에 이 라이브러리나 Office를 넣거나 자동 다운로드하지 않습니다. 개발 PC의 일반 PPT·Word 읽기는 성공했지만 Excel은 xlwings 미설치로 실제 읽기 미검증이며, 사내 DRM 호환성은 별도로 확인해야 합니다.
 
 Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARGE 모델을 사용하는 개인화 하네스입니다. 공통 엔진과 개인 Knowledge·Memory·Skill을 분리하고 사용자 또는 프로젝트 범위로 설치합니다.
 

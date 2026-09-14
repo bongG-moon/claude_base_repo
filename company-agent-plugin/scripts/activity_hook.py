@@ -6,6 +6,7 @@ import sys
 from company_agent.state import record_activity, load_session, _is_own_learning_command
 from company_agent.paths import user_state_root
 from company_agent.business_safety import protection_notice
+from company_agent.runtime_diagnostics import failure_hint
 
 
 def main() -> int:
@@ -15,12 +16,16 @@ def main() -> int:
             record_activity(payload)
         result = {}
         notice = protection_notice(payload)
+        failure = failure_hint(payload)
         if notice:
             event = str(payload.get("hook_event_name") or "PostToolUse")
             if event not in {"PostToolUse", "PostToolUseFailure"}:
                 event = "PostToolUse"
             result = {"hookSpecificOutput": {"hookEventName": event, "additionalContext": notice},
                       "systemMessage": "처리하지 못한 보호 자료가 있습니다. 해당 자료를 제외한 범위만 결과에 반영하도록 안내했습니다."}
+        elif failure:
+            result = {'hookSpecificOutput': {'hookEventName':'PostToolUseFailure',
+                      'additionalContext': failure['message']+' '+failure['instruction']}}
         elif (isinstance(payload, dict) and payload.get("hook_event_name") == "PostToolUse"
               and str(payload.get("tool_name", "")).casefold() in {"bash", "powershell"}):
             root = user_state_root()
