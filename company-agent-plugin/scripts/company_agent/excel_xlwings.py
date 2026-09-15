@@ -79,7 +79,8 @@ def _read(request,xw,pd):
                     truncated=True
                     break
                 take=min(len(text),remaining)
-                items.append({'location':f'R{ri}C{ci}','text':text[:take]})
+                items.append({'location':f'R{ri}C{ci}','text':text[:take],
+                              'structure':{'type':'table-cell','table':'selected-sheet','row':ri,'column':ci}})
                 if take<len(text): truncated=True
                 remaining-=take
             if remaining<=0:
@@ -88,6 +89,9 @@ def _read(request,xw,pd):
         result={'ok':True,'items':items,'truncated':truncated,
                 'coverage':{'kind':'xlwings-dataframe','sheet':sheet.name,'requestedRange':request['range'],
                             'firstRow':row,'firstColumn':col,'rows':rows,'columns':cols,
+                            'sourceRows':original_rows,'sourceColumns':original_cols,
+                            'blankCells':'omitted; retain row/column coordinates, do not shift values',
+                            'excluded':['merged-cell-spans','charts','images','formatting'],
                             'officePermissionApi':permission,'thirdPartyDrmAuthorization':'not_determined'}}
     except Exception as exc:
         result={'ok':False,'code':'permission_denied' if denied(exc) else 'office_read_failed','stage':stage}

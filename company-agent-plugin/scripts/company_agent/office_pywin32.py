@@ -3,78 +3,13 @@ import importlib
 import json
 import os
 import sys
+import time
 from types import SimpleNamespace
 
 from .excel_xlwings import denied, permission_status
 
 
-class TextCollector:
-    def __init__(self, limit):
-        self.remaining = limit
-        self.items = []
-        self.truncated = False
-        self.visited = 0
-
-    def add(self, location, value):
-        if self.full:
-            self.truncated = True
-            return
-        self.visited += 1
-        text = str(value or '').strip('\r\x07')
-        if not text.strip():
-            return
-        take = min(len(text), self.remaining)
-        self.items.append({'location': location, 'text': text[:take]})
-        self.remaining -= take
-        self.truncated |= take < len(text)
-
-    @property
-    def full(self):
-        return self.remaining <= 0 or self.visited >= 2000
-
-
-def _extract(document, request):
-    output = TextCollector(request['maxChars'])
-    word = request['kind'] == 'word'
-    collection = document.Paragraphs if word else document.Slides
-    total = collection.Count
-    if request['start'] > total:
-        return {'ok': False, 'code': 'invalid_request', 'stage': 'read'}
-    last = min(request['end'], total)
-    unsupported = 0
-    for i in range(request['start'], last + 1):
-        part = collection.Item(i)
-        if word:
-            output.add(f'paragraph:{i}', part.Range.Text)
-        else:
-            shapes = part.Shapes
-            output.truncated |= shapes.Count > 200
-            for j in range(1, min(shapes.Count, 200) + 1):
-                shape = shapes.Item(j)
-                if shape.HasTable:
-                    table = shape.Table
-                    rows, cols = table.Rows.Count, table.Columns.Count
-                    output.truncated |= rows > 100 or cols > 20
-                    for r in range(1, min(rows, 100) + 1):
-                        for c in range(1, min(cols, 20) + 1):
-                            output.add(f'slide:{i}/shape:{j}/R{r}C{c}',
-                                       table.Cell(r, c).Shape.TextFrame.TextRange.Text)
-                            if output.full: break
-                        if output.full: break
-                elif shape.HasTextFrame:
-                    output.add(f'slide:{i}/shape:{j}', shape.TextFrame.TextRange.Text)
-                else:
-                    unsupported += 1
-                if output.full:
-                    output.truncated = True
-                    break
-        if output.full:
-            output.truncated = True
-            break
-    return {'ok': True, 'items': output.items, 'truncated': output.truncated,
-            'coverage': {'kind': 'main-story-paragraphs-only' if word else 'top-level-text-and-tables-only',
-                         'start': request['start'], 'end': last, 'total': total,
-                         'unsupportedShapes': unsupported, 'reader': 'pywin32'}}
+from .office_structure import TextCollector, extract_document as _extract
 
 
 def _read(request, client, com):
@@ -82,6 +17,8 @@ def _read(request, client, com):
     security = links = None
     initialized = False
     stage = 'application'
+    clock = time.perf_counter()
+    timings = {}
     word = request['kind'] == 'word'
     try:
         com.CoInitialize()
@@ -103,6 +40,10 @@ def _read(request, client, com):
         else:
             document = documents.Open(request['file'], -1, 0, 0)
         stage = 'permission'
+        timings['openMs'] = round((time.perf_counter() - clock) * 1000)
+        actual = getattr(document, 'FullName', None)
+        if isinstance(actual, str) and os.path.normcase(os.path.abspath(actual)) != os.path.normcase(os.path.abspath(request['file'])):
+            return {'ok': False, 'code': 'source_mismatch', 'stage': 'open'}
         permission = permission_status(SimpleNamespace(api=document))
         if permission in ('restricted', 'denied'):
             return {'ok': False, 'code': 'protected_input', 'stage': stage}
@@ -111,10 +52,14 @@ def _read(request, client, com):
         if result['ok']:
             result['coverage'].update(officePermissionApi=permission,
                                       thirdPartyDrmAuthorization='not_determined')
+            result['diagnostics'] = {'sourcePath': request['file'], 'openedPath': actual if isinstance(actual, str) else None,
+                                     'openMode': 'read-only, no window', 'python': sys.executable,
+                                     'officeVersion': str(app.Version) if isinstance(app.Version, str) else None,
+                                     'timingMs': {**timings, 'throughRead': round((time.perf_counter()-clock)*1000)}}
         return result
     except Exception as exc:
         return {'ok': False, 'code': 'permission_denied' if denied(exc) else 'office_read_failed',
-                'stage': stage}
+                'stage': stage, 'errorType': type(exc).__name__}
     finally:
         if document is not None:
             try:

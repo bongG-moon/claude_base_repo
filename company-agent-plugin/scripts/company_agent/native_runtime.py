@@ -167,6 +167,24 @@ def _encode_runtime(runtime: dict[str, Any]) -> str:
         redundant = [group for group in groups if len(group) > 1]
         cards = max(redundant, key=len) if redundant else next((group for group in groups if group), [])
         if not cards:
+            # Long guidance must not erase the executable/state paths. This was
+            # previously reported as a path failure even with ordinary paths.
+            if not runtime.get('guidanceCondensed'):
+                runtime['guidanceCondensed'] = True
+                runtime['instructions'] = (
+                    KOREAN_DEFAULT_RULE +
+                    'company_agent_runtime is this JSON metadata, NOT a module or executable. '
+                    'Use cliCommand literally; never search the PC, invent python -m, change cwd or call dispatch. '
+                    'Read skillSelection.catalog.path once per revision and only the chosen SKILL.md. '
+                    'Respect source preferences, user scope and restrictions. No fallback after denial. '
+                    'Reading and request metadata alone need no mutation verification. '
+                    'Read completionGuide only for changed work; never clear older obligations. '
+                    'Learn silently at meaningful milestones, not every reply. '
+                    'Corporate DB SELECT only; Outlook authenticated own account only. '
+                    'Office count differences/timeouts do not establish DRM causes. No substitute copies.'
+                )
+                value = encode()
+                continue
             # Never slice an executable path/command or output invalid JSON.
             return json.dumps({"company_agent_runtime": {
                 "contextStatus": "paths-exceed-budget",
@@ -347,6 +365,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
             "knowledgeMatches": _knowledge_matches(root, prompt),
             "instructions": (
                 KOREAN_DEFAULT_RULE +
+                "company_agent_runtime is the JSON metadata here, NOT a Python module or executable to locate. "
                 "Use cliCommand literally, preserving quotes; no extra --, variables, aliases or chains. Put flags after the leaf subcommand. "
                 "Discover inputs with Glob, known files with Read, content with Grep; no unnecessary Bash/PowerShell scans or temporary scripts. "
                 "For business doctor/mail-capabilities and stateless business eml-read use metadataCommand directly; only doctor/mail-capabilities have metadata auto-permission. "

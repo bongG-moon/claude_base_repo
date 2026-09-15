@@ -206,7 +206,10 @@ def classify_command(command: str) -> str:
     required: set[str] = set()
     if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "html-designs")}:
         allowed = {"--state-root"}
-    elif head in {("business", "mail-search"), ("business", "html-choices"), ("business", "office-read")}:
+    elif head == ('business','office-read'):
+        allowed = {'--state-root','--spec'} if '--spec' in args else {'--state-root','--file','--start','--end','--sheet','--range','--max-chars','--expected-count'}
+        required = {'--spec'} if '--spec' in args else {'--file'}
+    elif head in {("business", "mail-search"), ("business", "html-choices")}:
         allowed, required = {"--state-root", "--spec"}, {"--spec"}
     elif head == ('business','ppt-choices'):
         allowed, required = {'--state-root','--spec','--template'}, {'--spec'}

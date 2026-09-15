@@ -744,3 +744,7 @@ def main(argv: list[str] | None = None) -> int:
         # Error details can contain the same Unicode paths as successful output.
         print(json.dumps({"ok": False, "error": str(exc)}, ensure_ascii=True), file=sys.stderr)
         return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

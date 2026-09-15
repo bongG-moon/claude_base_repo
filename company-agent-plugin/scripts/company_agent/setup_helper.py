@@ -238,9 +238,9 @@ def run_helper(directory: Path, *, check: bool = False,
 
 
 def main() -> int:
-    for stream in (sys.stdout, sys.stderr):
+    for stream in (sys.stdin, sys.stdout, sys.stderr):
         if hasattr(stream, "reconfigure"):
-            stream.reconfigure(errors="backslashreplace")
+            stream.reconfigure(encoding="utf-8", errors="backslashreplace")
     parser = argparse.ArgumentParser(description="오프라인 설정 입력 도우미 (설치 실행 없음)")
     parser.add_argument("--check", action="store_true", help="입력 없이 실행 조건과 질문 형식 확인")
     arguments = parser.parse_args()

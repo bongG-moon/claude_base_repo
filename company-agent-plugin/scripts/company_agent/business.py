@@ -68,7 +68,18 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action == 'ppt-preview':
         from .business_artifacts import preview_template
         return preview_template(safe_path(args.template, exists=True), safe_path(args.output))
-    spec = _spec(args.spec)
+    if action == 'office-read' and getattr(args, 'file', None):
+        spec = {'file': args.file}
+        for flag, field in (('start','start'),('end','end'),('sheet','sheet'),('range','range'),
+                            ('max_chars','maxChars'),('expected_count','expectedCount')):
+            value = getattr(args, flag, None)
+            if value is not None:
+                spec[field] = int(value) if flag=='sheet' and value.isdigit() else value
+    else:
+        if action == 'office-read' and any(getattr(args,key,None) is not None for key in
+                                          ('start','end','sheet','range','max_chars','expected_count')):
+            raise ValueError('office-read: --spec과 직접 범위 인자는 함께 사용할 수 없습니다.')
+        spec = _spec(args.spec)
     if (blocked := blocked_input(spec)) is not None:
         return blocked
     spec.pop("protection", None)
@@ -136,7 +147,15 @@ def register(subparsers: Any) -> None:
             command.add_argument("--folder", required=True)
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
-        if action in {"html", "html-choices", "ppt-choices", "ppt", "mail-search", "mail-read", "office-read"}:
+        if action == 'office-read':
+            source = command.add_mutually_exclusive_group(required=True)
+            source.add_argument('--spec')
+            source.add_argument('--file')
+            for flag in ('start','end','max-chars','expected-count'):
+                command.add_argument('--'+flag, type=int)
+            command.add_argument('--sheet')
+            command.add_argument('--range')
+        if action in {"html", "html-choices", "ppt-choices", "ppt", "mail-search", "mail-read"}:
             command.add_argument("--spec", required=True)
         if action in {"html", "ppt", "ppt-preview"}:
             command.add_argument("--output", required=True)
