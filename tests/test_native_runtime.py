@@ -142,7 +142,11 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
         self.assertEqual(1, context["sessionState"]["stopRetryCount"])
         self.assertEqual(1, context["sessionState"]["sameFailureCount"])
         self.assertEqual("LARGE", context["sessionState"]["modelTier"])
-        self.assertEqual(before, load_session("compact-test", self.state))
+        after = load_session("compact-test", self.state)
+        # Compaction invalidates only the derived Skill-read receipts. Existing
+        # verification, learning and retry obligations must remain byte-equivalent.
+        self.assertFalse(after.pop("skillWorkflow")["indexRead"])
+        self.assertEqual(before, after)
         self.assertNotIn("a check failed", json.dumps(context))
 
     def test_skill_stat_failure_does_not_hide_other_relevant_skills(self) -> None:

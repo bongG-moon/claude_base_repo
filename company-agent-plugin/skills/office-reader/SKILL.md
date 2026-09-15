@@ -1,6 +1,6 @@
 ---
 name: office-reader
-description: 사내 Office 파일과 DRM 적용 문서를 읽고 요약할 때 사용합니다. Excel·CSV는 xlwings, PPT·Word는 pywin32로 설치된 Office를 열어 읽는 고정 절차입니다. 보호 해제·접근 거절 우회 기능은 아닙니다.
+description: 기존 PPT·PowerPoint 내용 분석, 슬라이드 요약, Excel·CSV 표 읽기, Word 문서 확인 등 사내 Office 파일을 읽을 때 사용합니다. Excel은 xlwings, PPT·Word는 pywin32로 설치된 Office를 엽니다. 새 PPT 제작은 presentation 용도입니다. 보호 해제·접근 거절 우회 기능은 아닙니다.
 ---
 
 # 사내 Office 문서 읽기

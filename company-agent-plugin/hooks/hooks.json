@@ -35,7 +35,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(?:Agent|Task|mcp__corp-db-read__.*|mcp__corp-outlook-self__.*)$",
+        "matcher": "^(?:Agent|Task|Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$",
         "hooks": [
           {
             "type": "command",
@@ -52,7 +52,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(?:Read|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|mcp__.*)$",
+        "matcher": "^(?:Read|Skill|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|mcp__.*)$",
         "hooks": [
           {
             "type": "command",

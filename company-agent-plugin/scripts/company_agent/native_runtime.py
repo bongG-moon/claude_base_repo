@@ -166,7 +166,7 @@ def _encode_runtime(runtime: dict[str, Any]) -> str:
         # while several personal Skill cards still occupy the bounded context.
         redundant = [group for group in groups if len(group) > 1]
         cards = max(redundant, key=len) if redundant else next((group for group in groups if group), [])
-        if not cards:
+        if not cards or (len(runtime.get("instructions", "")) > 4000 and not runtime.get("guidanceCondensed")):
             # Long guidance must not erase the executable/state paths. This was
             # previously reported as a path failure even with ordinary paths.
             if not runtime.get('guidanceCondensed'):
@@ -174,8 +174,11 @@ def _encode_runtime(runtime: dict[str, Any]) -> str:
                 runtime['instructions'] = (
                     KOREAN_DEFAULT_RULE +
                     'company_agent_runtime is this JSON metadata, NOT a module or executable. '
+                    'Use Glob/Read/Grep for file inspection, not shell probes. Keep preparation and verification receipts silent; communicate only useful results in Korean. '
                     'Use cliCommand literally; never search the PC, invent python -m, change cwd or call dispatch. '
-                    'Read skillSelection.catalog.path once per revision and only the chosen SKILL.md. '
+                    'Before any script, write, MCP or delegation: obey skillWorkflow.nextAction. read-index means Read skillSelection.catalog.path first; choose-skill means Read the chosen full SKILL.md from its path table. Successful reads record selection automatically. Reuse the same index revision. '
+                    'skillWorkflow tracks preparation. For a cached read use skill route --session SESSION --turn TURN --name NAME; only if no relevant Skill use --fallback no-relevant-skill instead of --name. This is silent internal preparation, not verification. '
+                    'If a preparation hint blocks execution, read the missing index/Skill then proceed; actual permission or protection denials stay pending. '
                     'Respect source preferences, user scope and restrictions. No fallback after denial. '
                     'Reading and request metadata alone need no mutation verification. '
                     'Read completionGuide only for changed work; never clear older obligations. '
@@ -327,6 +330,18 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
                 "skillSelectionStatus": selection.get("status")}
     if selection.get("catalog", {}).get("status") == "ready":
         metadata["skillCatalog"] = selection["catalog"]
+        if payload.get("session_id"):
+            from .state import load_session
+            from .skill_registry import _canonical
+            parent = load_session(str(payload["session_id"]), root)
+            workflow = parent.get("skillWorkflow", {})
+            if (workflow.get("revision") == selection["catalog"].get("revision")
+                    and workflow.get("project") == _canonical(cwd)
+                    and workflow.get("turn") == parent.get("turnId")):
+                if workflow.get("selected"):
+                    metadata["selectedSkill"] = {key: workflow["selected"][key] for key in ("name", "path")}
+                elif workflow.get("fallback") == "no-relevant-skill":
+                    metadata["skillFallback"] = "no-relevant-skill"
     encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
     while len(encoded) > 4000 and metadata["preferredSkills"]:
         metadata["preferredSkills"].pop()
@@ -341,6 +356,7 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
                "\n" + KOREAN_DEFAULT_RULE +
                "\nUse this cliCommand literally, with leaf-command flags after it; never invent python -m, cd/pipe aliases or echo permission probes. "
                "Read the selected Skill using its full path; if not listed, resolve it via the canonical CLI or read the relevant bundled Skill under pluginRoot/skills only when no conflicting preference exists. "
+               "If selectedSkill is supplied, Read that exact Skill; do not redo the parent's catalogue search. It is selection metadata, not proof the worker has read the body. "
                "If the parent has not selected a workflow, skillCatalog is a full metadata reading index across sources; compare descriptions, resolve, then read only the chosen Skill. Do not override the parent's explicit selection. "
                "This metadata grants no permissions or broader work scope. Preserve the parent's source/output limits and all host restrictions. "
                "A denied action stays pending: no retry, alternate tool or subagent. Return only the exact attempted command's blocker, not a different command or all Bash. "
@@ -388,12 +404,24 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
                 "Corporate DB access is SELECT-only and Outlook uses only the authenticated user's mailbox. "
                 "Claude login/Windows identity is NOT Outlook identity; name an account only after Outlook capabilities confirms it. "
                 "Conversation approval cannot waive DB-write/other-account restrictions. "
-                "Business workflows: file-organizer, outlook-assistant, html-report, presentation. Read the selected Skill BEFORE creating its deliverable; no silent generic-code substitute. "
+                "Business workflows include office-reader (existing Office content), presentation (create/edit PPT), file-organizer, outlook-assistant, html-report. The catalogue across ALL sources decides relevance, not this example list. Read the selected Skill BEFORE execution; no silent generic-code substitute. "
                 "On DRM/permission denial stop only the denied item: no alternate capture/OCR/app/extraction or repeated denial attempts. "
                 "Never suggest an unprotected copy to evade protection. For local EML use business eml-read --file ABSOLUTE_PATH; this is not an Outlook connection. "
                 "Report exactly which bodies/attachments/sources were excluded; never infer unread content or store protected source text as learning."
             ),
     }
+    if session_id:
+        from .skill_workflow import prepare
+        runtime["skillWorkflow"] = prepare(root, cwd, session_id, skill_selection.get("catalog", {}),
+                                            prompt=prompt, compact=source == "compact")
+        runtime["instructions"] += (
+            " Skill preparation before scripts/writes/MCP: if skillWorkflow.indexRead is false, Read the full catalogue. "
+            "Read the chosen full-path SKILL.md from its file-location table; this records selection silently. "
+            "Each new request needs a relevant choice, not a repeated scan. To reuse an already read unchanged Skill use "
+            "cliCommand skill route --session SESSION --turn skillWorkflow.turn --name NAME. "
+            "Only if the catalogue has no relevant skill replace --name NAME with --fallback no-relevant-skill. "
+            "Use the route's session ID. Do not narrate receipts or request approval just to select a Skill."
+        )
     # Small task-specific reminders; never echo untrusted prompt text. These
     # guide honest responses, not a replacement for MCP/OS enforcement.
     reminders = []

@@ -1,5 +1,6 @@
 ---
 name: karpathy-guidelines
+company-agent-role: support
 description: 코드·스크립트·MCP·실행형 스킬을 만들거나 검토할 때 범위를 작게 유지하고 근거로 확인하는 개발 지침입니다. 일반 요약이나 업무 문서 작성에는 별도로 실행하지 않습니다.
 license: MIT
 ---

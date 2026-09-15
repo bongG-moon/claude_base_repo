@@ -492,6 +492,13 @@ def cmd_skill(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_skill_route(args: argparse.Namespace) -> int:
+    from .skill_workflow import select
+    root = Path(args.state_root).expanduser() if args.state_root else user_state_root()
+    _print_json(select(root, Path.cwd(), args.session, args.turn, name=args.name, fallback=args.fallback))
+    return 0
+
+
 def _add_base_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base", help="Corporate Knowledge Pack root. Defaults to COMPANY_AGENT_KNOWLEDGE_BASE.")
 
@@ -529,6 +536,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     skill = subparsers.add_parser("skill", help="Inspect Skill overlaps and select state/project workflow preferences.")
     skill_sub = skill.add_subparsers(dest="skill_command", required=True)
+    route = skill_sub.add_parser("route", help="Reuse an observed Skill read or record that no Skill fits this request.")
+    _add_state_argument(route)
+    route.add_argument("--session", required=True)
+    route.add_argument("--turn", required=True)
+    choice = route.add_mutually_exclusive_group(required=True)
+    choice.add_argument("--name")
+    choice.add_argument("--fallback", choices=("no-relevant-skill",))
+    route.set_defaults(func=cmd_skill_route)
     for operation in ("inventory", "list", "conflicts", "search", "resolve", "prefer", "prefer-incoming", "order", "reset"):
         action = skill_sub.add_parser(operation)
         _add_state_argument(action)

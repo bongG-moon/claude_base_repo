@@ -791,6 +791,9 @@ def record_activity(
                 mutated = False
             if internal_plan_command(command, root or user_state_root()):
                 bookkeeping = True
+            from .skill_workflow import internal_command
+            if internal_command(command, session_id, state, root or user_state_root()):
+                bookkeeping = True
             # Only exact current-session lifecycle commands are bookkeeping.
             if _is_own_work_command(command, session_id, state, root or user_state_root()):
                 bookkeeping = True

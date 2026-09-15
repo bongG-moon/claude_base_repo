@@ -1,5 +1,6 @@
 ---
 name: self-learning
+company-agent-role: support
 description: 재사용 가능한 피드백을 모았다가 의미 있는 업무가 끝나면 조용히 학습합니다. 조건에 맞는 개인 스킬을 개선하고 다음 사용 결과를 확인하며 단순 조회나 빈 검토는 건너뜁니다.
 ---
 

@@ -31,6 +31,8 @@ function Assert-EmployeeBundle {
     foreach ($relative in @(
         'payload/core/plugin/THIRD_PARTY_NOTICES.md',
         'payload/core/plugin/scripts/company_agent/skill_catalog.py',
+        'payload/core/plugin/scripts/company_agent/skill_workflow.py',
+        'payload/core/plugin/skills/company-agent/references/skill-selection.md',
         'payload/core/plugin/scripts/company_agent/completion_feedback.py',
         'payload/core/plugin/scripts/company_agent/user_language.py',
         'payload/core/plugin/scripts/company_agent/report_design.py',
@@ -57,6 +59,8 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.4.1.md',
         'docs/VALIDATION_1.4.1.md',
         'docs/UPDATE_1.4.2.md',
+        'docs/UPDATE_1.4.3.md',
+        'docs/SKILL_ROUTING_VALIDATION_2026-09-15.md',
         'docs/OFFICE_READ_TROUBLESHOOTING.md',
         'payload/core/plugin/skills/presentation/references/design-and-quality.md',
         'payload/core/plugin/skills/html-report/references/design-and-numbers.md',

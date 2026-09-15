@@ -41,6 +41,13 @@ def main() -> int:
         if not active:
             print("{}")
             return 0
+        if event == "PreToolUse":
+            from company_agent.skill_workflow import preflight
+            from company_agent.paths import user_state_root
+            preparation = preflight(user_state_root(), cwd, payload)
+            if preparation:
+                print(json.dumps(preparation, ensure_ascii=False))
+                return 0
         if event == "SessionStart":
             result = session_start(plugin, cwd, session_id=str(payload.get("session_id") or ""), source=str(payload.get("source") or ""))
         elif event == "PermissionRequest":
@@ -63,6 +70,11 @@ def main() -> int:
             if event not in handlers:
                 raise ValueError("Unsupported hook event")
             payload["hook_event_name"] = event
+            # The corporate policy handler accepts only its own MCP servers.
+            # Other tools get preparation checks, NOT a new permission grant.
+            if event == "PreToolUse" and not str(payload.get("tool_name", "")).startswith(("mcp__corp-db-read__", "mcp__corp-outlook-self__")):
+                print("{}")
+                return 0
             handler = __import__(handlers[event])
             output = io.StringIO()
             original_stdin = sys.stdin
@@ -76,15 +88,36 @@ def main() -> int:
             if event == "UserPromptSubmit":
                 text = result["hookSpecificOutput"]["additionalContext"]
                 result["hookSpecificOutput"]["additionalContext"] = bounded_prompt_context(text, runtime_context(
-                    plugin, cwd, str(payload.get("prompt", payload.get("user_prompt", "")))
+                    plugin, cwd, str(payload.get("prompt", payload.get("user_prompt", ""))),
+                    session_id=str(payload.get("session_id") or "")
                 ))
+            if event == "PostToolUse":
+                from company_agent.skill_workflow import observe
+                from company_agent.paths import user_state_root
+                try:
+                    observe(user_state_root(), cwd, payload)
+                except (OSError, ValueError, KeyError, TypeError):
+                    # No fabricated read receipt; a later preflight reports the
+                    # missing preparation without turning it into a Stop error.
+                    pass
+                if payload.get("tool_name") in {"Bash", "PowerShell"}:
+                    from company_agent.execution_contract import _trusted_arguments
+                    inputs = payload.get("tool_input") or {}
+                    args = _trusted_arguments(str(inputs.get("command") or inputs.get("cmd") or ""))
+                    if args and len(args) > 1 and args[0] == "skill" and args[1] in {"prefer", "prefer-incoming", "order", "reset"}:
+                        # Preference edits are uncommon. Refresh just here, not
+                        # after every tool call; no stale same-turn substitution.
+                        context = runtime_context(plugin, cwd, session_id=str(payload.get("session_id") or ""))
+                        result.setdefault("hookSpecificOutput", {"hookEventName": "PostToolUse"})
+                        prior = result["hookSpecificOutput"].get("additionalContext", "")
+                        result["hookSpecificOutput"]["additionalContext"] = prior + "\n" + context
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except Exception:
         # No exception payload, model credentials or raw prompt is logged.
         if event == "PreToolUse":
             result = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
-                      "permissionDecisionReason": "Company Agent runtime unavailable; reinstall the package before using corporate tools."}}
+                      "permissionDecisionReason": "Company Agent 실행 준비 정보를 읽지 못했습니다. 설치 상태를 확인해 주세요. 기존 실행 권한과 회사 정책은 변경하지 않았습니다."}}
         else:
             result = {"systemMessage": "Company Agent를 준비하지 못했습니다. 설치 상태를 확인해 주세요. 이 대화의 하네스 검사는 사용할 수 없습니다."}
         print(json.dumps(result))
