@@ -46,7 +46,12 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
         return inspect_runtime()
     if action == "html-designs":
         from .business_artifacts import html_designs
-        return html_designs(Path(args.output) if args.output else None)
+        return html_designs(Path(args.output) if args.output else None, open_preview=getattr(args, 'open_preview', False))
+    if action == 'html-template':
+        from .html_reference import inspect_template
+        return inspect_template(safe_path(args.template, exists=True),
+                                safe_path(args.output) if args.output else None,
+                                open_preview=getattr(args, 'open_preview', False))
     if action == "files-plan":
         from .business_files import create_plan
         return create_plan(state, Path(args.folder))
@@ -92,7 +97,7 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action == 'html-choices':
         from .business_artifacts import html_choices
         return html_choices(spec)
-    if action in {"html", "ppt"}:
+    if action in {"html", "ppt", "ppt-design-preview"}:
         from .business_artifacts import create_html, create_ppt
         output = safe_path(args.output)
         if output.exists():
@@ -100,7 +105,7 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
         if action == "html":
             return create_html(spec, output, require_choices=True)
         template = safe_path(args.template, exists=True) if args.template else None
-        return create_ppt(spec, output, template, require_choices=True)
+        return create_ppt(spec, output, template, require_choices=True, preview_only=action=='ppt-design-preview')
     if action == "mail-search":
         from .business_mail import search_mail
         return search_mail(spec)
@@ -135,12 +140,15 @@ def run(args: argparse.Namespace) -> int:
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
-    for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview",
+    for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview",
                    "mail-capabilities", "mail-search", "mail-read", "eml-read", "office-read"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
-        if action == 'html-designs':
+        if action in {'html-designs', 'html-template'}:
             command.add_argument('--output')
+            command.add_argument('--open', action='store_true', dest='open_preview')
+        if action == 'html-template':
+            command.add_argument('--template', required=True)
         if action == "eml-read":
             command.add_argument("--file", required=True)
         if action == "files-plan":
@@ -155,10 +163,10 @@ def register(subparsers: Any) -> None:
                 command.add_argument('--'+flag, type=int)
             command.add_argument('--sheet')
             command.add_argument('--range')
-        if action in {"html", "html-choices", "ppt-choices", "ppt", "mail-search", "mail-read"}:
+        if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-design-preview", "mail-search", "mail-read"}:
             command.add_argument("--spec", required=True)
-        if action in {"html", "ppt", "ppt-preview"}:
+        if action in {"html", "ppt", "ppt-preview", "ppt-design-preview"}:
             command.add_argument("--output", required=True)
-        if action in {"ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview"}:
+        if action in {"ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview"}:
             command.add_argument("--template", required=action in {'ppt-inspect','ppt-analyze','ppt-preview'})
         command.set_defaults(func=run)

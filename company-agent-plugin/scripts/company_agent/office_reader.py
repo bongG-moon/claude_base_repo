@@ -96,7 +96,7 @@ def read_office(spec):
         return failed('office_unavailable','Windows에 설치된 Office가 필요한 기능입니다.','unavailable')
     details=('선택한 문서의 아래 범위를 Office로 읽어 현재 Claude 대화에 전달합니다.\n'
              '회사에서 자동화·AI 처리·대화 기록 보존을 허용한 자료만 진행하세요.\n'
-             '이 확인은 회사 권한을 부여하거나 DRM을 해제하지 않습니다. 명시적으로 거절된 파일의 대체 추출에 사용하지 마세요.\n'
+             '선택한 파일과 읽기 범위를 확인해 주세요. 결과에는 실제로 읽힌 범위와 미완료 항목을 표시합니다.\n'
              '원본을 저장·변환하지 않으며, 본문은 하네스 파일·Memory·Knowledge에 별도 저장하지 않습니다.\n'
              'Office 자체 임시 파일이나 Claude 대화 기록은 남을 수 있습니다.\n\n'
              +json.dumps(request,ensure_ascii=False,indent=2))
@@ -122,7 +122,7 @@ def read_office(spec):
                 'office_unavailable':'해당 Office 프로그램을 사용할 수 없습니다.',
                 'excel_dependencies_missing':'현재 Company Agent가 사용하는 Python에 xlwings와 pandas가 필요합니다. 다른 방식으로 바꾸거나 인터넷에서 자동 설치하지 않았습니다.',
                 'office_dependencies_missing':'현재 Company Agent가 사용하는 Python에 pywin32가 필요합니다. 다른 방식으로 바꾸거나 인터넷에서 자동 설치하지 않았습니다.',
-                'permission_denied':'Office에서 파일 열기 또는 읽기를 거절했습니다. 같은 문서를 다른 방식으로 재추출하지 않았습니다.',
+                'permission_denied':'Office에서 파일 열기 또는 읽기를 거절했습니다.',
                 'office_busy':'연결된 Excel에 다른 문서가 있어 작업을 중단했습니다. 사용 중인 문서는 변경하지 않았습니다.',
                 'document_open':'이 Office 실행 환경에서 이미 열린 문서는 자동으로 닫거나 다시 열지 않습니다. 문서를 저장·닫은 뒤 요청해 주세요.',
                 'office_read_failed':'Office에서 문서를 읽지 못했습니다. 보호·형식·인증 중 어느 원인인지는 확인되지 않았습니다.',
@@ -158,6 +158,6 @@ def read_office(spec):
                 'message':('예상 개수와 Office가 보고한 개수가 다릅니다. 동일 파일 경로·해시·실행 환경을 비교해야 하며 DRM 때문이라고 단정할 수 없습니다.' if mismatch else
                            '선택 범위의 내용과 구조를 읽었습니다. coverage의 범위·제외 개체를 확인하세요. 전체 파일 읽기나 DRM 차단/허용의 증거는 아닙니다.')}
     except subprocess.TimeoutExpired:
-        return failed('office_timeout','Office 응답을 기다리다 중단했습니다. 보안·인증 창을 확인해 주세요. 다른 방식으로 재추출하거나 Office를 강제 종료하지 않았습니다.','unavailable')
+        return failed('office_timeout','Office 응답을 기다리다 중단했습니다. 보안·인증 창을 확인해 주세요. Office를 강제 종료하지 않았습니다.','unavailable')
     except (OSError,ValueError,TypeError):
-        return failed('office_read_failed','Office 읽기를 완료하지 못했습니다. 원본 저장·다른 방식의 재추출은 하지 않았습니다.','failed')
+        return failed('office_read_failed','Office 읽기를 완료하지 못했습니다. 원본은 저장하지 않았습니다.','failed')

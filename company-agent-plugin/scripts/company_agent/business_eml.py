@@ -86,7 +86,7 @@ def read_eml(file: Path) -> dict:
     if top_protected:
         return {**_base(), "status": "blocked", "code": "protection_blocked",
                 "warnings": [{"code": "protection_blocked"}], "partial_reasons": ["protection_blocked"],
-                "message": "보호된 메일 유형이어서 본문을 읽지 않았습니다. 보호 해제나 대체 추출은 시도하지 않았습니다."}
+                "message": "현재 읽기 기능이 지원하지 않는 보호된 메일 유형이어서 본문을 읽지 못했습니다."}
     result = _base()
     result.update(ok=True, status="ok", source_name=_label(source.name), **metadata,
                   message="로컬 메일 파일에서 지원하는 일반 텍스트를 확인했습니다. 읽은 범위는 body_read와 첨부 상태를 확인하세요. Outlook에는 연결하지 않았습니다.")

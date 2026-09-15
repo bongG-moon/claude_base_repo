@@ -16,10 +16,24 @@ from company_agent import report_styles as styles, business_artifacts as artifac
 
 
 class ReportStylesTests(unittest.TestCase):
+    def test_additional_selection_widgets_cover_all_eight_and_wait(self):
+        pending=styles.choices({'designMenu':'additional','length':'detailed'})
+        self.assertTrue(pending['waitForUser'])
+        self.assertEqual(3,len(pending['selectionQuestion']['options']))
+        labels=[]
+        for question in pending['designQuestions']:
+            self.assertFalse(question['multiSelect'])
+            self.assertEqual(4,len(question['options']))
+            labels.extend(option['label'] for option in question['options'])
+        self.assertEqual([f'{i+1}. {row[1]}' for i,row in enumerate(styles.STYLES)],labels)
+        self.assertEqual(['style'],pending['missing'])
+        self.assertEqual({'length':'detailed'},pending['preservedChoices'])
+
     def test_initial_options_are_two_designs_and_disclosure(self):
         result=styles.choices({})
-        self.assertEqual(3,len(result['initialDesignOptions']))
-        self.assertEqual('추가 디자인(미리보기)',result['initialDesignOptions'][-1])
+        self.assertEqual(4,len(result['initialDesignOptions']))
+        self.assertEqual('추가 디자인(미리보기)',result['initialDesignOptions'][2])
+        self.assertEqual('HTML 양식 직접 첨부',result['initialDesignOptions'][3])
         self.assertNotIn('뉴모피즘',json.dumps(result,ensure_ascii=False))
         self.assertEqual(['style'],result['missing'])
         self.assertEqual('design',result['stage'])
@@ -192,6 +206,38 @@ class ReportStylesTests(unittest.TestCase):
         self.assertIn('background:var(--cover)!important',styles.CSS)
         self.assertIn('background:var(--head-fill)',styles.CSS)
         self.assertIn('box-shadow:var(--cell-shadow)',styles.CSS)
+
+    def test_theme_definitions_do_not_compete_with_legacy_layers(self):
+        from company_agent import report_design
+        for css in (artifacts._CSS, report_design.CSS):
+            self.assertNotRegex(css, r'body\[data-style=[a-z-]+\]\{--')
+        self.assertIn('--chart-shadow:var(--cell-shadow)', styles.CSS)
+        self.assertIn('grid-column:span 2', styles.CSS)
+
+    def test_glass_and_neumorphism_are_materials_not_only_palette_changes(self):
+        glass = re.search(r'\[data-style=glassmorphism\]\{([^}]+)', styles.CSS).group(1)
+        neo = re.search(r'\[data-style=neumorphism\]\{([^}]+)', styles.CSS).group(1)
+        self.assertIn('radial-gradient', glass)
+        self.assertIn('--surface:#ffffff2e', glass)
+        self.assertIn('--cell:#ffffff24', glass)
+        self.assertIn('backdrop-filter:blur(14px)', styles.CSS)
+        self.assertIn('#bcbcbc 29.3%', glass)
+        self.assertIn('inset 0 -1px 0 #00000012', glass)
+        self.assertNotIn('saturate(140%)', styles.CSS)
+        for color in re.findall(r'#([a-fA-F0-9]{6})(?:[a-fA-F0-9]{2})?\b', glass):
+            self.assertEqual(color[:2],color[2:4])
+            self.assertEqual(color[2:4],color[4:6])
+        self.assertIn('--bg:#e5eaf0;--paper:#e5eaf0', neo)
+        self.assertIn('-14px -14px', neo)
+        self.assertIn('--cell-shadow:inset', neo)
+        self.assertIn('--chart-shadow:7px 7px', neo)
+
+    def test_reduced_transparency_and_print_use_opaque_readable_surfaces(self):
+        self.assertIn('@supports not ((backdrop-filter:', styles.CSS)
+        self.assertIn('@media(prefers-reduced-transparency:reduce)', styles.CSS)
+        self.assertIn('background:#fafafa!important', styles.CSS)
+        self.assertIn('@media print{:is(body,.style-preview)[data-style]', styles.CSS)
+        self.assertIn('-webkit-backdrop-filter:none!important', styles.CSS)
 
 
 if __name__=='__main__':

@@ -176,10 +176,10 @@ def _encode_runtime(runtime: dict[str, Any]) -> str:
                     'company_agent_runtime is this JSON metadata, NOT a module or executable. '
                     'Use Glob/Read/Grep for file inspection, not shell probes. Keep preparation and verification receipts silent; communicate only useful results in Korean. '
                     'Use cliCommand literally; never search the PC, invent python -m, change cwd or call dispatch. '
-                    'Before any script, write, MCP or delegation: obey skillWorkflow.nextAction. read-index means Read skillSelection.catalog.path first; choose-skill means Read the chosen full SKILL.md from its path table. Successful reads record selection automatically. Reuse the same index revision. '
-                    'skillWorkflow tracks preparation. For a cached read use skill route --session SESSION --turn TURN --name NAME; only if no relevant Skill use --fallback no-relevant-skill instead of --name. This is silent internal preparation, not verification. '
-                    'If a preparation hint blocks execution, read the missing index/Skill then proceed; actual permission or protection denials stay pending. '
-                    'Respect source preferences, user scope and restrictions. No fallback after denial. '
+                    'For skill preparation, read-index means Read skillSelection.catalog.path first; choose-skill means choose the relevant Skill from that index and reuse its already-read unchanged body, or Read it if not loaded. A missing selection receipt is not a command prerequisite. Successful reads record selection automatically. Reuse the same index revision. '
+                    'skillWorkflow tracks observed preparation, not permissions. Reuse unchanged bodies already read in this context; skill route is optional, never a required extra command. No relevant Skill means proceed normally. A reminder is not a blocked tool or bad directory. Do not narrate it. '
+                    'Preparation advice never blocks execution. Actual permission/protection denials stay pending for the denied action; do not infer every shell command is unavailable from one denial. '
+                    'Respect source preferences and user scope. Report actual reading results and incomplete ranges. '
                     'Reading and request metadata alone need no mutation verification. '
                     'Read completionGuide only for changed work; never clear older obligations. '
                     'Learn silently at meaningful milestones, not every reply. '
@@ -398,6 +398,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
                 "Keep follow-up edits in the same work; --new yes only for a genuinely different task after resolving prior obligations. "
                 "Routine learning is silent in BOTH intermediate commentary and final answers: no checkpoint/review narration or accepted/verification bureaucracy. "
                 "Before finalizing changed work or acting on a Stop reminder, Read completionGuide for verification and quiet milestone learning. "
+                "Running workers are waiting, not verification failures: use the available wait/result tool or native completion notification, never an empty Agent/resume call. Inspect the returned result before finalizing. "
                 "Check actual content and source constraints, not just existence. Only report observed checks. "
                 "Approval denial/pending checks are unavailable/partial, not fail; preserve obligations. No delegation/retry of denied actions. One denial does not block all Bash. "
                 "Read personal Skills using Read so the exact version can be observed. Learning status/pause/resume are available through /company-agent:learning. "
@@ -405,8 +406,8 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
                 "Claude login/Windows identity is NOT Outlook identity; name an account only after Outlook capabilities confirms it. "
                 "Conversation approval cannot waive DB-write/other-account restrictions. "
                 "Business workflows include office-reader (existing Office content), presentation (create/edit PPT), file-organizer, outlook-assistant, html-report. The catalogue across ALL sources decides relevance, not this example list. Read the selected Skill BEFORE execution; no silent generic-code substitute. "
-                "On DRM/permission denial stop only the denied item: no alternate capture/OCR/app/extraction or repeated denial attempts. "
-                "Never suggest an unprotected copy to evade protection. For local EML use business eml-read --file ABSOLUTE_PATH; this is not an Outlook connection. "
+                "For document reading, report actual reader results and incomplete ranges; do not infer a DRM cause from a generic failure. "
+                "For local EML use business eml-read --file ABSOLUTE_PATH; this is not an Outlook connection. "
                 "Report exactly which bodies/attachments/sources were excluded; never infer unread content or store protected source text as learning."
             ),
     }
@@ -416,22 +417,22 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
                                             prompt=prompt, compact=source == "compact")
         runtime["instructions"] += (
             " Skill preparation before scripts/writes/MCP: if skillWorkflow.indexRead is false, Read the full catalogue. "
-            "Read the chosen full-path SKILL.md from its file-location table; this records selection silently. "
-            "Each new request needs a relevant choice, not a repeated scan. To reuse an already read unchanged Skill use "
-            "cliCommand skill route --session SESSION --turn skillWorkflow.turn --name NAME. "
-            "Only if the catalogue has no relevant skill replace --name NAME with --fallback no-relevant-skill. "
-            "Use the route's session ID. Do not narrate receipts or request approval just to select a Skill."
+            "If the chosen Skill body is not already loaded and unchanged, Read its full-path SKILL.md from the file-location table; this records selection silently. "
+            "Each request needs a relevant choice, not a repeated scan or bookkeeping command. "
+            "Reuse unchanged Skill bodies already read in this context. skill route is optional; never chain it before every execution. "
+            "If no relevant skill exists, proceed normally. Advisory reminders are not path errors or tool denials. "
+            "Do not narrate receipts or request approval just to select a Skill."
         )
     # Small task-specific reminders; never echo untrusted prompt text. These
     # guide honest responses, not a replacement for MCP/OS enforcement.
     reminders = []
     lowered = prompt.casefold()
     if any(word in lowered for word in ("보호", "drm", "irm", "첨부", "permission")):
-        reminders.append("보호로 읽지 못한 부분은 제외한다고만 알리세요. 보호 해제 사본·캡처·다른 추출 경로를 제안하지 마세요. 본문만 읽었다면 '첨부 내용은 제외하고 본문만 요약했습니다'라고 명확히 설명하세요.")
+        reminders.append("실제로 읽은 부분과 읽지 못한 부분을 구분해 알리세요. 본문만 읽었다면 '첨부 내용은 제외하고 본문만 요약했습니다'라고 명확히 설명하세요. 오류 원인을 확인하지 못했다면 모른다고 안내하세요.")
     if any(word in lowered for word in ("outlook", "아웃룩", "계정", "select", "db", "정책")):
         reminders.append("하네스의 준수 정책과 실제 MCP의 구현·검증 결과는 다릅니다. 설명만 요청되면 '정책상 본인 계정만 허용하며 실제 연동 설정은 아직 확인하지 않았습니다'라고 표현하세요. 계정 주소 예시/Claude 로그인 주소는 출력하지 마세요. 연결 증거 없이 코드 수준 강제나 사용 가능을 단정하지 마세요. 대화상 승인으로 DB 쓰기·타인 계정 제한을 해제할 수 없습니다.")
     if ".eml" in lowered or "eml 파일" in lowered:
-        reminders.append("로컬 EML은 company-agent:outlook-assistant Skill을 먼저 읽고 metadataCommand 뒤에 business eml-read --file 절대경로를 직접 붙여 읽으세요. 지정된 경로를 바로 쓰고 목록이 필요할 때만 Glob을 쓰세요. Bash find/echo 체인이나 자체 Python/base64/추출 스크립트는 필요 없습니다. 읽기 거절은 우회하지 말고 제외 범위를 알리세요. Outlook 연결로 표현하지 마세요.")
+        reminders.append("로컬 EML은 company-agent:outlook-assistant Skill을 먼저 읽고 metadataCommand 뒤에 business eml-read --file 절대경로를 직접 붙여 읽으세요. 지정된 경로를 바로 쓰고 목록이 필요할 때만 Glob을 쓰세요. Bash find/echo 체인이나 자체 Python/base64/추출 스크립트는 필요 없습니다. 실제 읽은 범위와 제외 범위를 알리세요. Outlook 연결로 표현하지 마세요.")
     if any(word in lowered for word in ("기억", "remember", "memory")):
         reminders.append("기억 저장/조회는 먼저 company-agent:personal-memory Skill을 읽으세요. 명시 저장 요청만 즉시 저장하고 일반 교정은 업무 종료 때 반영하세요. spec은 stateRoot/tmp/memory-고유ID.json에 Write로 생성하세요. 거절되면 직접 Memory파일 편집이나 다른 shell경로로 우회하지 마세요.")
     if reminders:

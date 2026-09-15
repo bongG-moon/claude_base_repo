@@ -110,7 +110,7 @@ class OfficeReaderTests(unittest.TestCase):
     def test_skill_is_reading_only_and_preserves_other_workflows(self):
         text=(ROOT/'company-agent-plugin/skills/office-reader/SKILL.md').read_text(encoding='utf-8')
         self.assertIn('not a replacement',text)
-        self.assertIn('Never generate xlwings/COM/VBA scripts',text)
+        self.assertIn('Use the shipped bounded reader and its supported options',text)
         self.assertIn('Reading alone needs no',text)
 
     def test_typed_spec_and_read_do_not_create_verification_work(self):

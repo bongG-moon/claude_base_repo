@@ -30,7 +30,9 @@ def main() -> int:
         # they can include local paths or values derived from a tool payload.
         result = deny_tool_call(_FAIL_CLOSED_REASON)
 
-    json.dump(result, sys.stdout, ensure_ascii=False, separators=(",", ":"))
+    # ASCII transport is valid UTF-8 and CP949 alike; consumers still decode
+    # the Korean reason from JSON. Keep fail-closed output readable in either shell.
+    json.dump(result, sys.stdout, ensure_ascii=True, separators=(",", ":"))
     sys.stdout.write("\n")
     return 0
 

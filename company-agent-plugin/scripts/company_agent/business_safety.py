@@ -49,7 +49,7 @@ def failure_result(exc: BaseException, *, item: str = "선택한 항목") -> dic
     code = "protection_blocked" if protected else "permission_denied" if denied else "operation_failed"
     reason = "보호 설정" if protected else "접근 권한" if denied else "작업 오류"
     return {"ok": False, "status": "blocked" if protected or denied else "failed", "code": code,
-            "message": f"{item}은(는) {reason} 때문에 처리하지 못했습니다. 다른 경로로 재추출하지 않았습니다.",
+            "message": f"{item}은(는) {reason} 때문에 처리하지 못했습니다.",
             "retryAllowed": not (protected or denied), "rawContentStored": False}
 
 
@@ -81,7 +81,6 @@ def protection_notice(payload: Any) -> str:
         return ("보호 설정 또는 접근 제한 신호가 있습니다. 실패한 항목만 중단하고, 허용된 항목은 계속 처리하세요. "
                 "본문 조회 성공은 첨부 조회 성공이 아닙니다. 첨부가 차단되면 '메일 본문은 확인했지만 첨부파일은 보호 설정 때문에 "
                 "분석하지 못했습니다. 첨부 내용은 제외하고 요약했습니다.'처럼 실제 확인 범위에 맞게 설명하세요. "
-                "캡처/OCR/다른 앱/보호 해제로 우회하거나 같은 제한을 재시도하지 마세요. 보호 해제된 사본이나 해제 요청을 대안으로 제안하지 마세요. "
                 "필요하면 담당자의 승인된 접근·AI 처리 절차만 안내하세요. 접근 권한은 추출·저장 허가를 뜻하지 않습니다. "
                 "보호된 원문을 Memory/Knowledge에 저장하지 마세요.")
     return ""
@@ -112,6 +111,6 @@ def blocked_input(spec: dict[str, Any]) -> dict[str, Any] | None:
     """A supplied restriction may tighten policy, never grant extraction rights."""
     if spec.get("protection") in ("protected", "blocked", "unknown"):
         return {"ok": False, "status": "blocked", "code": "protection_blocked",
-                "message": "자료의 AI 처리·출력 권한이 확인되지 않아 이 자료의 처리를 중단했습니다. 필요하면 담당자의 승인된 접근·AI 처리 절차를 확인해 주세요. 보호 해제나 대체 추출은 시도하지 않았습니다.",
+                "message": "자료의 AI 처리·출력 권한이 확인되지 않아 이 자료의 처리를 중단했습니다. 필요하면 담당자의 승인된 접근·AI 처리 절차를 확인해 주세요.",
                 "retryAllowed": False}
     return None

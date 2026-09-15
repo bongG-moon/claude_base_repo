@@ -46,7 +46,7 @@ def _failure(error: Exception) -> dict[str, Any]:
         return {"ok": False, "status": error.status, "code": error.code, "message": error.message}
     if isinstance(error, PermissionError):
         return {"ok": False, "status": "blocked", "code": "permission_denied",
-                "message": "파일 접근 권한을 확인해 주세요. 보호 정책을 우회하지 않았습니다."}
+                "message": "파일을 읽지 못했습니다. 파일 접근 권한을 확인해 주세요."}
     if isinstance(error, FileExistsError):
         return {"ok": False, "status": "blocked", "code": "output_exists",
                 "message": "같은 이름의 결과물이 생겨 기존 파일을 보존했습니다. 새 이름을 선택해 주세요."}
@@ -208,14 +208,6 @@ h2{font-size:clamp(24px,3vw,34px);line-height:1.3;margin:0 0 22px}h1,h2{overflow
 th,td{border-bottom:1px solid var(--line);padding:12px;vertical-align:top}th{color:var(--accent);font-weight:700}figure{margin:24px 0}img{max-width:100%;max-height:65vh;object-fit:contain}figcaption{font-size:14px;color:var(--muted)}
 nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px}button{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer}button:disabled{opacity:.4}button:focus-visible{outline:3px solid var(--accent)}
 body[data-view=slides] main>.section{display:none}body[data-view=slides] main>.section.active{display:block;min-height:60vh}body[data-view=scroll] .slide-controls{display:none}.chart-data caption{text-align:left;font-weight:700;color:var(--accent)}
-body[data-style=glassmorphism]{--bg:#dfeaf6;--paper:#ffffffbb;--line:#ffffff;--accent:#36528d;background:linear-gradient(125deg,#dbeef9,#e9e2f7)}body[data-style=glassmorphism] .section{backdrop-filter:blur(12px);box-shadow:0 14px 38px #25365514}
-body[data-style=brutalism]{--bg:#f2f058;--paper:#fffef6;--ink:#111;--line:#111;--accent:#1717be;--radius:0}body[data-style=brutalism] .section{border-width:3px;box-shadow:8px 8px 0 #111}body[data-style=brutalism] h1{font-weight:900}
-body[data-style=neumorphism]{--bg:#e5e9ee;--paper:#e5e9ee;--line:transparent;--radius:24px}body[data-style=neumorphism] .section{box-shadow:12px 12px 26px #bac0c8,-12px -12px 26px #fff}
-body[data-style=minimalism]{--bg:#fff;--paper:#fff;--line:#e5e5e5;--radius:0}body[data-style=minimalism] .section{border-width:0 0 1px;padding-left:0;padding-right:0}
-body[data-style=bento-grid]{--bg:#eef0e9;--accent:#31573b;--radius:24px}body[data-style=bento-grid][data-view=scroll] main{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px}body[data-style=bento-grid] .section{margin:0}body[data-style=bento-grid] .section:first-child{grid-column:1/-1}
-body[data-style=gradient-mesh]{--bg:#f5e9fd;--paper:#ffffffd9;--accent:#693b8f;background:radial-gradient(at 15% 5%,#c8e8fa,transparent 55%),radial-gradient(at 80% 35%,#f7c7e3,transparent 60%),radial-gradient(at 40% 90%,#f8e8b8,transparent 65%),#ede3f9}
-body[data-style=editorial]{--bg:#f6f1e8;--paper:#f6f1e8;--ink:#29251e;--accent:#91432e;--line:#c7bdad;--radius:0}body[data-style=editorial] h1,body[data-style=editorial] h2{font-family:Georgia,'Batang',serif}body[data-style=editorial] .section{border-width:2px 0 0;padding-left:0;padding-right:0}
-body[data-style=freeform]{--bg:#f0f6f5;--paper:#fff;--accent:#12665b;--radius:12px}body[data-style=freeform] .section{border-left:6px solid var(--accent)}
 body[data-length=short] .text{max-width:58ch}body[data-length=detailed] .text{max-width:95ch}body[data-length=detailed] .section{padding:32px}
 @media(max-width:700px){header,main,footer{padding:20px}.section{padding:24px}body[data-style=bento-grid][data-view=scroll] main{display:block}.section{margin-bottom:24px!important}}
 @media print{body{background:white!important}header{padding-top:0}nav,footer{display:none!important}main{display:block!important}.section{display:block!important;box-shadow:none!important;backdrop-filter:none!important;break-inside:avoid;border-color:#ccc!important}body[data-view=slides] .section{break-after:page;min-height:0}img{max-height:600px}}
@@ -233,30 +225,50 @@ def _html_table(headers: list[str], rows: list[list[Any]], caption: str = "") ->
 def html_choices(spec: dict[str, Any]) -> dict[str, Any]:
     """Read-only next-question contract, without reading report source assets."""
     try:
-        if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional'):
+        if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional', 'template'):
             raise ArtifactError('invalid_choice', '디자인 선택 단계의 형식을 확인해 주세요.')
         fields = {key: spec[key] for key in ('style','length','mode','protected','drmRestricted','permissionGranted','accessStatus') if key in spec}
         normalized = _normalize({**fields, 'sections': [{}]})
         from .report_styles import choices
         pending = choices(spec)
+        selection = {key: normalized[key] for key in ('style','length','mode')}
+        if isinstance(spec.get('htmlTemplate'), dict):
+            selection['htmlTemplate'] = {key: spec['htmlTemplate'].get(key) for key in ('path','sha256')}
         return pending or {'ok': True, 'status': 'choices_ready', 'stage': 'ready',
-                           'selection': {key: normalized[key] for key in ('style','length','mode')},
+                           'selection': selection,
                            'message': '디자인·분량·보기 방식이 정해졌습니다. 같은 조건을 다시 묻지 않고 제작합니다.'}
     except Exception as exc:
         return _failure(exc)
 
 
-def html_designs(output: Path | None = None) -> dict[str, Any]:
-    """Expose the shipped static picker. Never launch browsers or edit user state."""
+def open_local_preview(path: Path, *, fragment: str = '') -> dict[str, Any]:
+    """Open only a caller-generated/shipped local preview, not attached source HTML."""
+    try:
+        if os.name != 'nt':
+            raise OSError('Windows default application required')
+        target = path.resolve().as_uri() + '#additional-designs' if fragment == 'additional-designs' else str(path.resolve())
+        os.startfile(target)
+        return {'browserOpened': None, 'previewOpenStatus': 'requested',
+                'previewMessage': '기본 브라우저에 열기를 요청했습니다. 창이 안 보이면 아래 파일을 직접 열어 주세요.'}
+    except OSError:
+        return {'browserOpened': False, 'previewOpenStatus': 'unavailable',
+                'previewMessage': '자동으로 열지 못했습니다. 미리보기 파일을 직접 열거나 채팅에서 디자인을 선택해 주세요.'}
+
+
+def html_designs(output: Path | None = None, *, open_preview: bool = False) -> dict[str, Any]:
+    """Expose the shipped picker; --open explicitly requests a local preview."""
     try:
         source = Path(__file__).resolve().parents[2] / 'skills/html-report/assets/design-picker.html'
         source = _source(source, ('.html',))
         target = _target(output, '.html') if output else source
         if output:
             _publish(source, target)
-        return {'ok': True, 'status': 'choices_available', 'outputPath': str(target),
+        result = {'ok': True, 'status': 'choices_available', 'outputPath': str(target),
                 'message': '추천 디자인만 먼저 표시합니다. 추가 디자인을 펼쳐 비교한 뒤 선택 내용을 Claude 채팅에 붙여 넣어 주세요.',
                 'settingsChanged': False, 'browserOpened': False}
+        if open_preview:
+            result.update(open_local_preview(target, fragment='additional-designs'))
+        return result
     except Exception as exc:
         return _failure(exc)
 
@@ -270,6 +282,16 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
             pending = choices(spec)
             if pending:
                 return pending
+        reference = None
+        if spec.get('htmlTemplate') is not None:
+            from .html_reference import analyze, theme_css
+            selected = spec['htmlTemplate']
+            if not isinstance(selected, dict) or not isinstance(selected.get('path'), str) or not isinstance(selected.get('sha256'), str):
+                raise ArtifactError('invalid_template', '첨부 HTML 양식을 먼저 확인해 주세요.')
+            reference = analyze(Path(selected['path']))
+            if reference['sha256'] != selected['sha256']:
+                raise ArtifactError('template_changed', '첨부 양식이 변경되었습니다. 변경된 양식의 미리보기를 다시 확인해 주세요.', 'input_required')
+            data['referenceCss'] = theme_css(reference)
         from .report_facts import FactError, resolve, bind
         from .report_design import render
         try:
@@ -311,7 +333,8 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
             _publish(draft, output)
         return {"ok": True, "status": "created", "outputPath": str(output), "style": data["style"], "mode": data["mode"],
                 "sections": len(data["sections"]), "offline": True, "validation": validation,
-                "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."]}
+                "templateReference": reference,
+                "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."] + (reference['warnings'] if reference else [])}
     except Exception as exc:
         return _failure(exc)
 
@@ -489,7 +512,7 @@ def preview_template(template: Path, output: Path) -> dict[str, Any]:
         return _failure(exc)
 
 
-def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None, *, require_choices: bool = False) -> dict[str, Any]:
+def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None, *, require_choices: bool = False, preview_only: bool = False) -> dict[str, Any]:
     try:
         output = _target(output, ".pptx")
         from . import ppt_workflow
@@ -497,24 +520,33 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
             from .business_safety import blocked_input
             if (blocked := blocked_input(spec)) is not None:
                 return blocked
-            selected = ppt_workflow.choices(spec, template)
+            selected = ppt_workflow.choices(spec, template, for_preview=preview_only)
             if not selected.get('ok'):
                 return selected
+            if not preview_only:
+                ppt_workflow.verify_design_review(spec, template)
         data = _normalize(spec)
         if require_choices and spec['slideCount'] != len(data['sections']):
             raise ArtifactError('slide_count_mismatch','생성할 장수가 선택한 장수와 다릅니다. 몰래 늘리거나 줄이지 않았습니다.')
+        review_digest = ppt_workflow.design_digest(spec,template) if preview_only else None
         preserve = bool(template and spec.get('referenceMode') == 'preserve')
         from . import presentation_design, report_facts
         try:
             arithmetic = presentation_design.prepare(spec, data)
         except (presentation_design.DesignError, report_facts.FactError) as exc:
             raise ArtifactError("ppt_design_invalid", str(exc)) from None
+        # Resolve facts against the FULL job before selecting representative pages.
+        # Preview does not grant authority to generate the remaining slides.
+        preview_indices = list(range(min(2,len(data['sections']))))
+        preview_outline = [row['title'] for row in data['sections']]
+        if preview_only:
+            data['sections'] = [data['sections'][i] for i in preview_indices]
         _fit_preflight(data)
         inspected = inspect_template(template) if template else None
         if inspected and not inspected["ok"]:
             return inspected
         if inspected and inspected["hasExternalRelationships"]:
-            raise ArtifactError("external_template_links", "양식에 외부 연결이 있어 자동 제작을 중단했습니다. 보호된 연결을 우회하지 않습니다.")
+            raise ArtifactError("external_template_links", "양식에 현재 제작 기능이 지원하지 않는 외부 연결이 있어 자동 제작을 중단했습니다.")
         size = inspected.get("sizeEmu", {}) if inspected else {}
         try:
             data['presentationPlan'] = presentation_design.plan(
@@ -536,7 +568,10 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
                 if hashlib.sha256(copy.read_bytes()).hexdigest() != inspected["sha256"]:
                     raise ArtifactError("template_changed", "확인 후 원본 양식이 변경되었습니다. 다시 확인해 주세요.")
             if python_available:
-                native = ppt_workflow.fill_template(data,draft,copy,spec.get('templateSlides')) if preserve else _python_ppt(data, draft, copy)
+                mappings=spec.get('templateSlides')
+                if preview_only and isinstance(mappings,list):
+                    mappings=[mappings[i] for i in preview_indices if i<len(mappings)]
+                native = ppt_workflow.fill_template(data,draft,copy,mappings) if preserve else _python_ppt(data, draft, copy)
                 engine = "python-pptx"
                 visual = _office(data, draft, None, work, True)
             else:
@@ -556,6 +591,10 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
             quality['archforge'] = ppt_workflow.optional_archforge(draft)
             if quality['archforge']['status']=='issues_found':
                 quality['status']='issues_found'
+            if preview_only and review_digest != ppt_workflow.design_digest(spec,template):
+                raise ArtifactError('design_review_changed','대표 슬라이드 생성 중 명세 또는 원본 양식이 달라졌습니다.')
+            if require_choices and not preview_only:
+                ppt_workflow.verify_design_review(spec,template)
             _publish(draft, output)
             previews = []
             preview_source = work / "preview"
@@ -581,7 +620,11 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
                 warnings.append('개체 범위·글자 크기 검사에 확인할 항목이 있습니다. 최종 완료로 보고하지 말고 확인해 주세요.')
             if not visual.get("ok"):
                 warnings.append(visual.get("message", "이미지 미리보기를 만들지 못했습니다."))
-            return {"ok": True, "status": "created" if visual.get("ok") and quality.get('status') == 'checked' else "partial", "outputPath": str(output),
+            review = {'designReview':{'specSha256':review_digest,
+                       'previewPath':str(output.resolve()),'previewSha256':hashlib.sha256(output.read_bytes()).hexdigest(),
+                       'confirmed':False}, 'previewOnly':True,'stage':'design_confirm',
+                       'outline':preview_outline} if preview_only else {}
+            return {**review,"ok": True, "status": "created" if visual.get("ok") and quality.get('status') == 'checked' else "partial", "outputPath": str(output),
                     "engine": engine, "slides": len(data["sections"]), "editability": native,
                     "validation": {"structure": "passed", "render": visual, "visualReview": "required",
                                    "arithmetic": arithmetic, "quality":quality, "layout": 'template-slots-preserved' if preserve else "bounded-plan-checked-not-visual-proof"},

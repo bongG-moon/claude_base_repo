@@ -15,7 +15,7 @@ sys.path.insert(0, str(SCRIPTS))
 from company_agent.paths import atomic_write_json, atomic_write_text
 from company_agent.skill_registry import inventory_skills, set_skill_preference
 from company_agent.skill_catalog import refresh_skill_catalog
-from company_agent.skill_workflow import prepare, observe, preflight, select
+from company_agent.skill_workflow import prepare, observe, _preparation_advice as preflight, select
 from company_agent.state import begin_turn, load_session, record_activity
 from company_agent.cli import main as cli_main
 
@@ -65,13 +65,14 @@ class SkillWorkflowTests(unittest.TestCase):
         return preflight(self.state, self.project, {"session_id": self.sid, "tool_name": tool,
                         "tool_input": tool_input or {"command": "python custom_reader.py"}})
 
-    def test_execution_requires_index_then_actual_skill_read(self):
-        self.assertIn("스킬 목록", self.execution()["hookSpecificOutput"]["permissionDecisionReason"])
+    def test_advice_tracks_index_then_actual_skill_read_without_permission_decision(self):
+        result = self.execution()["hookSpecificOutput"]
+        self.assertIn("스킬 목록", result["additionalContext"])
+        self.assertNotIn('permissionDecision', result)
         self.read(self.reader)  # Skill first is not proof of catalogue comparison
         self.assertTrue(self.execution())
         self.read_index()
-        self.assertTrue(self.execution())
-        self.read(self.reader)
+        # The earlier, complete body read is retained; don't read it twice.
         self.assertEqual({}, self.execution())
         self.assertEqual({}, self.execution("Write", file_path=str(self.project / "out.md")))
 
@@ -87,6 +88,26 @@ class SkillWorkflowTests(unittest.TestCase):
         self.assertTrue(self.execution())
         self.read(self.reader, start=3)
         self.assertEqual({}, self.execution())
+
+    def test_real_preflight_reminds_once_without_red_denial_or_auto_allow(self):
+        from company_agent.skill_workflow import preflight as real_preflight
+        payload = {'session_id':self.sid, 'tool_name':'Bash', 'tool_input':{'command':'pwd && ls -la'}}
+        first = real_preflight(self.state, self.project, payload)
+        self.assertIn('additionalContext', first['hookSpecificOutput'])
+        self.assertNotIn('permissionDecision', first['hookSpecificOutput'])
+        self.assertNotIn('systemMessage', first)
+        for command in ('pwd && ls -la', 'python custom.py', 'powershell.exe -File missing.ps1 --help'):
+            payload['tool_input']['command'] = command
+            self.assertEqual({}, real_preflight(self.state, self.project, payload))
+        self.turn = begin_turn(self.sid, 'MEDIUM', False, [], self.state)['turnId']
+        self.refresh()
+        self.assertTrue(real_preflight(self.state, self.project, payload))
+
+    def test_optional_route_is_not_requested_by_advice(self):
+        self.read_index()
+        text = self.execution()['hookSpecificOutput']['additionalContext']
+        self.assertIn('필수가 아닙니다', text)
+        self.assertNotIn('skill route --session', text)
 
     def test_failed_or_wrong_content_does_not_create_read_receipt(self):
         file = Path(self.catalog["path"])
@@ -242,6 +263,26 @@ class SkillWorkflowTests(unittest.TestCase):
                    "tool_input": {"skill": "company-agent:office-reader"}, "tool_response": {"success": True}}
         observe(self.state, self.project, payload)
         self.assertEqual({}, self.execution())
+
+    def test_native_skill_before_index_keeps_receipt_without_fabricating_index_read(self):
+        payload = {"session_id": self.sid, "hook_event_name": "PostToolUse", "tool_name": "Skill",
+                   "tool_input": {"skill": "company-agent:office-reader"}, "tool_response": {"success": True}}
+        observe(self.state, self.project, payload)
+        route = load_session(self.sid, self.state)["skillWorkflow"]
+        self.assertFalse(route["indexRead"])
+        self.assertEqual("office-reader", route["selected"]["name"])
+        self.read_index()
+        self.assertEqual({}, self.execution())
+
+    def test_short_powershell_route_bookkeeping_stays_out_of_mutations(self):
+        from company_agent.skill_workflow import internal_command
+        shell = self.root / "WindowsPowerShell" / "powershell.exe"
+        command = (f'powershell.exe -NoLogo -NoProfile -File "{SCRIPTS / "Invoke-CompanyAgent.ps1"}"'
+                   f' -Mode Cli skill route --session {self.sid} --turn {self.turn} --name office-reader')
+        with patch("company_agent.execution_contract._powershell", return_value=shell), patch("shutil.which", return_value=str(shell)):
+            self.assertTrue(internal_command(command, self.sid, load_session(self.sid, self.state), self.state))
+            record_activity({"session_id": self.sid, "tool_name": "Bash", "tool_input": {"command": command}}, self.state)
+        self.assertEqual(0, load_session(self.sid, self.state)["mutationCount"])
 
     def test_worker_receives_selected_path_not_all_skill_bodies(self):
         from company_agent.native_runtime import worker_runtime_input

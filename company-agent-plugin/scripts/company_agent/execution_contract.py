@@ -76,12 +76,17 @@ def _trusted_arguments(command: str) -> list[str] | None:
         pass
     else:
         powershell = _powershell()
-        if powershell is None or not _same(program, powershell):
+        # A short name is common in Git Bash-generated commands. Resolve it
+        # before classification; a same-named PATH shim is not this runtime.
+        resolved = shutil.which(program) if program.casefold() == "powershell.exe" else None
+        if powershell is None or not (_same(program, powershell) or
+                                      (resolved and _same(resolved, powershell))):
             return None
     return _own_cli_arguments(command)
 
 
-def _fields(arguments: list[str], allowed: set[str], required: set[str] | None = None) -> dict[str, str] | None:
+def _fields(arguments: list[str], allowed: set[str], required: set[str] | None = None, *,
+            template_suffixes: tuple[str, ...] = ('.pptx',)) -> dict[str, str] | None:
     if len(arguments) % 2:
         return None
     fields: dict[str, str] = {}
@@ -97,7 +102,7 @@ def _fields(arguments: list[str], allowed: set[str], required: set[str] | None =
             return None
     if "--spec" in fields and Path(fields["--spec"]).suffix.casefold() != ".json":
         return None
-    if '--template' in fields and Path(fields['--template']).suffix.casefold() != '.pptx':
+    if '--template' in fields and Path(fields['--template']).suffix.casefold() not in template_suffixes:
         return None
     if "--session" in fields and not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}", fields["--session"]):
         return None
@@ -204,6 +209,12 @@ def classify_command(command: str) -> str:
         return "read_only"
     allowed: set[str]
     required: set[str] = set()
+    if head == ('business', 'html-designs') and '--open' in args:
+        if args.count('--open') != 1:
+            return 'unknown'
+        # Viewing the fixed shipped picker is not a business artifact change.
+        # This classification does not grant native execution permission.
+        args = [value for value in args if value != '--open']
     if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "html-designs")}:
         allowed = {"--state-root"}
     elif head == ('business','office-read'):
@@ -213,7 +224,7 @@ def classify_command(command: str) -> str:
         allowed, required = {"--state-root", "--spec"}, {"--spec"}
     elif head == ('business','ppt-choices'):
         allowed, required = {'--state-root','--spec','--template'}, {'--spec'}
-    elif head in {('business','ppt-analyze'),('business','ppt-inspect')}:
+    elif head in {('business','ppt-analyze'),('business','ppt-inspect'),('business','html-template')}:
         allowed, required = {'--state-root','--template'}, {'--template'}
     elif head == ("business", "eml-read"):
         allowed, required = {"--state-root", "--file"}, {"--file"}
@@ -225,7 +236,8 @@ def classify_command(command: str) -> str:
         allowed = {"--project"}
     else:
         return "unknown"
-    return "read_only" if _fields(args[2:], allowed, required) is not None else "unknown"
+    suffixes = ('.html', '.htm') if head == ('business', 'html-template') else ('.pptx',)
+    return "read_only" if _fields(args[2:], allowed, required, template_suffixes=suffixes) is not None else "unknown"
 
 
 def internal_plan_command(command: str, root: Path) -> bool:

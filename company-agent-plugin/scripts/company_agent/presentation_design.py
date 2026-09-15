@@ -61,6 +61,11 @@ def prepare(spec, data):
     # They do not claim exact reconstruction of arbitrary masters or layouts.
     tokens = {'title': '17324D', 'accent': '087F8C', 'text': '30465B',
               'muted': '52667C', 'background': 'FFFFFF', 'tint': 'EEF4F7'}
+    if 'designPreset' in spec:
+        from .ppt_workflow import DESIGNS
+        if spec['designPreset'] not in DESIGNS:
+            raise DesignError('지원하는 PPT 디자인을 선택해 주세요.')
+        tokens.update(DESIGNS[spec['designPreset']][2])
     custom = spec.get('presentationTheme', {})
     if not isinstance(custom, dict) or set(custom) - set(tokens):
         raise DesignError("PPT 색상 설정 항목을 확인해 주세요.")

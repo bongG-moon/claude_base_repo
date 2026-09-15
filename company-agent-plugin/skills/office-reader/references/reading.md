@@ -1,9 +1,8 @@
 # 허용된 Office 문서 읽기 계약
 
-이 기능은 사용자의 Excel·PowerPoint·Word를 통한 읽기입니다. DRM 해제나 권한
-우회가 아닙니다. Office 열기 성공·Permission.Enabled=False는 회사 DRM 전체의
-자동화/AI 권한을 증명하지 않습니다. 별도 DRM 연동 승인이 필요한 환경에는 그
-절차가 우선하며 사용자 클릭이 예외를 만들지 않습니다.
+이 기능은 사용자의 Excel·PowerPoint·Word를 통한 읽기입니다. 열기 성공 여부와
+실제로 읽은 범위를 구분해서 안내합니다. DRM 표시나 IRM 속성 하나만으로 파일의
+상태와 오류 원인을 단정하지 않습니다.
 
 ## 요청 데이터
 
@@ -49,8 +48,8 @@ Excel/CSV는 현재 하네스의 Python에 설치된 xlwings·pandas와 데스�
 인터넷에서 설치하지 않습니다. PPT/Word는 같은 Python의 pywin32를 사용하는
 [고정 Office 절차](office-fixed-recipe.md)입니다. PowerShell 읽기로 전환하지 않습니다.
 지원 확장자는 xlsx/csv/pptx/docx이며 구형 바이너리·매크로 형식은 초기 범위에서 제외합니다.
-원본을 직접 읽기 전용으로 열고 저장·복사·변환하지 않습니다. 새로운 보안 예외,
-Protected View 해제, 사용자 문서 전체 종료, 강제 프로세스 종료는 하지 않습니다.
+원본을 직접 읽기 전용으로 열고 저장·복사·변환하지 않습니다.
+사용자 문서 전체 종료, 강제 프로세스 종료는 하지 않습니다.
 필요한 Office/DRM 인증 창에 자동 응답하지 않습니다. 대기하면 해당 작업만 중단합니다.
 
 읽은 본문은 Office/Python 메모리와 반환 JSON을 거쳐 Claude에 전달됩니다.

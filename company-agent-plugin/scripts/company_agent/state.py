@@ -628,6 +628,68 @@ def _is_office_read_spec_write(tool_name: str, tool_input: dict, root: Path) -> 
         return False
 
 
+def _is_ppt_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
+    """Only bounded temporary choice metadata, never jobs or output slides."""
+    import json
+    if tool_name.casefold()!='write':
+        return False
+    value,content=tool_input.get('file_path'),tool_input.get('content')
+    if not isinstance(value,str) or not isinstance(content,str) or len(content.encode('utf-8'))>8192:
+        return False
+    path=Path(value)
+    if (path.parent!=root.absolute()/'tmp' or not re.fullmatch(r'ppt-choices-[a-zA-Z0-9_-]{1,80}\.json',path.name)
+            or not _safe_local_path(path,root,allow_missing_leaf=True)):
+        return False
+    try:
+        spec=json.loads(content)
+        if not isinstance(spec,dict) or set(spec)-{'creationMode','referenceMode','purpose','audience','slideCount','designPreset'}:
+            return False
+        from .ppt_workflow import choices
+        result=choices(spec)
+        return result.get('status') in {'input_required','preview_required'} and 'code' not in result
+    except (ValueError,TypeError,OSError):
+        return False
+
+
+def _is_html_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
+    """Disposable design choices only; not report jobs, artifacts or permission."""
+    import json
+    if tool_name.casefold() != "write":
+        return False
+    value, content = tool_input.get("file_path"), tool_input.get("content")
+    if not isinstance(value, str) or not isinstance(content, str) or len(content.encode("utf-8")) > 8192:
+        return False
+    path = Path(value)
+    if (path.parent != root.absolute() / "tmp"
+            or not re.fullmatch(r"html-choices-[a-zA-Z0-9_-]{1,80}\.json", path.name)
+            or not _safe_local_path(path, root, allow_missing_leaf=True)):
+        return False
+    try:
+        spec = json.loads(content)
+        from .report_styles import STYLES
+        enums = {"designMenu": {"additional", "template"},
+                 "style": {item[0] for item in STYLES} | {"minimal", "bento"},
+                 "length": {"short", "standard", "detailed"},
+                 "mode": {"scroll", "slides", "both"}}
+        if not isinstance(spec, dict) or set(spec) - (set(enums) | {"htmlTemplate"}):
+            return False
+        for key, choices in enums.items():
+            if key in spec and (not isinstance(spec[key], str) or spec[key] not in choices):
+                return False
+        if "htmlTemplate" in spec:
+            template = spec["htmlTemplate"]
+            if (not isinstance(template, dict) or set(template) != {"path", "sha256"}
+                    or not isinstance(template["path"], str) or len(template["path"]) > 2048
+                    or not Path(template["path"]).is_absolute()
+                    or Path(template["path"]).suffix.casefold() not in {".html", ".htm"}
+                    or not isinstance(template["sha256"], str)
+                    or not re.fullmatch(r"[a-fA-F0-9]{64}", template["sha256"])):
+                return False
+        return True
+    except (ValueError, TypeError, OSError):
+        return False
+
+
 def _is_own_learning_command(command: str, session_id: str, state: dict[str, Any], root: Path) -> bool:
     arguments = _own_cli_arguments(command)
     if not arguments:
@@ -762,6 +824,8 @@ def record_activity(
     with _locked_session(session_id, root) as (state, path):
         if _stale_native_prompt(payload, state):
             return state
+        from .background_work import observe as observe_background
+        observe_background(state, payload, failed)
         if not_performed:
             mutated = False
             state["approvalUnavailable"] = True
@@ -783,6 +847,8 @@ def record_activity(
         bookkeeping = bookkeeping or _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
         bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
         bookkeeping = bookkeeping or _is_office_read_spec_write(tool_name, tool_input, root or user_state_root())
+        bookkeeping = bookkeeping or _is_html_choices_spec_write(tool_name, tool_input, root or user_state_root())
+        bookkeeping = bookkeeping or _is_ppt_choices_spec_write(tool_name, tool_input, root or user_state_root())
         if tool_name.casefold().strip() in {"bash", "powershell"}:
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
             from .execution_contract import classify_command, internal_plan_command
@@ -985,6 +1051,11 @@ def stop_decision(
 
     with _locked_session(session_id, root) as (state, path):
         if _stale_native_prompt(payload, state):
+            return {}
+        from .background_work import is_running
+        if is_running(payload, state):
+            # This Stop yields to a native background completion, not a failed
+            # verification. Keep obligations, evidence and budgets untouched.
             return {}
         if state.get("approvalUnavailable"):
             return {"systemMessage": "승인되지 않아 실행하지 못한 항목과 이미 변경한 것 중 미검증 내용을 간단히 알리고 가능한 결과를 전달하세요. 같은 작업이나 학습 기록을 반복 요청하지 마세요."}

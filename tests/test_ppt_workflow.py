@@ -20,8 +20,8 @@ class PptWorkflowTests(unittest.TestCase):
         self.assertEqual('reference_file',flow.choices(spec)['stage'])
         self.assertEqual('reference_scope',flow.choices(spec,'confirmed.pptx')['stage'])
         spec['referenceMode']='preserve'
-        self.assertEqual('ready',flow.choices(spec,'confirmed.pptx')['stage'])
-        self.assertEqual(2,flow.choices(spec,'confirmed.pptx')['selection']['slideCount'])
+        self.assertEqual('design_preview',flow.choices(spec,'confirmed.pptx')['stage'])
+        self.assertEqual(2,flow.choices(spec,'confirmed.pptx')['preservedChoices']['slideCount'])
 
     def test_new_and_saved_choices(self):
         self.assertEqual(['purpose','audience','slideCount'],flow.choices({'creationMode':'new'})['missing'])
@@ -77,6 +77,9 @@ class PptWorkflowTests(unittest.TestCase):
             spec={'creationMode':'reference','referenceMode':'preserve','purpose':'보고','audience':'부서장','slideCount':1,
                   'slides':[{'title':'새 결과'}], 'templateSlides':[{'sourceSlide':1,'title':2}]}
             with patch.object(artifacts,'_office',return_value={'ok':False,'code':'render_refused','message':'미리보기 제한'}):
+                preview=artifacts.create_ppt(spec,folder/'draft.pptx',path,require_choices=True,preview_only=True)
+                self.assertTrue(preview['ok'],preview)
+                spec['designReview']={**preview['designReview'],'confirmed':True}
                 result=artifacts.create_ppt(spec,folder/'out.pptx',path,require_choices=True)
             self.assertTrue(result['ok'],result)
             self.assertEqual('partial',result['status'])

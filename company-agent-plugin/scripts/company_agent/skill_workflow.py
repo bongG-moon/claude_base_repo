@@ -46,6 +46,8 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
             atomic_write_json(path, state)
             return {"status": "unavailable"}
         old = state.get("skillWorkflow", {})
+        if not isinstance(old, dict):
+            old = {}  # Repair only derived discovery state on the next prompt.
         identity = {"catalog": _canonical(Path(catalog["path"])), "revision": catalog["revision"],
                     "project": _canonical(project)}
         same = all(old.get(key) == value for key, value in identity.items()) and not compact
@@ -59,6 +61,7 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
         state["skillWorkflow"] = route
         atomic_write_json(path, state)
         return {"status": "ready", "indexRead": route.get("indexRead", False),
+                "selectionRecording": "optional",
                 "selected": (route.get("selected") or {}).get("name"),
                 "nextAction": "read-index" if not route.get("indexRead") else
                     ("execute-selected" if route.get("selected") or route.get("fallback") else "choose-skill"),
@@ -153,7 +156,10 @@ def observe(root: Path, project: Path, payload: dict) -> None:
                 return
             invocation = str(inputs.get("skill", "")).lstrip("/")
             candidates = [x for x in data["skills"] if str(x.get("invocation", "")).lstrip("/") == invocation]
-        if len(candidates) != 1 or not route.get("indexRead"):
+        # Native Skill loading can precede the catalogue Read. Preserve the
+        # actual body receipt without claiming that the index was read. The
+        # next catalogue Read need not force another identical body read.
+        if len(candidates) != 1:
             return
         item = candidates[0]
         if not _allowed(item, data, route):
@@ -214,8 +220,8 @@ def internal_command(command: str, session_id: str, state: dict, root: Path) -> 
                 and ("--state-root" not in fields or _same(fields["--state-root"], root)))
 
 
-def preflight(root: Path, project: Path, payload: dict) -> dict:
-    """Check preparation before execution; never authorize the tool itself."""
+def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
+    """Inspect receipts without making a permission decision."""
     session_id = str(payload.get("session_id") or "")
     if not session_id:
         return {}
@@ -261,10 +267,31 @@ def preflight(root: Path, project: Path, payload: dict) -> dict:
         elif route.get("fallback") == "no-relevant-skill":
             return {}
         else:
-            reason = ("목록에서 업무에 맞는 SKILL.md를 Read로 읽으세요. 이미 읽었으면 cliCommand 뒤에 "
-                      f"skill route --session {safe_session_id(session_id)} --turn {route.get('turn', '')} --name NAME을 붙여 재사용하세요. "
-                      "관련 스킬이 정말 없을 때만 --name NAME 대신 --fallback no-relevant-skill을 쓰세요.")
+            reason = ("목록에서 업무에 맞는 SKILL.md만 읽으세요. 같은 목록 버전에서 이미 읽은 본문은 그대로 재사용하며 "
+                      "skill route 명령은 필수가 아닙니다. 관련 스킬이 없으면 일반 작업을 진행하세요.")
     except (OSError, ValueError, KeyError, TypeError):
         reason = "스킬 목록 또는 선택한 파일이 바뀌었습니다. 새 요청에서 목록을 갱신해 주세요."
-    return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
-            "permissionDecisionReason": reason + " 내부 준비 단계이며 승인 요청이나 검증 실패로 보고하지 마세요."}}
+    return {"hookSpecificOutput": {"hookEventName": "PreToolUse",
+            "additionalContext": reason + " 내부 참고 안내입니다. 실행 차단·경로 오류·승인 요청·검증 실패로 해석하거나 사용자에게 중계하지 마세요. 기존 도구 권한과 회사 정책은 그대로 적용됩니다."}}
+
+
+def preflight(root: Path, project: Path, payload: dict) -> dict:
+    """At most one quiet reminder per turn/revision; never allow or deny tools."""
+    session_id = str(payload.get('session_id') or '')
+    if not session_id:
+        return {}
+    existing = load_session(session_id, root)
+    route = existing.get('skillWorkflow', {})
+    if route.get('reminded') == [existing.get('turnId', ''), route.get('revision', '')]:
+        return {}  # no repeated catalogue/body reads for a bookkeeping reminder
+    advice = _preparation_advice(root, project, payload)
+    if not advice:
+        return {}
+    with _locked_session(str(payload['session_id']), root) as (state, path):
+        route = state.get('skillWorkflow', {})
+        marker = [state.get('turnId', ''), route.get('revision', '')]
+        if route.get('reminded') == marker:
+            return {}
+        route['reminded'] = marker
+        atomic_write_json(path, state)
+    return advice

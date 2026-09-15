@@ -17,6 +17,18 @@ guess a path or forge a receipt. State the actual missing capability briefly.
 
 ## Verify the outcome before the final response
 
+- First distinguish waiting from completion. If an observed worker is still
+  running, use the host's supported wait/result tool with its returned ID, or
+  yield to its documented completion notification. Never invoke Agent/resume
+  without a prompt as a polling operation, stop a worker to check its status,
+  or launch a duplicate worker. Tool schemas differ by installed version;
+  follow the available schema rather than inventing `stop`/`prompt` arguments.
+  A wait timeout is not a failed report or a reason to write verify fail/pass.
+  Say at most once `보고서를 작성 중입니다.` when useful. Promise automatic
+  notification only if the host actually supports it. When the result arrives,
+  inspect it before the final response. An empty native task list is not proof
+  that a report succeeded. Never mark the work complete or start learning while
+  a worker is running or a user's design choice is still missing.
 - Read-only lookup, choices and internal catalogue maintenance need no invented
   code test or empty success marker. An outstanding earlier change still needs
   its own evidence; a new read does not clear it.

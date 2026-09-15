@@ -41,13 +41,17 @@ def main() -> int:
         if not active:
             print("{}")
             return 0
+        preparation = {}
         if event == "PreToolUse":
             from company_agent.skill_workflow import preflight
             from company_agent.paths import user_state_root
-            preparation = preflight(user_state_root(), cwd, payload)
-            if preparation:
-                print(json.dumps(preparation, ensure_ascii=False))
-                return 0
+            try:
+                preparation = preflight(user_state_root(), cwd, payload)
+            except Exception:
+                # Advisory discovery must not block tools or skip the real MCP policy.
+                # In particular, an old/malformed receipt can have the wrong
+                # JSON shape. Only this optional step is fail-soft.
+                preparation = {}
         if event == "SessionStart":
             result = session_start(plugin, cwd, session_id=str(payload.get("session_id") or ""), source=str(payload.get("source") or ""))
         elif event == "PermissionRequest":
@@ -73,7 +77,7 @@ def main() -> int:
             # The corporate policy handler accepts only its own MCP servers.
             # Other tools get preparation checks, NOT a new permission grant.
             if event == "PreToolUse" and not str(payload.get("tool_name", "")).startswith(("mcp__corp-db-read__", "mcp__corp-outlook-self__")):
-                print("{}")
+                print(json.dumps(preparation, ensure_ascii=False))
                 return 0
             handler = __import__(handlers[event])
             output = io.StringIO()
@@ -96,7 +100,7 @@ def main() -> int:
                 from company_agent.paths import user_state_root
                 try:
                     observe(user_state_root(), cwd, payload)
-                except (OSError, ValueError, KeyError, TypeError):
+                except Exception:
                     # No fabricated read receipt; a later preflight reports the
                     # missing preparation without turning it into a Stop error.
                     pass
@@ -111,6 +115,11 @@ def main() -> int:
                         result.setdefault("hookSpecificOutput", {"hookEventName": "PostToolUse"})
                         prior = result["hookSpecificOutput"].get("additionalContext", "")
                         result["hookSpecificOutput"]["additionalContext"] = prior + "\n" + context
+        if preparation and event == 'PreToolUse':
+            target = result.setdefault('hookSpecificOutput', {'hookEventName': event})
+            # A real corporate deny always wins; do not confuse it with discovery.
+            if target.get('permissionDecision') != 'deny':
+                target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), preparation['hookSpecificOutput']['additionalContext']]))
         print(json.dumps(result, ensure_ascii=False))
         return 0
     except Exception:

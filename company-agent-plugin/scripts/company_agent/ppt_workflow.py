@@ -8,13 +8,24 @@ import re
 import zipfile
 
 
-def choices(spec, template=None):
+DESIGNS = {
+    'business': ('깔끔한 업무 보고형', '흰 배경·남색 제목·청록 강조',
+                 {'title':'17324D','accent':'087F8C','text':'30465B','muted':'52667C','background':'FFFFFF','tint':'EEF4F7'}),
+    'monochrome': ('흑백 간결형', '흰 배경·짙은 회색 글자·절제된 강조',
+                   {'title':'222222','accent':'444444','text':'333333','muted':'555555','background':'FFFFFF','tint':'F0F0F0'}),
+    'warm': ('따뜻한 설명형', '밝은 크림 배경·갈색 제목·차분한 강조',
+             {'title':'45342B','accent':'80452C','text':'41382F','muted':'65584B','background':'FAF7F0','tint':'EEE7DC'}),
+}
+
+
+def choices(spec, template=None, *, for_preview=False):
     from .business_artifacts import ArtifactError, _failure
     try:
         if not isinstance(spec, dict):
             raise ArtifactError('invalid_choice', 'PPT 제작 조건의 형식을 확인해 주세요.')
         for key, allowed in (('creationMode', ('new','reference','saved')),
-                             ('referenceMode', ('style','preserve'))):
+                             ('referenceMode', ('style','preserve')),
+                             ('designPreset', tuple(DESIGNS))):
             if key in spec and spec[key] not in allowed:
                 raise ArtifactError('invalid_choice', '지원하는 PPT 제작 방식을 선택해 주세요.')
         if 'slideCount' in spec and (type(spec['slideCount']) is not int or not 1 <= spec['slideCount'] <= 60):
@@ -22,10 +33,10 @@ def choices(spec, template=None):
         for key in ('purpose','audience'):
             if key in spec and (not isinstance(spec[key], str) or not spec[key].strip() or len(spec[key]) > 200):
                 raise ArtifactError('invalid_choice', '목적과 대상을 짧은 문장으로 알려 주세요.')
-        known = {k:spec[k] for k in ('creationMode','referenceMode','purpose','audience','slideCount') if k in spec}
+        known = {k:spec[k] for k in ('creationMode','referenceMode','purpose','audience','slideCount','designPreset','designReview') if k in spec}
         if spec.get('creationMode') == 'new' and (template or 'referenceMode' in spec):
             raise ArtifactError('invalid_choice', '새 디자인 제작과 기존 양식 유지 조건이 함께 지정되었습니다. 제작 방식을 확인해 주세요.')
-        result = {'ok':False,'status':'input_required','preservedChoices':known}
+        result = {'ok':False,'status':'input_required','preservedChoices':known,'waitForUser':True}
         if 'creationMode' not in spec:
             return {**result,'stage':'method','missing':['creationMode'],
                     'question':'어떤 방식으로 PPT를 만들까요?',
@@ -41,10 +52,57 @@ def choices(spec, template=None):
         missing = [key for key in ('purpose','audience','slideCount') if key not in spec]
         if missing:
             return {**result,'stage':'brief','missing':missing,'question':'아직 알려주지 않은 목적·대상·장수만 알려 주세요.'}
+        if spec['creationMode'] == 'new' and 'designPreset' not in spec:
+            return {**result,'stage':'design','missing':['designPreset'],
+                    'question':'새 PPT의 디자인을 선택해 주세요. 기존 PPT를 참고하는 방식으로 바꿀 수도 있습니다.',
+                    'designOptions':[{'id':key,'label':name,'description':description} for key,(name,description,_) in DESIGNS.items()],
+                    'referenceOption':'참고 PPT 첨부로 변경'}
+        if for_preview:
+            return {'ok':True,'status':'preview_ready','stage':'preview_ready','selection':known}
+        review = spec.get('designReview')
+        if review is None:
+            return {**result,'status':'preview_required','stage':'design_preview','missing':['designReview'],'waitForUser':False,
+                    'question':'전체 구성과 실제 대표 슬라이드 미리보기를 준비한 뒤 승인을 기다리세요. 최종 PPT는 아직 만들지 않습니다.',
+                    'previewCommand':'business ppt-design-preview --spec FULL_JOB.json --output NEW_DRAFT.pptx'}
+        if (not isinstance(review,dict) or set(review) != {'specSha256','previewPath','previewSha256','confirmed'}
+                or type(review.get('confirmed')) is not bool
+                or any(not isinstance(review.get(k),str) or not re.fullmatch('[a-f0-9]{64}',review[k]) for k in ('specSha256','previewSha256'))
+                or not isinstance(review.get('previewPath'),str) or not Path(review['previewPath']).is_absolute()
+                or len(review['previewPath'])>2048 or Path(review['previewPath']).suffix.lower()!='.pptx'):
+            raise ArtifactError('invalid_choice','대표 디자인 확인 정보를 다시 준비해 주세요.')
+        if not review['confirmed']:
+            return {**result,'stage':'design_confirm','missing':['designReview.confirmed'],
+                    'question':'구성과 대표 슬라이드를 확인해 주세요. 이대로 제작 / 수정 요청 / 참고 PPT로 변경 중 선택해 주세요.'}
         return {'ok':True,'status':'choices_ready','stage':'ready','selection':known,
-                'message':'제작 조건이 정해졌습니다. 알려준 내용을 다시 묻지 않고 대표 디자인을 준비합니다.'}
+                'message':'대표 디자인 승인 조건이 입력되었습니다. 생성기는 원본 명세와 미리보기 일치 여부를 확인한 뒤 제작합니다.'}
     except Exception as exc:
         return _failure(exc)
+
+
+def design_digest(spec, template=None):
+    import hashlib
+    import json
+    from .business_artifacts import _source
+    reference = hashlib.sha256(_source(Path(template),('.pptx',)).read_bytes()).hexdigest() if template else None
+    images=[]
+    for row in spec.get('sections',spec.get('slides',[])):
+        if isinstance(row,dict) and isinstance(row.get('image'),dict):
+            from .business_artifacts import _image
+            image=_image(row['image'])
+            images.append(hashlib.sha256(image['data'].encode('ascii')).hexdigest())
+    data = {'spec':{k:v for k,v in spec.items() if k!='designReview'},'templateSha256':reference,'imageSha256':images}
+    return hashlib.sha256(json.dumps(data,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
+
+
+def verify_design_review(spec, template=None):
+    import hashlib
+    from .business_artifacts import ArtifactError, _source
+    review=spec['designReview']
+    if review['specSha256']!=design_digest(spec,template):
+        raise ArtifactError('design_review_changed','구성·내용·디자인 또는 참고 양식이 달라졌습니다. 새 대표 미리보기를 보여주고 다시 확인해 주세요.')
+    preview=_source(Path(review['previewPath']),('.pptx',))
+    if hashlib.sha256(preview.read_bytes()).hexdigest()!=review['previewSha256']:
+        raise ArtifactError('design_preview_changed','대표 미리보기 파일이 변경되었습니다. 다시 확인해 주세요.')
 
 
 def installed_fonts():

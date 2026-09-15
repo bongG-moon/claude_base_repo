@@ -52,7 +52,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(?:Read|Skill|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|mcp__.*)$",
+        "matcher": "^(?:Read|Skill|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|TaskOutput|mcp__.*)$",
         "hooks": [
           {
             "type": "command",
@@ -69,7 +69,7 @@
     ],
     "PostToolUseFailure": [
       {
-        "matcher": "^(?:Read|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|mcp__.*)$",
+        "matcher": "^(?:Read|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|TaskOutput|mcp__.*)$",
         "hooks": [
           {
             "type": "command",

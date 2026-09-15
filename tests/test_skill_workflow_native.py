@@ -8,13 +8,39 @@ import shutil
 import unittest
 
 import test_native_runtime as native
-from company_agent.paths import atomic_write_json
+from company_agent.paths import atomic_write_json, atomic_write_text
 from company_agent.state import load_session
 
 
 @unittest.skipUnless(os.name == "nt" and shutil.which("powershell.exe"), "Windows PowerShell required")
 class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
     run_wrapper = native.NativePowerShellTests.run_wrapper
+
+    def test_ppt_choice_file_and_helper_do_not_interrupt_approval_wait(self):
+        self.hook('UserPromptSubmit',prompt='새 디자인으로 5장 PPT를 만들되 먼저 확인받아줘')
+        root=Path(self.record['userStateRoot'])
+        spec=root/'tmp/ppt-choices-native.json'
+        content=json.dumps({'creationMode':'new','purpose':'월간 실적','audience':'부서장','slideCount':5})
+        atomic_write_text(spec,content)
+        self.hook('PostToolUse',tool_name='Write',tool_input={'file_path':str(spec),'content':content},tool_response={'success':True})
+        result=self.run_wrapper(['-Mode','Cli','business','ppt-choices','--spec',str(spec),'--state-root',str(root)])
+        self.assertEqual(0,result.returncode,result.stderr)
+        self.assertEqual('design',json.loads(result.stdout)['stage'])
+        self.assertEqual(0,load_session(self.payload['session_id'],root)['mutationCount'])
+        self.assertEqual({},self.hook('Stop'))
+
+    def test_background_wait_uses_native_stop_without_correction_budget(self):
+        self.hook('UserPromptSubmit',prompt='HTML 보고서를 만들어줘')
+        root=Path(self.record['userStateRoot'])
+        self.hook('PostToolUse',tool_name='Write',tool_input={'file_path':str(self.project/'job.json')},tool_response={'success':True})
+        for _ in range(3):
+            self.assertEqual({},self.hook('Stop',stop_hook_active=True,
+                background_tasks=[{'id':'worker-1','type':'subagent','status':'running'}]))
+        state=load_session(self.payload['session_id'],root)
+        self.assertEqual(0,state['stopRetryCount'])
+        self.assertIsNone(state['verification'])
+        # Native registry says done; an actual verification is still required.
+        self.assertEqual('block',self.hook('Stop',background_tasks=[])['decision'])
 
     def setUp(self):
         super().setUp()
@@ -44,7 +70,13 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertFalse(runtime["skillWorkflow"]["indexRead"])
         self.assertTrue(runtime["skillWorkflow"]["turn"])
         execution = {"tool_name": "Bash", "tool_input": {"command": "python invented_reader.py"}}
-        self.assertEqual("deny", self.hook("PreToolUse", **execution)["hookSpecificOutput"]["permissionDecision"])
+        first = self.hook("PreToolUse", **execution)
+        self.assertIn('additionalContext', first['hookSpecificOutput'])
+        self.assertNotIn('permissionDecision', first['hookSpecificOutput'])
+        self.assertEqual({}, self.hook('PreToolUse', **execution))
+        # Even before catalogue receipt, advisory discovery cannot bypass DB policy.
+        denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query':'DELETE FROM employees'})
+        self.assertEqual('deny', denied['hookSpecificOutput']['permissionDecision'])
         self.read(Path(runtime["skillSelection"]["catalog"]["path"]))
         # A plain list lookup is already complete; Stop must not request pass/fail.
         self.assertNotIn("decision", self.hook("Stop"))
@@ -62,6 +94,47 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertIsNone(next_runtime["skillWorkflow"]["selected"])
         self.read(self.plugin / "skills/presentation/SKILL.md")
         self.assertEqual({}, self.hook("PreToolUse", **execution))
+
+    def test_html_answer_turn_does_not_deadlock_and_choices_execute(self):
+        self.hook("SessionStart", source="startup")
+        result = self.hook("UserPromptSubmit", prompt="HTML 보고서를 만들어줘")
+        runtime = json.loads(result["hookSpecificOutput"]["additionalContext"].split("\n")[-1])["company_agent_runtime"]
+        self.read(Path(runtime["skillSelection"]["catalog"]["path"]))
+        self.read(self.plugin / "skills/html-report/SKILL.md")
+        self.hook("UserPromptSubmit", prompt="추가 디자인 중 뉴모피즘, 상세, 스크롤로 해줘")
+        root = Path(self.record["userStateRoot"])
+        spec = root / "tmp/html-choices-report.json"
+        content = json.dumps({"designMenu": "additional", "style": "neumorphism", "length": "detailed", "mode": "scroll"})
+        inputs = {"file_path": str(spec), "content": content}
+        result = self.hook("PreToolUse", tool_name="Write", tool_input=inputs)
+        self.assertNotIn("permissionDecision", result.get("hookSpecificOutput", {}))
+        atomic_write_text(spec, content)
+        self.hook("PostToolUse", tool_name="Write", tool_input=inputs, tool_response={"success": True})
+        command = (f'powershell.exe -NoLogo -NoProfile -File "{self.plugin / "scripts/Invoke-CompanyAgent.ps1"}"'
+                   f' -Mode Cli business html-choices --spec "{spec}" --state-root "{root}"')
+        for _ in range(3):
+            self.assertEqual({}, self.hook("PreToolUse", tool_name="Bash", tool_input={"command": command}))
+        completed = self.run_wrapper(["-Mode", "Cli", "business", "html-choices", "--spec", str(spec), "--state-root", str(root)])
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertTrue(json.loads(completed.stdout)["ok"])
+        self.hook("PostToolUse", tool_name="Bash", tool_input={"command": command}, tool_response={"stdout": completed.stdout})
+        self.assertEqual(0, load_session(self.payload["session_id"], root)["mutationCount"])
+        self.assertNotIn("decision", self.hook("Stop"))
+
+    def test_malformed_advisory_receipt_does_not_block_tools_or_skip_db_policy(self):
+        self.hook("UserPromptSubmit", prompt="목록을 확인해줘")
+        root = Path(self.record["userStateRoot"])
+        from company_agent.state import _locked_session
+        with _locked_session(self.payload["session_id"], root) as (state, path):
+            state["skillWorkflow"] = ["old-invalid-shape"]
+            atomic_write_json(path, state)
+        self.assertEqual({}, self.hook("PreToolUse", tool_name="Write", tool_input={"file_path": str(self.project / "report.html")}))
+        denied = self.hook("PreToolUse", tool_name="mcp__corp-db-read__query", tool_input={"query": "DELETE FROM employees"})
+        self.assertEqual("deny", denied["hookSpecificOutput"]["permissionDecision"])
+        self.hook("UserPromptSubmit", prompt="스킬 목록을 다시 확인해줘")
+        route = load_session(self.payload["session_id"], root)["skillWorkflow"]
+        self.assertIsInstance(route, dict)
+        self.assertFalse(route["indexRead"])
 
 
 if __name__ == "__main__":

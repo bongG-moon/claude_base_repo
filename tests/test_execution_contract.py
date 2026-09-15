@@ -45,11 +45,36 @@ class ExecutionContractTests(unittest.TestCase):
         for extra in (' --id bad', ' && echo unsafe'):
             self.assertEqual("unknown", classify_command(f"{self.cli} {args}{extra}"))
 
+    def test_short_powershell_resolves_to_system_runtime_without_permission_grant(self):
+        shell = self.root / "WindowsPowerShell" / "powershell.exe"
+        command = (f'powershell.exe -NoLogo -NoProfile -File "{SCRIPTS / "Invoke-CompanyAgent.ps1"}"'
+                   f' -Mode Cli business html-choices --spec "{self.root / "choices.json"}"')
+        with patch("company_agent.execution_contract._powershell", return_value=shell):
+            with patch("shutil.which", return_value=str(shell)):
+                self.assertEqual("read_only", classify_command(command))
+                self.assertIsNone(self.permission(command))
+                for suffix in (' > result.json', ' && echo changed', '; echo changed'):
+                    self.assertEqual("unknown", classify_command(command + suffix))
+            for resolved in (None, str(self.root / "fake" / "powershell.exe")):
+                with patch("shutil.which", return_value=resolved):
+                    self.assertEqual("unknown", classify_command(command))
+
     def test_design_picker_copy_is_not_classified_as_read_only_or_auto_approved(self):
         command = f'{self.cli} business html-designs --output "{self.root / "picker.html"}"'
         self.assertEqual('unknown', classify_command(command))
         self.assertIsNone(self.permission(command))
         self.assertIsNone(self.permission(f'{self.cli} business html-designs'))
+
+    def test_design_preview_does_not_create_work_verification_or_auto_permission(self):
+        command = f'{self.cli} business html-designs --open'
+        self.assertEqual('read_only', classify_command(command))
+        self.assertIsNone(self.permission(command))
+        for extra in (' --open', ' --output out.html', '; python unexpected.py'):
+            self.assertEqual('unknown', classify_command(command+extra))
+        reference = f'{self.cli} business html-template --template "{self.root / "form.html"}"'
+        self.assertEqual('read_only', classify_command(reference))
+        self.assertIsNone(self.permission(reference))
+        self.assertEqual('unknown', classify_command(reference+' --output preview.html'))
 
     def test_html_choice_helper_never_widens_permissions(self):
         command=f'{self.cli} business html-choices --spec "{self.root / "choices.json"}"'
