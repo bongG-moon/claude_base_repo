@@ -301,7 +301,7 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
         catalog=Path(exact['skillSelection']['catalog']['path']).read_text(encoding='utf-8')
         self.assertIn('specific-report',catalog)
         self.assertNotIn('RAW-SKILL-BODY',catalog)
-        self.assertIn('reuse the same revision', exact["instructions"])
+        self.assertIn('skillIndex', exact["instructions"])
 
     def test_budget_trims_extra_skill_cards_before_losing_only_knowledge_card(self):
         from company_agent.native_runtime import _encode_runtime

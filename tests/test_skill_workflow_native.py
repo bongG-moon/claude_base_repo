@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import shutil
 import unittest
+from unittest.mock import patch
 
 import test_native_runtime as native
 from company_agent.paths import atomic_write_json, atomic_write_text
@@ -15,6 +16,34 @@ from company_agent.state import load_session
 @unittest.skipUnless(os.name == "nt" and shutil.which("powershell.exe"), "Windows PowerShell required")
 class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
     run_wrapper = native.NativePowerShellTests.run_wrapper
+
+    def test_attached_ppt_request_receives_index_before_file_probe(self):
+        with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(self.root / 'isolated-claude')}):
+            started = self.hook('SessionStart', source='startup')
+            initial = json.loads(started['hookSpecificOutput']['additionalContext'])['company_agent_runtime']
+            index = initial['skillIndex']
+            self.assertEqual('inline', index['mode'])
+            names = [row[0] for row in index['skills']]
+            self.assertIn('office-reader', names)
+            self.assertIn('presentation', names)
+            result = self.hook('UserPromptSubmit', prompt='@테스트자료.pptx 이 자료 내용 확인해서 정리해줄 수 있을까?')
+            runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+            self.assertEqual('reuse', runtime['skillIndex']['mode'])
+            self.assertFalse(runtime['skillWorkflow']['indexRead'])
+            self.assertTrue(runtime['skillWorkflow']['indexDelivered'])
+            self.assertEqual('choose-skill', runtime['skillWorkflow']['nextAction'])
+            advice = self.hook('PreToolUse', tool_name='Bash', tool_input={'command':'pwd && ls -la test.pptx'})
+            self.assertNotIn('permissionDecision', advice.get('hookSpecificOutput', {}))
+            self.assertNotIn('먼저 스킬 목록을 Read', json.dumps(advice, ensure_ascii=False))
+            # Selection is still the model's job. This simulates the actual
+            # chosen body Read, not an assertion that a live model chose it.
+            self.read(self.plugin / 'skills/office-reader/SKILL.md')
+            self.assertEqual({}, self.hook('Stop'))
+            compacted = self.hook('SessionStart', source='compact')
+            restored = json.loads(compacted['hookSpecificOutput']['additionalContext'])['company_agent_runtime']
+            self.assertEqual('inline', restored['skillIndex']['mode'])
+            state = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))
+            self.assertEqual({}, state['skillWorkflow']['readSkills'])
 
     def test_ppt_choice_file_and_helper_do_not_interrupt_approval_wait(self):
         self.hook('UserPromptSubmit',prompt='새 디자인으로 5장 PPT를 만들되 먼저 확인받아줘')

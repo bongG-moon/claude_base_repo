@@ -234,6 +234,21 @@ def _scalar(value: str) -> str:
     return value.split(" #", 1)[0].strip()
 
 
+def _frontmatter_field(raw: bytes, name: str) -> str:
+    """Read one top-level scalar without parsing other plugins' YAML dialects."""
+    lines = raw.decode('utf-8-sig').splitlines()
+    if not lines or lines[0].strip() != '---':
+        return ''
+    value = ''
+    for line in lines[1:]:
+        if line.strip() == '---':
+            break
+        match = re.match(r'^' + re.escape(name) + r':\s*(.*)$', line)
+        if match:
+            value = _scalar(match.group(1))
+    return value
+
+
 def _metadata(raw: bytes, fallback: str) -> tuple[str, str, bool]:
     text = raw.decode("utf-8-sig")
     lines = text[:16_384].splitlines()
@@ -417,7 +432,8 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
             candidate = {"id": candidate_id, "name": name, "source": source, "origin": origin,
                          "path": str(file), "description": description,
                          "invocation": invocation,
-                         "sha256": hashlib.sha256(raw).hexdigest(), "incoming": incoming}
+                         "sha256": hashlib.sha256(raw).hexdigest(), "incoming": incoming,
+                         "explicitOnly": _frontmatter_field(raw, 'disable-model-invocation').casefold() == 'true'}
             if candidate_id not in candidates or incoming:
                 candidates[candidate_id] = candidate
         except (OSError, ValueError, UnicodeError) as exc:

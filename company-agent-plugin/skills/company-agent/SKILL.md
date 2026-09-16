@@ -12,10 +12,10 @@ When `company_agent_runtime` is present, its `cliCommand` is the full, already-q
 command prefix for every `company-agent ...` example in these Skills. Use that
 prefix in a Bash tool; it invokes the selected installed Python without requiring
 Python on PATH. Use the indicated `stateRoot`, never assume the global state path.
-Prefer the full catalogue; `personalSkills` / `preferredSkills` are fallback hints, not necessarily slash commands.
-First task, after compaction or revision change: read `skillSelection.catalog.path`, not just keyword matches.
+Use the injected `skillIndex` across all sources; `personalSkills` / `preferredSkills` are fallback hints.
+`inline` contains the selection rows already: do not read the catalogue again. `reuse` refers to the same revision in this conversation. `pages` provides source directories to Read, then the relevant description pages; unexamined pages are not proof there is no suitable Skill.
 Compare intent and descriptions semantically, including Korean requests against English descriptions.
-Read large catalogues by section, then the chosen SKILL.md from its file-location table.
+Read only the chosen SKILL.md at `roots[root]/file`, respecting row priority and explicitOnly. Read `skillSelection.catalog.path` for detailed listing or when index context is missing.
 Successful Read/Skill loads record selection silently; each request needs a relevant choice.
 Reuse unchanged bodies already read in this context; `skill route` is optional, not a required extra command.
 If no entry fits, proceed normally. Preparation reminders are not permission denials or directory errors.

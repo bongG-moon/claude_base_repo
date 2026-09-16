@@ -42,7 +42,7 @@
 | --- | --- | --- |
 | 개인 Skill 추천 | 적은 수의 Skill은 관련도가 없어도 모두 전달될 수 있었음 | 일치하는 Skill만 최대 3개, 설명 240자. 본문은 선택 후 읽음 |
 | Knowledge 주입 | 최대 5개지만 aliases/tags/overlay metadata 크기는 제한되지 않음 | 최대 3개의 짧은 발견용 정보만 전달. 본문/대형 목록 제외 |
-| 전체 Hook 입력 | route, Memory, runtime 조합의 총량 제한 없음 | route 최대 6,000자 + runtime 최대 6,000자 + 구분자 1자. JSON 문자열 기준 |
+| 전체 Hook 입력 | route, Memory, runtime 조합의 총량 제한 없음 | route 최대 6,000자 + runtime 기본 최대 6,000자 + 선택 목록 최대 6,000자 + JSON 여유 64자·구분자 1자. 선택 목록 전체는 새 대화/재개/압축/변경 시에만 전달하며 평소에는 짧은 revision을 재사용. JSON 문자 기준이며 토큰 수와 다름 |
 | Overlay 누락 방지 | 전체 metadata가 항상 주입됨 | 선택 항목에 overlay 존재 여부를 표시하고 사용 전에 전체 active overlay를 별도 조회하도록 요구 |
 | 개인 기억 누적 | 같은 내용을 다시 저장해도 revision/backup 증가 | 동일 내용은 기존 파일 유지. 다른 내용의 실제 수정은 이력 보존 |
 | 중복 기억 | 여러 ID의 같은 내용이 반복 주입될 수 있음 | 종류·제목·전체 본문이 정확히 같은 항목만 파생 view에서 하나로 표시 |

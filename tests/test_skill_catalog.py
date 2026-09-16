@@ -155,9 +155,9 @@ class SkillCatalogTests(unittest.TestCase):
         self.assertIn("PowerPoint", Path(catalog["path"]).read_text(encoding="utf-8"))
         self.assertNotIn("PRIVATE-PROMPT", Path(catalog["path"]).read_text(encoding="utf-8"))
         self.assertLessEqual(len(context), MAX_RUNTIME_CONTEXT_CHARS)
-        self.assertIn("semantically", data["instructions"])
-        # Full metadata/body is not automatically injected every prompt.
-        self.assertNotIn("Create editable PowerPoint presentations", context)
+        self.assertEqual('inline', data['skillIndex']['mode'])
+        self.assertIn("Create editable PowerPoint presentations", context)
+        self.assertNotIn('PRIVATE BODY', context)
 
     def test_runtime_catalog_failure_does_not_break_existing_routing(self):
         with patch("company_agent.skill_catalog.refresh_skill_catalog", side_effect=PermissionError("denied")):
@@ -169,8 +169,8 @@ class SkillCatalogTests(unittest.TestCase):
         context=json.loads(runtime_context(self.plugin,self.project,'mail'))['company_agent_runtime']
         self.assertEqual('ready',context['skillSelection']['catalog']['status'])
         self.assertEqual([],context['preferredSkills'])
-        self.assertNotIn('Search and summarize Outlook email',json.dumps(context))
-        self.assertIn('reuse the same revision',context['instructions'])
+        self.assertIn('Search and summarize Outlook email',json.dumps(context))
+        self.assertEqual('inline',context['skillIndex']['mode'])
         self.assertNotIn('후보 식별값',Path(context['skillSelection']['catalog']['path']).read_text(encoding='utf-8'))
 
     def test_future_state_is_not_written(self):

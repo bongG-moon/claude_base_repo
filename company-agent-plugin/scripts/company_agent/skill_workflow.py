@@ -14,7 +14,7 @@ from typing import Any
 
 from .paths import atomic_write_json
 from .skill_catalog import MAX_CATALOG_BYTES
-from .skill_registry import MAX_SKILL_BYTES, _canonical, _no_reparse, _read, _resolution
+from .skill_registry import MAX_SKILL_BYTES, _canonical, _no_reparse, _read, _resolution, _frontmatter_field
 from .state import _locked_session, _stale_native_prompt, load_session, safe_session_id
 
 
@@ -52,6 +52,11 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
                     "project": _canonical(project)}
         same = all(old.get(key) == value for key, value in identity.items()) and not compact
         route = old if same else {**identity, "indexRead": False, "readSkills": {}}
+        if not same and not compact:
+            # An install/delete/preference change invalidates discovery, not
+            # unchanged bodies already exposed in this same conversation.
+            cache = old.get('readSkills', {})
+            route['readSkills'] = cache if old.get('project') == identity['project'] and isinstance(cache, dict) else {}
         turn = state.get("turnId", "")
         if route.get("turn") != turn or compact:
             route.update(turn=turn, selected=None, fallback=None)
@@ -63,7 +68,7 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
         return {"status": "ready", "indexRead": route.get("indexRead", False),
                 "selectionRecording": "optional",
                 "selected": (route.get("selected") or {}).get("name"),
-                "nextAction": "read-index" if not route.get("indexRead") else
+                "nextAction": "read-index" if not (route.get("indexRead") or route.get('indexDelivered')) else
                     ("execute-selected" if route.get("selected") or route.get("fallback") else "choose-skill"),
                 "turn": turn}
 
@@ -86,9 +91,7 @@ def _current(item: dict, route: dict) -> bytes:
     if raw is None or _hash(raw) != item["sha256"]:
         raise ValueError("선택한 스킬이 변경되었거나 삭제되었습니다. 새 요청에서 목록을 갱신해 주세요.")
     # Do not enable user-invocation-only skills through a manual file read.
-    from .frontmatter import parse_frontmatter_text
-    metadata, _ = parse_frontmatter_text(raw.decode("utf-8-sig"))
-    if metadata.get("disable-model-invocation") is True:
+    if _frontmatter_field(raw, 'disable-model-invocation').casefold() == 'true':
         if str(item.get("invocation", "")).lstrip("/") not in route.get("explicit", []):
             raise ValueError("이 스킬은 사용자가 직접 호출할 때만 사용할 수 있습니다.")
     return raw
@@ -172,11 +175,9 @@ def observe(root: Path, project: Path, payload: dict) -> None:
         cache[item["id"]] = item["sha256"]
         while len(cache) > 32:
             del cache[next(iter(cache))]
-        from .frontmatter import parse_frontmatter_text
-        metadata, _ = parse_frontmatter_text(raw.decode("utf-8-sig"))
         # Reading orchestration/coding advice must not replace a business
         # workflow or satisfy selection before a real task Skill is chosen.
-        if metadata.get("company-agent-role") != "support":
+        if _frontmatter_field(raw, 'company-agent-role') != 'support':
             route.update(selected={key: item[key] for key in ("id", "name", "path", "sha256")}, fallback=None)
         atomic_write_json(path, state)
 
@@ -188,7 +189,7 @@ def select(root: Path, project: Path, session_id: str, turn: str, *, name: str |
         if not turn or turn != state.get("turnId") or turn != route.get("turn"):
             raise ValueError("현재 업무의 선택 정보가 아닙니다.")
         data = _snapshot(root, project, route)
-        if not route.get("indexRead"):
+        if not (route.get("indexRead") or route.get('indexDelivery')):
             raise ValueError("먼저 이 폴더의 스킬 목록을 읽어 주세요.")
         if fallback == "no-relevant-skill" and name is None:
             route.update(fallback=fallback, selected=None)
@@ -255,8 +256,11 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
         if route.get("turn") != state.get("turnId", ""):
             raise ValueError("Current request preparation is missing")
         data = _snapshot(root, project, route)
-        if not route.get("indexRead"):
-            reason = f"먼저 스킬 목록을 Read로 읽고 업무에 맞는 스킬을 선택하세요: {route['catalog']}"
+        if not (route.get("indexRead") or route.get('indexDelivered')) and not (route.get('selected') and route.get('indexDelivery')):
+            if route.get('indexDelivery', {}).get('mode') == 'pages':
+                reason = '전달된 skillIndex의 출처별 목록과 필요한 상세 페이지를 비교하고 선택한 SKILL.md만 읽으세요. 전체 목록 재읽기는 필수가 아닙니다.'
+            else:
+                reason = f"먼저 스킬 목록을 Read로 읽고 업무에 맞는 스킬을 선택하세요: {route['catalog']}"
         elif route.get("selected"):
             selected = route["selected"]
             item = next((x for x in data["skills"] if x["id"] == selected["id"]), None)
