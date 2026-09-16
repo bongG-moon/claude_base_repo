@@ -28,6 +28,7 @@ def permission_path(path: Path) -> str:
     return "/" + value
 
 PROMPTS = {
+    "S03-natural-office-read": "@ROUTING_SYNTHETIC.pptx 이 자료 내용을 읽고 파악해줄래? 원본은 변경하지 말고 현재 폴더의 이 파일만 사용해줘.",
     "S01-office-routing": "작업 폴더의 ROUTING_TEST_MISSING.pptx 내용을 분석해줘. 가상 검증용 파일명이므로 없으면 없다고만 알려주고, 다른 폴더나 사본을 찾거나 파일을 새로 만들지 마. 실제 Office나 메일, DB에는 접근하지 마. 실행 전 해당 읽기 기능을 선택하는 과정을 확인하려는 테스트야.",
     "S02-custom-routing": "가상 목표 10건 중 9건을 완료했다는 짧은 업무 메모를 이 프로젝트 방식으로 작성해줘. outputs/routing-memo.md로 새로 만들어줘. 이미 있는 파일은 덮어쓰지 말고, 확인 후 결과와 위치만 간단히 알려줘. 다른 프로젝트와 메일, DB, Office에는 접근하지 마.",
     "L01": "현재 작업 폴더의 04-mail-samples에 있는 sample-01.eml, sample-02.eml, sample-03.eml은 가상 로컬 메일 파일이야. 이 3개 파일만 읽어서 회의 일정과 해야 할 일을 요약해줘. 첨부를 읽었는지 목록만 봤는지 구분해줘. Outlook 연결, 메일 발송·가져오기·이동·삭제는 하지 마. 실제 메일함을 검색했다고 표현하지 마. 원본 파일은 수정하지 마.",
@@ -61,6 +62,19 @@ def prepare(root: Path):
     # Only the source plugin is loaded; this does not manufacture a native installation.
     saved(root / "test-mode.json", {"mode": "session-only-plugin", "notNativeInstallation": True,
                                     "createdAt": datetime.now(timezone.utc).isoformat()})
+
+
+def prepare_office_fixture(root: Path):
+    """Synthetic source for routing, never a copy of a real corporate file."""
+    from pptx import Presentation
+    file = root / 'workspace' / 'ROUTING_SYNTHETIC.pptx'
+    if file.exists():
+        raise FileExistsError(file)
+    deck = Presentation()
+    slide = deck.slides.add_slide(deck.slide_layouts[1])
+    slide.shapes.title.text = '가상 실적 확인'
+    slide.placeholders[1].text = '검증용 가상 자료입니다.\n목표 10건, 완료 9건.\n실제 회사 자료가 아닙니다.'
+    deck.save(file)
 
 
 def run(root: Path, case: str, timeout: int):
@@ -146,4 +160,6 @@ if __name__ == "__main__":
     options = parser.parse_args()
     if options.prepare:
         prepare(options.root)
+        if options.case == 'S03-natural-office-read':
+            prepare_office_fixture(options.root)
     run(options.root.resolve(), options.case, options.timeout)

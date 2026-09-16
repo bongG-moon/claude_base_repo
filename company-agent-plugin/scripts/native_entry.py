@@ -7,13 +7,14 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 
 # An embeddable interpreter has an isolated ._pth beside its executable. Select
 # this entry's plugin code explicitly when the durable interpreter and Claude's
 # plugin cache live in different directories or versions.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from company_agent.native_runtime import COMPANY_WORKERS, bounded_prompt_context, configure_runtime, runtime_context, session_start
+from company_agent.native_runtime import COMPANY_WORKERS, task_prompt_context, configure_runtime, runtime_context, session_start
 
 
 def main() -> int:
@@ -25,6 +26,12 @@ def main() -> int:
         from company_agent.cli import main as cli_main
         return cli_main(sys.argv[2:])
     event = sys.argv[2] if len(sys.argv) > 2 and sys.argv[1] == "--event" else ""
+    started = time.monotonic()
+    active = False
+    session_id = ''
+    runtime_text = ''
+    from company_agent.hook_diagnostics import record_hook
+    from company_agent.paths import user_state_root
     try:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
@@ -41,6 +48,8 @@ def main() -> int:
         if not active:
             print("{}")
             return 0
+        session_id = str(payload.get('session_id') or '')
+        record_hook(user_state_root(), session_id, event, 'started', 0)
         preparation = {}
         if event == "PreToolUse":
             from company_agent.skill_workflow import preflight
@@ -54,6 +63,7 @@ def main() -> int:
                 preparation = {}
         if event == "SessionStart":
             result = session_start(plugin, cwd, session_id=str(payload.get("session_id") or ""), source=str(payload.get("source") or ""))
+            runtime_text = result.get('hookSpecificOutput', {}).get('additionalContext', '')
         elif event == "PermissionRequest":
             from company_agent.execution_contract import safe_permission
             from company_agent.paths import user_state_root
@@ -91,10 +101,11 @@ def main() -> int:
             result = json.loads(output.getvalue() or "{}")
             if event == "UserPromptSubmit":
                 text = result["hookSpecificOutput"]["additionalContext"]
-                result["hookSpecificOutput"]["additionalContext"] = bounded_prompt_context(text, runtime_context(
+                runtime_text = runtime_context(
                     plugin, cwd, str(payload.get("prompt", payload.get("user_prompt", ""))),
                     session_id=str(payload.get("session_id") or "")
-                ))
+                )
+                result["hookSpecificOutput"]["additionalContext"] = task_prompt_context(text, runtime_text)
             if event == "PostToolUse":
                 from company_agent.skill_workflow import observe
                 from company_agent.paths import user_state_root
@@ -121,9 +132,14 @@ def main() -> int:
             if target.get('permissionDecision') != 'deny':
                 target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), preparation['hookSpecificOutput']['additionalContext']]))
         # ASCII-safe JSON round-trips Korean even through a legacy Windows pipe.
+        record_hook(user_state_root(), session_id, event, 'output-produced',
+                    int((time.monotonic() - started) * 1000), runtime_text=runtime_text)
         print(json.dumps(result, ensure_ascii=True))
         return 0
-    except Exception:
+    except Exception as exc:
+        if active:
+            record_hook(user_state_root(), session_id, event, 'failed',
+                        int((time.monotonic() - started) * 1000), error_type=type(exc).__name__)
         # No exception payload, model credentials or raw prompt is logged.
         if event == "PreToolUse":
             result = {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",

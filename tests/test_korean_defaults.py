@@ -78,7 +78,7 @@ class KoreanDefaultTests(unittest.TestCase):
                 self.assertNotIn("permissionDecision", result)
                 updated = result["updatedInput"]
                 self.assertEqual(model, updated["model"])
-                self.assertTrue(updated["prompt"].startswith(original["prompt"]))
+                self.assertTrue(updated["prompt"].partition('[원래 업무 요청]\n')[2].startswith(original["prompt"]))
                 self.assertIn(KOREAN_DEFAULT_RULE, updated["prompt"])
 
     def test_common_menu_descriptions_are_korean_without_renaming_skills(self):

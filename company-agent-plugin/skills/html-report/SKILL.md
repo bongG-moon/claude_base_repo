@@ -5,6 +5,13 @@ description: HTML 보고서 제작 시 디자인 미리보기 또는 사용자�
 
 # HTML report
 
+If the user requests questions/explanation only and prohibits commands or file
+creation, ask from the menu below without running helpers, writing choices JSON,
+or delegating. This overrides the helper-first preparation below. Keep answers
+in conversation; validate them once execution is requested. A preparation step
+never expands the user's permission or scope. Do not issue placeholder `echo` /
+`noop` shell calls between loading this Skill and asking the question.
+
 For HTML work only, read `references/design-and-numbers.md` before delegating or
 building. Pass its path to the worker and require that worker to read it too.
 Inspect the current Skill catalog for a relevant installed design/reference Skill;
@@ -68,7 +75,7 @@ Preserve previously answered length/mode. Do not store the template in Memory.
 
 ## 나머지 선택과 제작
 
-Before asking choices, run `business html-choices --spec "<choices.json>"
+When command execution is within the user's request, before asking choices run `business html-choices --spec "<choices.json>"
 --state-root "<stateRoot>"` through the exact installed cliCommand. Keep this small
 ordinary-input JSON at `<stateRoot>/tmp/html-choices-<short-id>.json` (subject to
 normal file permissions), not durable memory. This file contains only designMenu,

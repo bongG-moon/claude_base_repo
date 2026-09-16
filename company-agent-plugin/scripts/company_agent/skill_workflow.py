@@ -176,6 +176,8 @@ def observe(root: Path, project: Path, payload: dict) -> None:
             return
         cache = route.setdefault("readSkills", {})
         cache[item["id"]] = item["sha256"]
+        route['lastBodyLoad'] = {'id': item['id'], 'name': item['name'], 'sha256': item['sha256'],
+                                 'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
         while len(cache) > 32:
             del cache[next(iter(cache))]
         # Reading orchestration/coding advice must not replace a business
@@ -315,7 +317,7 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
         elif route.get("fallback") == "no-relevant-skill":
             return {}
         else:
-            reason = ("목록에서 업무에 맞는 SKILL.md만 읽으세요. 같은 목록 버전에서 이미 읽은 본문은 그대로 재사용하며 "
+            reason = ("목록에서 필요한 스킬을 선택해 고유 호출명은 Skill로, 정확한 파일 선택은 Read로 불러오세요. 같은 목록 버전에서 이미 읽은 본문은 그대로 재사용하며 "
                       "skill route 명령은 필수가 아닙니다. 관련 스킬이 없으면 일반 작업을 진행하세요.")
         from .skill_task_context import TASK_SKILL_RULE
         hinted = set(route.get('taskCandidates', []))

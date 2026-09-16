@@ -41,7 +41,7 @@ class WorkerRuntimeHandoffTests(unittest.TestCase):
         updated = result["updatedInput"]
         self.assertEqual("opus", updated["model"])
         self.assertEqual("existing", updated["resume"])
-        self.assertTrue(updated["prompt"].startswith(original["prompt"]))
+        self.assertTrue(updated["prompt"].partition('[원래 업무 요청]\n')[2].startswith(original["prompt"]))
         self.assertIn(str(self.state).replace("\\", "\\\\"), updated["prompt"])
         self.assertIn("cliCommand", updated["prompt"])
         self.assertIn("grants no permissions", updated["prompt"])

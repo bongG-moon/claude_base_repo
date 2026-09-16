@@ -114,7 +114,9 @@ def record_delivery(index, root, session_id):
         route = state.get('skillWorkflow', {})
         if route.get('revision') != index['revision']:
             return
-        route['indexDelivery'] = {'revision': index['revision'], 'mode': index['mode']}
-        # Injection is exposure of selection metadata, NOT a Read/Skill receipt.
+        route['indexDelivery'] = {'revision': index['revision'], 'mode': index['mode'],
+                                  'evidence': 'output-produced-not-host-acknowledged'}
+        # Legacy field names retained for compatibility. Output generation is
+        # NOT host receipt, model application, or a Read/Skill load receipt.
         route['indexDelivered'] = index['mode'] == 'inline'
         atomic_write_json(path, state)

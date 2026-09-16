@@ -56,7 +56,8 @@ class RouteDecision:
         envelope = {
             "company_agent_route": self.as_dict(),
             "company_agent_instruction": (
-                f"For substantive work invoke the Agent tool with subagent_type={self.agent} BEFORE writing the business deliverable; it is the primary execution worker, not merely a label. Trivial lookups/choices stay in the coordinator. Unless a project orchestrator is active. "
+                "FIRST resolve the relevant workflow Skill and load its body in the coordinator (or reuse an unchanged body still in context). Resolve user choices before delegation. "
+                f"THEN, for substantive work invoke the Agent tool with subagent_type={self.agent} BEFORE writing the business deliverable; it is the primary execution worker, not merely a label. Trivial lookups/choices stay in the coordinator. Unless a project orchestrator is active. "
                 "In that case keep the orchestrator in the main conversation, invoke its project agents directly, "
                 "and apply the routed tier as a minimum for substantive work. "
                 "Keep the parent conversation as coordinator, apply managed policy and effective knowledge, "
