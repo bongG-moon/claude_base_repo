@@ -509,6 +509,24 @@ try {
     Assert-ScopedSmoke ($resolvedSkill.complete -and $resolvedSkill.resolution.status -eq 'selected' -and $resolvedSkill.resolution.selectedId -ceq $preferredSkill[0].id) 'Skill preference ID or resolution changed after a version update'
     $selectedUpdatedSkill = @($resolvedSkill.candidates | Where-Object { $_.id -eq $preferredSkill[0].id })
     Assert-ScopedSmoke ($selectedUpdatedSkill.Count -eq 1 -and $selectedUpdatedSkill[0].path.StartsWith($updatedSkillRoot, [StringComparison]::OrdinalIgnoreCase)) 'Preserved Skill preference still points at the old plugin payload'
+    # Verify the actual updated hook, not only its plugin registration. No
+    # model is contacted by --init-only and all paths remain in this fixture.
+    $updatedDebug = Join-Path $testRoot 'init-after-version-update.log'
+    Push-Location -LiteralPath $otherProject
+    try {
+        $updatedInit = & $ClaudeCommand --init-only --debug-file $updatedDebug 2>&1
+        if ($LASTEXITCODE -ne 0) { throw ('Updated Claude initialization failed: ' + ($updatedInit -join [Environment]::NewLine)) }
+    }
+    finally { Pop-Location }
+    $updatedDebugText = Get-Content -LiteralPath $updatedDebug -Raw -Encoding UTF8
+    Assert-ScopedSmoke ([regex]::Matches($updatedDebugText, 'Hook SessionStart:startup \(SessionStart\) success').Count -eq 1) 'Updated plugin did not run exactly one successful SessionStart'
+    $updatedResponseLines = @(Get-Content -LiteralPath $updatedDebug -Encoding UTF8 | Where-Object { $_ -like '*Hooks: Parsed initial response:*' })
+    $updatedResponse = ($updatedResponseLines[0] -replace '^.*Hooks: Parsed initial response: ', '') | ConvertFrom-Json
+    $updatedRuntime = ($updatedResponse.hookSpecificOutput.additionalContext | ConvertFrom-Json).company_agent_runtime
+    Assert-ScopedSmoke ($updatedRuntime.scope -eq 'Project' -and $updatedRuntime.stateRoot -eq $customStateRoot) 'Updated native hook selected the wrong scope/state'
+    if ([version]$updateVersion -ge [version]'1.4.11') {
+        Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $customStateRoot 'cache\skill-metadata-v1.json')) 'Updated runtime did not prepare metadata cache'
+    }
     $rejectDowngrade = $false
     try { $null = & $setup @reapplyCommon -Scope Project -ProjectRoot $otherProject }
     catch { if ($_.Exception.Message -notmatch 'older') { throw }; $rejectDowngrade = $true }

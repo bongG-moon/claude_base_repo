@@ -17,6 +17,11 @@ from company_agent.state import load_session
 class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
     run_wrapper = native.NativePowerShellTests.run_wrapper
 
+    def brief_groups(self, result):
+        # Candidate details are transmitted once in the leading action brief.
+        return [json.loads(line) for line in result['hookSpecificOutput']['additionalContext'].splitlines()
+                if line.startswith('{"name":') and '"candidates":' in line]
+
     def test_attached_ppt_request_receives_index_before_file_probe(self):
         with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(self.root / 'isolated-claude')}):
             started = self.hook('SessionStart', source='startup')
@@ -29,8 +34,8 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
             result = self.hook('UserPromptSubmit', prompt='@테스트자료.pptx 이 자료 내용 확인해서 정리해줄 수 있을까?')
             runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
             self.assertEqual('reuse', runtime['skillIndex']['mode'])
-            self.assertIn('office-reader', [g['name'] for g in runtime['taskSkills']['groups']])
-            self.assertIn('AskUserQuestion', runtime['instructions'])
+            self.assertIn('office-reader', [g['name'] for g in self.brief_groups(result)])
+            self.assertIn('한국어로 물으세요', result['hookSpecificOutput']['additionalContext'])
             self.assertIn('UTF-8', runtime['instructions'])
             self.assertFalse(runtime['skillWorkflow']['indexRead'])
             self.assertTrue(runtime['skillWorkflow']['indexDelivered'])
@@ -99,7 +104,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         atomic_write_text(local_skill, '---\nname: office-reader\ndescription: 기존 PPT 읽기\n---\n한글 — 자료 😀\n')
         result = self.hook('UserPromptSubmit', prompt='office-reader PPT 읽기')
         ctx = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
-        group = next(g for g in ctx['taskSkills']['groups'] if g['name'] == 'office-reader')
+        group = next(g for g in self.brief_groups(result) if g['name'] == 'office-reader')
         selected = next(c for c in group['candidates'] if c['source'] == 'project')
         reply = self.run_wrapper(['-Mode', 'Cli', 'skill', 'choose', '--session', self.payload['session_id'],
                                   '--turn', ctx['skillWorkflow']['turn'], '--candidate', selected['id']],
@@ -152,8 +157,8 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         wire = json.loads(result.stdout.decode('ascii'))
         ctx = json.loads(wire['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
         self.assertEqual(str(self.project), ctx['project'])
-        self.assertIn('office-reader', [g['name'] for g in ctx['taskSkills']['groups']])
-        self.assertIn('기존 PPT', next(c['description'] for g in ctx['taskSkills']['groups'] if g['name'] == 'office-reader'
+        self.assertIn('office-reader', [g['name'] for g in self.brief_groups(json.loads(result.stdout))])
+        self.assertIn('기존 PPT', next(c['purpose'] for g in self.brief_groups(json.loads(result.stdout)) if g['name'] == 'office-reader'
                                      for c in g['candidates']))
 
     def test_first_prompt_selection_execution_and_silent_list_flow(self):

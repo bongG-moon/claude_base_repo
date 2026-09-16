@@ -36,6 +36,11 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.4.8.md',
         'docs/UPDATE_1.4.9.md',
         'docs/UPDATE_1.4.10.md',
+        'docs/UPDATE_1.4.11.md',
+        'docs/LEAN_SKILL_ROUTING_2026-09-16.md',
+        'payload/core/plugin/scripts/company_agent/skill_metadata_cache.py',
+        'payload/core/plugin/scripts/company_agent/environment_checks.py',
+        'payload/core/plugin/scripts/diagnose_skill_routing.py',
         'docs/SKILL_AUTO_SELECTION_FIX_2026-09-16.md',
         'payload/core/plugin/scripts/company_agent/hook_diagnostics.py',
         'docs/SKILL_SELECTION_ENCODING_VALIDATION_2026-09-16.md',
@@ -116,7 +121,7 @@ function Assert-EmployeeBundle {
     })
     Assert-OfflineBundle ($nativeFiles.Count -eq 0) 'Employee bundle contains native binaries.'
     foreach ($name in @(
-        'CompanyAgent.Common.ps1', 'ExistingHarness.ps1', 'HarnessReplacement.ps1',
+        'Diagnose-CompanyAgent.ps1', 'CompanyAgent.Common.ps1', 'ExistingHarness.ps1', 'HarnessReplacement.ps1',
         'CompanyAgent.UserContext.ps1', 'CompanyAgent.ClaudeDiscovery.ps1',
         'Initialize-CompanyAgentUser.ps1', 'Install-CompanyAgent.cmd', 'Install-CompanyAgent.ps1',
         'Install-ScopedCompanyAgent.ps1', 'Restore-PreviousHarness.ps1', 'Rollback-CompanyAgent.ps1',
@@ -126,7 +131,7 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('deploy\' + $name)) -PathType Leaf) "Required deployment dependency is absent: $name"
     }
     $deployFiles = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'deploy') -File -Force)
-    Assert-OfflineBundle ($deployFiles.Count -eq 17) 'Unexpected deploy tools were included.'
+    Assert-OfflineBundle ($deployFiles.Count -eq 18) 'Unexpected deploy tools were included.'
     foreach ($name in @(
         'New-OfflineBundle.ps1', 'Get-EmbeddedPython.ps1', 'Test-DeploymentSmoke.ps1',
         'Test-ExistingHarness.ps1', 'Test-HarnessReplacement.ps1', 'Test-PersonalStateBackup.ps1',
@@ -135,6 +140,7 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath ('deploy\' + $name)))) "Build/test tool leaked into employee bundle: $name"
     }
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Install-CompanyAgent.cmd') -PathType Leaf) 'Root installer is missing.'
+    Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Diagnose-CompanyAgent.cmd') -PathType Leaf) 'Root diagnostic launcher is missing.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'INSTALL_WITH_CLAUDE.md') -PathType Leaf) 'Installation guide is missing.'
     foreach ($relative in @('docs\SELF_LEARNING.md', 'docs\USER_GUIDE.md', 'docs\BUSINESS_PILOT_GUIDE.md',
         'payload\core\plugin\scripts\company_agent\learning.py',
@@ -176,7 +182,7 @@ try {
     foreach ($directory in @('deploy', 'company-agent-plugin', 'corporate-knowledge', 'docs')) {
         Copy-CompanyAgentDirectoryContents -Source (Join-Path $repositoryRoot $directory) -Destination (Join-Path $sourceRoot $directory)
     }
-    foreach ($name in @('Install-CompanyAgent.cmd', 'INSTALL_WITH_CLAUDE.md')) {
+    foreach ($name in @('Install-CompanyAgent.cmd', 'Diagnose-CompanyAgent.cmd', 'INSTALL_WITH_CLAUDE.md')) {
         Copy-Item -LiteralPath (Join-Path $repositoryRoot $name) -Destination (Join-Path $sourceRoot $name)
     }
     Write-CompanyAgentUtf8File -Path (Join-Path $sourceRoot 'deploy\Future-AdminTool.ps1') -Content '# Must stay on the build PC.'
@@ -273,7 +279,7 @@ try {
         status = 'passed'
         defaultRuntimeMode = $defaultManifest.runtime.mode
         minimumPythonVersion = $defaultManifest.runtime.minimumVersion
-        productionDeployFiles = 17
+        productionDeployFiles = 18
         testRoot = $testRoot
         artifactsKept = [bool]$KeepArtifacts
     }

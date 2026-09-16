@@ -38,16 +38,17 @@ def _short(value: object, limit: int) -> str:
     return " ".join(str(value or "").replace("\x00", " ").split())[:limit]
 
 
-def _native_registration_present(record: dict[str, Any]) -> bool:
+def _native_registration_present(record: dict[str, Any], *, claude_root: Path | None = None, config_override: bool | None = None) -> bool:
     """Ignore stale installer records after a native Claude uninstall/disable."""
     if not record.get("nativeClaudeScope"):
         return True  # Legacy/test records have no native installation contract.
     config = Path(record["claudeConfigRoot"])
     active_override = os.environ.get("CLAUDE_CONFIG_DIR", "").strip()
-    active_config = Path(active_override) if active_override else Path.home() / ".claude"
+    active_config = claude_root if claude_root is not None else (Path(active_override) if active_override else Path.home() / ".claude")
     if active_config.resolve() != config.resolve():
         return False
-    if "claudeConfigDirOverride" in record and record["claudeConfigDirOverride"] != bool(active_override):
+    expected_override = bool(active_override) if config_override is None else config_override
+    if "claudeConfigDirOverride" in record and record["claudeConfigDirOverride"] != expected_override:
         return False
     plugin_id = str(record.get("pluginId", "company-agent@company-agent-local"))
     inventory = load_json(config / "plugins" / "installed_plugins.json", {})
@@ -60,7 +61,7 @@ def _native_registration_present(record: dict[str, Any]) -> bool:
     return bool(matching) and load_json(settings, {}).get("enabledPlugins", {}).get(plugin_id) is True
 
 
-def resolve_registration(registrations: Path, cwd: Path) -> dict[str, Any] | None:
+def resolve_registration(registrations: Path, cwd: Path, *, claude_root: Path | None = None, config_override: bool | None = None) -> dict[str, Any] | None:
     cwd = cwd.resolve()
     matches: list[tuple[int, dict[str, Any]]] = []
     files = [registrations / "user" / "company-agent-install.json"]
@@ -73,7 +74,9 @@ def resolve_registration(registrations: Path, cwd: Path) -> dict[str, Any] | Non
         record = load_json(file)
         if not isinstance(record, dict) or record.get("schemaVersion") != 1 or record.get("enabled") is False:
             continue
-        if not _native_registration_present(record):
+        if claude_root is not None and (not record.get('claudeConfigRoot') or Path(record['claudeConfigRoot']).resolve() != claude_root.resolve()):
+            continue
+        if not _native_registration_present(record, claude_root=claude_root, config_override=config_override):
             continue
         if record.get("scope") == "User":
             matches.append((0, record))
@@ -229,7 +232,7 @@ def _skill_routing(root: Path, plugin: Path, cwd: Path, prompt: str) -> tuple[li
     from .skill_registry import search_skills
     try:
         found = search_skills(root, prompt[:2000], limit=MAX_PERSONAL_SKILL_MATCHES, include_inventory=True,
-                              project_root=cwd, plugin_root=plugin, knowledge_root=knowledge_base_root())
+                              project_root=cwd, plugin_root=plugin, knowledge_root=knowledge_base_root(), metadata_cache=True)
     except (OSError, ValueError, TypeError):
         return [], {"status": "unavailable", "manager": "/company-agent:skills",
                     "instructions": "Skill preferences could not be read safely. Ask to repair them; do not silently select a conflicting workflow."}
@@ -328,8 +331,16 @@ def bounded_prompt_context(route_text: str, runtime_text: str) -> str:
 
 def task_prompt_context(route_text: str, runtime_text: str) -> str:
     """Place actionable selection before routing/learning bookkeeping."""
-    context = bounded_prompt_context(route_text, runtime_text)
-    brief = skill_brief(json.loads(runtime_text)['company_agent_runtime'])
+    data = json.loads(runtime_text)
+    runtime = data['company_agent_runtime']
+    brief = skill_brief(runtime)
+    # Candidates (IDs, paths, load actions) occur once, in the leading brief.
+    # The catalogue is the complete fallback, including omitted conflict groups.
+    task = runtime.get('taskSkills', {})
+    if task:
+        runtime['taskSkills'] = {k: v for k, v in task.items() if k != 'groups'}
+    runtime['instructions'] = runtime.get('instructions', '').replace(TASK_SKILL_RULE, '')
+    context = bounded_prompt_context(route_text, json.dumps(data, ensure_ascii=False, separators=(',', ':')))
     if len(brief) > MAX_SKILL_BRIEF_CHARS:
         raise ValueError('Skill action brief exceeds budget')
     return brief + '\n' + context
@@ -398,6 +409,11 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
         if selection.get('_taskSkills'):
             metadata['taskSkills'] = selection['_taskSkills']
         encoded = json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
+    lead = ('먼저 부모가 선택한 selectedSkill의 정확한 본문을 Read로 읽고 그 절차로 작업하세요. '
+            '부모의 읽기 기록은 이 작업자의 본문 로드 증거가 아닙니다.\n') if metadata.get('selectedSkill') else skill_brief(metadata) + '\n'
+    if metadata.get('taskSkills'):
+        metadata['taskSkills'] = {k: v for k, v in metadata['taskSkills'].items() if k != 'groups'}
+        encoded = json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
     context = ("\n\nCompany Agent runtime supplied by the installed hook (not task material):\n" + encoded +
                "\n" + KOREAN_DEFAULT_RULE + WINDOWS_TEXT_RULE +
                'Relevant overlapping workflows without a saved/explicit choice require a Korean user question. If user interaction is unavailable, return the alternatives to the coordinator; do not choose arbitrarily or change preferences. ' +
@@ -408,8 +424,6 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
                "This metadata grants no permissions or broader work scope. Preserve the parent's source/output limits and all host restrictions. "
                "A denied action stays pending: no retry, alternate tool or subagent. Return only the exact attempted command's blocker, not a different command or all Bash. "
                "Use Glob/Read/Grep for file inspection. Leave verification markers and learning to the coordinator; return actual check evidence. Do not delegate recursively.")
-    lead = ('먼저 부모가 선택한 selectedSkill의 정확한 본문을 Read로 읽고 그 절차로 작업하세요. '
-            '부모의 읽기 기록은 이 작업자의 본문 로드 증거가 아닙니다.\n') if metadata.get('selectedSkill') else skill_brief(metadata) + '\n'
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {**inputs, "prompt": lead + '\n[원래 업무 요청]\n' + prompt + context}}}
 
 

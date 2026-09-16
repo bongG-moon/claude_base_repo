@@ -20,6 +20,7 @@ param(
     [string] $SkillConflictAction = 'Ask',
     [switch] $AllowExistingCompanyAgentPlugin,
     [switch] $NonInteractive,
+    [switch] $FriendlyOutput,
     [switch] $DryRun,
     [switch] $SkipAcl,
     [switch] $SkipAdminCheck,
@@ -986,7 +987,75 @@ function Invoke-SetupElevation {
     return $childResult.result
 }
 
+function Get-SetupFriendlyFailure {
+    param([string] $Message)
+    # Recovery failures take precedence. Never promise an uncertain rollback.
+    # Raw CLI errors may contain sensitive settings, so keep this summary fixed.
+    if ($Message -match 'Recovery needs attention|changed during rollback') {
+        return '설치 중 문제가 생겼고 이전 상태 복원도 확인이 필요합니다. 위에 표시된 백업 폴더를 보관하고 담당자에게 복구 점검을 요청하세요.'
+    }
+    if ($Message -match 'Core version already exists with different contents') {
+        return '같은 버전 번호의 설치 파일이 기존 파일과 다릅니다. 기존 폴더를 지우지 말고, 담당자에게 버전 번호가 올라간 새 설치본을 받아 주세요.'
+    }
+    if ($Message -match '(?i)Python.*(not found|required|3\.11)|approved.*python|python.*경로') {
+        return '사용할 Python을 확인하지 못했습니다. 회사에서 설치한 Python 3.11 이상의 python.exe 위치를 확인한 뒤 다시 실행해 주세요. 자동으로 내려받거나 설치하지 않습니다.'
+    }
+    if ($Message -match '(?i)Claude Code.*(required|not found)|Claude.*실행 파일') {
+        return 'Claude Code 실행 파일 또는 버전 확인이 필요합니다. 평소 사용하는 Claude의 실제 실행 파일을 선택하고, 회사에서 제공한 지원 버전인지 확인해 주세요.'
+    }
+    if ($Message -match '(?i)project folder|Project installation needs|Select a project folder') {
+        return '프로젝트 폴더를 확인하지 못했습니다. 실제로 존재하는 작업 폴더를 선택하고 다시 실행해 주세요.'
+    }
+    if ($Message -match '(?i)extract|bundle.*manifest|bundle.*(hash|integrity)|hash mismatch') {
+        return '설치 파일 묶음을 확인하지 못했습니다. ZIP 전체를 새 폴더에 압축 해제한 뒤 Install-CompanyAgent.cmd를 실행해 주세요. 계속되면 담당자에게 원본 파일 확인을 요청하세요.'
+    }
+    if ($Message -match '(?i)Skill inventory|Skill.*failed') {
+        return '기존 스킬 목록이나 우선 설정을 확인하지 못했습니다. 기존 스킬을 삭제하지 말고 진단 파일로 상태를 확인한 뒤 담당자에게 알려 주세요.'
+    }
+    if ($Message -match '(?i)interactive.*(user|session)|different.*(user|account)|owner|SID|another Claude configuration') {
+        return '현재 로그인한 사용자와 Claude 설정 위치가 일치하는지 확인이 필요합니다. 다른 계정으로 실행하지 말고 본인이 평소 쓰는 Claude 환경에서 다시 진행해 주세요.'
+    }
+    return '설치를 완료하지 못했습니다. 기존 설정이나 개인 자료를 지우지 말고, 위에 표시된 단계와 진단 결과를 담당자에게 전달해 주세요.'
+}
+
+function Write-SetupFriendlyResult {
+    param([object] $Result)
+    $status = [string](Get-SetupPropertyValue -Object $Result -Name 'status')
+    switch ($status) {
+        'installed' { Write-Host '설치 완료. Claude Code를 닫았다 다시 열어 주세요.' }
+        'updated' { Write-Host '업데이트 완료. Claude Code를 닫았다 다시 열어 주세요.' }
+        'reapplied' { Write-Host '다시 적용 완료. Claude Code를 닫았다 다시 열어 주세요.' }
+        'kept' { Write-Host '현재 구성을 유지했습니다. 설치·업데이트는 하지 않았습니다.' }
+        'cancelled' { Write-Host '설치를 취소했습니다. 새 버전을 적용하지 않았습니다.' }
+        'input-required' { Write-Host '아직 설치되지 않았습니다. 위에 안내된 항목을 선택해 다시 진행해 주세요.' }
+        'dry-run' { Write-Host '미리 점검만 완료했습니다. 설치·업데이트는 하지 않았습니다.' }
+        default { Write-Host '위의 단계별 결과를 확인해 주세요. 이 메시지만으로 설치 완료를 판단하지 마세요.' }
+    }
+    if ($status -in @('installed', 'updated', 'reapplied')) {
+        Write-Host '업무별 준비 상태는 Diagnose-CompanyAgent.cmd에서 확인할 수 있습니다. Office·MCP는 별도 준비가 필요할 수 있습니다.'
+    }
+}
+
 if ($FunctionsOnly) { return }
+
+trap {
+    if (-not $FriendlyOutput) { throw }
+    Write-Host ''
+    Write-Host (Get-SetupFriendlyFailure -Message $_.Exception.Message) -ForegroundColor Red
+    $errorFile = [IO.Path]::GetFileName([string]$_.InvocationInfo.ScriptName)
+    if ($errorFile -match '^[A-Za-z0-9_.-]+\.ps1$') {
+        Write-Host ("담당자 확인 위치: {0} / {1}번째 줄" -f $errorFile, $_.InvocationInfo.ScriptLineNumber)
+    }
+    Write-Host '초기 점검에서 중단되면 백업이 아직 없을 수 있습니다. 백업이 생성됐다면 위에 표시된 위치를 보관해 주세요.'
+    if (-not $NonInteractive) { Write-Host '아무 키나 누르면 창을 닫습니다.' }
+    exit 1
+}
+if ($FriendlyOutput) {
+    Write-Host 'Company Agent 간편 설치'
+    Write-Host '내 계정 전체 또는 한 프로젝트에 설치할 수 있습니다. 기존 설정은 먼저 확인하고 백업합니다.'
+    Write-Host 'Claude Code와 회사에서 제공한 Python 3.11 이상이 필요합니다. 자동 다운로드는 하지 않습니다.'
+    Write-Host '기존 모델·MCP·개인 기억·스킬은 유지합니다. 필요한 항목만 차례로 물어봅니다.'
+}
 
 # The beginner path registers a native Claude plugin for this Windows user or
 # one project. Explicit machine roots keep the established administrator path.
@@ -1020,7 +1089,12 @@ if ($Scope -in @('User', 'Project')) {
             $scopedParameters[$name] = $value
         }
     }
-    & (Join-Path $PSScriptRoot 'Install-ScopedCompanyAgent.ps1') @scopedParameters
+    if ($FriendlyOutput) {
+        $setupResult = & (Join-Path $PSScriptRoot 'Install-ScopedCompanyAgent.ps1') @scopedParameters
+        Write-SetupFriendlyResult -Result $setupResult
+        if (-not $NonInteractive) { Write-Host '아무 키나 누르면 창을 닫습니다.' }
+    }
+    else { & (Join-Path $PSScriptRoot 'Install-ScopedCompanyAgent.ps1') @scopedParameters }
     return
 }
 if ($ExistingHarnessAction -ne 'Ask') {

@@ -14,7 +14,9 @@ from .paths import user_state_root
 
 def doctor() -> dict[str, Any]:
     from .business_artifacts import capabilities
+    from .environment_checks import inspect_environment
     return {"ok": True, "status": "diagnostic_only", "python": platform.python_version(),
+            "environment": inspect_environment(),
             "windows": os.name == "nt", "artifacts": capabilities(),
             "fileOrganizer": {"available": os.name == "nt", "previewRequired": True, "permanentDelete": False},
             "outlook": {"status": "connection_not_tested", "readOnlyPilot": True,

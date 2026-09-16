@@ -60,6 +60,7 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
         turn = state.get("turnId", "")
         if route.get("turn") != turn or compact:
             route.update(turn=turn, selected=None, fallback=None, turnChoices={}, taskCandidates=[])
+            route['loadObservation'] = {'status': 'not-observed', 'turn': turn}
         if prompt:
             # Exact native slash invocations only, not a general opt-out guess.
             route["explicit"] = re.findall(r"(?<!\S)/([A-Za-z0-9][A-Za-z0-9:_-]{0,159})(?=\s|$)", prompt)[:8]
@@ -133,7 +134,7 @@ def _record_read(route: dict, key: str, response: Any, raw: bytes) -> bool:
 
 
 def observe(root: Path, project: Path, payload: dict) -> None:
-    if payload.get("hook_event_name") != "PostToolUse" or payload.get("error") or payload.get("tool_error"):
+    if payload.get("hook_event_name") != "PostToolUse":
         return
     if payload.get("tool_name") not in {"Read", "Skill"} or not payload.get("session_id"):
         return
@@ -141,12 +142,30 @@ def observe(root: Path, project: Path, payload: dict) -> None:
         route = state.get("skillWorkflow")
         if not route or _stale_native_prompt(payload, state):
             return
-        data = _snapshot(root, project, route)
+        inputs = payload.get('tool_input') or {}
+        if payload['tool_name'] == 'Read':
+            value = inputs.get('file_path')
+            if (isinstance(value, str) and Path(value).is_absolute()
+                    and Path(value).name.casefold() != 'skill.md' and _canonical(Path(value)) != route.get('catalog')):
+                return  # Do not reopen the skill catalogue for ordinary document reads.
+        def note(status):
+            # Latest event only, never persist tool input/response or file content.
+            route['loadObservation'] = {'status': status, 'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
+            atomic_write_json(path, state)
+        if payload.get('error') or payload.get('tool_error'):
+            note('tool-failed')
+            return
+        try:
+            data = _snapshot(root, project, route)
+        except (OSError, ValueError):
+            note('catalog-unavailable')
+            raise
         inputs = payload.get("tool_input") or {}
         response = payload.get("tool_response")
         if payload["tool_name"] == "Read":
             value = inputs.get("file_path")
             if not isinstance(value, str) or not Path(value).is_absolute():
+                note('read-path-unrecognized')
                 return
             file = Path(value)
             if _canonical(file) == route["catalog"]:
@@ -155,10 +174,15 @@ def observe(root: Path, project: Path, payload: dict) -> None:
                 atomic_write_json(path, state)
                 return
             candidates = [x for x in data["skills"] if _canonical(Path(x["path"])) == _canonical(file)]
+            if not candidates:
+                if file.name.casefold() == 'skill.md':
+                    note('skill-path-unmatched')
+                return  # Ordinary document reads do not overwrite Skill evidence.
         else:
             # A successful native Skill event is a load receipt, not execution
             # permission. A namespaced/name collision is not guessed.
             if not isinstance(response, dict) or response.get("success") is not True:
+                note('tool-failed' if isinstance(response, dict) and response.get('success') is False else 'response-unrecognized')
                 return
             invocation = str(inputs.get("skill", "")).lstrip("/")
             candidates = [x for x in data["skills"] if str(x.get("invocation", "")).lstrip("/") == invocation]
@@ -166,18 +190,25 @@ def observe(root: Path, project: Path, payload: dict) -> None:
         # actual body receipt without claiming that the index was read. The
         # next catalogue Read need not force another identical body read.
         if len(candidates) != 1:
+            note('name-ambiguous' if candidates else 'skill-name-unmatched')
             return
         item = candidates[0]
         if not _allowed(item, data, route):
+            note('choice-unresolved')
             return
-        raw = _current(item, route)
+        try:
+            raw = _current(item, route)
+        except (OSError, ValueError):
+            note('body-unavailable-or-explicit-only')
+            raise
         if payload["tool_name"] == "Read" and not _record_read(route, item["id"], response, raw):
-            atomic_write_json(path, state)
+            note('partial-read' if item['id'] in route.get('readRanges', {}) else 'read-response-unrecognized')
             return
         cache = route.setdefault("readSkills", {})
         cache[item["id"]] = item["sha256"]
         route['lastBodyLoad'] = {'id': item['id'], 'name': item['name'], 'sha256': item['sha256'],
                                  'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
+        route['loadObservation'] = {'status': 'loaded', 'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
         while len(cache) > 32:
             del cache[next(iter(cache))]
         # Reading orchestration/coding advice must not replace a business

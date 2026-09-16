@@ -101,7 +101,7 @@ def for_context(index, root, session_id, *, force=False):
         return index
     if delivered.get('revision') == index['revision'] and delivered.get('mode') == index['mode']:
         return {'mode': 'reuse', 'revision': index['revision'], 'count': index['count'],
-                'previousMode': index['mode']}
+                'previousMode': index['mode'], 'basis': 'previous-output-not-receipt'}
     return index
 
 

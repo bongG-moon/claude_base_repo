@@ -397,8 +397,8 @@ def _resolution(name: str, candidates: list[dict[str, Any]], effective: dict[str
 def inventory_skills(state_root: Path, *, project_root: Path | None = None,
                      claude_root: Path | None = None, plugin_root: Path | None = None,
                      incoming_plugin: Path | None = None, incoming_skill: Path | None = None,
-                     knowledge_root: Path | None = None) -> dict[str, Any]:
-    """Read known skill locations without creating state or following links."""
+                     knowledge_root: Path | None = None, metadata_cache: bool = False) -> dict[str, Any]:
+    """Read known skill locations; optional runtime-only disposable metadata cache."""
     preference_file, preferences = _preferences(state_root)
     state = _path(state_root)
     project = _path(project_root) if project_root is not None else None
@@ -408,6 +408,10 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
     effective = _effective(preferences, project)
     candidates: dict[str, dict[str, Any]] = {}
     seen_paths: set[tuple[str, bool]] = set()
+    cache = None
+    if metadata_cache and not incoming_plugin and not incoming_skill:
+        from .skill_metadata_cache import SkillMetadataCache
+        cache = SkillMetadataCache(state)
 
     def add_file(file: Path, source: str, origin: str, logical_root: Path, namespace: str | None, incoming: bool) -> None:
         if len(candidates) >= MAX_SKILLS:
@@ -419,10 +423,19 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
             if key in seen_paths:
                 return
             seen_paths.add(key)
-            raw = _read(file, MAX_SKILL_BYTES)
-            if raw is None:
-                return
-            name, description, invalid = _metadata(raw, file.parent.name)
+            if cache is not None:
+                metadata = cache.metadata(file)
+                if metadata is None:
+                    return
+                name, description, invalid = metadata['name'], metadata['description'], metadata['invalid']
+                body_hash, explicit_only = metadata['sha256'], metadata['explicitOnly']
+            else:
+                raw = _read(file, MAX_SKILL_BYTES)
+                if raw is None:
+                    return
+                name, description, invalid = _metadata(raw, file.parent.name)
+                body_hash = hashlib.sha256(raw).hexdigest()
+                explicit_only = _frontmatter_field(raw, 'disable-model-invocation').casefold() == 'true'
             if invalid:
                 _warn(warnings, f"Invalid declared skill name; using its folder name: {file}")
             relative = file.relative_to(logical_root).as_posix().casefold()
@@ -432,8 +445,8 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
             candidate = {"id": candidate_id, "name": name, "source": source, "origin": origin,
                          "path": str(file), "description": description,
                          "invocation": invocation,
-                         "sha256": hashlib.sha256(raw).hexdigest(), "incoming": incoming,
-                         "explicitOnly": _frontmatter_field(raw, 'disable-model-invocation').casefold() == 'true'}
+                         "sha256": body_hash, "incoming": incoming,
+                         "explicitOnly": explicit_only}
             if candidate_id not in candidates or incoming:
                 candidates[candidate_id] = candidate
         except (OSError, ValueError, UnicodeError) as exc:
@@ -548,6 +561,8 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
         conflicts.append({"name": name, "kind": kind,
                           "candidates": group, "resolution": _resolution(name, group, effective)})
     complete = not warnings
+    if cache is not None and complete:
+        cache.save()
     for name, candidate_id in effective["skills"].items():
         if not any(item["id"] == candidate_id for item in groups.get(name, [])):
             _warn(warnings, f"Stale skill preference for {name}: {candidate_id}; no replacement selected.")
