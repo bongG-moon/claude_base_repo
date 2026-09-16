@@ -77,7 +77,7 @@ def main() -> int:
             # The corporate policy handler accepts only its own MCP servers.
             # Other tools get preparation checks, NOT a new permission grant.
             if event == "PreToolUse" and not str(payload.get("tool_name", "")).startswith(("mcp__corp-db-read__", "mcp__corp-outlook-self__")):
-                print(json.dumps(preparation, ensure_ascii=False))
+                print(json.dumps(preparation, ensure_ascii=True))
                 return 0
             handler = __import__(handlers[event])
             output = io.StringIO()
@@ -120,7 +120,8 @@ def main() -> int:
             # A real corporate deny always wins; do not confuse it with discovery.
             if target.get('permissionDecision') != 'deny':
                 target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), preparation['hookSpecificOutput']['additionalContext']]))
-        print(json.dumps(result, ensure_ascii=False))
+        # ASCII-safe JSON round-trips Korean even through a legacy Windows pipe.
+        print(json.dumps(result, ensure_ascii=True))
         return 0
     except Exception:
         # No exception payload, model credentials or raw prompt is logged.

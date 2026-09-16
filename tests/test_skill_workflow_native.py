@@ -29,6 +29,9 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
             result = self.hook('UserPromptSubmit', prompt='@테스트자료.pptx 이 자료 내용 확인해서 정리해줄 수 있을까?')
             runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
             self.assertEqual('reuse', runtime['skillIndex']['mode'])
+            self.assertIn('office-reader', [g['name'] for g in runtime['taskSkills']['groups']])
+            self.assertIn('AskUserQuestion', runtime['instructions'])
+            self.assertIn('UTF-8', runtime['instructions'])
             self.assertFalse(runtime['skillWorkflow']['indexRead'])
             self.assertTrue(runtime['skillWorkflow']['indexDelivered'])
             self.assertEqual('choose-skill', runtime['skillWorkflow']['nextAction'])
@@ -90,6 +93,68 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.hook("PostToolUse", tool_name="Read", tool_input={"file_path": str(file)},
                   tool_response={"type": "text", "file": {"filePath": str(file), "content": raw,
                       "startLine": 1, "totalLines": len(raw.splitlines()), "numLines": len(raw.splitlines())}})
+
+    def test_korean_choice_cli_preserves_state_and_does_not_require_verification(self):
+        local_skill = self.project / '.claude/skills/office-reader/SKILL.md'
+        atomic_write_text(local_skill, '---\nname: office-reader\ndescription: 기존 PPT 읽기\n---\n한글 — 자료 😀\n')
+        result = self.hook('UserPromptSubmit', prompt='office-reader PPT 읽기')
+        ctx = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        group = next(g for g in ctx['taskSkills']['groups'] if g['name'] == 'office-reader')
+        selected = next(c for c in group['candidates'] if c['source'] == 'project')
+        reply = self.run_wrapper(['-Mode', 'Cli', 'skill', 'choose', '--session', self.payload['session_id'],
+                                  '--turn', ctx['skillWorkflow']['turn'], '--candidate', selected['id']],
+                                 env_overrides={'PYTHONIOENCODING': 'cp949', 'PYTHONUTF8': '0'})
+        self.assertEqual(0, reply.returncode, reply.stderr)
+        chosen = json.loads(reply.stdout)
+        self.assertEqual(str(local_skill), chosen['readPath'])
+        self.assertFalse(chosen['bodyAlreadyRead'])
+        self.read(local_skill)
+        root = Path(self.record['userStateRoot'])
+        self.assertEqual(selected['id'], load_session(self.payload['session_id'], root)['skillWorkflow']['selected']['id'])
+        self.assertEqual({}, self.hook('Stop'))
+
+    def test_session_exports_utf8_and_cmd_uses_registration_without_state_env(self):
+        import subprocess
+        import sys
+        env_file = self.root / 'session.env'
+        started = self.run_wrapper(['-Mode', 'Hook', '-Event', 'SessionStart'],
+                                   {**self.payload, 'source': 'startup'},
+                                   env_overrides={'CLAUDE_ENV_FILE': str(env_file),
+                                                  'PYTHONIOENCODING': 'cp949', 'PYTHONUTF8': '0'})
+        self.assertEqual(0, started.returncode, started.stderr)
+        self.assertIn('export PYTHONUTF8=1', env_file.read_text(encoding='utf-8'))
+        self.assertIn('export PYTHONIOENCODING=utf-8', env_file.read_text(encoding='utf-8'))
+        # Do not inherit state variables from a functioning hook: this is the
+        # production failure path, where the bin shim was invoked directly.
+        env = dict(os.environ)
+        for name in list(env):
+            if name.startswith('COMPANY_AGENT_'):
+                env.pop(name)
+        env.update(COMPANY_AGENT_PYTHON=sys.executable, PYTHONIOENCODING='cp949', PYTHONUTF8='0')
+        result = subprocess.run([str(self.plugin / 'bin/company-agent.cmd'), 'state', 'check'],
+                                cwd=self.project, env=env, capture_output=True, timeout=30)
+        self.assertEqual(0, result.returncode, repr(result.stderr))
+        actual = json.loads(result.stdout)
+        self.assertEqual(str(Path(self.record['userStateRoot'])), actual['stateRoot'])
+
+    def test_native_hook_json_roundtrips_unicode_in_legacy_pipe(self):
+        import subprocess
+        import sys
+        env = dict(os.environ, PYTHONIOENCODING='cp949', PYTHONUTF8='0',
+                   CLAUDE_CONFIG_DIR=str(self.root / 'isolated-claude'))
+        payload = dict(self.payload, prompt='@테스트자료.pptx — 한글 😀 내용 읽기')
+        result = subprocess.run([sys.executable, '-B', str(self.plugin / 'scripts/native_entry.py'),
+                                 '--event', 'UserPromptSubmit'], cwd=self.project, env=env,
+                                input=json.dumps(payload, ensure_ascii=True).encode('ascii'),
+                                capture_output=True, timeout=20)
+        self.assertEqual(0, result.returncode, repr(result.stderr))
+        self.assertEqual(b'', result.stderr)
+        wire = json.loads(result.stdout.decode('ascii'))
+        ctx = json.loads(wire['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        self.assertEqual(str(self.project), ctx['project'])
+        self.assertIn('office-reader', [g['name'] for g in ctx['taskSkills']['groups']])
+        self.assertIn('기존 PPT', next(c['description'] for g in ctx['taskSkills']['groups'] if g['name'] == 'office-reader'
+                                     for c in g['candidates']))
 
     def test_first_prompt_selection_execution_and_silent_list_flow(self):
         self.hook("SessionStart", source="startup")

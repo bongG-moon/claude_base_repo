@@ -10,6 +10,7 @@ param(
 $ErrorActionPreference = 'Stop'
 $pluginRoot = Split-Path -Parent $PSScriptRoot
 $env:PYTHONIOENCODING = 'utf-8'
+$env:PYTHONUTF8 = '1'
 $env:PYTHONDONTWRITEBYTECODE = '1'
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = $utf8
@@ -86,8 +87,8 @@ $entry = Join-Path $PSScriptRoot 'native_entry.py'
 if ($Mode -eq 'Hook') {
     # The only in-memory copy; never persist the input prompt/transcript payload.
     $payload = [Console]::In.ReadToEnd()
-    $payload | & $python $entry --event $Event
+    $payload | & $python -X utf8 $entry --event $Event
 } else {
-    & $python $entry --cli @CliArguments
+    & $python -X utf8 $entry --cli @CliArguments
 }
 exit $LASTEXITCODE

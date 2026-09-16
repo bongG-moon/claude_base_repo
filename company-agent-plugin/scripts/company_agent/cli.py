@@ -499,6 +499,12 @@ def cmd_skill_route(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_skill_choose(args: argparse.Namespace) -> int:
+    from .skill_workflow import choose
+    _print_json(choose(_state_root(args), Path.cwd(), args.session, args.turn, args.candidate))
+    return 0
+
+
 def _add_base_argument(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--base", help="Corporate Knowledge Pack root. Defaults to COMPANY_AGENT_KNOWLEDGE_BASE.")
 
@@ -544,6 +550,12 @@ def build_parser() -> argparse.ArgumentParser:
     choice.add_argument("--name")
     choice.add_argument("--fallback", choices=("no-relevant-skill",))
     route.set_defaults(func=cmd_skill_route)
+    choose = skill_sub.add_parser('choose', help='Record an answered user choice for this request only; ask the user first.')
+    _add_state_argument(choose)
+    choose.add_argument('--session', required=True)
+    choose.add_argument('--turn', required=True)
+    choose.add_argument('--candidate', required=True)
+    choose.set_defaults(func=cmd_skill_choose)
     for operation in ("inventory", "list", "conflicts", "search", "resolve", "prefer", "prefer-incoming", "order", "reset"):
         action = skill_sub.add_parser(operation)
         _add_state_argument(action)

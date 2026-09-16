@@ -1,8 +1,5 @@
 @echo off
 setlocal
-if defined COMPANY_AGENT_PYTHON (
-  "%COMPANY_AGENT_PYTHON%" "%~dp0..\scripts\harness_cli.py" %*
-) else (
-  python "%~dp0..\scripts\harness_cli.py" %*
-)
+rem Use the same registered Python, scope and UTF-8 boundary as native hooks.
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoLogo -NoProfile -File "%~dp0..\scripts\Invoke-CompanyAgent.ps1" -Mode Cli %*
 exit /b %ERRORLEVEL%

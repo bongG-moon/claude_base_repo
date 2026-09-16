@@ -15,6 +15,7 @@ Python on PATH. Use the indicated `stateRoot`, never assume the global state pat
 Use the injected `skillIndex` across all sources; `personalSkills` / `preferredSkills` are fallback hints.
 `inline` contains the selection rows already: do not read the catalogue again. `reuse` refers to the same revision in this conversation. `pages` provides source directories to Read, then the relevant description pages; unexamined pages are not proof there is no suitable Skill.
 Compare intent and descriptions semantically, including Korean requests against English descriptions.
+`taskSkills` supplies a small per-request shortlist, even when the index is reused or paged. It is not a complete inventory or an automatic decision; compare missing candidates using the index when needed.
 Read only the chosen SKILL.md at `roots[root]/file`, respecting row priority and explicitOnly. Read `skillSelection.catalog.path` for detailed listing or when index context is missing.
 Successful Read/Skill loads record selection silently; each request needs a relevant choice.
 Reuse unchanged bodies already read in this context; `skill route` is optional, not a required extra command.
@@ -26,14 +27,13 @@ If the catalogue is unavailable, inspect inventory/resolve and refresh on the ne
 Catalogue upkeep is silent: no work checkpoint, verification or learning for these internal writes.
 Read the selected personal SKILL.md before delegation; worker-only reads under another session are not parent learning evidence.
 
-Before choosing a workflow with overlapping names, use `skill resolve <name>`
-for the current project. Apply its selected file; unresolved or stale choices
-need `/company-agent:skills` and only the missing user choice. That command also
-handles requests to list Skills or change project/default priorities; do not edit
-preference JSON manually. Preferences do not change native `/name` precedence:
-read the selected full path instead of assuming `Skill(name)` invokes that file.
-Respect explicit user invocations and managed policy. Default workflow references
-below do not override a saved choice for the same workflow.
+Respect explicit invocations, managed policy and saved project/default priorities; default examples below do not override them.
+For relevant overlapping workflows without a choice, ask directly in Korean with names, origins and differences. Complementary reading/creation steps are not duplicates.
+After the user's answer use `skill choose --session SESSION --turn TURN --candidate ID` with current `skillWorkflow` IDs, then read its `readPath`. This is current-request only, not a body-read receipt.
+Use `/company-agent:skills` for listing or explicitly requested persistent priorities; never edit preference JSON manually. Preferences do not change native `/name` precedence: read the selected full path instead of assuming `Skill(name)` invokes it.
+
+Use the registered UTF-8 execution path; necessary standalone Python uses `-X utf8` and explicit file encodings. Preserve known CP949/UTF-16 sources unchanged.
+A garbled display is not proof a job failed: inspect existing results first. Never repeat mail sending, file moves or artifact generation just to repair console text.
 
 For “이 프로젝트 하네스를 구성해줘” or equivalent, invoke
 `company-agent:project-harness`. The factory inspects the project, asks only for
