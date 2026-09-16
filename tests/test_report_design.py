@@ -120,7 +120,7 @@ class ReportDesignTests(unittest.TestCase):
             output=self.output.with_name(style+".html")
             self.assertTrue(create_html(spec,output)["ok"])
             hashes.add(hashlib.sha256(output.read_bytes()).hexdigest())
-        self.assertEqual(len(hashes),8)
+        self.assertEqual(len(hashes),len(STYLES))
         text=output.read_text(encoding="utf-8")
         self.assertIn('layout-cover',text);self.assertIn('layout-split',text)
         self.assertIn('grid-template-columns:1.2fr 1fr',text)

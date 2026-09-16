@@ -106,6 +106,8 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     for i, row in enumerate(data["sections"], 1):
         layout = row.get("layout", "dashboard" if row.get("chart") or row.get("kpis") else "table" if row.get("table") else "summary")
         fragment = f'<section class="section layout-{layout}" id="section-{i}"><span class="page-number">{i:02d} / {len(data["sections"]):02d} · {esc(row.get("eyebrow") or "업무 보고")}</span><h2>{esc(row["title"])}</h2>'
+        if layout == 'cover' and data['style'] in ('immersive-3d','editorial','retro-y2k') and not row.get('image'):
+            fragment += '<div class="theme-art" aria-hidden="true"><i></i><i></i><i></i></div>'
         if row.get("takeaway"):
             fragment += f'<p class="takeaway">{esc(row["takeaway"])}</p>'
         if row.get("kpis"):

@@ -17,20 +17,21 @@ Read `../company-agent/references/business-protection.md`. Reuse explicit user
 preferences and approved inputs; ask only missing choices. The FIRST design
 question has these four options: `1. 깔끔한 업무형(추천)`,
 `2. 지표 중심형`, `3. 추가 디자인(미리보기)`, `4. HTML 양식 직접 첨부`.
-Do not expand all eight designs, explanations or previews in that initial question.
+Do not expand all ten designs, explanations or previews in that initial question.
 The third option opens a choice flow; it is NOT a report style and never maps to freeform.
 Question order is mandatory: design -> design_detail (only for 추가 디자인) ->
 format -> ready. Never batch the initial design question with length or mode.
 When using AskUserQuestion, send ONE design question, wait for its answer, and
 finish the design branch in a separate call BEFORE asking format questions.
-When the user chooses 추가 디자인, IMMEDIATELY show the eight numbered names and
-short Korean descriptions, then WAIT using AskUserQuestion when available.
-The helper supplies selectionQuestion (1~4번 / 5~8번 / 미리보기) and two
-four-option designQuestions, compatible with Claude's four-option limit.
-After a group answer ask its designQuestion; preserve the original 1~8 numbers.
-Accept a direct number/name at either step. A group or preview is NOT a style.
+When the user chooses 추가 디자인, IMMEDIATELY show the helper's selectionPrompt:
+all ten numbered names with short Korean descriptions, and END THIS TURN to wait
+for one number/name in chat. This is deliberately a direct text choice, NOT an
+AskUserQuestion group menu. Never ask 1~4 / 5~8, a next-page choice, or a second
+confirmation for the chosen style. Preserve existing numbers 1~8; 9 is 3D·이머시브
+and 10 is 레트로·Y2K. The browser also exposes all ten cards after disclosure.
+Accept a direct number/name. A preview is NOT a style or acceptance.
 Do not ask length/mode or start a worker before a specific design is chosen.
-If no question tool is available, end the turn with the full list and
+End the turn with the full list and
 `선택 대기 중입니다. 번호나 이름을 입력해 주세요. 예: 4번 글래스모피즘. 미리보기를 원하면 미리보기라고 입력해 주세요.`
 Do not append a separate yes/no question such as `열어볼까요?`, continue
 working after that fallback, or promise a background report while awaiting input.
@@ -102,7 +103,12 @@ for large work as described below.
 
 After design is final, ask missing 분량(핵심/보통/상세), 방식(스크롤/페이지/둘 다). Supported style IDs:
 `minimal`, `editorial`, `bento`, `glassmorphism`, `brutalism`, `neumorphism`,
-`gradient-mesh`, `freeform`. Length is content planning, not a token count.
+`gradient-mesh`, `freeform`, `immersive-3d`, `retro-y2k`. Length is content planning, not a token count.
+Use the current reference's material/color rules: glass is pastel sky/lavender
+behind translucent white panes with blue/violet accents, NOT the superseded
+all-grayscale theme. The new reference photos supersede that older default.
+Preserve legible dark text. 3D and Y2K ornament is decorative CSS, not data or a
+claim that a real 3D renderer/image-generation service was used.
 The freeform preset is a starting style, not arbitrary user-supplied JavaScript.
 
 Write a bounded JSON job from permitted material only:

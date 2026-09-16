@@ -24,8 +24,9 @@ import zipfile
 
 from .business_safety import safe_path
 
-STYLES = ("glassmorphism", "brutalism", "neumorphism", "minimalism", "bento-grid",
-          "gradient-mesh", "editorial", "freeform")
+from .report_styles import STYLES as REPORT_STYLE_OPTIONS
+
+STYLES = tuple(option[0] for option in REPORT_STYLE_OPTIONS)
 MODES = ("scroll", "slides", "both")
 LIMIT = 40 * 1024 * 1024
 MAX_PARTS = 3000
@@ -141,7 +142,15 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
     style = spec.get("style", "minimalism")
     aliases = {"글래스모피즘": "glassmorphism", "브루탈리즘": "brutalism", "뉴모피즘": "neumorphism",
                "미니멀리즘": "minimalism", "벤토그리드": "bento-grid", "그라디언트 메시": "gradient-mesh",
-               "에디토리얼": "editorial", "자유양식": "freeform", "minimal": "minimalism", "bento": "bento-grid", "gradient_mesh": "gradient-mesh"}
+               "에디토리얼": "editorial", "자유양식": "freeform", "minimal": "minimalism", "bento": "bento-grid", "gradient_mesh": "gradient-mesh",
+               "3D·이머시브": "immersive-3d", "3D 이머시브": "immersive-3d", "3D· 이머시브": "immersive-3d",
+               "레트로·Y2K": "retro-y2k", "레트로 Y2K": "retro-y2k", "레트로· Y2K": "retro-y2k"}
+    # Numbers are meaningful ONLY inside the additional menu. Initial menu 4
+    # means attach HTML, not glassmorphism. Group labels never become styles.
+    if spec.get('designMenu') == 'additional':
+        numbered = str(style).strip().removesuffix('번').strip()
+        if numbered.isascii() and numbered.isdecimal() and 1 <= int(numbered) <= len(STYLES):
+            style = STYLES[int(numbered)-1]
     style = aliases.get(style, style)
     mode = spec.get("mode", "scroll")
     length = spec.get("length", "standard")
@@ -227,7 +236,7 @@ def html_choices(spec: dict[str, Any]) -> dict[str, Any]:
     try:
         if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional', 'template'):
             raise ArtifactError('invalid_choice', '디자인 선택 단계의 형식을 확인해 주세요.')
-        fields = {key: spec[key] for key in ('style','length','mode','protected','drmRestricted','permissionGranted','accessStatus') if key in spec}
+        fields = {key: spec[key] for key in ('style','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus') if key in spec}
         normalized = _normalize({**fields, 'sections': [{}]})
         from .report_styles import choices
         pending = choices(spec)

@@ -15,12 +15,12 @@ class NoviceInstructionContractTests(unittest.TestCase):
 
     def test_design_questions_are_sequential_and_preserve_answers(self):
         source = (ROOT / 'company-agent-plugin/skills/html-report/SKILL.md').read_text(encoding='utf-8')
-        for text in ('Never batch the initial design question', 'IMMEDIATELY show the eight numbered names',
+        for text in ('Never batch the initial design question', "IMMEDIATELY show the helper's selectionPrompt",
                      'Do not ask length/mode or start a worker before a specific design is chosen', 'business html-choices',
                      'NEVER replace the whole object', 'delegate generation only after ready',
                      'Preview is optional', 'length:"detailed",mode:"scroll"',
-                     'selectionQuestion', 'designQuestions', '선택 대기 중입니다',
-                     'end the turn', 'same design question and WAIT'):
+                     'all ten numbered names', 'END THIS TURN', '선택 대기 중입니다',
+                     'End the turn', 'same design question and WAIT'):
             self.assertIn(text, source)
 
     def test_download_request_does_not_claim_saved(self):

@@ -43,12 +43,12 @@ try {
       assert.ok(alpha(section.bg)<=0.2,'Glass panel must not become a milky white card');
       assert.ok(alpha(cell.bg)<=0.16,'Nested KPI must not stack opaque white layers');
       const background=(await sample('body')).image;
-      const shades=[...background.matchAll(/rgba?\((\d+),/g)].map(m=>Number(m[1]));
-      assert.ok(Math.max(...shades)-Math.min(...shades)>=50,'Neutral backdrop needs visible depth through the pane');
+      assert.match(background,/rgb\(208, 198, 242\)/,'Reference lavender backdrop');
+      assert.match(background,/rgb\(166, 223, 252\)/,'Reference sky blue backdrop');
       assert.match((await sample('body')).image,/radial-gradient/);assert.equal(section.border,'1px');
-      for(const material of [(await sample('body')).image,section.bg,cell.bg,section.ink]){
+      for(const material of [section.bg,cell.bg]){
         const channels=[...material.matchAll(/rgba?\((\d+),\s*(\d+),\s*(\d+)/g)];
-        assert.ok(channels.length,'Glass must expose measurable neutral colors');
+        assert.ok(channels.length,'Glass panes stay white over the pastel background');
         for(const [,r,g,b] of channels){assert.equal(r,g,'Glass red/green tint');assert.equal(g,b,'Glass green/blue tint');}
       }
     }
@@ -81,6 +81,7 @@ try {
     assert.equal(await page.locator('main>.section:visible').count(),5);
     assert.equal((await sample('.section')).shadow,'none');
     assert.equal((await sample('.section')).bg,'rgb(255, 255, 255)');
+    assert.equal((await sample('.kpi-value')).ink,'rgb(23, 33, 50)','Print KPI contrast '+style);
     await page.emulateMedia({media:'screen'});
     await page.setViewportSize({width:1440,height:1050});
     await load(await fs.readFile(path.join(root,'picker.html'),'utf8'));
@@ -88,16 +89,43 @@ try {
     await page.locator('#additional-designs>summary').click();
     const preview='.style-preview[data-style="'+style+'"]';
     const actual=await sample(preview+' .section');
+    const referenceMaterial=['editorial','immersive-3d','retro-y2k'].includes(style)?await (async()=>{
+      await load(await fs.readFile(path.join(root,style+'.html'),'utf8'));
+      return await sample('.layout-cover');
+    })():reportTheme.section;
     // Compare shared material properties, not deliberately reduced thumbnail type.
-    for(const key of ['bg','shadow','radius','blur'])assert.equal(actual[key],reportTheme.section[key],style+' preview '+key);
+    for(const key of ['bg','image','shadow','radius','blur'])assert.equal(actual[key],referenceMaterial[key],style+' preview '+key);
     results.push({style,reportTheme,widths:[1440,768,390],previewMatches:true,print:true,pageNavigation:true});
+  }
+  await load(await fs.readFile(path.join(root,'picker.html'),'utf8'));
+  await page.locator('#additional-designs>summary').click();
+  assert.equal(await page.locator('.design-card').count(),styles.length);
+  await page.screenshot({path:path.join(root,'picker-gallery.png'),fullPage:true});
+  for(const style of styles){
+    await page.locator('.design-card button[data-choice="'+style+'"]').click();
+    assert.equal(await page.locator('.design-card button[data-choice="'+style+'"]').getAttribute('aria-pressed'),'true');
+    assert.doesNotMatch(await page.locator('#choice-result').inputValue(),/분량:|보기:/);
+  }
+  await page.locator('#length-choice').selectOption('detailed');
+  await page.locator('#mode-choice').selectOption('slides');
+  await page.locator('.design-card button[data-choice="glassmorphism"]').click();
+  assert.match(await page.locator('#choice-result').inputValue(),/글래스모피즘.*상세.*페이지 넘김/);
+  for(const width of [768,390]){
+    await page.setViewportSize({width,height:900});
+    await page.waitForTimeout(60);
+    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1),false,'Picker overflow '+width);
+    const clipped=await page.locator('.mini-window').evaluateAll(boxes=>boxes.some(box=>{
+      const frame=box.getBoundingClientRect(),preview=box.querySelector('.style-preview').getBoundingClientRect();
+      return preview.width>frame.width+1 || preview.height>frame.height+1;
+    }));
+    assert.equal(clipped,false,'Preview thumbnail should fit its card');
   }
   await load(await fs.readFile(path.join(root,'reference-report.html'),'utf8'));
   assert.equal((await sample('.section')).bg,'rgb(255, 238, 221)');
   assert.equal((await sample('.section')).radius,'9px');
   assert.equal((await sample('.kpi-value')).ink,'rgb(118, 51, 20)');
   assert.deepEqual(errors,[]);assert.deepEqual(external,[]);
-  const report={styles:results,referenceOverridesPreset:true,externalRequests:external,jsErrors:errors};
+  const report={styles:results,pickerDirectSelection:true,pickerResponsive:true,referenceOverridesPreset:true,externalRequests:external,jsErrors:errors};
   await fs.writeFile(path.join(root,'browser-results.json'),JSON.stringify(report,null,2));
   console.log(JSON.stringify({styles:results.length,referenceOverridesPreset:true,externalRequests:0,jsErrors:0}));
   await context.close();

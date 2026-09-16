@@ -1,10 +1,10 @@
 # Company Agent Harness
 
-현재 배포 버전은 **1.4.7**입니다. 업무 시작 시 스킬 이름·설명·호출 정보를 자동 전달하고, 같은 대화에서는 재사용해 필요한 스킬 본문만 읽도록 개선했습니다. 큰 목록은 출처별로 나누며 기존 우선 설정과 개인 자료를 유지합니다. 공통 Skill은 12개입니다. [변경·설치 안내](docs/UPDATE_1.4.7.md)를 확인하세요.
+현재 배포 버전은 **1.4.8**입니다. 참고 이미지 기반 HTML 디자인을 보완하고 3D·이머시브와 레트로·Y2K를 추가했습니다. 추가 디자인에서 번호 하나로 바로 선택하며, 기존 분량·보기 설정을 유지합니다. 스킬 선택 목록 자동 전달 개선도 포함하며 공통 Skill은 12개입니다. [변경·설치 안내](docs/UPDATE_1.4.8.md)를 확인하세요.
 
-설치 파일은 [최신 Release](https://github.com/bongG-moon/claude_base_repo/releases/latest) 또는 [1.4.7 설치 ZIP 바로 받기](https://github.com/bongG-moon/claude_base_repo/releases/download/v1.4.7/company-agent-1.4.7-2026.09.03.zip)에서 받으세요. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다.
+설치 파일은 [최신 Release](https://github.com/bongG-moon/claude_base_repo/releases/latest) 또는 [1.4.8 설치 ZIP 바로 받기](https://github.com/bongG-moon/claude_base_repo/releases/download/v1.4.8/company-agent-1.4.8-2026.09.03.zip)에서 받으세요. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다.
 [폴더별 자동 스킬 목록](docs/SKILL_CATALOG.md), 각 PC의 Python 탐색과 Ouroboros 연결 교정을 포함합니다.
-기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.7 묶음에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.7`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
+기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.8 묶음에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.8`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
 
 Office 읽기는 별도 준비물이 필요합니다: Excel/CSV는 선택한 Python의 xlwings·pandas와 Excel, PPT/Word는 pywin32와 해당 Office. ZIP에 이 라이브러리나 Office를 넣거나 자동 다운로드하지 않습니다. 개발 PC의 일반 PPT·Word 읽기는 성공했지만 Excel은 xlwings 미설치로 실제 읽기 미검증이며, 사내 DRM 호환성은 별도로 확인해야 합니다.
 
@@ -12,7 +12,7 @@ Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARG
 
 1.2.0에서 시작한 파일 정리, Outlook 조회 안내, HTML 보고서와 편집 가능한 PPT 업무팩을 계속 개선했습니다. 실제 회사 Office·DRM 통합 검증은 별도로 필요하므로 시범 운영 범위를 유지합니다. 일부 회사 PC의 관리자 권한 감지 보완, 본인 Claude 실행·설정 위치 확인, 자동 학습과 업데이트 시 개인 자료·규칙·Hook 보존을 포함합니다. 이전 버전은 [Release 이력](https://github.com/bongG-moon/claude_base_repo/releases)에서 확인할 수 있습니다.
 
-업무팩은 새 앱을 따로 여는 대신 Claude에 한국어로 요청하는 방식입니다. 파일은 정리안을 먼저 보여주고 본인의 확인 창 승인 후 이동하며, HTML은 8가지 분위기와 스크롤/슬라이드 방식을 고릅니다. PPT는 승인된 Python 환경과 설치된 PowerPoint 또는 이미 준비된 제작 도구를 사용합니다. Outlook은 기존 `corp-outlook-self` 연결을 우선하고, 선택적인 로컬 조회는 읽기 전용입니다. 새 메일 발송·PST 이동 연결이나 외부 이미지 생성 API를 자동 설치하지 않습니다. 실제 회사 Office·메일 환경의 통합 검증은 별도로 필요합니다. [업무팩 시범 사용 안내](docs/BUSINESS_PILOT_GUIDE.md)에서 네 가지 업무 예시, 보호된 자료 처리, 준비물과 미지원 범위를 확인하세요.
+업무팩은 새 앱을 따로 여는 대신 Claude에 한국어로 요청하는 방식입니다. 파일은 정리안을 먼저 보여주고 본인의 확인 창 승인 후 이동하며, HTML은 참고 이미지 기반 10가지 디자인과 스크롤/슬라이드 방식을 고릅니다. 추가 디자인에서 번호 하나로 선택할 수 있습니다([사용법](docs/HTML_DESIGN_SELECTION.md)). PPT는 승인된 Python 환경과 설치된 PowerPoint 또는 이미 준비된 제작 도구를 사용합니다. Outlook은 기존 `corp-outlook-self` 연결을 우선하고, 선택적인 로컬 조회는 읽기 전용입니다. 새 메일 발송·PST 이동 연결이나 외부 이미지 생성 API를 자동 설치하지 않습니다. 실제 회사 Office·메일 환경의 통합 검증은 별도로 필요합니다. [업무팩 시범 사용 안내](docs/BUSINESS_PILOT_GUIDE.md)에서 네 가지 업무 예시, 보호된 자료 처리, 준비물과 미지원 범위를 확인하세요.
 
 코딩에 익숙하지 않은 직원을 위한 [상세 사용자 안내서](docs/Company-Agent-사용자-안내서.html)를 제공합니다. HTML 파일을 내려받아 더블클릭하면 인터넷 연결 없이 읽을 수 있고, 업무 예문을 복사할 수 있습니다. [수정용 원본](docs/USER_GUIDE.md)에는 첫 사용, 보고·회의·자료 비교, 개인 기억과 지식, 반복업무 스킬, 프로젝트별 활용, 업데이트와 문제 해결을 정리했습니다.
 

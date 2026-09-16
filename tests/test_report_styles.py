@@ -16,16 +16,16 @@ from company_agent import report_styles as styles, business_artifacts as artifac
 
 
 class ReportStylesTests(unittest.TestCase):
-    def test_additional_selection_widgets_cover_all_eight_and_wait(self):
+    def test_additional_selection_is_one_direct_reply_for_all_styles(self):
         pending=styles.choices({'designMenu':'additional','length':'detailed'})
         self.assertTrue(pending['waitForUser'])
-        self.assertEqual(3,len(pending['selectionQuestion']['options']))
-        labels=[]
-        for question in pending['designQuestions']:
-            self.assertFalse(question['multiSelect'])
-            self.assertEqual(4,len(question['options']))
-            labels.extend(option['label'] for option in question['options'])
-        self.assertEqual([f'{i+1}. {row[1]}' for i,row in enumerate(styles.STYLES)],labels)
+        self.assertNotIn('selectionQuestion',pending)
+        self.assertNotIn('designQuestions',pending)
+        self.assertEqual('chat-number-or-name',pending['selectionInput'])
+        for i,row in enumerate(styles.STYLES,1):
+            self.assertIn(f'{i}. {row[1]}',pending['selectionPrompt'])
+        self.assertNotIn('1~4',pending['selectionPrompt'])
+        self.assertNotIn('5~8',pending['selectionPrompt'])
         self.assertEqual(['style'],pending['missing'])
         self.assertEqual({'length':'detailed'},pending['preservedChoices'])
 
@@ -48,7 +48,7 @@ class ReportStylesTests(unittest.TestCase):
         self.assertEqual('design_detail',result['stage'])
         self.assertEqual(['style'],result['missing'])
         self.assertEqual([row[0] for row in styles.STYLES],[row['style'] for row in result['designOptions']])
-        self.assertEqual(8,len(result['designOptions']))
+        self.assertEqual(10,len(result['designOptions']))
         self.assertTrue(result['previewOptional'])
         self.assertNotIn('lengthOptions',result)
         self.assertNotIn('viewOptions',result)
@@ -159,7 +159,7 @@ class ReportStylesTests(unittest.TestCase):
         text=path.read_text(encoding='utf-8')
         self.assertEqual(styles.picker_html(),text)
         self.assertIn(styles.CSS,text)
-        self.assertEqual(8,text.count('class="design-card"'))
+        self.assertEqual(len(styles.STYLES),text.count('class="design-card"'))
 
     def test_picker_closed_ids_unique_and_offline(self):
         text=styles.picker_html()
@@ -221,16 +221,44 @@ class ReportStylesTests(unittest.TestCase):
         self.assertIn('--surface:#ffffff2e', glass)
         self.assertIn('--cell:#ffffff24', glass)
         self.assertIn('backdrop-filter:blur(14px)', styles.CSS)
-        self.assertIn('#bcbcbc 29.3%', glass)
-        self.assertIn('inset 0 -1px 0 #00000012', glass)
+        self.assertIn('#d0c6f2', glass)
+        self.assertIn('#a6dffc', glass)
+        self.assertIn('--series-0:#6178e8',glass)
+        self.assertIn('inset 0 -1px 0 #577cab12', glass)
         self.assertNotIn('saturate(140%)', styles.CSS)
-        for color in re.findall(r'#([a-fA-F0-9]{6})(?:[a-fA-F0-9]{2})?\b', glass):
-            self.assertEqual(color[:2],color[2:4])
-            self.assertEqual(color[2:4],color[4:6])
-        self.assertIn('--bg:#e5eaf0;--paper:#e5eaf0', neo)
+        self.assertNotIn('#bcbcbc 29.3%',glass)
+        self.assertIn('--bg:#e9ecf1;--paper:#e9ecf1', neo)
         self.assertIn('-14px -14px', neo)
         self.assertIn('--cell-shadow:inset', neo)
         self.assertIn('--chart-shadow:7px 7px', neo)
+
+    def test_numbers_are_direct_only_in_additional_menu(self):
+        for i,(key,*_) in enumerate(styles.STYLES,1):
+            for number in (i,str(i),f'{i}번'):
+                result=artifacts.html_choices({'designMenu':'additional','style':number,'length':'detailed','mode':'scroll'})
+                self.assertEqual('ready',result['stage'],result)
+                self.assertEqual(key,result['selection']['style'])
+        for invalid in ('1~4','5~8','11','0'):
+            self.assertEqual('invalid_choice',artifacts.html_choices({'designMenu':'additional','style':invalid})['code'])
+        self.assertEqual('invalid_choice',artifacts.html_choices({'style':'4'})['code'])
+
+    def test_new_styles_support_korean_names_and_decorations_are_not_data(self):
+        with tempfile.TemporaryDirectory() as t:
+            for name,key in [('3D·이머시브','immersive-3d'),('레트로·Y2K','retro-y2k')]:
+                result=artifacts.html_choices({'style':name,'length':'short','mode':'slides'})
+                self.assertEqual(key,result['selection']['style'])
+                target=Path(t)/(key+'.html')
+                result=artifacts.create_html({'style':name,'length':'short','mode':'slides',
+                    'sections':[{'title':'내용','layout':'cover','body':'실제 정보'}]},target,require_choices=True)
+                self.assertTrue(result['ok'],result)
+                self.assertIn('class="theme-art" aria-hidden="true"',target.read_text(encoding='utf-8'))
+
+    def test_additional_choice_instructions_no_longer_require_group_question(self):
+        skill=(ROOT/'company-agent-plugin/skills/html-report/SKILL.md').read_text(encoding='utf-8')
+        self.assertIn('END THIS TURN',skill)
+        self.assertNotIn('After a group answer',skill)
+        self.assertNotIn('four-option designQuestions',skill)
+        self.assertIn('immersive-3d',skill)
 
     def test_reduced_transparency_and_print_use_opaque_readable_surfaces(self):
         self.assertIn('@supports not ((backdrop-filter:', styles.CSS)
