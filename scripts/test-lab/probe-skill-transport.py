@@ -1,8 +1,9 @@
-"""Real Claude host -> first-request Skill body -> scripted native Skill load.
+"""Real Claude host -> list-based preparation -> scripted native Skill load.
 
 No external model, real document, installation or credentials. This verifies
 transport and load receipts, NOT a model's autonomous choice. Uses a disposable
-config/state/workspace and only Read/Skill tools; prints metadata-only evidence.
+config/state/workspace. The skip-list scenario tries a harmless shell print
+first and verifies the one-time redirect before loading the Skill. No real LLM.
 """
 from __future__ import annotations
 
@@ -20,7 +21,7 @@ import time
 REPO = Path(__file__).resolve().parents[2]
 
 
-def run(claude: Path, model: str) -> dict:
+def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
     observations = []
 
     class Handler(BaseHTTPRequestHandler):
@@ -41,16 +42,25 @@ def run(claude: Path, model: str) -> dict:
             blocks = [b for m in data.get('messages', []) if isinstance(m.get('content'), list) for b in m['content']]
             text = '\n'.join(str(b.get('text', '')) for b in blocks)
             tools = [t['name'] for t in data.get('tools', [])]
+            results = [b for b in blocks if b.get('type') == 'tool_result']
+            redirected = any(b.get('is_error') and '[스킬 목록 확인 1회]' in json.dumps(b, ensure_ascii=False) for b in results)
             if tools:
                 observations.append({'tools': tools, 'hasTaskCandidates': '"taskSkills"' in text,
                                      'briefBeforeRoute': 0 <= text.find('[업무 시작: 관련 스킬 우선]') < text.find('"company_agent_route"'),
                                      'hasOfficeCandidate': 'company-agent:office-reader' in text,
                                      'hasProvidedBody': '[선택된 스킬 본문 — 먼저 이 절차를 적용]' in text and 'Presentations.Open' in text,
+                                     'hasReviewRedirect': redirected,
                                      'hasLoadedBody': 'Base directory for this skill:' in text and 'business office-read' in text})
-            invoke = bool(tools) and not any(b.get('type') == 'tool_result' for b in blocks)
-            content = ({'type': 'tool_use', 'id': 'toolu_transport_probe', 'name': 'Skill', 'input': {}}
+            skip_scenario = scenario.startswith('skip-list')
+            skip_first = bool(tools) and skip_scenario and not results
+            invoke = bool(tools) and (not results or skip_scenario and len(results) == 1)
+            tool_name = ('Write' if scenario == 'skip-list-write' else 'Bash') if skip_first else 'Skill'
+            tool_input = ({'file_path': str(root / 'workspace/probe.txt'), 'content': 'unexpected write'} if tool_name == 'Write'
+                          else {'command': "printf 'probe_unexpected_execution'"} if tool_name == 'Bash'
+                          else {'skill': 'company-agent:office-reader'})
+            content = ({'type': 'tool_use', 'id': 'toolu_probe_' + tool_name, 'name': tool_name, 'input': {}}
                        if invoke else {'type': 'text', 'text': ''})
-            delta = ({'type': 'input_json_delta', 'partial_json': json.dumps({'skill': 'company-agent:office-reader'})}
+            delta = ({'type': 'input_json_delta', 'partial_json': json.dumps(tool_input)}
                      if invoke else {'type': 'text_delta', 'text': '격리된 전달 검증 완료.'})
             reason = 'tool_use' if invoke else 'end_turn'
             message = {'id': 'msg_probe', 'type': 'message', 'role': 'assistant', 'model': data.get('model'),
@@ -60,7 +70,7 @@ def run(claude: Path, model: str) -> dict:
             self.send_header('Content-Type', 'text/event-stream' if data.get('stream') else 'application/json')
             self.end_headers()
             if not data.get('stream'):
-                message.update(content=[{**content, **({'input': {'skill': 'company-agent:office-reader'}} if invoke else {'text': '격리된 전달 검증 완료.'})}], stop_reason=reason)
+                message.update(content=[{**content, **({'input': tool_input} if invoke else {'text': '격리된 전달 검증 완료.'})}], stop_reason=reason)
                 self.wfile.write(json.dumps(message).encode())
                 return
             events = [('message_start', {'type': 'message_start', 'message': message}),
@@ -92,7 +102,8 @@ def run(claude: Path, model: str) -> dict:
             args = [str(claude), '-p', '--verbose', '--output-format', 'stream-json', '--include-hook-events',
                     '--setting-sources', '', '--settings', '{}', '--plugin-dir', str(REPO / 'company-agent-plugin'),
                     '--model', model, '--strict-mcp-config', '--mcp-config', str(root / 'empty-mcp.json'),
-                    '--no-session-persistence', '--tools', 'Read,Skill', '--allowedTools', 'Skill']
+                    '--no-session-persistence', '--tools', 'Bash,Write,Read,Skill' if scenario.startswith('skip-list') else 'Read,Skill',
+                    '--allowedTools', 'Skill,Bash,Write' if scenario.startswith('skip-list') else 'Skill']
             started = time.monotonic()
             result = subprocess.run(args, input='@PPT_검증전용_없는파일.pptx 내용을 파악해줘.',
                                     cwd=root / 'workspace', env=env, capture_output=True, encoding='utf-8', timeout=55)
@@ -112,13 +123,18 @@ def run(claude: Path, model: str) -> dict:
             checks = {'nativeRegistered': 'company-agent:office-reader' in init.get('skills', []),
                       'briefBeforeRouting': bool(observations) and observations[0]['briefBeforeRoute'],
                       'candidateDelivered': bool(observations) and observations[0]['hasTaskCandidates'],
-                      'bodyReachedFirstRequest': bool(observations) and observations[0]['hasProvidedBody'],
+                      'noUnobservedBodyInjection': bool(observations) and not observations[0]['hasProvidedBody'],
                       'nativeBodyReachedNextRequest': any(o['hasLoadedBody'] for o in observations),
                       'observedSkillLoad': receipt.get('tool') == 'Skill' and receipt.get('name') == 'office-reader',
                       'hooksProduced': all(diagnostics.get(e, {}).get('status') == 'output-produced' for e in ('SessionStart', 'UserPromptSubmit')),
                       'noBusinessMutation': state.get('mutationCount') == 0,
-                      'noBusinessTools': all(set(o['tools']) <= {'Read', 'Skill'} for o in observations)}
-            return {'kind': 'scripted-transport-not-model-behavior', 'ok': result.returncode == 0 and all(checks.values()),
+                      'boundedToolSet': all(set(o['tools']) <= {'Bash', 'Write', 'Read', 'Skill'} for o in observations)}
+            if scenario.startswith('skip-list'):
+                checks['hostBlockedFirstAction'] = any(o['hasReviewRedirect'] for o in observations)
+                checks['reviewRecovered'] = state.get('skillWorkflow', {}).get('reviewCheckpoint', {}).get('status') == 'skill-loaded'
+                checks['noUnintendedFile'] = not (root / 'workspace/probe.txt').exists()
+            return {'kind': 'scripted-transport-not-model-behavior', 'scenario': scenario,
+                    'ok': result.returncode == 0 and all(checks.values()),
                     'exitCode': result.returncode, 'elapsedSeconds': round(time.monotonic() - started, 2),
                     'modelLabelOnly': model, 'checks': checks}
     finally:
@@ -130,7 +146,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--claude', required=True, type=Path, help='Existing Claude executable; no install or update')
     parser.add_argument('--model', default='HCP-LLM-Latest', help='Only a request label; response is always local and scripted')
+    parser.add_argument('--scenario', choices=['native-load', 'skip-list', 'skip-list-write'], default='native-load')
     options = parser.parse_args()
-    report = run(options.claude.resolve(strict=True), options.model)
+    report = run(options.claude.resolve(strict=True), options.model, options.scenario)
     print(json.dumps(report, ensure_ascii=True, indent=2))
     raise SystemExit(0 if report['ok'] else 1)

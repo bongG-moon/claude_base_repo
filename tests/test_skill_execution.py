@@ -29,18 +29,19 @@ class SkillExecutionTests(unittest.TestCase):
     def state(self):
         return load_session(self.f.sid, self.f.state)
 
-    def test_unmentioned_ppt_gets_exact_complete_body_before_first_action(self):
+    def test_unmentioned_ppt_gets_existing_load_target_not_fake_selection(self):
         ctx, text = self.output()
-        self.assertEqual('provided', ctx['skillExecution']['mode'])
+        self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertEqual('office-reader', ctx['skillExecution']['name'])
         body = (discovery.PLUGIN / 'skills/office-reader/SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
-        self.assertIn(body, text)
-        self.assertEqual('apply-selected-skill', ctx['skillWorkflow']['nextAction'])
-        self.assertLess(text.index('Presentations.Open'), text.index('company_agent_route'))
+        self.assertNotIn(body, text)
+        self.assertEqual('load-relevant-skill', ctx['skillWorkflow']['nextAction'])
+        self.assertLess(text.index('company-agent:office-reader'), text.index('company_agent_route'))
         self.assertLessEqual(len(text), MAX_REQUEST_CONTEXT_CHARS)
         self.assertEqual({}, self.state()['skillWorkflow']['readSkills'])
         self.assertNotIn('lastBodyLoad', self.state()['skillWorkflow'])
-        self.assertEqual('body-provided', self.state()['skillWorkflow']['loadObservation']['status'])
+        self.assertEqual('not-observed', self.state()['skillWorkflow']['loadObservation']['status'])
+        self.assertIsNone(self.state()['skillWorkflow']['selected'])
         self.assertEqual(0, self.state()['mutationCount'])
         self.assertEqual({}, stop_decision({'session_id': self.f.sid}, self.f.state))
         self.assertNotIn('테스트자료.pptx', json.dumps(self.state(), ensure_ascii=False))
@@ -50,8 +51,8 @@ class SkillExecutionTests(unittest.TestCase):
         self.output()
         ctx, text = self.output('company스킬 사용해서 읽어줘')
         self.assertEqual('office-reader', ctx['skillExecution']['name'])
-        self.assertEqual('reuse', ctx['skillExecution']['mode'])
-        self.assertEqual('previous-output-not-receipt', ctx['skillExecution']['basis'])
+        self.assertEqual('load', ctx['skillExecution']['mode'])
+        self.assertNotIn('basis', ctx['skillExecution'])
         self.assertNotIn('Presentations.Open', text)
         self.assertNotIn('company스킬 사용해서', json.dumps(self.state(), ensure_ascii=False))
 
@@ -60,10 +61,11 @@ class SkillExecutionTests(unittest.TestCase):
         ctx, _ = self.output('HTML 보고서를 만들어줘')
         self.assertNotEqual('office-reader', ctx['skillExecution'].get('name'))
 
-    def test_no_relevant_candidate_allows_general_work_without_marker_commands(self):
+    def test_shortlist_miss_reviews_full_list_then_general_work_without_marker_commands(self):
         ctx, text = self.output('2 더하기 3은 얼마야?')
-        self.assertEqual('general', ctx['skillExecution']['mode'])
-        self.assertIn('없으면 바로 일반 작업', text)
+        self.assertEqual('review', ctx['skillExecution']['mode'])
+        self.assertIn('관련 스킬이 없으면 일반 실행', text)
+        self.f.read(Path(ctx['skillSelection']['catalog']['path']))
         for tool, inputs in [('Bash', {'command':'python -c "print(2+3)"'}), ('Write', {'file_path':str(self.f.project / 'answer.txt')})]:
             self.assertEqual({}, preflight(self.f.state, self.f.project, {'session_id':self.f.sid, 'tool_name':tool, 'tool_input':inputs}))
         self.assertEqual({}, stop_decision({'session_id':self.f.sid}, self.f.state))
@@ -91,9 +93,9 @@ class SkillExecutionTests(unittest.TestCase):
         set_skill_preference(self.f.state, 'office-reader', item['id'], project_root=self.f.project, plugin_root=discovery.PLUGIN, claude_root=self.f.claude)
         self.f.context(source='startup')
         ctx, text = self.output()
-        self.assertEqual('provided', ctx['skillExecution']['mode'])
+        self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertEqual(str(file), ctx['skillExecution']['path'])
-        self.assertIn('SECRET-BODY-office-reader', text)
+        self.assertNotIn('SECRET-BODY-office-reader', text)
         self.assertNotIn('Presentations.Open', text)
 
     def test_explicit_native_options_remain_native(self):
@@ -104,7 +106,8 @@ class SkillExecutionTests(unittest.TestCase):
                 ctx, text = self.output('/native-special uniquevalue')
                 self.assertNotIn('SECRET-BODY-native-special', text)
                 self.assertEqual('load', ctx['skillExecution']['mode'])
-                self.assertIn(ctx['skillExecution']['reason'], {'native-skill-semantics', 'native-frontmatter-parser'})
+                self.assertEqual('native-body-load', ctx['skillExecution']['reason'])
+                self.assertNotIn('selectedSkill', text)
 
     def test_dynamic_substitution_remains_native(self):
         for token in ['$ARGUMENTS', '${CLAUDE_SKILL_DIR}', '!`some-command`', '$1']:
@@ -113,10 +116,16 @@ class SkillExecutionTests(unittest.TestCase):
                 atomic_write_text(file, file.read_text(encoding='utf-8') + token)
                 ctx, text = self.output('uniquevalue')
                 self.assertEqual('load', ctx['skillExecution']['mode'])
+                self.assertEqual('native-body-load', ctx['skillExecution']['reason'])
+                self.f.read(file)
+                ctx, _ = self.output('uniquevalue')
+                self.assertEqual('load', ctx['skillExecution']['mode'])
                 self.assertEqual('native-skill-semantics', ctx['skillExecution']['reason'])
                 self.assertNotIn('SECRET-BODY-dynamic-special', text)
 
     def test_read_or_skill_permission_rules_keep_native_permission_check(self):
+        self.output()
+        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
         for mode, rule in [('deny', 'Skill(company-agent:office-reader)'), ('deny', 'Read(**/SKILL.md)'),
                            ('ask', 'Read')]:
             with self.subTest(rule=rule, mode=mode):
@@ -126,14 +135,15 @@ class SkillExecutionTests(unittest.TestCase):
                 self.assertEqual('host-loading-rules', ctx['skillExecution']['reason'])
                 self.assertNotIn('Presentations.Open', text)
 
-    def test_compact_resume_and_startup_clear_body_delivery(self):
+    def test_compact_resume_and_startup_clear_body_reuse(self):
         for source in ('compact', 'resume', 'startup'):
             with self.subTest(source=source):
                 self.output()
+                self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
                 self.f.context(source=source)
                 ctx, text = self.output()
-                self.assertEqual('provided', ctx['skillExecution']['mode'])
-                self.assertIn('Presentations.Open', text)
+                self.assertEqual('load', ctx['skillExecution']['mode'])
+                self.assertNotIn('Presentations.Open', text)
 
     def test_incomplete_catalogue_is_not_general_or_fake_load(self):
         ctx = self.f.context()
@@ -167,12 +177,12 @@ class SkillExecutionTests(unittest.TestCase):
         self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertNotIn('ZZZZ', text)
 
-    def test_budget_fallback_does_not_record_body_delivery(self):
-        with patch('company_agent.skill_execution.MAX_REQUEST_CONTEXT_CHARS', 1000):
-            ctx, text = self.output()
+    def test_prompt_never_injects_body_and_stays_small(self):
+        ctx, text = self.output()
         self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertNotIn('Presentations.Open', text)
         self.assertFalse(self.state()['skillWorkflow'].get('providedSkills'))
+        self.assertLess(len(text), 5000)
 
     def test_native_read_receipt_remains_distinct(self):
         self.output()
@@ -184,26 +194,31 @@ class SkillExecutionTests(unittest.TestCase):
 
     def test_worker_receives_verified_path_but_not_a_fake_body_receipt(self):
         self.output()
+        inputs = {'session_id': self.f.sid,
+                 'tool_input': {'subagent_type':'company-agent:medium-worker', 'prompt':'요약해줘'}}
+        result = worker_runtime_input(discovery.PLUGIN, self.f.project, inputs)
+        self.assertNotIn('"selectedSkill":', result['hookSpecificOutput']['updatedInput']['prompt'])
+        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
         result = worker_runtime_input(discovery.PLUGIN, self.f.project, {'session_id': self.f.sid,
                  'tool_input': {'subagent_type':'company-agent:medium-worker', 'prompt':'요약해줘'}})
         text = result['hookSpecificOutput']['updatedInput']['prompt']
         self.assertIn('office-reader', text)
         self.assertIn('selectedSkill', text)
         self.assertNotIn('"skillIndex"', text)
-        self.assertEqual({}, self.state()['skillWorkflow']['readSkills'])
+        self.assertEqual(1, len(self.state()['skillWorkflow']['readSkills']))
 
-    def test_delivery_cache_is_bounded_and_malformed_cache_is_repaired(self):
+    def test_legacy_delivery_is_not_reuse_and_is_removed(self):
         ctx = self.f.context()
         state = self.state()
-        state['skillWorkflow']['providedSkills'] = []
+        inv = inventory_skills(self.f.state, project_root=self.f.project, plugin_root=discovery.PLUGIN, claude_root=self.f.claude)
+        item = next(x for x in inv['skills'] if x['name'] == 'office-reader')
+        state['skillWorkflow']['providedSkills'] = {item['id']: item['sha256']}
         atomic_write_json(self.f.state / 'sessions' / (self.f.sid + '.json'), state)
-        _, text = self.output(context=ctx)
-        self.assertIn('Presentations.Open', text)
-        self.assertIsInstance(self.state()['skillWorkflow']['providedSkills'], dict)
-        for i in range(19):
-            self.f.skill('single-' + str(i), f'uniquekeyword{i:03}')
-            self.output(f'uniquekeyword{i:03}')
-        self.assertEqual(16, len(self.state()['skillWorkflow']['providedSkills']))
+        result, text = self.output(context=ctx)
+        self.assertEqual('load', result['skillExecution']['mode'])
+        self.assertNotIn('Presentations.Open', text)
+        self.assertNotIn('providedSkills', self.state()['skillWorkflow'])
+        self.assertIsNone(self.state()['skillWorkflow']['selected'])
 
 
 if __name__ == '__main__':

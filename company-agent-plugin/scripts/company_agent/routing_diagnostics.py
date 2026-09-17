@@ -21,6 +21,14 @@ LOAD_LABELS = {
     'body-unavailable-or-explicit-only': '본문 변경·삭제 또는 수동 전용 조건 확인 필요',
     'partial-read': '본문 일부만 읽은 것으로 확인',
     'read-response-unrecognized': 'Read 응답 내용·형식 확인 필요',
+    'native-skill-outside-catalog': '로컬 목록 밖 호스트 스킬의 성공한 호출 확인(현재 요청만)',
+}
+REVIEW_LABELS = {
+    'redirected': '목록/본문 확인 누락으로 첫 실행 1회 교정(원래 도구 미실행)',
+    'catalog-read': '교정 후 전체 목록 읽기 확인',
+    'skill-loaded': '교정 후 스킬 본문 로드 확인',
+    'native-skill-outside-catalog': '교정 후 호스트 스킬 로드 확인',
+    'unconfirmed-limit-reached': '읽기 확인 없이 재시도함(반복 차단 안 함, 적용 성공 아님)',
 }
 
 
@@ -134,7 +142,14 @@ def inspect(claude_root: Path, local_data: Path, project: Path, session: str = '
             observation = mapping(workflow.get('loadObservation'))
             current = observation.get('turn') == data.get('turnId') and observation.get('turn') is not None
             status = observation.get('status') if current else None
+            checkpoint = mapping(workflow.get('reviewCheckpoint'))
+            review = checkpoint.get('status') if checkpoint.get('turn') == data.get('turnId') and data.get('turnId') else None
+            mode = mapping(workflow.get('executionPlan')).get('mode') if workflow.get('turn') == data.get('turnId') else None
             report['sessions'].append({'sessionFile': file.name, 'updatedAt': datetime.fromtimestamp(file.stat().st_mtime).isoformat(timespec='seconds'),
+                'indexRead': workflow.get('indexRead') is True,
+                'executionMode': mode if mode in {'load', 'reuse', 'review', 'choose', 'select', 'general', 'inspect', 'provided'} else 'unknown',
+                'reviewStatus': review if review in REVIEW_LABELS else 'not-observed',
+                'reviewMessage': REVIEW_LABELS.get(review, '교정 기록 없음(정상 준비 또는 미관찰)'),
                 'hooks': hooks, 'loadStatus': status if status in LOAD_LABELS else 'unknown',
                 'loadMessage': LOAD_LABELS.get(status, '이번 요청의 본문 로드 진단 없음(이전 버전 또는 미관찰)')})
     except (OSError, ValueError, AttributeError, TypeError):
@@ -182,6 +197,8 @@ def main(argv=None):
             if row.get('errorType'):
                 print('오류 종류:', row['errorType'])
         print('본문 읽기:', record['loadMessage'])
+        print('전체 목록 읽기:', flag(record['indexRead']), '/ 준비 단계:', record['executionMode'])
+        print('목록 확인 교정:', record['reviewMessage'])
     for warning in result['warnings']:
         print('확인 필요:', warning)
     print('\n최근 세션이 문제 세션과 같은지 시간을 확인하세요. 필요하면 --session ID로 지정하세요.')

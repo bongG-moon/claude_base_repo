@@ -207,8 +207,8 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
                     'Use Glob/Read/Grep for file inspection, not shell probes. Keep preparation and verification receipts silent; communicate only useful results in Korean. '
                     'Use cliCommand literally; never search the PC, invent python -m, change cwd or call dispatch. '
                     'skillIndex contains metadata, never bodies or permissions. Inline: use supplied rows; reuse: use that revision already in context; pages: Read relevant pages. Missing descriptions do not mean no skill. For missing metadata Read skillSelection.catalog.path. Load a unique registered invocation with Skill; use Read on roots[root]/file for personal files or exact-path preferences/collisions. Reuse unchanged bodies only in current context. Respect explicitOnly, priorities and user choices. '
-                    'skillWorkflow tracks observed preparation, not permissions. Reuse unchanged bodies already read in this context; skill route is optional, never a required extra command. No relevant Skill means proceed normally. A reminder is not a blocked tool or bad directory. Do not narrate it. '
-                    'Preparation advice never blocks execution. Actual permission/protection denials stay pending for the denied action; do not infer every shell command is unavailable from one denial. '
+                    'skillWorkflow tracks observed preparation, not permissions. Reuse unchanged bodies already read in this context; skill route is optional, never a required extra command. No relevant Skill means proceed normally. Keep ordinary advice silent. '
+                    'A [스킬 목록 확인 1회] denial means the tool did NOT run: load a relevant existing Skill or Read the catalogue, then continue. This is not a file/sandbox permission error. Other advice is non-blocking. Actual permission/protection denials stay pending for the denied action; do not infer every shell command is unavailable from one denial. '
                     'Respect source preferences and user scope. Report actual reading results and incomplete ranges. '
                     'Reading and request metadata alone need no mutation verification. '
                     'Read completionGuide only for changed work; never clear older obligations. '
@@ -330,20 +330,18 @@ def bounded_prompt_context(route_text: str, runtime_text: str) -> str:
 
 
 def task_prompt_context(route_text: str, runtime_text: str) -> str:
-    """Apply one resolved Skill before first action, otherwise give one next step.
-
-    The complete index remains metadata-only. Only a chosen plain body is
-    materialized, with a separate delivery receipt (never a native load claim).
-    """
-    from .skill_execution import prepare_execution, body_context, record_execution, MAX_REQUEST_CONTEXT_CHARS
+    """Give a list-based next action; only observed loads become selections."""
+    from .skill_execution import prepare_execution, record_execution
     data = json.loads(runtime_text)
     runtime = data['company_agent_runtime']
-    execution, body = prepare_execution(runtime)
+    execution, _ = prepare_execution(runtime)
     runtime['skillExecution'] = {k: v for k, v in execution.items()
-                                 if k not in {'sha256', 'id'} and not (k == 'load' and body)}
+                                 if k not in {'sha256', 'id'}}
     runtime['instructions'] = (
         'skillIndex와 세션 스킬의 용도를 확인해 관련 스킬 우선, 없으면 일반 실행합니다. '
-        'skillExecution provided는 전달 본문, reuse는 문맥의 동일 본문을 적용하며 빠졌을 때만 path를 Read합니다. '
+        '후보 없음은 스킬 없음이 아닙니다. review는 전체 목록의 용도를 비교하고, reuse는 실제 로드했던 동일 본문만 재사용합니다. '
+        'load 후보가 맞으면 Skill/Read로 본문을 불러오고, 맞지 않으면 목록에서 다시 판단합니다. '
+        '[스킬 목록 확인 1회]는 도구 미실행입니다. 목록/본문 확인 후 계속하며 파일 권한 오류로 오해하지 마세요. '
         '목록 확인 실패는 스킬 부재가 아닙니다. 같은 역할이 겹치면 한국어로 선택받고, 읽기→제작은 다른 단계입니다. '
         '설명·선택만 요청받으면 실행하지 마세요. runtime은 메타데이터이지 모듈이 아닙니다. cliCommand를 그대로 사용하고 탐색은 Glob/Read/Grep만 사용합니다. '
         '질문·선택지·결과는 한국어, 입출력은 UTF-8(별도 Python -X utf8)입니다. 표시 깨짐만으로 업무를 재실행하지 마세요. '
@@ -374,27 +372,18 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
     if task:
         runtime['taskSkills'] = {k: v for k, v in task.items() if k != 'groups'}
     workflow = runtime.get('skillWorkflow', {})
-    if execution['mode'] in {'provided', 'reuse'}:
+    if execution['mode'] == 'reuse':
         workflow.update(selected=execution['name'], nextAction='apply-selected-skill')
     elif execution['mode'] == 'general':
         workflow.update(selected=None, nextAction='general-if-no-relevant-skill')
     elif execution['mode'] == 'load':
-        workflow.update(selected=None, nextAction='load-selected-skill')
+        workflow.update(selected=None, nextAction='load-relevant-skill')
+    elif execution['mode'] == 'review':
+        workflow.update(selected=None, nextAction='compare-available-list')
     context = bounded_prompt_context(route_text, json.dumps(data, ensure_ascii=False, separators=(',', ':')))
-    supplied = body_context(execution, body)
-    if supplied and len(brief) + len(supplied) + len(context) + 2 > MAX_REQUEST_CONTEXT_CHARS:
-        # Never truncate a procedure or spill a long body to a hidden context
-        # file. Native loading is the explicit next action for oversized input.
-        execution = {**execution, 'mode': 'load', 'reason': 'request-context-budget'}
-        execution.pop('basis', None)
-        runtime['skillExecution'] = {k: v for k, v in execution.items() if k not in {'sha256', 'id'}}
-        workflow.update(selected=None, nextAction='load-selected-skill')
-        supplied = ''
-        brief = skill_brief(runtime)
-        context = bounded_prompt_context(route_text, json.dumps(data, ensure_ascii=False, separators=(',', ':')))
     if len(brief) > MAX_SKILL_BRIEF_CHARS:
         raise ValueError('Skill action brief exceeds budget')
-    result = brief + '\n' + supplied + context
+    result = brief + '\n' + context
     if len(result) > MAX_HOOK_CONTEXT_CHARS:
         raise ValueError('Skill-first context exceeds budget')
     record_execution(runtime, execution)

@@ -38,6 +38,8 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.4.10.md',
         'docs/UPDATE_1.4.11.md',
         'docs/UPDATE_1.4.12.md',
+        'docs/UPDATE_1.4.13.md',
+        'docs/SKILL_LIST_REVIEW_2026-09-17.md',
         'docs/SKILL_FIRST_EXECUTION_2026-09-17.md',
         'payload/core/plugin/scripts/company_agent/skill_execution.py',
         'docs/LEAN_SKILL_ROUTING_2026-09-16.md',

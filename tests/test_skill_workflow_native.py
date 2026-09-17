@@ -35,17 +35,17 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
             runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
             self.assertEqual('reuse', runtime['skillIndex']['mode'])
             self.assertEqual('office-reader', runtime['skillExecution']['name'])
-            self.assertEqual('provided', runtime['skillExecution']['mode'])
-            self.assertIn('Presentations.Open', result['hookSpecificOutput']['additionalContext'])
+            self.assertEqual('load', runtime['skillExecution']['mode'])
+            self.assertNotIn('Presentations.Open', result['hookSpecificOutput']['additionalContext'])
             self.assertIn('한국어로 선택받고', result['hookSpecificOutput']['additionalContext'])
             self.assertIn('UTF-8', runtime['instructions'])
             self.assertFalse(runtime['skillWorkflow']['indexRead'])
             self.assertTrue(runtime['skillWorkflow']['indexDelivered'])
-            self.assertEqual('apply-selected-skill', runtime['skillWorkflow']['nextAction'])
+            self.assertEqual('load-relevant-skill', runtime['skillWorkflow']['nextAction'])
             diag = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))['hookDiagnostics']
             self.assertEqual(len(result['hookSpecificOutput']['additionalContext']), diag['UserPromptSubmit']['contextChars'])
             advice = self.hook('PreToolUse', tool_name='Bash', tool_input={'command':'pwd && ls -la test.pptx'})
-            self.assertNotIn('permissionDecision', advice.get('hookSpecificOutput', {}))
+            self.assertEqual('deny', advice['hookSpecificOutput']['permissionDecision'])
             self.assertNotIn('먼저 스킬 목록을 Read', json.dumps(advice, ensure_ascii=False))
             # A delivery is not native Read evidence or model adherence.
             # This separately simulates a genuine body Read receipt.
@@ -173,8 +173,9 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertTrue(runtime["skillWorkflow"]["turn"])
         execution = {"tool_name": "Bash", "tool_input": {"command": "python invented_reader.py"}}
         first = self.hook("PreToolUse", **execution)
-        self.assertEqual('provided', runtime['skillExecution']['mode'])
-        self.assertEqual({}, first)  # Body is already provided; no duplicate reminder.
+        self.assertEqual('load', runtime['skillExecution']['mode'])
+        self.assertEqual('deny', first['hookSpecificOutput']['permissionDecision'])
+        self.assertIn('스킬 목록 확인 1회', first['hookSpecificOutput']['permissionDecisionReason'])
         self.assertEqual({}, self.hook('PreToolUse', **execution))
         # Even before catalogue receipt, advisory discovery cannot bypass DB policy.
         denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query':'DELETE FROM employees'})
@@ -237,6 +238,26 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         route = load_session(self.payload["session_id"], root)["skillWorkflow"]
         self.assertIsInstance(route, dict)
         self.assertFalse(route["indexRead"])
+
+    def test_real_corporate_deny_wins_over_first_list_correction(self):
+        self.hook('UserPromptSubmit', prompt='PPT 읽어줘')
+        result = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query': 'DELETE FROM employees'})
+        self.assertEqual('deny', result['hookSpecificOutput']['permissionDecision'])
+        self.assertNotIn('스킬 목록 확인 1회', result['hookSpecificOutput']['permissionDecisionReason'])
+        route = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))['skillWorkflow']
+        self.assertNotIn('reviewCheckpoint', route)
+
+    def test_worker_dispatch_cannot_erase_list_correction(self):
+        self.hook('UserPromptSubmit', prompt='PPT 읽어줘')
+        result = self.hook('PreToolUse', tool_name='Agent', tool_input={
+            'subagent_type': 'company-agent:medium-worker', 'prompt': 'PPT 읽어줘'})
+        self.assertEqual('deny', result['hookSpecificOutput']['permissionDecision'])
+        self.assertNotIn('updatedInput', result['hookSpecificOutput'])
+        self.read(self.plugin / 'skills/office-reader/SKILL.md')
+        result = self.hook('PreToolUse', tool_name='Agent', tool_input={
+            'subagent_type': 'company-agent:medium-worker', 'prompt': 'PPT 읽어줘'})
+        self.assertNotIn('permissionDecision', result['hookSpecificOutput'])
+        self.assertIn('selectedSkill', result['hookSpecificOutput']['updatedInput']['prompt'])
 
 
 if __name__ == "__main__":

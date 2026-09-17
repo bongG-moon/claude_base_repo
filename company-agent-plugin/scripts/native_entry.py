@@ -51,16 +51,18 @@ def main() -> int:
         session_id = str(payload.get('session_id') or '')
         record_hook(user_state_root(), session_id, event, 'started', 0)
         preparation = {}
-        if event == "PreToolUse":
+        corporate_tool = event == 'PreToolUse' and str(payload.get('tool_name', '')).startswith(('mcp__corp-db-read__', 'mcp__corp-outlook-self__'))
+        def prepare_skill_review():
             from company_agent.skill_workflow import preflight
-            from company_agent.paths import user_state_root
             try:
-                preparation = preflight(user_state_root(), cwd, payload)
+                return preflight(user_state_root(), cwd, payload)
             except Exception:
-                # Advisory discovery must not block tools or skip the real MCP policy.
+                # Broken discovery must not block tools or skip the real MCP policy.
                 # In particular, an old/malformed receipt can have the wrong
                 # JSON shape. Only this optional step is fail-soft.
-                preparation = {}
+                return {}
+        if event == 'PreToolUse' and not corporate_tool:
+            preparation = prepare_skill_review()
         if event == "SessionStart":
             result = session_start(plugin, cwd, session_id=str(payload.get("session_id") or ""), source=str(payload.get("source") or ""))
             runtime_text = result.get('hookSpecificOutput', {}).get('additionalContext', '')
@@ -72,7 +74,11 @@ def main() -> int:
             result = {"hookSpecificOutput": {"hookEventName": event, "decision": decision}} if decision else {}
         elif event == "PreToolUse" and payload.get("tool_name") in {"Agent", "Task"}:
             from company_agent.native_runtime import worker_runtime_input
-            result = worker_runtime_input(plugin, cwd, payload)
+            # Do not rescan worker metadata for a dispatch that will not run.
+            if preparation.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny':
+                result = preparation
+            else:
+                result = worker_runtime_input(plugin, cwd, payload)
         else:
             handlers = {
                 "UserPromptSubmit": "model_route_hook",
@@ -86,7 +92,7 @@ def main() -> int:
             payload["hook_event_name"] = event
             # The corporate policy handler accepts only its own MCP servers.
             # Other tools get preparation checks, NOT a new permission grant.
-            if event == "PreToolUse" and not str(payload.get("tool_name", "")).startswith(("mcp__corp-db-read__", "mcp__corp-outlook-self__")):
+            if event == "PreToolUse" and not corporate_tool:
                 print(json.dumps(preparation, ensure_ascii=True))
                 return 0
             handler = __import__(handlers[event])
@@ -126,11 +132,19 @@ def main() -> int:
                         result.setdefault("hookSpecificOutput", {"hookEventName": "PostToolUse"})
                         prior = result["hookSpecificOutput"].get("additionalContext", "")
                         result["hookSpecificOutput"]["additionalContext"] = prior + "\n" + context
+        if corporate_tool and result.get('hookSpecificOutput', {}).get('permissionDecision') != 'deny':
+            # Do not consume a list-review retry or mislabel a real policy deny.
+            preparation = prepare_skill_review()
         if preparation and event == 'PreToolUse':
             target = result.setdefault('hookSpecificOutput', {'hookEventName': event})
             # A real corporate deny always wins; do not confuse it with discovery.
             if target.get('permissionDecision') != 'deny':
-                target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), preparation['hookSpecificOutput']['additionalContext']]))
+                review = preparation['hookSpecificOutput']
+                if review.get('permissionDecision') == 'deny':
+                    target.pop('updatedInput', None)
+                    target.update(review)
+                else:
+                    target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), review.get('additionalContext')]))
         # ASCII-safe JSON round-trips Korean even through a legacy Windows pipe.
         record_hook(user_state_root(), session_id, event, 'output-produced',
                     int((time.monotonic() - started) * 1000), runtime_text=runtime_text,

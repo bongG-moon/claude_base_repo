@@ -62,20 +62,20 @@ class LeanRoutingTests(unittest.TestCase):
         ctx = self.f.context('PPT 읽고 요약해줘')
         self.assertEqual('reuse', ctx['skillIndex']['mode'])
         result = task_prompt_context('{"company_agent_route":{}}', json.dumps({'company_agent_runtime': ctx}, ensure_ascii=False))
-        brief = result.split('\n[선택된 스킬 본문')[0]
+        brief = result.split('\n{"company_agent_route"')[0]
         self.assertIn('company-agent:office-reader', brief)
         tail = json.loads(result.splitlines()[-1])['company_agent_runtime']
         self.assertEqual(discovery.PLUGIN / 'skills/office-reader/SKILL.md', Path(tail['skillExecution']['path']))
         self.assertNotIn('groups', tail['taskSkills'])
         self.assertNotIn(TASK_SKILL_RULE, tail['instructions'])
         self.assertLessEqual(len(brief), MAX_SKILL_BRIEF_CHARS)
-        self.assertIn('Presentations.Open', result)
-        self.assertEqual('provided', tail['skillExecution']['mode'])
+        self.assertNotIn('Presentations.Open', result)
+        self.assertEqual('load', tail['skillExecution']['mode'])
         from company_agent.native_runtime import worker_runtime_input
         worker = worker_runtime_input(discovery.PLUGIN, self.f.project, {'session_id': self.f.sid,
             'tool_input': {'subagent_type': 'company-agent:medium-worker', 'prompt': 'PPT 읽기'}})
         worker_text = worker['hookSpecificOutput']['updatedInput']['prompt']
-        self.assertIn('selectedSkill', worker_text)
+        self.assertNotIn('"selectedSkill":', worker_text)
         self.assertNotIn('"groups":', worker_text)
 
     def test_large_conflict_requires_catalogue_not_partial_choice(self):
@@ -190,6 +190,27 @@ class ReadOnlyDiagnosticTests(unittest.TestCase):
         atomic_write_json(self.state / 'sessions/example.json', {'turnId': 'two', 'skillWorkflow': {
             'lastBodyLoad': {'name': 'office-reader'}, 'loadObservation': {'status': 'loaded', 'turn': 'one'}}})
         self.assertEqual('unknown', inspect(self.claude, self.local, self.project)['sessions'][0]['loadStatus'])
+
+    def test_list_review_diagnostic_is_bounded_and_never_claims_application(self):
+        file = self.state / 'sessions/example.json'
+        for status in ('redirected', 'catalog-read', 'skill-loaded', 'unconfirmed-limit-reached', 'PRIVATE'):
+            atomic_write_json(file, {'turnId': 'one', 'skillWorkflow': {'turn': 'one', 'indexRead': True,
+                'executionPlan': {'mode': 'review', 'raw': 'PRIVATE'},
+                'reviewCheckpoint': {'turn': 'one', 'status': status, 'raw': 'PRIVATE'}}})
+            before = self.snapshot()
+            report = inspect(self.claude, self.local, self.project)
+            self.assertEqual(before, self.snapshot())
+            self.assertNotIn('PRIVATE', json.dumps(report))
+            self.assertEqual(status if status != 'PRIVATE' else 'not-observed', report['sessions'][0]['reviewStatus'])
+            self.assertEqual('unknown', report['sessions'][0]['loadStatus'])
+
+    def test_previous_turn_correction_is_not_current_evidence(self):
+        atomic_write_json(self.state / 'sessions/example.json', {'turnId': 'two', 'skillWorkflow': {
+            'turn': 'one', 'executionPlan': {'mode': 'reuse'},
+            'reviewCheckpoint': {'turn': 'one', 'status': 'skill-loaded'}}})
+        report = inspect(self.claude, self.local, self.project)['sessions'][0]
+        self.assertEqual('not-observed', report['reviewStatus'])
+        self.assertEqual('unknown', report['executionMode'])
 
 
 if __name__ == '__main__':
