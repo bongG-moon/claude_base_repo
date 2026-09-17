@@ -74,8 +74,32 @@ class OfficeReaderTests(unittest.TestCase):
             result=reader.read_office(self.spec)
         self.assertEqual('office_timeout',result['code']); invoke.assert_called_once()
 
+    def test_window_start_timeout_never_opens_office(self):
+        from company_agent.office_progress import Progress
+        reporter = Progress(enabled=False)
+        def timeout(*args, **kwargs):
+            kwargs['progress'].failure_code = 'confirmation_start_timeout'
+            return False
+        with patch.object(reader, 'confirm_action', side_effect=timeout), patch.object(reader, '_invoke') as invoke:
+            result = reader.read_office(self.spec, progress=reporter)
+        invoke.assert_not_called()
+        self.assertEqual('confirmation_start_timeout', result['code'])
+        self.assertEqual('confirmation_start', result['diagnostics']['progress']['lastStage'])
+        self.assertNotIn('dependencies', result['diagnostics']['progress']['stageMs'])
+
+    def test_helper_close_timeout_does_not_claim_a_successful_read(self):
+        def timeout(request, *, progress):
+            progress.begin('read')
+            progress.begin('close')
+            raise subprocess.TimeoutExpired('fixed reader', 60)
+        with patch.object(reader, 'confirm_action', return_value=True), patch.object(reader, '_invoke', side_effect=timeout):
+            result = reader.read_office(self.spec)
+        self.assertEqual('office_timeout', result['code'])
+        self.assertEqual('close', result['stage'])
+        self.assertNotIn('items', result)
+
     def test_changed_source_discards_response(self):
-        def changed(request):
+        def changed(request, **kwargs):
             self.file.write_bytes(b'changed by fixture')
             return self.response()
         with patch.object(reader,'confirm_action',return_value=True),patch.object(reader,'_invoke',side_effect=changed):
@@ -90,7 +114,7 @@ class OfficeReaderTests(unittest.TestCase):
 
     def test_helper_transport_is_utf8_fixed_and_bounded(self):
         proc=subprocess.CompletedProcess([],0,json.dumps(self.response(),ensure_ascii=False).encode('utf-8'),b'')
-        with patch('subprocess.run',return_value=proc) as run:
+        with patch.object(reader, 'run_helper',return_value=proc) as run:
             result=reader._invoke(reader.normalize(self.spec))
         self.assertEqual('한글 실적 123',result['items'][0]['text'])
         command=run.call_args.args[0]
@@ -99,6 +123,7 @@ class OfficeReaderTests(unittest.TestCase):
         self.assertIn('-P',command)
         self.assertNotIn('-Command',command)
         self.assertEqual(60,run.call_args.kwargs['timeout'])
+        self.assertEqual('excel',json.loads(run.call_args.args[1])['kind'])
 
     def test_helper_rejects_bad_request_before_any_office_launch(self):
         script=ROOT/'company-agent-plugin/scripts/Read-CompanyOffice.py'

@@ -377,6 +377,42 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         self.assertEqual("connection_not_tested", doctor["outlook"]["status"])
         self.assertFalse((self.root / "wrong-state").exists())
 
+    def test_office_progress_before_confirmation_keeps_stdout_json(self):
+        # The isolated helper only reports a synthetic window and cancels. No
+        # user click is synthesized and no Office application is ever opened.
+        atomic_write_text(self.plugin / 'scripts/Confirm-BusinessAction.ps1',
+                          "[Console]::In.ReadToEnd() | Out-Null\n"
+                          "[Console]::Error.WriteLine('CA_OFFICE_STAGE:confirmation_wait')\n"
+                          "[Console]::Out.WriteLine('{\"approved\":false}')\n")
+        source = self.project / '한글 fixture.pptx'
+        source.write_bytes(b'not a real document; must not open')
+        result = self.run_wrapper(['-Mode', 'Cli', 'business', 'office-read', '--file', str(source)])
+        self.assertTrue(result.stdout, result.stderr)
+        payload = json.loads(result.stdout)
+        self.assertEqual('cancelled', payload['status'], result.stderr)
+        self.assertIn('Python 준비 완료', result.stderr)
+        self.assertIn('확인 창 여는 중', result.stderr)
+        self.assertIn('확인 창 표시됨', result.stderr)
+        self.assertNotIn(str(source), result.stderr)
+        self.assertEqual('confirmation_wait', payload['diagnostics']['progress']['lastStage'])
+        self.assertIn('bootstrap', payload['diagnostics']['progress']['stageMs'])
+        self.assertEqual(b'not a real document; must not open', source.read_bytes())
+
+    def test_office_python_probe_has_bounded_owned_process_wait(self):
+        wrapper = (self.plugin / 'scripts/Invoke-CompanyAgent.ps1').read_text(encoding='utf-8-sig')
+        function = wrapper[wrapper.index('function Invoke-OfficePythonProbe'):wrapper.index('$recordedPython = $null')]
+        self.assertIn('WaitForExit(10000)', function)
+        # Test the same bounded probe with a short deadline, against an owned
+        # sleeping fixture shell; never kill a user Python/Office process.
+        function = function.replace('WaitForExit(10000)', 'WaitForExit(100)')
+        script = self.root / 'probe-fixture.ps1'
+        atomic_write_text(script, function + "\nInvoke-OfficePythonProbe -Executable $PSHOME\\powershell.exe "
+                          "-Prefix @('-NoProfile', '-Command', 'Start-Sleep -Seconds 10 #') | ConvertTo-Json -Compress")
+        result = subprocess.run([shutil.which('powershell.exe'), '-NoProfile', '-File', str(script)],
+                                capture_output=True, encoding='utf-8', timeout=8)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertTrue(json.loads(result.stdout)['timedOut'])
+
     def test_native_hooks_refresh_catalog_without_business_verification_obligation(self) -> None:
         session = "catalog-only-session"
         payload = {"session_id": session, "cwd": str(self.project)}

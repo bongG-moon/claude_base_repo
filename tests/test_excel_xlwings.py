@@ -140,7 +140,7 @@ class ExcelRecipeTests(unittest.TestCase):
         file = self.file.with_suffix('.pptx')
         file.write_bytes(b'fixture')
         proc = subprocess.CompletedProcess([], 0, b'{"ok":false,"code":"office_read_failed"}', b'')
-        with patch('subprocess.run', return_value=proc) as run:
+        with patch.object(reader, 'run_helper', return_value=proc) as run:
             reader._invoke(reader.normalize({'file': str(file)}))
         self.assertTrue(run.call_args.args[0][-1].endswith('Read-CompanyOffice.py'))
 

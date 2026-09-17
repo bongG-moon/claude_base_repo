@@ -5,6 +5,7 @@ Not a decryption library. Actual open/read denials stop; no other reader is trie
 import importlib
 import json
 import sys
+from .office_progress import helper_stage
 
 
 def denied(exc):
@@ -42,6 +43,7 @@ def _read(request,xw,pd):
     stage='application'
     result={'ok':False,'code':'office_read_failed','stage':stage}
     try:
+        helper_stage('application')
         # Bind the book to THIS instance. Never use xw.Book(), which can attach to
         # the user's already-open workbook in another Excel instance.
         app=xw.App(visible=False,add_book=False)
@@ -49,12 +51,15 @@ def _read(request,xw,pd):
         scratch=app.books.add()
         app.calculation='manual'
         stage='open'
+        helper_stage(stage)
         book=app.books.open(request['file'],read_only=True,update_links=False,add_to_mru=False)
         stage='permission'
+        helper_stage(stage)
         permission=permission_status(book)
         if permission in ('restricted','denied'):
             return {'ok':False,'code':'protected_input','stage':stage}
         stage='read'
+        helper_stage(stage)
         sheet=book.sheets[request['sheet']-1] if type(request['sheet']) is int else book.sheets[request['sheet']]
         selected=sheet.used_range if request['range']=='used' else sheet.range(request['range'])
         row,col=selected.row,selected.column
@@ -96,6 +101,7 @@ def _read(request,xw,pd):
     except Exception as exc:
         result={'ok':False,'code':'permission_denied' if denied(exc) else 'office_read_failed','stage':stage}
     finally:
+        helper_stage('close')
         # Close only books we opened; do not save, kill Excel, or close user books.
         for owned in (book,scratch):
             if owned is not None:
@@ -119,6 +125,7 @@ def read_excel(request):
     except (ValueError,TypeError,OSError):
         return {'ok':False,'code':'invalid_request'}
     try:
+        helper_stage('dependencies')
         xw=importlib.import_module('xlwings')
         pd=importlib.import_module('pandas')
     except ImportError:

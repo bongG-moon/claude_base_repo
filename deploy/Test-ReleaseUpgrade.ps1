@@ -86,9 +86,11 @@ try {
     $entries = @((Read-CompanyAgentJson -Path (Join-Path $config 'plugins\installed_plugins.json')).plugins.'company-agent@company-agent-local')
     $current = @($entries | Where-Object { $_.scope -eq 'user' -and $_.version -eq $newVersion })
     Assert-ReleaseUpgrade ($current.Count -eq 1) 'Native Claude registry did not select the new version'
-    $cachedModule = Join-Path $current[0].installPath 'scripts\company_agent\skill_execution.py'
-    $packedModule = Join-Path $update 'payload\core\plugin\scripts\company_agent\skill_execution.py'
-    Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedModule -Algorithm SHA256).Hash) 'New skill-first module was not installed intact'
+    foreach ($relative in @('scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py', 'scripts\company_agent\office_progress.py', 'scripts\company_agent\office_reader.py', 'scripts\company_agent\business_safety.py', 'scripts\Invoke-CompanyAgent.ps1', 'scripts\Confirm-BusinessAction.ps1', 'skills\office-reader\SKILL.md')) {
+        $cachedModule = Join-Path $current[0].installPath $relative
+        $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
+        Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedModule -Algorithm SHA256).Hash) "Updated file was not installed intact: $relative"
+    }
     $debugFile = Join-Path $testRoot 'updated-init.log'
     Push-Location -LiteralPath $project
     try {

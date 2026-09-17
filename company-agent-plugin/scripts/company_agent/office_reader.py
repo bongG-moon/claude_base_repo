@@ -9,6 +9,7 @@ import time
 import hashlib
 
 from .business_safety import safe_path, blocked_input, confirm_action, cancelled
+from .office_progress import Progress, run_helper
 
 TYPES={'.xlsx':'excel','.csv':'excel','.pptx':'powerpoint','.docx':'word'}
 
@@ -68,15 +69,14 @@ def failed(code, message, status='blocked'):
             'retryAllowed':False,'rawContentStored':False,'bypassSupported':False}
 
 
-def _invoke(request):
+def _invoke(request, *, progress=None):
     scripts=Path(__file__).resolve().parents[1]
     # Keep the selected user's installed packages, but ignore PYTHON* overrides
     # and do not import modules from the caller's working directory.
     helper='Read-CompanyExcel.py' if request.get('kind')=='excel' else 'Read-CompanyOffice.py'
     command=[sys.executable,'-E','-P',str(scripts/helper)]
-    proc=subprocess.run(command,
-                        input=json.dumps(request,ensure_ascii=True).encode('ascii'),capture_output=True,timeout=60,
-                        creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
+    proc=run_helper(command, json.dumps(request,ensure_ascii=True).encode('ascii'),
+                    timeout=60, progress=progress or Progress(enabled=False))
     if proc.returncode or len(proc.stdout)>2*1024*1024:
         raise ValueError('invalid helper response')
     result=json.loads(proc.stdout.decode('utf-8-sig'))
@@ -84,7 +84,18 @@ def _invoke(request):
     return result
 
 
-def read_office(spec):
+def read_office(spec, *, progress=None):
+    progress = progress or Progress(enabled=False)
+    progress.begin('request')
+    try:
+        result = _read_office(spec, progress)
+    finally:
+        timing = progress.finish()
+    result.setdefault('diagnostics', {})['progress'] = timing
+    return result
+
+
+def _read_office(spec, progress):
     restricted=blocked_input(spec) if isinstance(spec,dict) else None
     if restricted:
         return restricted
@@ -100,16 +111,27 @@ def read_office(spec):
              '원본을 저장·변환하지 않으며, 본문은 하네스 파일·Memory·Knowledge에 별도 저장하지 않습니다.\n'
              'Office 자체 임시 파일이나 Claude 대화 기록은 남을 수 있습니다.\n\n'
              +json.dumps(request,ensure_ascii=False,indent=2))
-    if not confirm_action('문서 읽기 및 AI 처리 확인',details):
+    progress.begin('confirmation_start')
+    if not confirm_action('문서 읽기 및 AI 처리 확인',details, progress=progress):
+        messages = {
+            'confirmation_start_timeout': '30초 안에 확인 창이 표시되지 않아 중단했습니다. 아직 Office를 열지 않았습니다. Windows 확인 창·PowerShell 실행 상태를 확인해 주세요.',
+            'confirmation_wait_timeout': '확인 창 표시 후 5분 동안 응답이 없어 취소했습니다. Office는 열지 않았습니다.',
+            'confirmation_unavailable': '확인 창을 표시하거나 응답을 확인하지 못했습니다. Office는 열지 않았습니다. 현재 Windows 세션을 확인해 주세요.',
+        }
+        if progress.failure_code in messages:
+            return {**failed(progress.failure_code, messages[progress.failure_code], 'unavailable'), 'stage': progress.stage}
         return cancelled()
     try:
         # The request is data only. No code, passwords, permission flags or export paths.
+        progress.begin('source_check')
         path=safe_path(request['file'],exists=True)
         before=path.stat()
         fingerprint=hashlib.sha256(path.read_bytes()).hexdigest()
         started=time.perf_counter()
-        result=_invoke(request)
+        progress.begin('dependencies')
+        result=_invoke(request, progress=progress)
         elapsed=round((time.perf_counter()-started)*1000)
+        progress.begin('source_verify')
         after=path.stat()
         if ((before.st_size,before.st_mtime_ns,before.st_ino)!=(after.st_size,after.st_mtime_ns,after.st_ino)
                 or hashlib.sha256(path.read_bytes()).hexdigest()!=fingerprint):
@@ -158,6 +180,6 @@ def read_office(spec):
                 'message':('예상 개수와 Office가 보고한 개수가 다릅니다. 동일 파일 경로·해시·실행 환경을 비교해야 하며 DRM 때문이라고 단정할 수 없습니다.' if mismatch else
                            '선택 범위의 내용과 구조를 읽었습니다. coverage의 범위·제외 개체를 확인하세요. 전체 파일 읽기나 DRM 차단/허용의 증거는 아닙니다.')}
     except subprocess.TimeoutExpired:
-        return failed('office_timeout','Office 응답을 기다리다 중단했습니다. 보안·인증 창을 확인해 주세요. Office를 강제 종료하지 않았습니다.','unavailable')
+        return {**failed('office_timeout','Office 읽기 제한 60초를 넘어 중단했습니다. diagnostics.progress.lastStage에서 지연 구간을 확인하세요. 보안·인증 창을 확인하고 반복 실행하지 마세요. Office는 강제 종료하지 않았습니다.','unavailable'), 'stage': progress.stage}
     except (OSError,ValueError,TypeError):
         return failed('office_read_failed','Office 읽기를 완료하지 못했습니다. 원본은 저장하지 않았습니다.','failed')

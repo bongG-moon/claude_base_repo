@@ -338,11 +338,7 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
         return {}
     if not any(not x.get('explicitOnly') or x.get('invocation') in route.get('explicit', []) for x in data['skills']):
         return {}
-    reason = ('[스킬 목록 확인 1회] 이 도구는 아직 실행하지 않았습니다. 파일 권한 오류가 아닙니다. '
-              f"Read로 사용 가능한 목록 {route['catalog']}을 확인하고 요청과 용도를 비교하세요. "
-              '맞는 스킬은 본문을 로드해 적용하고, 없으면 원래 작업을 일반 실행하세요. '
-              '같은 역할이 겹치면 기존 우선 선택을 따르거나 사용자에게 물으세요. '
-              '없는 스킬·설치·skill route 명령·추가 승인 요청은 필요 없습니다.')
+    reason = '[스킬 목록 확인 1회] 아직 실행하지 않았습니다. 권한 오류가 아닙니다. '
     plan = route.get('executionPlan', {})
     item = next((x for x in data['skills'] if x['id'] == plan.get('id')), None)
     if item and _allowed(item, data, route):
@@ -352,7 +348,10 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
             return {}  # A disappeared target must not become a forced load.
         from .skill_task_context import load_target
         action = json.dumps(load_target(item, data['skills']), ensure_ascii=False, separators=(',', ':'))
-        reason += f' 목록의 후보가 맞으면 목록 재읽기 대신 {action}로 바로 본문을 불러와도 됩니다.'
+        reason += f'요청에 맞으면 {action}로 본문을 불러오세요. 아니면 제공된 스킬 목록을 확인하세요.'
+    else:
+        reason += f"Read({route['catalog']})로 용도를 확인하세요."
+    reason += ' 관련 스킬이 없으면 일반 실행하세요.'
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                                   'permissionDecisionReason': reason}}
 

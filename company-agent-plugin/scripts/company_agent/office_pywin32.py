@@ -10,6 +10,7 @@ from .excel_xlwings import denied, permission_status
 
 
 from .office_structure import TextCollector, extract_document as _extract
+from .office_progress import helper_stage
 
 
 def _read(request, client, com):
@@ -21,6 +22,7 @@ def _read(request, client, com):
     timings = {}
     word = request['kind'] == 'word'
     try:
+        helper_stage('application')
         com.CoInitialize()
         initialized = True
         app = client.DispatchEx('Word.Application' if word else 'PowerPoint.Application')
@@ -33,6 +35,7 @@ def _read(request, client, com):
         security = app.AutomationSecurity
         app.AutomationSecurity = 3
         stage = 'open'
+        helper_stage(stage)
         if word:
             links = app.Options.UpdateLinksAtOpen
             app.Options.UpdateLinksAtOpen = False
@@ -40,6 +43,7 @@ def _read(request, client, com):
         else:
             document = documents.Open(request['file'], -1, 0, 0)
         stage = 'permission'
+        helper_stage(stage)
         timings['openMs'] = round((time.perf_counter() - clock) * 1000)
         actual = getattr(document, 'FullName', None)
         if isinstance(actual, str) and os.path.normcase(os.path.abspath(actual)) != os.path.normcase(os.path.abspath(request['file'])):
@@ -48,6 +52,7 @@ def _read(request, client, com):
         if permission in ('restricted', 'denied'):
             return {'ok': False, 'code': 'protected_input', 'stage': stage}
         stage = 'read'
+        helper_stage(stage)
         result = _extract(document, request)
         if result['ok']:
             result['coverage'].update(officePermissionApi=permission,
@@ -61,6 +66,7 @@ def _read(request, client, com):
         return {'ok': False, 'code': 'permission_denied' if denied(exc) else 'office_read_failed',
                 'stage': stage, 'errorType': type(exc).__name__}
     finally:
+        helper_stage('close')
         if document is not None:
             try:
                 if word:
@@ -94,6 +100,7 @@ def read_document(request):
     except (ValueError, TypeError, OSError):
         return {'ok': False, 'code': 'invalid_request'}
     try:
+        helper_stage('dependencies')
         client = importlib.import_module('win32com.client')
         com = importlib.import_module('pythoncom')
     except ImportError:

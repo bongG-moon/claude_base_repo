@@ -92,7 +92,8 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     spec.pop("protection", None)
     if action == 'office-read':
         from .office_reader import read_office
-        return read_office(spec)
+        from .office_progress import cli_progress
+        return read_office(spec, progress=cli_progress())
     if action == 'ppt-choices':
         from .ppt_workflow import choices
         return choices(spec, args.template)

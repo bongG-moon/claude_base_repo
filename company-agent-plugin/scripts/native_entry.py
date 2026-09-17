@@ -14,6 +14,12 @@ import time
 # plugin cache live in different directories or versions.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+# Emit before the larger runtime/CLI imports; keep Hook/other CLI stdout and
+# stderr contracts unchanged. No prompt, source path or document text is logged.
+if sys.argv[1:4] == ['--cli', 'business', 'office-read'] and not any(x in sys.argv[4:] for x in ('-h', '--help')):
+    from company_agent.office_progress import begin_cli
+    begin_cli()
+
 from company_agent.native_runtime import COMPANY_WORKERS, task_prompt_context, configure_runtime, runtime_context, session_start
 
 

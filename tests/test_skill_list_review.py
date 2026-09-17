@@ -30,6 +30,8 @@ class ListReviewTests(unittest.TestCase):
         self.assertEqual('deny', first['permissionDecision'])
         self.assertIn('아직 실행하지 않았습니다', first['permissionDecisionReason'])
         self.assertIn('company-agent:office-reader', first['permissionDecisionReason'])
+        self.assertLess(len(first['permissionDecisionReason']), 250)
+        self.assertNotIn(str(self.state()['skillWorkflow']['catalog']), first['permissionDecisionReason'])
         self.assertNotIn('permissionDecision', self.pre('Skill', skill='company-agent:office-reader'))
         self.native_skill('company-agent:office-reader')
         self.assertEqual({}, self.pre())
