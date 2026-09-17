@@ -330,20 +330,75 @@ def bounded_prompt_context(route_text: str, runtime_text: str) -> str:
 
 
 def task_prompt_context(route_text: str, runtime_text: str) -> str:
-    """Place actionable selection before routing/learning bookkeeping."""
+    """Apply one resolved Skill before first action, otherwise give one next step.
+
+    The complete index remains metadata-only. Only a chosen plain body is
+    materialized, with a separate delivery receipt (never a native load claim).
+    """
+    from .skill_execution import prepare_execution, body_context, record_execution, MAX_REQUEST_CONTEXT_CHARS
     data = json.loads(runtime_text)
     runtime = data['company_agent_runtime']
+    execution, body = prepare_execution(runtime)
+    runtime['skillExecution'] = {k: v for k, v in execution.items()
+                                 if k not in {'sha256', 'id'} and not (k == 'load' and body)}
+    runtime['instructions'] = (
+        'skillIndex와 세션 스킬의 용도를 확인해 관련 스킬 우선, 없으면 일반 실행합니다. '
+        'skillExecution provided는 전달 본문, reuse는 문맥의 동일 본문을 적용하며 빠졌을 때만 path를 Read합니다. '
+        '목록 확인 실패는 스킬 부재가 아닙니다. 같은 역할이 겹치면 한국어로 선택받고, 읽기→제작은 다른 단계입니다. '
+        '설명·선택만 요청받으면 실행하지 마세요. runtime은 메타데이터이지 모듈이 아닙니다. cliCommand를 그대로 사용하고 탐색은 Glob/Read/Grep만 사용합니다. '
+        '질문·선택지·결과는 한국어, 입출력은 UTF-8(별도 Python -X utf8)입니다. 표시 깨짐만으로 업무를 재실행하지 마세요. '
+        '내부 준비·학습은 조용히 처리합니다. 실제 변경 완료 때만 completionGuide로 확인하며 이전 미검증 변경은 유지합니다. '
+        '학습은 업무 종료 시 self-learning 절차로 처리합니다. 조회·선택에는 검증 기록이 필요 없습니다. '
+        '사용자 요청·기존 권한·회사 정책을 유지하고 거절된 동작을 다른 도구·작업자로 재시도하지 마세요. '
+        'DB SELECT 전용, Outlook 인증된 본인 계정만 허용합니다. 읽은 범위만 보고하며 DRM 원인 추측·다른 사본 대체는 하지 마세요.'
+    )
+    route = json.loads(route_text)
+    if 'company_agent_instruction' in route:
+        route['company_agent_instruction'] = (
+            '스킬 준비 후 substantive work는 company_agent_route.agent로, 단순 조회·선택은 직접 처리합니다. '
+            '프로젝트 조율 구조·모델 등급 하한은 유지합니다. 작업자에게 cliCommand·stateRoot·스킬 경로(없으면 없음)·자료/출력 범위·'
+            'company_agent_session_id를 전달합니다. 재귀 위임·허위 모델 전환·빈 resume 없이 실제 결과를 기다립니다.'
+        )
+    # Keep meaningful selection data, not repeated zero counters and empty
+    # cards. The complete index/diagnostics still retain their original schema.
+    selection = runtime.get('skillSelection', {})
+    runtime['skillSelection'] = {k: v for k, v in selection.items() if v not in (0, False, [], None)}
+    for key in ('personalSkills', 'preferredSkills', 'knowledgeMatches'):
+        if not runtime.get(key):
+            runtime.pop(key, None)
+    route_text = json.dumps(route, ensure_ascii=False, separators=(',', ':'))
     brief = skill_brief(runtime)
     # Candidates (IDs, paths, load actions) occur once, in the leading brief.
     # The catalogue is the complete fallback, including omitted conflict groups.
     task = runtime.get('taskSkills', {})
     if task:
         runtime['taskSkills'] = {k: v for k, v in task.items() if k != 'groups'}
-    runtime['instructions'] = runtime.get('instructions', '').replace(TASK_SKILL_RULE, '')
+    workflow = runtime.get('skillWorkflow', {})
+    if execution['mode'] in {'provided', 'reuse'}:
+        workflow.update(selected=execution['name'], nextAction='apply-selected-skill')
+    elif execution['mode'] == 'general':
+        workflow.update(selected=None, nextAction='general-if-no-relevant-skill')
+    elif execution['mode'] == 'load':
+        workflow.update(selected=None, nextAction='load-selected-skill')
     context = bounded_prompt_context(route_text, json.dumps(data, ensure_ascii=False, separators=(',', ':')))
+    supplied = body_context(execution, body)
+    if supplied and len(brief) + len(supplied) + len(context) + 2 > MAX_REQUEST_CONTEXT_CHARS:
+        # Never truncate a procedure or spill a long body to a hidden context
+        # file. Native loading is the explicit next action for oversized input.
+        execution = {**execution, 'mode': 'load', 'reason': 'request-context-budget'}
+        execution.pop('basis', None)
+        runtime['skillExecution'] = {k: v for k, v in execution.items() if k not in {'sha256', 'id'}}
+        workflow.update(selected=None, nextAction='load-selected-skill')
+        supplied = ''
+        brief = skill_brief(runtime)
+        context = bounded_prompt_context(route_text, json.dumps(data, ensure_ascii=False, separators=(',', ':')))
     if len(brief) > MAX_SKILL_BRIEF_CHARS:
         raise ValueError('Skill action brief exceeds budget')
-    return brief + '\n' + context
+    result = brief + '\n' + supplied + context
+    if len(result) > MAX_HOOK_CONTEXT_CHARS:
+        raise ValueError('Skill-first context exceeds budget')
+    record_execution(runtime, execution)
+    return result
 
 
 def cli_command(plugin: Path) -> str:
@@ -430,7 +485,9 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
 def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: str = "", source: str = "") -> str:
     root = user_state_root()
     base = knowledge_base_root()
-    skill_cards, skill_selection = _skill_routing(root, plugin, cwd, prompt)
+    from .skill_execution import routing_prompt
+    query, intent = routing_prompt(root, cwd, session_id, prompt) if prompt and not source else (prompt, {})
+    skill_cards, skill_selection = _skill_routing(root, plugin, cwd, query)
     selection_index = skill_selection.pop('_selectionIndex', None)
     task_skills = skill_selection.pop('_taskSkills', None)
     runtime: dict[str, Any] = {
@@ -542,7 +599,8 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
         record_delivery(emitted, root, session_id)
     if session_id:
         from .skill_workflow import record_task_candidates
-        record_task_candidates(root, session_id, json.loads(encoded)['company_agent_runtime'].get('taskSkills', {}))
+        record_task_candidates(root, session_id, json.loads(encoded)['company_agent_runtime'].get('taskSkills', {}),
+                               intent=intent if prompt and not source else None)
     return encoded
 
 

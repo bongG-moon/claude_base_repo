@@ -1,4 +1,4 @@
-"""Real Claude host -> local scripted API -> native Skill load.
+"""Real Claude host -> first-request Skill body -> scripted native Skill load.
 
 No external model, real document, installation or credentials. This verifies
 transport and load receipts, NOT a model's autonomous choice. Uses a disposable
@@ -43,8 +43,9 @@ def run(claude: Path, model: str) -> dict:
             tools = [t['name'] for t in data.get('tools', [])]
             if tools:
                 observations.append({'tools': tools, 'hasTaskCandidates': '"taskSkills"' in text,
-                                     'briefBeforeRoute': 0 <= text.find('[업무 시작: 스킬 선택 먼저]') < text.find('"company_agent_route"'),
+                                     'briefBeforeRoute': 0 <= text.find('[업무 시작: 관련 스킬 우선]') < text.find('"company_agent_route"'),
                                      'hasOfficeCandidate': 'company-agent:office-reader' in text,
+                                     'hasProvidedBody': '[선택된 스킬 본문 — 먼저 이 절차를 적용]' in text and 'Presentations.Open' in text,
                                      'hasLoadedBody': 'Base directory for this skill:' in text and 'business office-read' in text})
             invoke = bool(tools) and not any(b.get('type') == 'tool_result' for b in blocks)
             content = ({'type': 'tool_use', 'id': 'toolu_transport_probe', 'name': 'Skill', 'input': {}}
@@ -111,6 +112,7 @@ def run(claude: Path, model: str) -> dict:
             checks = {'nativeRegistered': 'company-agent:office-reader' in init.get('skills', []),
                       'briefBeforeRouting': bool(observations) and observations[0]['briefBeforeRoute'],
                       'candidateDelivered': bool(observations) and observations[0]['hasTaskCandidates'],
+                      'bodyReachedFirstRequest': bool(observations) and observations[0]['hasProvidedBody'],
                       'nativeBodyReachedNextRequest': any(o['hasLoadedBody'] for o in observations),
                       'observedSkillLoad': receipt.get('tool') == 'Skill' and receipt.get('name') == 'office-reader',
                       'hooksProduced': all(diagnostics.get(e, {}).get('status') == 'output-produced' for e in ('SessionStart', 'UserPromptSubmit')),

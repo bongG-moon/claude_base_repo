@@ -133,7 +133,8 @@ def main() -> int:
                 target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), preparation['hookSpecificOutput']['additionalContext']]))
         # ASCII-safe JSON round-trips Korean even through a legacy Windows pipe.
         record_hook(user_state_root(), session_id, event, 'output-produced',
-                    int((time.monotonic() - started) * 1000), runtime_text=runtime_text)
+                    int((time.monotonic() - started) * 1000), runtime_text=runtime_text,
+                    output_chars=len(result.get('hookSpecificOutput', {}).get('additionalContext', '')))
         print(json.dumps(result, ensure_ascii=True))
         return 0
     except Exception as exc:

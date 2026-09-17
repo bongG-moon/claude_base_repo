@@ -1,7 +1,8 @@
 """Skill discovery receipts, not an authorization or semantic classifier.
 
-Only observed successful reads count. Persist hashes/IDs, never task or Skill
-content. A new prompt needs a choice, not another scan/read of unchanged files.
+Only observed successful reads create read receipts; Hook body delivery is
+tracked separately. Persist hashes/IDs, never task or Skill content. A new
+prompt needs a relevant choice, not another scan/read of unchanged files.
 No Stop hook, permission allow, model call, or background watcher is used here.
 """
 from __future__ import annotations
@@ -57,9 +58,11 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
             # unchanged bodies already exposed in this same conversation.
             cache = old.get('readSkills', {})
             route['readSkills'] = cache if old.get('project') == identity['project'] and isinstance(cache, dict) else {}
+            provided = old.get('providedSkills', {})
+            route['providedSkills'] = provided if old.get('project') == identity['project'] and isinstance(provided, dict) else {}
         turn = state.get("turnId", "")
         if route.get("turn") != turn or compact:
-            route.update(turn=turn, selected=None, fallback=None, turnChoices={}, taskCandidates=[])
+            route.update(turn=turn, selected=None, fallback=None, turnChoices={}, taskCandidates=[], executionPlan={})
             route['loadObservation'] = {'status': 'not-observed', 'turn': turn}
         if prompt:
             # Exact native slash invocations only, not a general opt-out guess.
@@ -218,13 +221,15 @@ def observe(root: Path, project: Path, payload: dict) -> None:
         atomic_write_json(path, state)
 
 
-def record_task_candidates(root: Path, session_id: str, hints: dict) -> None:
+def record_task_candidates(root: Path, session_id: str, hints: dict, *, intent: dict | None = None) -> None:
     """Only IDs from the emitted shortlist; never retain request or body text."""
     with _locked_session(session_id, root) as (state, path):
         route = state.get('skillWorkflow')
         if not isinstance(route, dict) or route.get('status') == 'unavailable':
             return
         route['taskCandidates'] = [c['id'] for g in hints.get('groups', []) for c in g['candidates']]
+        if intent is not None and route.get('turn') == state.get('turnId'):
+            route['skillIntent'] = intent  # Finite labels only; share this write.
         atomic_write_json(path, state)
 
 
@@ -307,6 +312,10 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
     route = state.get("skillWorkflow")
     if not route or _stale_native_prompt(payload, state):
         return {}  # older clients/standalone hooks retain their existing policy
+    plan = route.get('executionPlan', {})
+    if (route.get('turn') == state.get('turnId') and isinstance(plan, dict)
+            and plan.get('mode') == 'general'):
+        return {}  # No mandatory Skill/selection receipt for a general task.
     tool = payload.get("tool_name", "")
     if tool in {"Bash", "PowerShell"}:
         from .execution_contract import _trusted_arguments, _skill_lookup, classify_command, _words

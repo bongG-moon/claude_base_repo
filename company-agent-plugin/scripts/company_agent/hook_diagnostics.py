@@ -14,7 +14,7 @@ from .state import _locked_session
 
 
 def record_hook(root: Path, session_id: str, event: str, status: str, elapsed_ms: int,
-                *, runtime_text: str = '', error_type: str = '') -> None:
+                *, runtime_text: str = '', error_type: str = '', output_chars: int | None = None) -> None:
     if not session_id or event not in {'SessionStart', 'UserPromptSubmit'}:
         return
     if status not in {'started', 'output-produced', 'failed'}:
@@ -24,7 +24,7 @@ def record_hook(root: Path, session_id: str, event: str, status: str, elapsed_ms
         index = runtime.get('skillIndex', {})
         evidence = {'status': status, 'elapsedMs': max(0, int(elapsed_ms)),
                     'hostReceipt': 'not-observable', 'modelApplied': 'not-observable',
-                    'contextChars': len(runtime_text)}
+                    'contextChars': max(0, output_chars) if type(output_chars) is int else len(runtime_text)}
         revision = index.get('revision', '')
         if isinstance(revision, str) and re.fullmatch(r'[a-f0-9]{64}', revision):
             evidence['catalogRevision'] = revision

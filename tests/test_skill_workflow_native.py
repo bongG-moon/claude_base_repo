@@ -34,17 +34,21 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
             result = self.hook('UserPromptSubmit', prompt='@테스트자료.pptx 이 자료 내용 확인해서 정리해줄 수 있을까?')
             runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
             self.assertEqual('reuse', runtime['skillIndex']['mode'])
-            self.assertIn('office-reader', [g['name'] for g in self.brief_groups(result)])
-            self.assertIn('한국어로 물으세요', result['hookSpecificOutput']['additionalContext'])
+            self.assertEqual('office-reader', runtime['skillExecution']['name'])
+            self.assertEqual('provided', runtime['skillExecution']['mode'])
+            self.assertIn('Presentations.Open', result['hookSpecificOutput']['additionalContext'])
+            self.assertIn('한국어로 선택받고', result['hookSpecificOutput']['additionalContext'])
             self.assertIn('UTF-8', runtime['instructions'])
             self.assertFalse(runtime['skillWorkflow']['indexRead'])
             self.assertTrue(runtime['skillWorkflow']['indexDelivered'])
-            self.assertEqual('choose-skill', runtime['skillWorkflow']['nextAction'])
+            self.assertEqual('apply-selected-skill', runtime['skillWorkflow']['nextAction'])
+            diag = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))['hookDiagnostics']
+            self.assertEqual(len(result['hookSpecificOutput']['additionalContext']), diag['UserPromptSubmit']['contextChars'])
             advice = self.hook('PreToolUse', tool_name='Bash', tool_input={'command':'pwd && ls -la test.pptx'})
             self.assertNotIn('permissionDecision', advice.get('hookSpecificOutput', {}))
             self.assertNotIn('먼저 스킬 목록을 Read', json.dumps(advice, ensure_ascii=False))
-            # Selection is still the model's job. This simulates the actual
-            # chosen body Read, not an assertion that a live model chose it.
+            # A delivery is not native Read evidence or model adherence.
+            # This separately simulates a genuine body Read receipt.
             self.read(self.plugin / 'skills/office-reader/SKILL.md')
             self.assertEqual({}, self.hook('Stop'))
             compacted = self.hook('SessionStart', source='compact')
@@ -157,9 +161,8 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         wire = json.loads(result.stdout.decode('ascii'))
         ctx = json.loads(wire['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
         self.assertEqual(str(self.project), ctx['project'])
-        self.assertIn('office-reader', [g['name'] for g in self.brief_groups(json.loads(result.stdout))])
-        self.assertIn('기존 PPT', next(c['purpose'] for g in self.brief_groups(json.loads(result.stdout)) if g['name'] == 'office-reader'
-                                     for c in g['candidates']))
+        self.assertEqual('office-reader', ctx['skillExecution']['name'])
+        self.assertIn('한국어', ctx['instructions'])
 
     def test_first_prompt_selection_execution_and_silent_list_flow(self):
         self.hook("SessionStart", source="startup")
@@ -170,8 +173,8 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertTrue(runtime["skillWorkflow"]["turn"])
         execution = {"tool_name": "Bash", "tool_input": {"command": "python invented_reader.py"}}
         first = self.hook("PreToolUse", **execution)
-        self.assertIn('additionalContext', first['hookSpecificOutput'])
-        self.assertNotIn('permissionDecision', first['hookSpecificOutput'])
+        self.assertEqual('provided', runtime['skillExecution']['mode'])
+        self.assertEqual({}, first)  # Body is already provided; no duplicate reminder.
         self.assertEqual({}, self.hook('PreToolUse', **execution))
         # Even before catalogue receipt, advisory discovery cannot bypass DB policy.
         denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query':'DELETE FROM employees'})

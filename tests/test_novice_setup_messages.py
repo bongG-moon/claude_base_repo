@@ -49,6 +49,16 @@ class NoviceSetupMessagesTests(unittest.TestCase):
             self.assertNotIn('CategoryInfo', result.stdout + result.stderr)
             self.assertEqual([], list(Path(folder).iterdir()))
 
+    def test_nonfriendly_entry_preserves_original_failure(self):
+        path = str(ROOT / 'deploy/Setup-CompanyAgent.ps1').replace("'", "''")
+        result = self.invoke(
+            f"try {{ & '{path}' -NonInteractive -SkipAdminCheck; exit 9 }} "
+            "catch { [Console]::WriteLine($_.Exception.Message); exit 7 }"
+        )
+        self.assertEqual(7, result.returncode, result.stdout + result.stderr)
+        self.assertIn('Choose the installation scope', result.stdout)
+        self.assertNotIn('ScriptHalted', result.stdout + result.stderr)
+
     def test_launcher_ascii_and_ps1_unicode_contract(self):
         cmd = (ROOT / 'deploy/Install-CompanyAgent.cmd').read_bytes().decode('ascii')
         self.assertIn('-FriendlyOutput', cmd)

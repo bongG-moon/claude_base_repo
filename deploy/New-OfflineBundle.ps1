@@ -280,7 +280,7 @@ try {
     foreach ($docName in @('UPDATE_1.4.8.md','HTML_REFERENCE_STYLES_2026-09-16.md','UPDATE_1.4.7.md','SKILL_DISCOVERY_VALIDATION_2026-09-16.md','UPDATE_1.4.0.md','VALIDATION_1.4.0.md','UPDATE_1.4.1.md','VALIDATION_1.4.1.md','UPDATE_1.4.2.md','UPDATE_1.4.3.md','UPDATE_1.4.4.md','UPDATE_1.4.5.md','UPDATE_1.4.6.md','REPORT_WAIT_AND_WHITE_GLASS_2026-09-15.md','PPT_DESIGN_APPROVAL_2026-09-15.md','HTML_AND_SKILL_PREPARATION_FIX_2026-09-15.md','HTML_THEME_REVIEW_2026-09-15.md','SKILL_ROUTING_VALIDATION_2026-09-15.md','OFFICE_READ_TROUBLESHOOTING.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
-    foreach ($docName in @('UPDATE_1.4.9.md', 'UPDATE_1.4.10.md', 'UPDATE_1.4.11.md', 'SKILL_SELECTION_ENCODING_VALIDATION_2026-09-16.md', 'SKILL_AUTO_SELECTION_FIX_2026-09-16.md', 'LEAN_SKILL_ROUTING_2026-09-16.md')) {
+    foreach ($docName in @('UPDATE_1.4.9.md', 'UPDATE_1.4.10.md', 'UPDATE_1.4.11.md', 'UPDATE_1.4.12.md', 'SKILL_FIRST_EXECUTION_2026-09-17.md', 'SKILL_SELECTION_ENCODING_VALIDATION_2026-09-16.md', 'SKILL_AUTO_SELECTION_FIX_2026-09-16.md', 'LEAN_SKILL_ROUTING_2026-09-16.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force

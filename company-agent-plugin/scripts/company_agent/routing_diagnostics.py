@@ -12,6 +12,7 @@ PLUGIN_ID = 'company-agent@company-agent-local'
 LOAD_LABELS = {
     'not-observed': '이번 요청에서 본문 로드 이벤트를 관찰하지 못함',
     'loaded': '본문 로드 확인', 'tool-failed': '도구 실패',
+    'body-provided': '선택한 본문을 Hook 안내에 포함(모델 적용·Skill 호출 여부는 별도)',
     'catalog-unavailable': '목록 기록 확인 실패', 'read-path-unrecognized': '읽기 경로 형식 확인 필요',
     'skill-path-unmatched': '읽은 스킬 경로가 목록과 다름',
     'response-unrecognized': 'Skill 응답 형식 확인 필요',

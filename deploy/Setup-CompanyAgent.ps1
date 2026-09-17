@@ -1039,7 +1039,9 @@ function Write-SetupFriendlyResult {
 if ($FunctionsOnly) { return }
 
 trap {
-    if (-not $FriendlyOutput) { throw }
+    # A bare throw in a trap produces ScriptHalted in Windows PowerShell 5.1,
+    # hiding the original failure from automation and update diagnostics.
+    if (-not $FriendlyOutput) { throw $_ }
     Write-Host ''
     Write-Host (Get-SetupFriendlyFailure -Message $_.Exception.Message) -ForegroundColor Red
     $errorFile = [IO.Path]::GetFileName([string]$_.InvocationInfo.ScriptName)

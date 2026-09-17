@@ -62,19 +62,20 @@ class LeanRoutingTests(unittest.TestCase):
         ctx = self.f.context('PPT 읽고 요약해줘')
         self.assertEqual('reuse', ctx['skillIndex']['mode'])
         result = task_prompt_context('{"company_agent_route":{}}', json.dumps({'company_agent_runtime': ctx}, ensure_ascii=False))
-        brief = result.split('\n{"company_agent_route"')[0]
+        brief = result.split('\n[선택된 스킬 본문')[0]
         self.assertIn('company-agent:office-reader', brief)
-        self.assertIn(str(discovery.PLUGIN / 'skills/office-reader/SKILL.md').replace('\\', '\\\\'), brief)
         tail = json.loads(result.splitlines()[-1])['company_agent_runtime']
+        self.assertEqual(discovery.PLUGIN / 'skills/office-reader/SKILL.md', Path(tail['skillExecution']['path']))
         self.assertNotIn('groups', tail['taskSkills'])
         self.assertNotIn(TASK_SKILL_RULE, tail['instructions'])
         self.assertLessEqual(len(brief), MAX_SKILL_BRIEF_CHARS)
-        self.assertNotIn('Presentations.Open', result)
+        self.assertIn('Presentations.Open', result)
+        self.assertEqual('provided', tail['skillExecution']['mode'])
         from company_agent.native_runtime import worker_runtime_input
         worker = worker_runtime_input(discovery.PLUGIN, self.f.project, {'session_id': self.f.sid,
             'tool_input': {'subagent_type': 'company-agent:medium-worker', 'prompt': 'PPT 읽기'}})
         worker_text = worker['hookSpecificOutput']['updatedInput']['prompt']
-        self.assertIn('skillCatalog.path', worker_text)
+        self.assertIn('selectedSkill', worker_text)
         self.assertNotIn('"groups":', worker_text)
 
     def test_large_conflict_requires_catalogue_not_partial_choice(self):
