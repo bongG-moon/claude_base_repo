@@ -421,23 +421,22 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         self.assertFalse((self.root / "wrong-state").exists())
 
     def test_office_progress_before_confirmation_keeps_stdout_json(self):
-        # The isolated helper only reports a synthetic window and cancels. No
-        # user click is synthesized and no Office application is ever opened.
+        # The old popup must never launch. This isolated sentinel fails loudly
+        # if invoked; no user click or real Office application is involved.
         atomic_write_text(self.plugin / 'scripts/Confirm-BusinessAction.ps1',
-                          "[Console]::In.ReadToEnd() | Out-Null\n"
-                          "[Console]::Error.WriteLine('CA_OFFICE_STAGE:confirmation_wait')\n"
-                          "[Console]::Out.WriteLine('{\"approved\":false}')\n")
+                          "throw 'Legacy Office popup must not run'\n")
         source = self.project / '한글 fixture.pptx'
         source.write_bytes(b'not a real document; must not open')
-        result = self.run_wrapper(['-Mode', 'Cli', 'business', 'office-read', '--file', str(source)])
+        result = self.run_wrapper(['-Mode', 'Cli', 'business', 'office-read', '--file', str(source), '--session', 'conversation-read'])
         self.assertTrue(result.stdout, result.stderr)
         payload = json.loads(result.stdout)
-        self.assertEqual('cancelled', payload['status'], result.stderr)
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual('input_required', payload['status'], result.stderr)
         self.assertIn('Python 준비 완료', result.stderr)
-        self.assertIn('확인 창 여는 중', result.stderr)
-        self.assertIn('확인 창 표시됨', result.stderr)
+        self.assertIn('Claude 대화의 읽기 승인 확인', result.stderr)
+        self.assertNotIn('확인 창', result.stderr)
         self.assertNotIn(str(source), result.stderr)
-        self.assertEqual('confirmation_wait', payload['diagnostics']['progress']['lastStage'])
+        self.assertEqual('conversation_consent', payload['diagnostics']['progress']['lastStage'])
         self.assertIn('bootstrap', payload['diagnostics']['progress']['stageMs'])
         self.assertEqual(b'not a real document; must not open', source.read_bytes())
 

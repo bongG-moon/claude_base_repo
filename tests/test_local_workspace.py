@@ -12,6 +12,7 @@ import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+from urllib.parse import quote
 import uuid
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -244,13 +245,13 @@ class ServerTests(unittest.TestCase):
             self.request("/../server.py", token=False)
 
     def test_manual_routes_are_fixed_public_static_documents(self):
-        for route in ('handbook','onboarding','cua','Company-Agent-Handbook.html','Company-Agent-Onboarding.html','Company-Agent-Cua-Pilot.html'):
-            with self.request('/manual/'+route,token=False) as response:
+        for route in ('guide','handbook','onboarding','cua','usage','commands','Company-Agent-Guide.html','Company-Agent-Handbook.html','Company-Agent-Onboarding.html','Company-Agent-Cua-Pilot.html','Company-Agent-사용자-안내서.html','Claude-Code-필수-사용법.html'):
+            with self.request('/manual/'+quote(route),token=False) as response:
                 body=response.read().decode('utf-8')
                 self.assertIn('<html lang="ko">',body)
                 self.assertIn("script-src 'none'",body)
                 self.assertNotIn(self.app.token,body)
-        for route in ('../server.py','COMPANY_AGENT_HANDBOOK.md','../../.claude.json'):
+        for route in ('../server.py','COMPANY_AGENT_HANDBOOK.md','../../.claude.json','%2e%2e%2fserver.py'):
             with self.assertRaises(HTTPError) as caught:
                 self.request('/manual/'+route,token=False)
             self.assertEqual(404,caught.exception.code)
@@ -274,7 +275,7 @@ class ServerTests(unittest.TestCase):
     def test_bootstrap_identifies_shared_cli_without_claiming_login_success(self):
         with self.request("/api/bootstrap") as response:
             value = json.load(response)
-        self.assertEqual(value["workspaceVersion"], "0.4")
+        self.assertEqual(value["workspaceVersion"], "0.5")
         self.assertEqual(value["appRoot"], str(ROOT))
         self.assertEqual(value["runtime"]["authentication"], "shared-with-cli")
         self.assertNotIn("loggedIn", value["runtime"])

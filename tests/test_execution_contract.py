@@ -146,6 +146,7 @@ class ExecutionContractTests(unittest.TestCase):
     def test_ppt_helpers_and_diagnostic_do_not_widen_permissions(self):
         for args in ('business runtime-check',
                      f'business ppt-choices --spec "{self.root / "s.json"}"',
+                     f'business ppt-choices --spec "{self.root / "s.json"}" --template "{self.root / "saved.html"}"',
                      f'business ppt-analyze --template "{self.root / "ref.pptx"}"'):
             command=f'{self.cli} {args}'
             self.assertEqual('read_only',classify_command(command))
@@ -153,6 +154,37 @@ class ExecutionContractTests(unittest.TestCase):
         command=f'{self.cli} business ppt-preview --template "{self.root / "ref.pptx"}" --output "{self.root / "preview"}"'
         self.assertEqual('unknown',classify_command(command))
         self.assertIsNone(self.permission(command))
+
+    def test_ppt_html_draft_and_template_exports_are_not_permission_exempt(self):
+        for action in ('ppt-design-preview','ppt-template'):
+            command=f'{self.cli} business {action} --spec "{self.root / "job.json"}" --output "{self.root / "out.html"}"'
+            self.assertEqual('unknown',classify_command(command))
+            self.assertIsNone(self.permission(command))
+
+    def test_artifact_workspace_is_bookkeeping_not_permission_and_preserves_older_debt(self):
+        from company_agent.execution_contract import internal_plan_command
+        from company_agent.state import load_session
+        command = f'{self.cli} business artifact-start --output "{self.root / "final.pptx"}" --state-root "{self.root}"'
+        self.assertTrue(internal_plan_command(command,self.root))
+        self.assertIsNone(self.permission(command))
+        for extra in (' --output other.html', '; echo changed', f' --state-root "{self.root / "other"}"'):
+            self.assertFalse(internal_plan_command(command+extra,self.root))
+        begin_turn('artifact-start','MEDIUM',False,[],self.root)
+        event = {'session_id':'artifact-start','hook_event_name':'PostToolUse',
+                 'tool_name':'Bash','tool_input':{'command':command}}
+        record_activity(event,self.root)
+        self.assertEqual(0,load_session('artifact-start',self.root)['mutationCount'])
+        self.assertEqual({},stop_decision({'session_id':'artifact-start'},self.root))
+        record_activity({'session_id':'artifact-start','tool_name':'Write',
+                         'tool_input':{'file_path':str(self.root/'existing-work.md')}},self.root)
+        record_activity(event,self.root)
+        self.assertEqual(1,load_session('artifact-start',self.root)['mutationCount'])
+        self.assertEqual('block',stop_decision({'session_id':'artifact-start'},self.root)['decision'])
+        for action in ('html','ppt','ppt-design-preview','ppt-template','artifact-publish'):
+            cmd = f'{self.cli} business {action} --work "{self.root / "work.json"}"'
+            self.assertFalse(internal_plan_command(cmd,self.root))
+            self.assertEqual('unknown',classify_command(cmd))
+            self.assertIsNone(self.permission(cmd))
 
     def test_permission_only_exact_metadata_and_current_root(self) -> None:
         for operation in ("doctor", "mail-capabilities"):

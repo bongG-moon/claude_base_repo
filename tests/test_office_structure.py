@@ -106,7 +106,7 @@ class StructureTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as folder:
             path=Path(folder)/'test.pptx'; path.write_bytes(b'synthetic')
             output={'ok':True,'items':[],'truncated':False,'coverage':{'total':1}}
-            with patch.object(office_reader,'confirm_action',return_value=True),patch.object(office_reader,'_invoke',return_value=output):
+            with patch.object(office_reader,'authorize',return_value=None),patch.object(office_reader,'_invoke',return_value=output):
                 result=office_reader.read_office({'file':str(path),'expectedCount':4})
             self.assertEqual('partial',result['status'])
             self.assertTrue(result['diagnostics']['countMismatch'])

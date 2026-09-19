@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param([string]$OutputDirectory)
 $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path $PSScriptRoot -Parent
@@ -17,6 +17,8 @@ $files = @(
     'docs\LOCAL_WORKSPACE.md',
     'docs\COMPANY_AGENT_HANDBOOK.md', 'docs\ONBOARDING_COURSE.md', 'docs\CUA_DRIVER_PILOT.md',
     'docs\Company-Agent-Handbook.html', 'docs\Company-Agent-Onboarding.html', 'docs\Company-Agent-Cua-Pilot.html',
+    'docs\Company-Agent-Guide.html', 'docs\Company-Agent-사용자-안내서.html', 'docs\Claude-Code-필수-사용법.html',
+    'docs\USER_GUIDE.md', 'docs\CLAUDE_CODE_COMMANDS.md', 'docs\UPDATE_1.4.17.md', 'docs\VALIDATION_UNIFIED_GUIDE_2026-09-19.md',
     'docs\VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md',
     'docs\VALIDATION_AUDIT_FIXES_2026-09-19.md',
     'docs\VALIDATION_CUA_MANUALS_2026-09-19.md',
@@ -32,7 +34,7 @@ foreach ($relative in $files) {
     New-Item -ItemType Directory -Path (Split-Path (Join-Path $payload $relative) -Parent) -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repoRoot $relative) -Destination (Join-Path $payload $relative)
 }
-$zip = Join-Path $outputRoot ('company-workspace-preview-0.4-' + $stamp + '.zip')
+$zip = Join-Path $outputRoot ('company-workspace-preview-0.5-' + $stamp + '.zip')
 if (Test-Path -LiteralPath $zip) { throw 'Output already exists; refusing to overwrite.' }
 Compress-Archive -LiteralPath $payload -DestinationPath $zip -CompressionLevel Optimal
 Get-FileHash -LiteralPath $zip -Algorithm SHA256 | Select-Object Path, Hash

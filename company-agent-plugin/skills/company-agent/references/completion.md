@@ -72,6 +72,11 @@ Learning cannot clear verification failures or repeat external business actions.
 
 ## Return to the user's requested result
 
+HTML/PPT internal candidates are not final delivery. After their checks, use the
+same artifact work's publish command once. Return only its deliverables, not the
+job, previous drafts or QA images. A failed latest correction is not permission
+to publish an earlier candidate. Do not restart artifact-start on a retry.
+
 Do not narrate check markers, checkpoint/review calls, pass/fail labels, accepted
 reviews, no-observation receipts, or this procedure in progress/final text.
 After the bounded internal work, deliver the original requested answer/file.

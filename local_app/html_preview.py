@@ -76,7 +76,8 @@ class StaticPreview(HTMLParser):
 def render(text: str) -> str | None:
     report = 'class="report-main"' in text and re.search(r'<body\b[^>]*\bdata-style=', text)
     picker = 'id="additional-designs"' in text and 'id="choice-result"' in text
-    if not (report or picker):
+    ppt = 'data-ppt-draft="1"' in text and 'class="ppt-main"' in text
+    if not (report or picker or ppt):
         return None
     parser = StaticPreview()
     parser.feed(text)

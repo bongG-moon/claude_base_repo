@@ -41,8 +41,18 @@ def _spec(path: str) -> dict[str, Any]:
 def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     action = args.business_action
     state = safe_path(args.state_root or user_state_root())
+    if action in {'artifact-start','artifact-publish'}:
+        from . import artifact_delivery
+        return artifact_delivery.start(state,args.output) if action == 'artifact-start' else artifact_delivery.publish(state,args.work)
+    if action in {"html", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images"} and getattr(args,'work',None):
+        from .artifact_delivery import build
+        return build(state,args.work,action,spec_path=args.spec,
+                     template=Path(args.template) if getattr(args,'template',None) else None)
     if action == "doctor":
         return doctor()
+    if action == 'ppt-capabilities':
+        from .business_artifacts import capabilities
+        return capabilities()['ppt']
     if action == 'runtime-check':
         from .runtime_diagnostics import inspect_runtime
         return inspect_runtime()
@@ -93,14 +103,18 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action == 'office-read':
         from .office_reader import read_office
         from .office_progress import cli_progress
-        return read_office(spec, progress=cli_progress())
+        return read_office(spec, progress=cli_progress(), state_root=state,
+                           session_id=getattr(args, 'session', '') or '')
     if action == 'ppt-choices':
         from .ppt_workflow import choices
         return choices(spec, args.template)
     if action == 'html-choices':
         from .business_artifacts import html_choices
         return html_choices(spec)
-    if action in {"html", "ppt", "ppt-design-preview"}:
+    if action == 'ppt-fit-images':
+        from .ppt_image_edit import resize
+        return resize(spec,safe_path(args.output))
+    if action in {"html", "ppt", "ppt-design-preview", "ppt-template"}:
         from .business_artifacts import create_html, create_ppt
         output = safe_path(args.output)
         if output.exists():
@@ -108,6 +122,9 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
         if action == "html":
             return create_html(spec, output, require_choices=True)
         template = safe_path(args.template, exists=True) if args.template else None
+        if action == 'ppt-template':
+            from .ppt_html import save_template
+            return save_template(spec, output, template)
         return create_ppt(spec, output, template, require_choices=True, preview_only=action=='ppt-design-preview')
     if action == "mail-search":
         from .business_mail import search_mail
@@ -143,8 +160,8 @@ def run(args: argparse.Namespace) -> int:
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
-    for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview",
-                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "office-read"):
+    for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview", "ppt-template",
+                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "office-read", "artifact-start", "artifact-publish", "ppt-fit-images", "ppt-capabilities"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
         if action in {'html-designs', 'html-template'}:
@@ -159,6 +176,7 @@ def register(subparsers: Any) -> None:
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
         if action == 'office-read':
+            command.add_argument('--session', help='현재 Claude 대화의 company_agent_session_id')
             source = command.add_mutually_exclusive_group(required=True)
             source.add_argument('--spec')
             source.add_argument('--file')
@@ -166,10 +184,16 @@ def register(subparsers: Any) -> None:
                 command.add_argument('--'+flag, type=int)
             command.add_argument('--sheet')
             command.add_argument('--range')
-        if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-design-preview", "mail-search", "mail-read"}:
+        if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images", "mail-search", "mail-read"}:
             command.add_argument("--spec", required=True)
-        if action in {"html", "ppt", "ppt-preview", "ppt-design-preview"}:
+        if action in {"html", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images"}:
+            destination = command.add_mutually_exclusive_group(required=True)
+            destination.add_argument('--work',help='artifact-start에서 반환된 workFile. 중간 결과는 작업 공간에만 저장합니다.')
+            destination.add_argument('--output',help='기존 직접 저장 호환 모드. 일반 스킬 작업은 --work를 사용합니다.')
+        if action in {"ppt-preview", "artifact-start"}:
             command.add_argument("--output", required=True)
-        if action in {"ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview"}:
+        if action == 'artifact-publish':
+            command.add_argument('--work',required=True)
+        if action in {"ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview", "ppt-template"}:
             command.add_argument("--template", required=action in {'ppt-inspect','ppt-analyze','ppt-preview'})
         command.set_defaults(func=run)

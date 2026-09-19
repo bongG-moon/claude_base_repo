@@ -15,6 +15,7 @@ import time
 LABELS = {
     'runtime': '설치·명령 준비 중',
     'request': '읽기 요청 확인 중',
+    'conversation_consent': 'Claude 대화의 읽기 승인 확인 중',
     'confirmation_start': '확인 창 여는 중 (아직 승인 대기 전)',
     'confirmation_wait': '확인 창 표시됨 — 승인/취소를 기다립니다',
     'source_check': '원본 상태 확인 중',

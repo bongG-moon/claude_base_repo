@@ -6,7 +6,7 @@ description: company_agent_route가 있는 업무를 조율합니다. SMALL·MED
 
 사용자에게 회사 공통 / 개인 전체 / 이 프로젝트를 먼저 안내하고, 각 범위의 기억·지식 / 업무 구성(스킬·도구·규칙)을 구분합니다. 회사는 배포 주체이며 나머지는 적용 범위입니다. 새 기억·지식·스킬·도구의 저장 범위가 미지정이면 개인 전체 또는 이 프로젝트를 한 번 질문하고 답변을 기다립니다. 회사 공통은 직접 저장 선택지가 아닙니다. 명시한 범위는 다시 묻지 않고 기존 항목은 원래 범위에서 수정합니다. 전역 설치를 공통 소유로, 폴더 파일을 개인 소유로 추정하지 마세요. 기존 Memory/Knowledge/Skills·모델/MCP는 이동·병합·초기화하지 않습니다. 자동 학습은 기존 설치 저장소에만 적용하며 명시적 저장 선택으로 범위를 바꾸지 않습니다.
 `companyPolicy`는 설치된 회사 기준입니다. truncated이거나 선택 업무가 forWorkflows에 없으면 path의 `workStandards`를 확인하고, unavailable을 정책 없음으로 해석하지 마세요. 지식·개인 자료는 회사 정책으로 자동 승격하지 않습니다.
-초보자가 시작 방법을 물으면 `../../resources/manuals/Company-Agent-Onboarding.html`의 단계별 코스 또는 `../../resources/first-work.html`의 예문을 안내합니다. 선택 안내서이며 매 업무의 필수 단계가 아닙니다. 일반 업무에 전체 안내서를 미리 읽거나 주입하지 않습니다.
+초보자가 시작 방법을 물으면 `../../resources/manuals/Company-Agent-Guide.html`의 준비물 없는 단계별 코스 또는 `../../resources/first-work.html`의 예문을 안내합니다. 통합본에 사용법·스킬/후크·CLI 명령 설명도 있습니다. 선택 안내서이며 매 업무의 필수 단계가 아닙니다. 일반 업무에 전체 안내서를 미리 읽거나 주입하지 않습니다.
 
 # Company Agent orchestration contract
 
@@ -73,6 +73,8 @@ The main session keeps the model already configured in Claude Code. Worker front
 
 ## Execute and self-correct
 
+Keep drafts/QA internal. HTML/PPT uses `references/output-delivery.md`: same workFile across workers/retries, then publish only the checked final. Separate later requests and explicit multiple formats; preserve existing files. This is not a one-source-file limit for code projects.
+
 For work that changes files or other durable state, read `references/completion.md` before the final response; also use it for a short Stop reminder. Do not narrate internal check/learning receipts:
 
 1. Establish the requested outcome and the smallest relevant verification.
@@ -94,10 +96,8 @@ For work that changes files or other durable state, read `references/completion.
 
    Use the exact sanitized `company_agent_session_id` supplied by the route context. If it is absent, do not invent one; run the validation, report the evidence, and state that the Harness could not persist the verification marker.
 
-Read-only lookup has no change-verification obligation: never record fail merely
-because there is no code to test. `not_applicable` is available only when there
-are no recorded changes. Documents need artifact checks, file moves need receipt
-and path checks; neither requires an unrelated code test. `partial`/`unavailable`
+Read-only lookup needs no change verification; never fail for lack of code tests.
+`not_applicable` is only for no recorded changes. Documents need artifact checks; file moves need receipt/path checks, not code tests. `partial`/`unavailable`
 honestly record incomplete checks but do not clear pending business changes.
 If a required step is denied or awaiting approval, record `unavailable` (or
 `partial` for actual completed checks), keep its pending obligation, and return
@@ -148,7 +148,7 @@ Respect pause and user controls at `/company-agent:learning`.
 ## Interact with non-technical users
 
 - Default to Korean for questions, AskUserQuestion headers/labels/descriptions, recommendations, approval requests, progress, final answers and document prose. Relay this policy and any explicit language exception to every worker. English source material/tool output is not a language-change request. An English deliverable request changes only that deliverable, not the surrounding chat. Preserve exact filenames, paths, commands, code/API/JSON identifiers, model names and quotations; translate their explanations. Never require Skill, MCP, Git or CLI knowledge.
-- Ask only when a missing choice materially changes the result.
+- Ask only when a missing choice materially changes the result. Intermediate feedback/review prompts also stay in Korean; check question, header, option labels and descriptions before AskUserQuestion.
 - Offer at most three short, plain-language options and recommend one.
 - Lead with the result and expose implementation detail only when it helps the user act or verify.
 - For a completed task, show the requested result or artifact first and finish without inventing a next task. For a blocker, name only the missing decision or permitted next action. Keep partial results and real omissions visible; never guess an error's cause to make the answer shorter.
@@ -157,8 +157,8 @@ Respect pause and user controls at `/company-agent:learning`.
 - An individual command's denial does not establish the permission state of a
   different command or all of Bash. Never claim a factory was denied without an
   actual attempt/result. Name only the observed blocked step and missing approval.
-- Do not repeat conversational approval for bounded reads/diagnostics the user
-  already requested. Native/managed permissions still apply. For business doctor
+- Do not repeat conversational approval for bounded diagnostics. Office reading uses its reader-returned one-time AI-processing question in Claude, not a popup.
+  Native/managed permissions still apply. For business doctor
   and mail-capabilities use runtime metadataCommand with exact --state-root;
   only this narrow form can receive automatic native permission. Never broadly
   allow Bash/Python or ask the user to disable security to reduce prompts.

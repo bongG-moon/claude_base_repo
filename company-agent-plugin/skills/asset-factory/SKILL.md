@@ -7,6 +7,8 @@ description: 자연어 요청으로 개인 스킬·스크립트 도구·MCP를 �
 
 Turn a user's natural-language automation request into the smallest reusable asset that solves it.
 
+전사 표준 `tools.py` / `register_tools(FastMCP)` 형식이나 회사 플랫폼 제출용 MCP를 요청하면 `company-agent:platform-mcp-builder`를 먼저 적용합니다. 아래의 일반 개인용 stdio MCP 생성·활성화 절차와 다른 용도입니다. 표준이 지정되지 않은 일반 개인 자산은 이 스킬을 유지합니다.
+
 For Skill creation or repair, read `references/authoring.md` before drafting. For a requested interactive setup helper, also read `references/windows-setup.md`. These are supporting references, not additional Skills or workflows; other tasks do not load them.
 
 For each `company-agent` example, use the exact `company_agent_runtime.cliCommand` prefix from the current session and safely quote names and paths as arguments. Use its `stateRoot` and clearly identified absolute project path; do not assume Python or the CLI is on PATH. A request only to inspect, explain, or review permits read-only discovery, not asset creation, activation, or preference writes.

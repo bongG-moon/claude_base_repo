@@ -199,7 +199,7 @@ class Companion:
                     'checks': sorted(set(checks)), 'userReportedRepairs': repairs, 'time': time.time(),
                     'model': str(connection.get('model') or 'unavailable')[:160], 'demo': self.demo,
                     'source': 'user-confirmed', 'artifactPreviewObserved': bool(obs['previewed']),
-                    'reviewScope': item.get('reviewScope'), 'uiVersion': '0.4',
+                    'reviewScope': item.get('reviewScope'), 'uiVersion': '0.5',
                     'observedState': obs['terminal'], 'skillsObserved': sorted(obs['skills'])}
                 records = self.records(workspace)
                 records['outcomes'] = [x for x in records['outcomes'] if x['id'] != record['id']][-99:] + [record]

@@ -35,7 +35,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(?:Agent|Task|Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$",
+        "matcher": "^(?:AskUserQuestion|Agent|Task|Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$",
         "hooks": [
           {
             "type": "command",
@@ -52,7 +52,7 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "^(?:Read|Skill|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|TaskOutput|mcp__.*)$",
+        "matcher": "^(?:AskUserQuestion|Read|Skill|Write|Edit|MultiEdit|NotebookEdit|Bash|PowerShell|Agent|Task|TaskOutput|mcp__.*)$",
         "hooks": [
           {
             "type": "command",

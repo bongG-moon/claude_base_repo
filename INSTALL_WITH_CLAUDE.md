@@ -74,7 +74,7 @@ Company Agent ZIP을 로컬 PC의 폴더에 완전히 압축 해제한 뒤 이 �
    `status: installed`는 처음 설치, `updated`는 버전 변경, `reapplied`는 같은 버전 다시 적용 완료다.
    버전 변경이면 `previousCoreVersion`과 `coreVersion`으로 이전 버전 → 적용 버전을 설명한다.
    `Keep`으로 종료한 경우 설치되었다고 말하지 않는다. 재시작도 필요 없다.
-8. 실제 설치가 완료된 경우에만 `First-Work.html`의 **전체 온보딩 코스 따라 하기** 또는 설치 완료 화면에 표시된 `Company-Agent-Onboarding.html`을 안내한다. 처음에는 가상 자료 읽기 한 단계만 해도 된다. 안내서를 자동 실행하거나 읽기·제작·기억 저장 요청을 대신 보내지 않는다.
+8. 실제 설치가 완료된 경우에만 `First-Work.html`의 **통합 가이드 · 준비물 없이 시작하기** 또는 설치 완료 화면에 표시된 `Company-Agent-Guide.html`을 안내한다. 온보딩·사용법·명령어가 한 파일에 있으며 참고 파일 없이 가상 자료 생성부터 연습한다. 안내서를 자동 실행하거나 읽기·제작·기억 저장 요청을 대신 보내지 않는다.
    폴더별 별도 업무 구조가 필요한 경우에만 “이 프로젝트에 맞는 하네스를 만들어 줘” 또는 `/company-agent:project-harness`를 안내한다. 기본 사용을 위해 새 프로젝트 하네스를 또 만들 필요는 없다. Skill별·프로젝트별 선택은 `/company-agent:skills`에서 할 수 있다.
    `Keep`이면 이 안내 없이 종료한다.
 

@@ -59,9 +59,14 @@ Excel/CSV는 현재 하네스의 Python에 설치된 xlwings·pandas와 데스�
 
 ## 간단 실행과 범위 확인
 
-일반 읽기는 `cliCommand` 뒤에 `business office-read --file "절대경로"`를 붙입니다.
+일반 읽기는 `cliCommand` 뒤에 `business office-read --file "절대경로" --session "현재 company_agent_session_id" --state-root "stateRoot"`를 붙입니다.
 JSON 파일이나 doctor 선행 실행은 필요 없습니다. `--start 1 --end 4 --expected-count 4`
 처럼 요청 범위와 알고 있는 개수를 지정할 수 있습니다. spec과 직접 인자는 혼용하지 않습니다.
+첫 호출은 문서를 열지 않고 한국어 질문을 반환합니다. Claude 대화에서 파일·범위·AI 처리
+안내를 보여주고 승인/취소를 받습니다. 실제 사용자 답변을 후크가 확인한 뒤 같은 명령을
+한 번 실행합니다. 별도 Windows 확인 창이나 모델이 작성한 승인 값은 사용하지 않습니다.
+승인은 동일 세션·폴더·파일 상태·범위에만 적용되고 15분 후 만료됩니다. 범위 변경·후속
+읽기는 새 확인 대상입니다. 연결된 Claude 세션이 없는 직접 CLI는 승인 대기 안내만 반환합니다.
 coverage.end는 실제 방문한 마지막 단위이며 completeThrough는 완료된 마지막 단위입니다.
 전체 읽기일 때 nextStart로 이어 읽되 limitReached면 같은 범위를 반복하지 않습니다.
 개수 불일치는 partial이며 원인 미확인입니다. diagnostics의 원본 SHA256·실제 경로·

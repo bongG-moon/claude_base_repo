@@ -38,6 +38,24 @@ def prepare(spec, data):
         row['eyebrow'] = bind(_text(raw.get('eyebrow', ''), 70))
         row['takeaway'] = bind(_text(raw.get('takeaway', ''), 160))
         row['source'] = bind(_text(raw.get('source', ''), 180))
+        if 'elements' in raw:
+            if any(raw.get(k) for k in ('body','bullets','image','chart','table','kpis')):
+                raise DesignError('자유 배치 elements와 자동 본문 배치를 한 장에 섞지 마세요. 모든 내용을 elements에 담아 주세요.')
+            from copy import deepcopy
+            row['elements'] = deepcopy(raw['elements'])
+            if isinstance(row['elements'],list):
+                for e in row['elements']:
+                    if isinstance(e,dict) and e.get('kind')=='text' and isinstance(e.get('text'),str):
+                        e['text']=bind(e['text'])
+            from .ppt_scene import ink
+            row['background']=ink(raw.get('background','FFFFFF'),{})
+        if raw.get('imageLayout') == 'full-slide':
+            if any(raw.get(k) for k in ('body','bullets','chart','table','kpis')) or not row.get('image'):
+                raise DesignError('전체 화면 이미지는 image만 있는 장에서 사용합니다. 텍스트 편집 가능 슬라이드로 설명하지 마세요.')
+            row['imageLayout'] = 'full-slide'
+        row['imageFit'] = raw.get('imageFit','contain')
+        if row['imageFit'] not in ('contain','cover','stretch'):
+            raise DesignError('이미지 맞춤은 contain, cover, stretch입니다.')
         row['layout'] = raw.get('layout', 'auto')
         if row['layout'] not in ('auto', 'summary', 'evidence', 'comparison', 'actions'):
             raise DesignError("PPT 구성은 auto, summary, evidence, comparison, actions 중 선택해 주세요.")
@@ -108,6 +126,14 @@ def plan(data, width=960., height=540.):
     for number, row in enumerate(data['sections'], 1):
         elements = []
 
+        if 'elements' in row:
+            from .ppt_scene import elements as validate_elements
+            pages.append({'elements':validate_elements(row['elements'],width,height,data['presentationTheme']), 'background':row.get('background','FFFFFF')})
+            continue
+        if row.get('imageLayout') == 'full-slide':
+            pages.append({'elements':[dict(kind='image',x=0,y=0,w=width,h=height,fit=row['imageFit'])]})
+            continue
+
         def text(value, x, y, w, h, size=18, color='text', bold=False):
             if not value:
                 return
@@ -146,6 +172,8 @@ def plan(data, width=960., height=540.):
             text(prose, margin, top+10, usable, bottom-top-10, 21)
         for kind, (x, y, w, h) in zip(visuals, slots):
             element = dict(kind=kind, x=x, y=y, w=w, h=h)
+            if kind == 'image':
+                element['fit'] = row.get('imageFit','contain')
             if kind == 'table':
                 table = row['table']
                 all_rows = [table['headers'], *table['rows']]
@@ -179,31 +207,32 @@ def render_python(data, draft, template):
     from pptx import Presentation
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_LABEL_POSITION
-    from pptx.enum.text import MSO_ANCHOR
+    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
     from pptx.dml.color import RGBColor
-    from pptx.util import Inches, Pt
+    from pptx.util import Pt
     from pptx.oxml.xmlchemy import OxmlElement
     prs = Presentation(str(template)) if template else Presentation()
     if not template:
-        prs.slide_width, prs.slide_height = Inches(13.333333), Inches(7.5)
+        prs.slide_width, prs.slide_height = Pt(data['presentationPlan']['width']), Pt(data['presentationPlan']['height'])
     for relation in list(prs.slides._sldIdLst):
         prs.part.drop_rel(relation.rId)
         prs.slides._sldIdLst.remove(relation)
     design = data['presentationPlan']
     palette = design['theme']
     color = lambda name: RGBColor.from_string(palette.get(name, name))
-    native = {'text': 0, 'tables': 0, 'charts': 0, 'images': 0}
+    native = {'text': 0, 'tables': 0, 'charts': 0, 'images': 0, 'shapes':0}
     blank = min(prs.slide_layouts, key=lambda layout: len(layout.placeholders))
 
-    def typeface(font):
-        font.name = design['font']
+    def typeface(font, name=None):
+        name = name or design['font']
+        font.name = name
         # Latin name alone leaves Korean runs dependent on the template's EA font.
         for tag in ('a:ea', 'a:cs'):
             child = font._rPr.find('{http://schemas.openxmlformats.org/drawingml/2006/main}'+tag.split(':')[1])
             if child is None:
                 child = OxmlElement(tag)
                 font._rPr.append(child)
-            child.set('typeface', design['font'])
+            child.set('typeface', name)
         font._rPr.set('lang', 'ko-KR')
 
     def format_text(frame, size, ink='text', bold=False):
@@ -224,7 +253,7 @@ def render_python(data, draft, template):
         for shape in list(slide.placeholders):
             shape._element.getparent().remove(shape._element)
         slide.background.fill.solid()
-        slide.background.fill.fore_color.rgb = color('background')
+        slide.background.fill.fore_color.rgb = color(page.get('background','background'))
         for e in page['elements']:
             box = tuple(Pt(e[k]) for k in ('x', 'y', 'w', 'h'))
             kind = e['kind']
@@ -232,9 +261,26 @@ def render_python(data, draft, template):
                 shape = slide.shapes.add_textbox(*box)
                 shape.text_frame.text = e['text']
                 format_text(shape.text_frame, e['size'], e['color'], e['bold'])
+                if 'wrap' in e:
+                    frame=shape.text_frame
+                    frame.word_wrap=e['wrap']
+                    frame.margin_top=frame.margin_bottom=0
+                    for p in frame.paragraphs:
+                        p.alignment={'left':PP_ALIGN.LEFT,'center':PP_ALIGN.CENTER,'right':PP_ALIGN.RIGHT}[e.get('align','left')]
+                        p.line_spacing=e.get('lineSpacing',1.15)
+                        typeface(p.font,e.get('font'))
+                        for run in p.runs:
+                            typeface(run.font,e.get('font'))
+                            run.font.size=Pt(e['size'])
+                            run.font.italic=e.get('italic',False)
+                            run.font.underline=e.get('underline',False)
                 native['text'] += 1
+            elif kind == 'shape':
+                from .ppt_scene import add_shape
+                add_shape(slide,e,box)
+                native['shapes'] += 1
             elif kind == 'table':
-                content = row[kind]
+                content = e.get(kind,row.get(kind))
                 table = slide.shapes.add_table(len(content['rows'])+1, len(content['headers']), *box).table
                 for j, width in enumerate(e['columnWidths']):
                     table.columns[j].width = Pt(width)
@@ -246,11 +292,11 @@ def render_python(data, draft, template):
                         cell.fill.solid()
                         cell.fill.fore_color.rgb = color('title' if i == 0 else ('tint' if i % 2 else 'background'))
                         cell.vertical_anchor = MSO_ANCHOR.MIDDLE
-                        format_text(cell.text_frame, 16, 'background' if i == 0 else 'text', i == 0)
+                        format_text(cell.text_frame, e.get('size',16), 'background' if i == 0 else 'text', i == 0)
                         cell.margin_left = cell.margin_right = Pt(6)
                 native['tables'] += 1
             elif kind == 'chart':
-                content = row[kind]
+                content = e.get(kind,row.get(kind))
                 chart_data = CategoryChartData()
                 chart_data.categories = content['categories']
                 for s in content['series']:
@@ -298,12 +344,10 @@ def render_python(data, draft, template):
                         plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
                 native['charts'] += 1
             elif kind == 'image':
-                im = row[kind]
+                from .ppt_scene import fit_picture
+                im = e.get(kind,row.get(kind))
                 picture = slide.shapes.add_picture(BytesIO(base64.b64decode(im['data'])), box[0], box[1], height=box[3])
-                if picture.width > box[2]:
-                    ratio = box[2]/picture.width
-                    picture.width, picture.height = int(picture.width*ratio), int(picture.height*ratio)
-                picture.left += int((box[2]-picture.width)/2)
+                fit_picture(picture,box,e.get('fit','contain'))
                 native['images'] += 1
     prs.core_properties.title, prs.core_properties.subject = data['title'], data['subtitle']
     prs.save(str(draft))

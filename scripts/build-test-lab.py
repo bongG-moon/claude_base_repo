@@ -184,7 +184,7 @@ def build(destination: Path, bundle: Path) -> dict:
     operator = destination / "operator"
     operator.mkdir()
     docs = {"VALIDATION_CHAT_SET.md": "ORIGINAL_CHAT_SET.md", "Company-Agent-운영-검증-채팅.html": "ORIGINAL_CHAT_SET.html",
-            "VALIDATION_RESULTS_TEMPLATE.md": "BLANK_RESULTS.md", "Company-Agent-사용자-안내서.html": "USER_GUIDE.html",
+            "VALIDATION_RESULTS_TEMPLATE.md": "BLANK_RESULTS.md", "Company-Agent-Guide.html": "USER_GUIDE.html",
             f"UPDATE_{version}.md": "UPDATE_GUIDE.md"}
     for source_name, target_name in docs.items():
         shutil.copyfile(REPO / "docs" / source_name, operator / target_name)

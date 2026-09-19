@@ -33,6 +33,7 @@ MAX_KNOWLEDGE_MATCHES = 3
 MAX_ROUTE_CONTEXT_CHARS = 6_000
 MAX_HOOK_CONTEXT_CHARS = MAX_RUNTIME_CONTEXT_CHARS + MAX_ROUTE_CONTEXT_CHARS + MAX_SKILL_BRIEF_CHARS + 2
 COMPANY_WORKERS = frozenset(f"company-agent:{tier}-worker" for tier in ("small", "medium", "large"))
+OUTPUT_WORK_RULE = ('HTML/PPT는 스킬의 output-delivery 절차로 한 작업의 workFile을 유지하며 보정하고 최종 파일만 전달합니다. 작업자도 같은 workFile을 사용합니다. 명시적 복수 결과·다음 요청은 구분하고 기존 파일은 보존합니다. ')
 
 
 def _short(value: object, limit: int) -> str:
@@ -211,7 +212,7 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
                 runtime['guidanceCondensed'] = True
                 runtime['instructions'] = (
                     MANAGEMENT_RULE + (POLICY_RULE if runtime.get('companyPolicy') else '') + KOREAN_DEFAULT_RULE +
-                    TASK_SKILL_RULE + WINDOWS_TEXT_RULE +
+                    TASK_SKILL_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE +
                     'company_agent_runtime은 메타데이터이며 모듈·실행 파일이 아닙니다. cliCommand를 그대로 쓰고 PC 탐색·임의 python -m·cd·dispatch는 하지 마세요. 파일 탐색은 Glob/Read/Grep을 사용합니다. '
                     'skillIndex는 본문·권한이 아닌 목록입니다. inline은 제공 행, reuse는 현재 대화의 같은 판, pages는 관련 페이지를 Read합니다. 설명 누락은 스킬 부재가 아니며 부족하면 skillSelection.catalog.path를 읽습니다. '
                     '고유 등록 이름은 Skill로, 개인 파일·우선 선택·이름 충돌은 roots[root]/file의 정확한 본문을 Read합니다. explicitOnly·우선순위·사용자 선택을 지키고 같은 대화의 변경 없는 본문만 재사용합니다. '
@@ -348,7 +349,7 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
     runtime['skillExecution'] = {k: v for k, v in execution.items()
                                  if k not in {'sha256', 'id'}}
     runtime['instructions'] = (
-        MANAGEMENT_RULE +
+        MANAGEMENT_RULE + OUTPUT_WORK_RULE +
         '기억·지식·스킬·도구 저장 요청은 개인 전체/이 프로젝트 중 미지정 범위를 한 번 물으세요. 회사 공통은 저장 선택지가 아닙니다. 명시한 범위는 다시 묻지 않고 --storage-scope와 --project-root로 전달합니다. '
         'skillIndex와 세션 스킬의 용도를 확인해 관련 스킬 우선, 없으면 일반 실행합니다. '
         '후보 없음은 스킬 없음이 아닙니다. review는 전체 목록의 용도를 비교하고, reuse는 실제 로드했던 동일 본문만 재사용합니다. '
@@ -480,7 +481,7 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
         metadata['taskSkills'] = {k: v for k, v in metadata['taskSkills'].items() if k != 'groups'}
         encoded = json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
     context = ("\n\nCompany Agent runtime supplied by the installed hook (not task material):\n" + encoded +
-               "\n" + MANAGEMENT_RULE + (POLICY_RULE if metadata.get('companyPolicy') else '') + KOREAN_DEFAULT_RULE + WINDOWS_TEXT_RULE +
+               "\n" + MANAGEMENT_RULE + (POLICY_RULE if metadata.get('companyPolicy') else '') + KOREAN_DEFAULT_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE +
                'Relevant overlapping workflows without a saved/explicit choice require a Korean user question. If user interaction is unavailable, return the alternatives to the coordinator; do not choose arbitrarily or change preferences. ' +
                "\nUse this cliCommand literally, with leaf-command flags after it; never invent python -m, cd/pipe aliases or echo permission probes. "
                "Before executing, load the selected Skill in YOUR conversation. A parent's load receipt does not load your context. Read the inherited exact path; do not reselect or substitute via native same-name precedence. "
@@ -515,7 +516,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
             "skillSelection": skill_selection,
             "knowledgeMatches": _knowledge_matches(root, prompt, cwd),
             "instructions": (
-                MANAGEMENT_RULE + KOREAN_DEFAULT_RULE + TASK_SKILL_RULE + WINDOWS_TEXT_RULE +
+                MANAGEMENT_RULE + KOREAN_DEFAULT_RULE + TASK_SKILL_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE +
                 '기억·지식·스킬·도구를 저장할 때 개인 전체/이 프로젝트 중 미지정 범위를 한 번 질문합니다. 회사 공통에는 직접 저장하지 않습니다. 명시한 범위는 재질문 없이 --storage-scope personal|project와 --project-root로 전달합니다. '
                 "company_agent_runtime is the JSON metadata here, NOT a Python module or executable to locate. "
                 "Use cliCommand literally, preserving quotes; no extra --, variables, aliases or chains. Put flags after the leaf subcommand. "

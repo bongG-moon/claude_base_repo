@@ -38,12 +38,12 @@ try {
     if (await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth)) throw new Error('Guide overflow');
     await page.screenshot({path:path.join(args.output,`first-work-${width}.png`)});
   }
-  await page.getByRole('link',{name:'전체 온보딩 코스 따라 하기',exact:true}).click();
+  await page.getByRole('link',{name:'통합 가이드 · 준비물 없이 시작하기',exact:true}).click();
   await page.getByRole('heading',{name:'Company Agent 처음부터 따라 하기',exact:true}).waitFor();
   if(await page.locator('script').count())throw new Error('Onboarding manual is not static');
   const manuals=await page.locator('a[href$=".html"]').evaluateAll(nodes=>[...new Set(nodes.map(n=>n.href))]);
   for(const link of manuals){const response=await page.goto(link);if(response&&!response.ok())throw new Error('Broken installed manual link');}
-  await page.goto(pathToFileURL(path.resolve('company-agent-plugin/resources/manuals/Company-Agent-Onboarding.html')).href);
+  await page.goto(pathToFileURL(path.resolve('company-agent-plugin/resources/manuals/Company-Agent-Guide.html')).href);
   const chapters=['6. 공통 기억과 내 기억을 비교해 보기',
     '7. 공통 하네스·내 하네스와 적용 폴더 비교하기',
     '8. 개인 스킬과 도구를 직접 만들어 보기'];

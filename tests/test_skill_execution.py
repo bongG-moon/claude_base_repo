@@ -61,6 +61,15 @@ class SkillExecutionTests(unittest.TestCase):
         ctx, _ = self.output('HTML 보고서를 만들어줘')
         self.assertNotEqual('office-reader', ctx['skillExecution'].get('name'))
 
+    def test_html_first_ppt_description_does_not_capture_reading_or_html_reports(self):
+        for prompt,name in [('PPT 내용 읽어줘','office-reader'),
+                            ('부서장 보고 PPT 만들어줘','presentation'),
+                            ('HTML 보고서 만들어줘','html-report')]:
+            with self.subTest(prompt=prompt):
+                ctx, _ = self.output(prompt)
+                self.assertEqual('load',ctx['skillExecution']['mode'])
+                self.assertEqual(name,ctx['skillExecution']['name'])
+
     def test_shortlist_miss_reviews_full_list_then_general_work_without_marker_commands(self):
         ctx, text = self.output('2 더하기 3은 얼마야?')
         self.assertEqual('review', ctx['skillExecution']['mode'])

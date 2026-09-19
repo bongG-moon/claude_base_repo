@@ -8,7 +8,9 @@ import sys
 import time
 import hashlib
 
-from .business_safety import safe_path, blocked_input, confirm_action, cancelled
+from .business_safety import safe_path, blocked_input
+from .office_consent import authorize
+from .paths import user_state_root
 from .office_progress import Progress, run_helper
 
 TYPES={'.xlsx':'excel','.csv':'excel','.pptx':'powerpoint','.docx':'word'}
@@ -84,18 +86,18 @@ def _invoke(request, *, progress=None):
     return result
 
 
-def read_office(spec, *, progress=None):
+def read_office(spec, *, progress=None, state_root=None, session_id='', cwd=None):
     progress = progress or Progress(enabled=False)
     progress.begin('request')
     try:
-        result = _read_office(spec, progress)
+        result = _read_office(spec, progress, state_root=state_root, session_id=session_id, cwd=cwd)
     finally:
         timing = progress.finish()
     result.setdefault('diagnostics', {})['progress'] = timing
     return result
 
 
-def _read_office(spec, progress):
+def _read_office(spec, progress, *, state_root=None, session_id='', cwd=None):
     restricted=blocked_input(spec) if isinstance(spec,dict) else None
     if restricted:
         return restricted
@@ -105,27 +107,19 @@ def _read_office(spec, progress):
         return failed('invalid_office_request','파일·지원 형식·읽을 범위를 확인해 주세요. xlsx/csv/pptx/docx만 지원합니다.','failed')
     if os.name!='nt':
         return failed('office_unavailable','Windows에 설치된 Office가 필요한 기능입니다.','unavailable')
-    details=('선택한 문서의 아래 범위를 Office로 읽어 현재 Claude 대화에 전달합니다.\n'
-             '회사에서 자동화·AI 처리·대화 기록 보존을 허용한 자료만 진행하세요.\n'
-             '선택한 파일과 읽기 범위를 확인해 주세요. 결과에는 실제로 읽힌 범위와 미완료 항목을 표시합니다.\n'
-             '원본을 저장·변환하지 않으며, 본문은 하네스 파일·Memory·Knowledge에 별도 저장하지 않습니다.\n'
-             'Office 자체 임시 파일이나 Claude 대화 기록은 남을 수 있습니다.\n\n'
-             +json.dumps(request,ensure_ascii=False,indent=2))
-    progress.begin('confirmation_start')
-    if not confirm_action('문서 읽기 및 AI 처리 확인',details, progress=progress):
-        messages = {
-            'confirmation_start_timeout': '30초 안에 확인 창이 표시되지 않아 중단했습니다. 아직 Office를 열지 않았습니다. Windows 확인 창·PowerShell 실행 상태를 확인해 주세요.',
-            'confirmation_wait_timeout': '확인 창 표시 후 5분 동안 응답이 없어 취소했습니다. Office는 열지 않았습니다.',
-            'confirmation_unavailable': '확인 창을 표시하거나 응답을 확인하지 못했습니다. Office는 열지 않았습니다. 현재 Windows 세션을 확인해 주세요.',
-        }
-        if progress.failure_code in messages:
-            return {**failed(progress.failure_code, messages[progress.failure_code], 'unavailable'), 'stage': progress.stage}
-        return cancelled()
+    progress.begin('conversation_consent')
+    consent_source = safe_path(request['file'], exists=True).stat()
+    consent = authorize(request, root=state_root or user_state_root(), session_id=session_id, cwd=cwd)
+    if consent is not None:
+        return consent
     try:
         # The request is data only. No code, passwords, permission flags or export paths.
         progress.begin('source_check')
         path=safe_path(request['file'],exists=True)
         before=path.stat()
+        if ((consent_source.st_size, consent_source.st_mtime_ns, consent_source.st_ino)
+                != (before.st_size, before.st_mtime_ns, before.st_ino)):
+            return failed('source_changed','승인 확인 중 원본이 변경되어 문서를 열지 않았습니다. 저장을 마친 뒤 다시 확인해 주세요.')
         fingerprint=hashlib.sha256(path.read_bytes()).hexdigest()
         started=time.perf_counter()
         progress.begin('dependencies')

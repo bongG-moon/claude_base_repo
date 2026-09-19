@@ -12,7 +12,7 @@ import secrets
 import subprocess
 import threading
 import time
-from urllib.parse import parse_qs, urlsplit
+from urllib.parse import parse_qs, unquote, urlsplit
 import uuid
 import webbrowser
 
@@ -24,7 +24,7 @@ ASSETS = Path(__file__).parent / "web"
 SAFE_FILES = {".md", ".txt", ".csv", ".tsv", ".html", ".htm", ".pdf", ".pptx", ".docx", ".xlsx", ".png", ".jpg", ".jpeg", ".webp"}
 MAX_BODY = 256 * 1024
 MAX_PREVIEW = 1024 * 1024
-WORKSPACE_VERSION = "0.4"
+WORKSPACE_VERSION = "0.5"
 
 
 def folder(value):
@@ -341,12 +341,16 @@ class Handler(BaseHTTPRequestHandler):
                                                'message':'정적 미리보기입니다. 모든 구역을 표시하며 스크립트·외부 연결은 실행하지 않습니다. 선택은 채팅으로 알려 주세요.'})
                     return self.reply({"kind": "text", "name": path.name, "text": text})
                 return self.reply({"kind": "external", "name": path.name, "message": "Office·PDF 원본은 원래 앱에서 열어 확인해 주세요."})
-            manuals = {'/manual/handbook': 'Company-Agent-Handbook.html',
+            manuals = {'/manual/guide': 'Company-Agent-Guide.html',
+                       '/manual/handbook': 'Company-Agent-Handbook.html',
                        '/manual/onboarding': 'Company-Agent-Onboarding.html',
-                       '/manual/cua': 'Company-Agent-Cua-Pilot.html'}
+                       '/manual/cua': 'Company-Agent-Cua-Pilot.html',
+                       '/manual/usage': 'Company-Agent-사용자-안내서.html',
+                       '/manual/commands': 'Claude-Code-필수-사용법.html'}
             manuals.update({'/manual/' + name: name for name in list(manuals.values())})
-            if route.path in manuals:
-                return self.reply((ASSETS.parent.parent / 'docs' / manuals[route.path]).read_bytes(),
+            manual_path = unquote(route.path)
+            if manual_path in manuals:
+                return self.reply((ASSETS.parent.parent / 'docs' / manuals[manual_path]).read_bytes(),
                                   content_type='text/html; charset=utf-8')
             assets = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
                       "/companion.js": ("companion.js", "text/javascript; charset=utf-8"),

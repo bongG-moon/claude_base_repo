@@ -37,6 +37,20 @@ class HtmlWorkspacePreviewTests(unittest.TestCase):
         self.assertIn("default-src &#x27;none&#x27;", preview)
         self.assertNotIn('evil.invalid', preview)
 
+    def test_ppt_draft_and_saved_template_are_isolated_static_previews(self):
+        from company_agent import business_artifacts, presentation_design, ppt_html
+        spec = {'slides':[{'title':'PPT 초안','body':'가상 본문'}]}
+        data = business_artifacts._normalize(spec)
+        presentation_design.prepare(spec,data)
+        data['presentationPlan'] = presentation_design.plan(data)
+        original = ppt_html.render(data,metadata={'schema':'test'})
+        preview = render(original)
+        self.assertIn('PPT 초안',preview)
+        self.assertIn('class="ppt-slide"',preview)
+        self.assertNotIn('<script',preview)
+        hostile = original.replace('</body>','<script>alert(1)</script><img src="https://evil.invalid/leak"></body>')
+        self.assertNotIn('evil.invalid',render(hostile))
+
 
 if __name__ == '__main__':
     unittest.main()

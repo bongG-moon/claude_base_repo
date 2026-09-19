@@ -43,48 +43,46 @@ class OfficeReaderTests(unittest.TestCase):
 
     def test_protection_refusal_never_opens_or_prompts(self):
         for protection in ('protected','blocked','unknown'):
-            with patch.object(reader,'_invoke') as invoke,patch.object(reader,'confirm_action') as confirm:
+            with patch.object(reader,'_invoke') as invoke,patch.object(reader,'authorize') as confirm:
                 result=reader.read_office({**self.spec,'protection':protection})
             self.assertEqual('blocked',result['status']); invoke.assert_not_called(); confirm.assert_not_called()
 
     def test_cancel_does_not_open_document(self):
-        with patch.object(reader,'confirm_action',return_value=False),patch.object(reader,'_invoke') as invoke:
+        with patch.object(reader,'authorize',return_value={'ok':False,'status':'cancelled'}),patch.object(reader,'_invoke') as invoke:
             result=reader.read_office(self.spec)
         self.assertEqual('cancelled',result['status']); invoke.assert_not_called()
 
     def test_confirmed_read_unicode_no_file_changes_and_no_permission_claim(self):
         before=self.file.read_bytes()
-        with patch.object(reader,'confirm_action',return_value=True) as confirm,patch.object(reader,'_invoke',return_value=self.response()):
+        with patch.object(reader,'authorize',return_value=None) as confirm,patch.object(reader,'_invoke',return_value=self.response()):
             result=reader.read_office(self.spec)
         self.assertEqual('read',result['status']); self.assertEqual('한글 실적 123',result['items'][0]['text'])
-        self.assertIn('대화 기록',confirm.call_args.args[1])
+        self.assertEqual(reader.normalize(self.spec),confirm.call_args.args[0])
         self.assertFalse(result['bypassSupported']); self.assertFalse(result['rawContentStored'])
         self.assertEqual('not_proven_by_office_success',result['drmAuthorization'])
         self.assertEqual(before,self.file.read_bytes()); self.assertEqual([self.file],list(self.root.iterdir()))
 
     def test_protected_or_unknown_helper_result_drops_partial_text(self):
         for code in ('protected_input','protection_unknown','office_read_failed'):
-            with patch.object(reader,'confirm_action',return_value=True),patch.object(reader,'_invoke',return_value={'ok':False,'code':code,'items':self.response()['items']}):
+            with patch.object(reader,'authorize',return_value=None),patch.object(reader,'_invoke',return_value={'ok':False,'code':code,'items':self.response()['items']}):
                 result=reader.read_office(self.spec)
             self.assertFalse(result['ok']); self.assertNotIn('한글 실적',json.dumps(result,ensure_ascii=False))
             self.assertFalse(result['retryAllowed'])
 
     def test_timeout_never_tries_another_reader(self):
-        with patch.object(reader,'confirm_action',return_value=True),patch.object(reader,'_invoke',side_effect=subprocess.TimeoutExpired('fixed reader',60)) as invoke:
+        with patch.object(reader,'authorize',return_value=None),patch.object(reader,'_invoke',side_effect=subprocess.TimeoutExpired('fixed reader',60)) as invoke:
             result=reader.read_office(self.spec)
         self.assertEqual('office_timeout',result['code']); invoke.assert_called_once()
 
-    def test_window_start_timeout_never_opens_office(self):
+    def test_conversation_wait_never_opens_office_or_a_popup(self):
         from company_agent.office_progress import Progress
         reporter = Progress(enabled=False)
-        def timeout(*args, **kwargs):
-            kwargs['progress'].failure_code = 'confirmation_start_timeout'
-            return False
-        with patch.object(reader, 'confirm_action', side_effect=timeout), patch.object(reader, '_invoke') as invoke:
+        with patch.object(reader, '_invoke') as invoke, patch('company_agent.business_safety.confirm_action') as popup:
             result = reader.read_office(self.spec, progress=reporter)
         invoke.assert_not_called()
-        self.assertEqual('confirmation_start_timeout', result['code'])
-        self.assertEqual('confirmation_start', result['diagnostics']['progress']['lastStage'])
+        popup.assert_not_called()
+        self.assertEqual('input_required', result['status'])
+        self.assertEqual('conversation_consent', result['diagnostics']['progress']['lastStage'])
         self.assertNotIn('dependencies', result['diagnostics']['progress']['stageMs'])
 
     def test_helper_close_timeout_does_not_claim_a_successful_read(self):
@@ -92,7 +90,7 @@ class OfficeReaderTests(unittest.TestCase):
             progress.begin('read')
             progress.begin('close')
             raise subprocess.TimeoutExpired('fixed reader', 60)
-        with patch.object(reader, 'confirm_action', return_value=True), patch.object(reader, '_invoke', side_effect=timeout):
+        with patch.object(reader, 'authorize', return_value=None), patch.object(reader, '_invoke', side_effect=timeout):
             result = reader.read_office(self.spec)
         self.assertEqual('office_timeout', result['code'])
         self.assertEqual('close', result['stage'])
@@ -102,9 +100,18 @@ class OfficeReaderTests(unittest.TestCase):
         def changed(request, **kwargs):
             self.file.write_bytes(b'changed by fixture')
             return self.response()
-        with patch.object(reader,'confirm_action',return_value=True),patch.object(reader,'_invoke',side_effect=changed):
+        with patch.object(reader,'authorize',return_value=None),patch.object(reader,'_invoke',side_effect=changed):
             result=reader.read_office(self.spec)
         self.assertEqual('source_changed',result['code']); self.assertNotIn('items',result)
+
+    def test_changed_during_consent_does_not_open_document(self):
+        def change(*args, **kwargs):
+            self.file.write_bytes(b'changed during consent')
+            return None
+        with patch.object(reader, 'authorize', side_effect=change), patch.object(reader, '_invoke') as invoke:
+            result = reader.read_office(self.spec)
+        self.assertEqual('source_changed', result['code'])
+        invoke.assert_not_called()
 
     def test_read_command_not_mutation_but_never_auto_approved(self):
         cmd=f'"{sys.executable}" -B "{ROOT / "company-agent-plugin/scripts/harness_cli.py"}" business office-read --spec "{self.root / "request.json"}"'

@@ -121,7 +121,9 @@ class LearningCliTests(unittest.TestCase):
             return json.loads(process.stdout)
         value = hook(command)
         self.assertNotIn("systemMessage", value)
-        self.assertIn("Keep this bookkeeping receipt quiet", value["hookSpecificOutput"]["additionalContext"])
+        context = value["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("검증 상태를 중계하지 말고", context)
+        self.assertIn("업무를 중복 실행하지 마세요", context)
         self.assertEqual({}, hook("echo accepted"))
         self.assertEqual({}, hook(command, "PostToolUseFailure"))
 

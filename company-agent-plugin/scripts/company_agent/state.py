@@ -642,7 +642,7 @@ def _is_ppt_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> 
         return False
     try:
         spec=json.loads(content)
-        if not isinstance(spec,dict) or set(spec)-{'creationMode','referenceMode','purpose','audience','slideCount','designPreset'}:
+        if not isinstance(spec,dict) or set(spec)-{'creationMode','referenceMode','purpose','audience','slideCount','designPreset','referenceImages'}:
             return False
         from .ppt_workflow import choices
         result=choices(spec)

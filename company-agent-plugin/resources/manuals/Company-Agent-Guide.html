@@ -1,0 +1,1499 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-sha256" data-file="ONBOARDING_COURSE.md" content="d1e6bc8d827446f18eda2d728af1c908734a69a4ca9f5bca3c2977245a331b17"><meta name="source-sha256" data-file="USER_GUIDE.md" content="812df384d061ed6510dd6f103459df9572d499867ce867d867731ed08080536c"><meta name="source-sha256" data-file="COMPANY_AGENT_HANDBOOK.md" content="3304887c0224e482d221cf75f9113214d60c040963794a371c90f535ebd8ae2a"><meta name="source-sha256" data-file="CLAUDE_CODE_COMMANDS.md" content="35a12165533d58fee9551f2538122e871167d3ce579da24635bfbd4ba249ef2d"><meta name="source-sha256" data-file="CUA_DRIVER_PILOT.md" content="1536a3032b646b8977a9d97de4bffa7f36a57324e8389c3ef12d682f6b1b70f5"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'none'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>Company Agent 통합 가이드</title><style>
+:root{color-scheme:light;--ink:#203a38;--muted:#536965;--line:#dce5df;--accent:#246858}
+*{box-sizing:border-box}body{margin:0;background:#f3f5f1;color:var(--ink);font:16px/1.85 'Malgun Gothic','맑은 고딕',sans-serif;word-break:keep-all;overflow-wrap:anywhere}
+a{color:var(--accent);text-underline-offset:4px}a:focus-visible,[tabindex]:focus-visible,summary:focus-visible{outline:3px solid #4583a4;outline-offset:3px}.skip{position:absolute;left:16px;top:-80px}.skip:focus{top:10px;background:white;padding:12px;z-index:2}
+.layout{max-width:1450px;margin:auto;padding:32px;display:grid;grid-template-columns:260px minmax(0,1fr);gap:32px}aside{position:sticky;top:24px;align-self:start;max-height:calc(100vh - 48px);overflow:auto}aside strong{font-size:23px}aside p{font-size:13px;color:var(--muted)}nav a{display:block;padding:5px 0;font-size:13px;text-decoration:none}nav a:hover{text-decoration:underline}nav details{border-bottom:1px solid var(--line);padding:10px 0}nav summary{cursor:pointer;font-weight:bold;font-size:14px}nav details a{padding-left:10px}
+main{min-width:0}header,.book{background:white;border:1px solid var(--line);border-radius:16px;padding:36px 40px;margin-bottom:24px}.eyebrow{font-size:12px;letter-spacing:.1em;color:var(--accent);font-weight:bold}h1{font-size:34px;line-height:1.4;margin:12px 0}h2{font-size:27px;line-height:1.5;margin:0 0 18px}h3{font-size:22px;line-height:1.5;border-top:1px solid var(--line);padding-top:26px;margin-top:40px}h4{font-size:18px}h2,h3,h4{scroll-margin-top:24px}p{margin:14px 0}li{margin:8px 0}pre{background:#f1f6f2;border-left:3px solid #88b2a2;border-radius:4px;padding:18px 20px;white-space:pre-wrap;overflow-wrap:anywhere;tab-size:2}code{font-family:Consolas,'Malgun Gothic',monospace;font-size:.92em}pre code{display:block;user-select:all}.table-wrap{overflow:auto}table{width:100%;border-collapse:collapse;min-width:580px;font-size:14px;line-height:1.7}td,th{border:1px solid var(--line);text-align:left;padding:12px;vertical-align:top}th{background:#eaf1eb}small,footer{color:var(--muted);font-size:12px}footer{padding:0 20px 28px}.back{font-size:13px}.paths{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:22px 0}.paths a{padding:16px;border:1px solid var(--line);border-radius:10px;text-decoration:none;background:#f7faf6;font-size:14px}.paths b{display:block;margin-bottom:5px}.notice{border-left:3px solid #b1a77f;padding-left:14px;color:var(--muted);font-size:14px}
+@media(max-width:800px){.layout{display:block;padding:14px}aside{position:static;max-height:none;margin:0 0 24px}header,.book{padding:24px 20px}h1{font-size:27px}h2{font-size:24px}h3{font-size:21px}.paths{grid-template-columns:1fr}}
+@media print{body{background:white;font-size:10pt}.layout{display:block;padding:0}aside,.skip,.back,.paths{display:none}header,.book{border:0;padding:0}h1{font-size:22pt}h2{font-size:18pt;break-before:page}h3{font-size:14pt;break-after:avoid}h4{break-after:avoid}table{min-width:0;font-size:9pt}thead{display:table-header-group}tr,pre{break-inside:avoid}.table-wrap{overflow:visible}a{color:inherit}@page{size:A4;margin:18mm}}
+</style></head><body><a class="skip" href="#content">본문으로 이동</a><div class="layout"><aside><strong>Company Agent</strong><p>온보딩부터 업무 활용까지<br>하나로 보는 사용 가이드</p><p>찾기: Ctrl+F · 인쇄/PDF: Ctrl+P<br>예문 상자를 선택한 뒤 Ctrl+C로 복사<br>문서 열기는 AI 호출이나 작업 실행이 아닙니다.</p><nav aria-label="목차"><details open><summary>01 · 준비물 없이 따라 하기</summary><a href="#onboarding">이 안내부터 보기</a><a href="#onboarding-section-1">0. 준비하기</a><a href="#onboarding-section-2">1. 자료 하나 읽기</a><a href="#onboarding-section-3">2. 결과 만들기</a><a href="#onboarding-section-4">3. 원하는 방식으로 고치기</a><a href="#onboarding-section-5">4. 내 방식 하나 저장하기 — 선택</a><a href="#onboarding-section-6">5. 새 업무에서 다시 쓰기</a><a href="#onboarding-section-7">6. 공통 기억과 내 기억을 비교해 보기</a><a href="#onboarding-section-8">7. 공통 하네스·내 하네스와 적용 폴더 비교하기</a><a href="#onboarding-section-9">8. 개인 스킬과 도구를 직접 만들어 보기</a><a href="#onboarding-section-10">9. 사용량과 결과 확인하기</a><a href="#onboarding-section-11">10. 화면 조작은 필요할 때만 시험하기</a><a href="#onboarding-section-12">11. 마무리 체크리스트와 의견</a></details><details><summary>02 · 업무별 사용법</summary><a href="#usage">이 안내부터 보기</a><a href="#usage-section-1">1. 요청은 목적·자료·결과·제한 순서로</a><a href="#usage-section-2">2. 문서 읽기와 비교</a><a href="#usage-section-3">3. 보고서·HTML·편집 가능한 PPT</a><a href="#usage-section-4">4. 회의 메모와 메일 초안</a><a href="#usage-section-5">5. 파일 정리와 회사 데이터</a><a href="#usage-section-6">6. 기억·지식·스킬을 구분하기</a><a href="#usage-section-7">7. 겹치는 스킬과 프로젝트 지침</a><a href="#usage-section-8">8. 느릴 때와 비용을 줄이는 방법</a><a href="#usage-section-9">9. 오류가 났을 때</a><a href="#usage-section-10">10. 업데이트와 의견 보내기</a></details><details><summary>03 · 기억·스킬·하네스 이해</summary><a href="#handbook">이 안내부터 보기</a><a href="#handbook-section-1">1. 처음이라면 여기부터</a><a href="#handbook-section-2">2. 용어를 쉽게 이해하기</a><a href="#handbook-section-3">3. 세 범위, 두 종류의 내용</a><a href="#handbook-section-4">4. 기본으로 들어 있는 스킬 13개</a><a href="#handbook-section-5">5. 자동으로 동작하는 후크 7개</a><a href="#handbook-section-6">6. 명령 3개와 작업자 3개</a><a href="#handbook-section-7">7. 범위별 기억과 업무 구성을 다듬는 방법</a><a href="#handbook-section-8">8. 느리거나 토큰을 많이 쓰면</a><a href="#handbook-section-9">9. 무엇을 빼거나 바꿀 수 있나요?</a><a href="#handbook-section-10">10. 자주 만나는 상황</a><a href="#handbook-section-11">11. 개선 의견 보내기</a><a href="#handbook-section-12">12. 문서와 구현을 함께 관리하기</a></details><details><summary>04 · Claude Code 명령어</summary><a href="#commands">이 안내부터 보기</a><a href="#commands-section-1">1. 입력·중단·확인에 필요한 키</a><a href="#commands-section-2">2. 대화 안에서 쓰는 명령</a><a href="#commands-section-3">3. 작업 중 다음 질문과 제안 문장</a><a href="#commands-section-4">4. 압축·기억·프로젝트 지침은 다른 일</a><a href="#commands-section-5">5. 되돌리기·여러 세션·종료</a></details><details><summary>05 · 선택: 화면 조작 시험</summary><a href="#cua">이 안내부터 보기</a><a href="#cua-section-1">1. 무엇이 추가됐나요?</a><a href="#cua-section-2">2. 회사 담당자의 사전 준비</a><a href="#cua-section-3">3. 준비 확인 화면 읽는 법</a><a href="#cua-section-4">4. 계산기 창 읽기 시험</a><a href="#cua-section-5">5. 작은 입력 시험 — 별도 확인 후</a><a href="#cua-section-6">6. 비교할 항목과 도입 판단</a></details></nav></aside><main id="content"><header id="start"><span class="eyebrow">LOCAL · OFFLINE · KOREAN</span><h1>Company Agent 통합 가이드</h1><p>파일이 없어도, 명령어를 몰라도.<br>작은 가상 업무 하나부터 시작해 보세요.</p><div class="paths"><a href="#onboarding-section-2"><b>처음이라면</b>가상 자료 만들기 → 실제 읽기</a><a href="#usage"><b>바로 일하려면</b>보고서·회의·비교 요청 예문</a><a href="#commands"><b>명령어가 궁금하면</b>입력·중단·압축·다시 시작</a></div><p class="notice">회사 공통 / 개인 전체 / 이 프로젝트를 구분합니다. 새 기억·스킬 저장은 개인 전체 또는 이 프로젝트를 선택합니다. 모든 실습은 선택이며 회사 자료·참고 PPT가 없어도 시작할 수 있습니다.</p><p>온보딩, 업무별 사용법, 스킬·후크 핸드북, Claude Code 명령어, 선택적 Cua 시험 안내가 모두 이 HTML 안에 있습니다. 다른 문서를 내려받지 않아도 읽을 수 있습니다. 외부 참고 링크는 직접 선택했을 때만 열립니다.</p></header><section class="book" aria-labelledby="onboarding"><h2 id="onboarding">Company Agent 처음부터 따라 하기</h2>
+<p>명령어 암기보다 작은 업무 하나를 맡기고 직접 확인하는 연습입니다.</p>
+<p>기준: 코어 1.4.17과 Workspace 0.5 · 2026-09-19. 핵심 5단계는 Workspace의 첫 업무 따라 하기와 같은 가상 자료를 사용합니다. 소요 시간은 모델·Office·승인 환경에 따라 달라지므로 고정된 완료 시간을 약속하지 않습니다.</p>
+<p><strong>내 하네스에서 여는 곳:</strong> 새 설치 ZIP의 <code>First-Work.html</code> → <strong>통합 가이드 · 준비물 없이 시작하기</strong>. 설치 완료 화면과 Workspace의 <strong>통합 사용 가이드</strong>도 같은 <code>Company-Agent-Guide.html</code>을 엽니다. 온보딩·사용 예문·스킬/후크 설명·Claude Code 명령어·선택 실습을 한 파일에 담았습니다. 설치된 플러그인의 <code>resources/manuals</code>에도 있으므로 ZIP을 정리한 후에도 읽을 수 있습니다. 기존 안내서 링크는 통합본으로 안내합니다. 예전 설치본은 자동 갱신되지 않습니다.</p>
+<p>모든 과정을 한 번에 끝낼 필요는 없습니다. 처음에는 1단계의 가상 텍스트 요약만 해보세요. 다음에 이어 할 때는 목차에서 필요한 단계를 선택하면 됩니다. 이 문서는 수료를 강제하거나 진행 상황을 자동 저장하지 않으며, 기억 저장·화면 조작 시험은 선택입니다.</p>
+<p><strong>먼저 세 범위만 구분하세요.</strong> 회사 공통 / 개인 전체 / 이 프로젝트 안에서 기억·지식과 업무 구성을 확인합니다.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>구분</th>
+<th>쉬운 예</th>
+<th>내가 할 수 있는 일</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>회사 공통</td>
+<td>배포 지식·회사 기준·공통 스킬·후크</td>
+<td>읽기, 담당자에게 수정 제안</td>
+</tr>
+<tr>
+<td>개인 전체</td>
+<td>여러 프로젝트에서 사용할 선호·지식·개인 자산</td>
+<td>범위 선택 후 저장·수정·사용 중단</td>
+</tr>
+<tr>
+<td>이 프로젝트</td>
+<td>이 업무에서만 사용할 기억·스킬·도구·지침</td>
+<td>개인 자산과 공유 프로젝트 파일을 구분해 관리</td>
+</tr>
+</tbody></table></div>
+<p><strong>새로 저장할 때는 두 선택지입니다.</strong> 개인 전체(여러 프로젝트) / 이 프로젝트(현재 작업에서만). 범위를 말하지 않았다면 한 번 질문하고 답변을 기다립니다. 이미 명시했다면 다시 묻지 않습니다. 회사 공통은 직접 저장하지 않습니다. ‘전역’이라고 모두에게 공유되지 않고 폴더에 있다고 모두 개인 소유도 아닙니다. 프로젝트 개인 자료는 로컬 개인 저장소에 있어 폴더 공유만으로 전달되지 않습니다.</p>
+<p><strong>코스 고르기:</strong> 0–5는 첫 업무, 6은 공통 기억·내 기억 비교, 7은 공통 하네스·내 하네스와 폴더 적용 범위 비교, 8은 내 스킬·도구 만들기입니다. 6–8의 확장 실습은 필요한 것만 선택하세요. 읽기만 하면 아무것도 저장되지 않습니다. 생성·저장 예문을 실제로 보내면 해당 파일이나 개인 자산이 생기므로, 각 실습의 정리 방법까지 확인하세요.</p>
+<h3 id="onboarding-section-1">0. 준비하기</h3>
+<p>회사에서 사용을 승인한 Claude Code와 Python 3.11 이상이 필요합니다. 회사 모델·인증서·로그인 설정은 조직 안내를 따릅니다. Node.js·Git은 모든 직원 업무의 필수 준비물이 아닙니다. 필요한 앱과 라이브러리는 업무마다 다릅니다.</p>
+<ol>
+<li>기존 Claude Code가 정상 작동하는지 확인합니다. 이미 된다면 로그인·모델·API 키를 새로 설정하지 않습니다.</li>
+<li>승인된 Company Agent 직원 ZIP 전체를 풀고 <code>Install-CompanyAgent.cmd</code>를 실행합니다. “Claude 전체”와 “이 프로젝트만” 중 필요한 범위를 선택합니다. 다른 하네스 교체를 선택할 때는 백업과 변경 범위를 먼저 읽습니다.</li>
+<li>설치 후 Claude Code를 다시 엽니다. Workspace는 별도 미리보기 묶음입니다. 그 묶음의 <code>Company-Workspace.vbs</code>를 더블클릭합니다. 관리자 권한은 사용하지 않습니다.</li>
+<li>탐색기에서 새로운 빈 연습 폴더를 만들고 작업 폴더로 선택합니다. 실제 고객 자료·메일·공용 폴더는 연습에 쓰지 않습니다.</li>
+<li>신뢰하는 폴더인지 확인합니다. 이 동의는 모든 후속 행위를 무조건 허용한다는 뜻이 아닙니다.</li>
+</ol>
+<p><strong>성공 확인:</strong> 앱이 열리고 작업 폴더가 보입니다. 이는 AI 응답·Office 읽기 성공까지 확인한 것은 아닙니다. VBS·PowerShell 실행이 회사에서 제한돼 있으면 담당자에게 승인된 실행 방식을 요청하세요.</p>
+<p><strong>원본 CLI를 선호한다면:</strong> 기존 방식으로 해당 폴더의 Claude Code를 열고 아래 요청문을 입력합니다. <code>/plugin</code>, <code>/skills</code>, <code>/hooks</code>로 실제 등록을 확인할 수 있습니다. GUI가 이 터미널 메뉴 전부를 그대로 제공하는 것은 아닙니다.</p>
+<h3 id="onboarding-section-2">1. 자료 하나 읽기</h3>
+<p>가지고 있는 파일이 없어도 시작할 수 있습니다. <strong>먼저 가상 자료를 만들고, 다음 요청에서 읽습니다.</strong> 생성과 읽기를 나누면 방금 만든 내용을 기억해서 답한 것인지 실제 파일을 읽었는지 비교하기 쉽습니다.</p>
+<h4>1-1. 준비물 없는 가상 자료 만들기</h4>
+<p>Office·참고 PPT·회사 자료가 필요 없는 첫 실습입니다. 빈 연습 폴더에서 아래 요청을 보냅니다. 다음 단계에서 쓸 파일은 이것 하나면 됩니다.</p>
+<pre><code class="language-text">온보딩용 가상 자료를 온보딩_가상자료.md 한 파일로 만들어줘.
+회사 시스템·메일·다른 파일을 조회하지 말고 다음 내용만 사용해줘.
+제목: 온보딩용 월간 실적 (가상 자료)
+단위: 건. 6월 목표 100, 실적 90 / 7월 목표 100, 실적 110 / 8월 목표 100, 실적 130.
+목표 합계 300, 실적 합계 330, 누적 달성률 110%를 계산해서 대조해줘.
+가상 회의 메모: 점검표 수정 완료. 현장 확인 진행 중. 새 양식 적용일은 미정.
+가상 비교 문구: 이전안은 월 1회 점검, 변경안은 월 2회 점검. 그 외 조건은 동일.
+원인·연도·실제 사람 이름은 추가하지 마. UTF-8로 저장해줘.
+같은 이름의 파일이 있으면 덮어쓰지 말고 기존 파일을 사용할지 먼저 물어봐줘.
+실제 만든 파일 경로와 계산 확인 결과만 알려줘. 기억이나 회사 지식에는 저장하지 마.
+</code></pre>
+<p><strong>성공 확인:</strong> 가상 자료라는 표시와 위 수치·문구를 확인합니다. 이 과정은 파일 쓰기·계산 연습이며 Office 문서 생성 시험은 아닙니다. 작업 폴더가 비어 있다면 하네스가 기본 <code>CLAUDE.md</code>를 만들 수도 있습니다. 이는 업무 결과 파일이 아닌 프로젝트 시작 안내입니다.</p>
+<h4>1-2. 만든 파일을 실제로 읽어 보기</h4>
+<pre><code class="language-text">방금 만든 온보딩_가상자료.md 파일을 실제로 읽고 핵심 내용과 확인할 사항을 정리해줘.
+다른 이름으로 저장됐다면 앞서 확인한 실제 경로만 사용해줘.
+대화에 있는 수치를 그대로 답하지 말고 파일을 읽은 범위를 알려줘.
+자료에 없는 이유는 추측하지 마. 원본 파일·설정·기억은 변경하지 마.
+</code></pre>
+<p>CLI에서는 <code>@</code>로 실제 파일을 고르고, Workspace에서는 <strong>파일 선택</strong>으로 첨부해도 됩니다. 파일을 만들고 싶지 않거나 쓰기 권한이 없다면 아래 텍스트 연습만 해도 됩니다.</p>
+<pre><code class="language-text">다음 가상 자료를 요약해줘.
+6월 목표 100건·실적 90건, 7월 목표 100건·실적 110건, 8월 목표 100건·실적 130건.
+자료에 없는 이유는 추측하지 마. 실제 확인한 범위와 미확인 부분을 알려줘.
+이 작업은 텍스트 요약 연습이며 Office 파일 읽기 시험은 아니야.
+</code></pre>
+<p><strong>성공 확인:</strong> 세 달 수치가 맞고 증가 원인을 지어내지 않습니다. 이것만으로 <code>office-reader</code> 사용 성공이라고 기록하지 않습니다.</p>
+<h4>1-3. Office 파일 읽기는 별도 선택 실습</h4>
+<p>가상 PPT가 없다면 **2단계의 ‘참고 파일 없이 PPT 만들기’**를 먼저 실행하세요. 승인 후 만들어진 PPT를 이 단계에 첨부하면 됩니다. Office가 없거나 생성 도구가 준비되지 않았다면 MD·HTML 실습만 진행하고 Office 시험은 ‘미실행’으로 남깁니다. 억지로 라이브러리를 설치하거나 확장자만 바꾸지 않습니다.</p>
+<p>승인된 가상 PPT·Excel·Word 파일이 이미 있다면 <strong>파일 선택</strong>으로 원본을 첨부해도 됩니다. 경로를 안다고 원본을 다른 사본으로 바꾸지 않습니다.</p>
+<pre><code class="language-text">첨부한 원본 자료를 읽고 핵심 내용과 확인할 사항을 정리해줘.
+자료에 없는 이유는 추측하지 마. 실제 확인한 페이지·표 범위와 미확인 부분을 알려줘.
+원본 파일은 변경하지 마.
+</code></pre>
+<p><strong>성공 확인:</strong> 기본 시험에서는 스킬 이름을 지정하지 않습니다. 실제 office-reader 본문 로드와 읽기 결과, 페이지·표·수치를 각각 확인합니다. 일부 범위만 읽었다면 전체 성공으로 체크하지 않습니다.</p>
+<p><strong>막혔을 때:</strong> 준비·결과 확인에서 목록을 보고, 필요하면 원본 CLI에서 <code>/company-agent:business-check</code>로 준비물을 확인합니다. Office·승인된 Python 라이브러리·DRM 환경 문제를 하나로 단정하지 않습니다. 없는 라이브러리를 임의로 다운로드하지 않습니다.</p>
+<h3 id="onboarding-section-3">2. 결과 만들기</h3>
+<pre><code class="language-text">가상 월간 실적으로 HTML 보고서를 만들어줘.
+6월 목표 100건·실적 90건, 7월 목표 100건·실적 110건, 8월 목표 100건·실적 130건.
+먼저 새 디자인 또는 내가 첨부할 기존 양식을 선택하게 해줘.
+내 답변을 기다린 뒤 제작해줘. 합계와 달성률을 검증하고 기존 파일은 덮어쓰지 마.
+</code></pre>
+<p>디자인 질문이 오면 예를 들어 **“글래스모피즘, 짧게, 스크롤 방식으로 만들어줘”**라고 답합니다. 추가 디자인 목록에서는 원하는 번호 또는 이름 하나를 선택합니다. 이미 정한 답을 다시 묻는다면 그 내용을 알려주고 반복 여부를 기록합니다.</p>
+<p><strong>성공 확인:</strong> 질문에서 실제로 기다리는지, 결과 파일이 생성됐는지, 브라우저로 열리는지 확인합니다. 목표 합계 <strong>300건</strong>, 실적 합계 <strong>330건</strong>, 누적 달성률 **110%**입니다. 이번 자료에 없는 원인·연도는 임의로 추가하지 않아야 합니다.</p>
+<h4>참고 파일 없이 PPT 만들기</h4>
+<p>앞 단계 파일이 없어도 아래 수치만으로 실행할 수 있습니다. 참고 PPT·캡처는 <strong>선택 사항</strong>이며 ‘새 디자인’이면 추가 파일을 준비하지 않습니다.</p>
+<pre><code class="language-text">온보딩용 가상 월간 보고 PPT 5장을 온보딩_가상실적.pptx로 만들어줘.
+가상 자료: 6월 목표 100건·실적 90건, 7월 목표 100건·실적 110건, 8월 목표 100건·실적 130건.
+참고 파일은 없어. 새 디자인으로 진행하고 준비된 디자인 목록에서 직접 하나 선택하게 해줘.
+표지·핵심 요약·월별 비교 차트·상세 표·확인할 사항 순서로 구성해줘.
+먼저 전체 5장의 HTML 초안을 보여주고, 내가 확인하면 편집 가능한 PPT로 제작해줘.
+표·차트는 편집 가능해야 하고 기존 파일은 덮어쓰지 마. 자료에 없는 이유·연도는 추측하지 마.
+초안·검사 이미지는 내부 작업 공간에 두고 최종 PPT 한 파일만 전달해줘.
+도구가 없으면 필요한 준비물만 알려주고 자동 설치하거나 이미지형으로 바꾸지 마.
+</code></pre>
+<p>디자인을 고른 뒤 HTML 초안을 확인하고 **“확인했어. 이 초안대로 편집 가능한 PPT를 만들어줘”**라고 답합니다. 완성한 PPT로 1-3의 읽기 시험을 이어갑니다. 생성 성공과 Office 읽기 성공은 각각 확인합니다.</p>
+<p><strong>성공 확인:</strong> 실제 5장과 수치를 확인하고 표·차트를 선택해 수정 가능한 개체인지 봅니다. 화면 캡처로만 만들어진 표라면 편집 가능 조건을 통과한 것이 아닙니다.</p>
+<p>HTML 초안은 Office 실행 없이 만듭니다. 초안의 내용·색상·배치를 수정하면 다시 확인한
+뒤 PPT를 만듭니다. HTML에서 확인한 화면과 최종 PPT의 글꼴·차트 세부 모양이 완전히
+같지는 않으므로 최종 PPT 확인도 필요합니다. 기존 PPT의 배치 유지 모드에서 HTML은
+교체할 내용·위치만 보여주며 고정 그림·마스터까지 재현하지 않습니다.</p>
+<p><strong>이미 카드형 HTML을 만들었다면:</strong> 이렇게 요청할 수 있습니다.</p>
+<p>이 연습은 2단계에서 만든 HTML을 첨부하면 됩니다. 파일이 아직 없다면 먼저 위 HTML 보고서 예문으로 생성하세요. 회사의 실제 보고서나 참고 캡처를 준비할 필요는 없습니다.</p>
+<pre><code class="language-text">이 HTML의 카드·둥근 모서리·그림자·태그 배치를 유지해서 편집 가능한 PPT로 만들어줘.
+텍스트를 그림으로 바꾸지 말고, 먼저 변환한 미리보기를 보여줘.
+지원하지 않는 효과와 실제 확인한 범위를 알려줘.
+</code></pre>
+<p>정적 HTML은 설치된 로컬 Chrome/Edge에서 배치를 한 번 읽어 텍스트·도형으로 옮깁니다.
+소스 스크립트는 실행하지 않습니다. 줄/서식별 텍스트가 편집 가능하지만 웹처럼 문단이
+자동 재배치되지는 않습니다. CSS 막대는 도형이며 수치 연결 차트는 별도로 지정합니다.
+복잡한 효과·동적 내용·병합 표는 제한을 먼저 알립니다. 이 변환에는 python-pptx가 필요하며
+없는 프로그램을 자동 설치하지 않습니다. 최종 PPT는 PowerPoint에서 별도로 검토합니다.</p>
+<p><strong>기존 PPT의 그림이 작다면 — 선택:</strong> 그림이 들어 있는 PPT를 이미 가진 경우에만 시험합니다. 앞에서 만든 편집형 PPT에 그림이 없다면 이 실습은 건너뜁니다. “이 PPT 1~5장의 그림을 비율 유지해 슬라이드에 꽉 채워줘.
+원본은 보존해줘”라고 요청합니다. 그림이 여러 개면 어떤 그림인지 확인하며, 가운데를
+기준으로 잘리는 부분이 있을 수 있습니다. 그림 크기 변경만으로 그 안 글자가 편집되지는 않습니다.</p>
+<p><strong>파일이 너무 많이 생기지 않나요?</strong> HTML/PPT 제작은 한 요청에 최종 결과 한 개가 기본입니다.
+초안 HTML·수정 시도·PPT 검사 이미지는 내부 임시 작업 공간에서 확인하고, 완료한 파일만
+지정한 폴더에 전달합니다. 같은 요청의 재시도는 <code>초안2</code>·<code>v2</code> 파일을 늘리지 않습니다.
+다음 질문에서 별도 결과나 HTML 대표 양식을 요청하면 새 파일로 만들 수 있습니다.
+기존 파일은 덮어쓰거나 자동 정리하지 않습니다. 여러 형식·여러 결과를 명시적으로
+요청했거나 프로그램의 여러 소스 파일을 만드는 작업은 한 파일로 제한하지 않습니다.</p>
+<p><strong>마음에 드는 디자인을 재사용하려면:</strong></p>
+<pre><code class="language-text">확인한 이 디자인을 HTML 대표 양식으로 저장해줘.
+내 PC 개인용으로 둘지, 이 프로젝트에 둘지 먼저 물어봐줘.
+실제 보고서 내용과 숫자·참고 캡처는 양식에 남기지 마.
+</code></pre>
+<p><strong>성공 확인:</strong> HTML 대표 양식 한 파일에 가상 예시와 색상·글꼴·페이지 규격이 저장됩니다.
+카드형/자유 배치 디자인은 도형·그림자·텍스트 위치도 저장하고 업무 문구는 예시로,
+그림은 빈 자리로 바꿉니다. 새 작업에서는 그 자리에 들어갈 내용만 전달합니다.
+다음 요청에서 이 파일을 첨부하면 새 업무의 HTML 초안을 먼저 확인하고 PPT로 만듭니다.
+회사 공통 설정이나 개인 기억에 자동 등록하지 않습니다. 회사 PPT의 원본 개체·마스터를
+유지하려면 PPTX 원본이 필요하며, 일반 HTML 파일을 무조건 편집 가능한 PPT 양식으로
+바꿀 수 있는 것은 아닙니다.</p>
+<p><strong>막혔을 때:</strong> 질문 대기는 오류가 아닙니다. 백그라운드 작업 진행 중에는 같은 제작을 재요청하지 않습니다. 반복 Stop 오류가 나면 마지막 상태와 실제 파일 유무를 기록하고 중지합니다.</p>
+<h3 id="onboarding-section-4">3. 원하는 방식으로 고치기</h3>
+<pre><code class="language-text">방금 결과에서 결론을 먼저 보여주고 확인한 사실과 확인할 사항을 구분해줘.
+이번 결과만 수정하고 수치와 출처는 유지해줘. 장기 선호 저장은 아직 요청하지 않을게.
+</code></pre>
+<p><strong>성공 확인:</strong> 순서는 바뀌고 원래 수치·출처는 유지됩니다. 전체 자료 읽기·파일 제작을 이유 없이 처음부터 반복하지 않는지도 살펴봅니다.</p>
+<p><strong>막혔을 때:</strong> 원하는 문장 하나를 예시로 보여주세요. 인코딩 표시만 깨졌다면 기존 파일부터 다시 확인하고 중복 생성하지 않습니다.</p>
+<h3 id="onboarding-section-5">4. 내 방식 하나 저장하기 — 선택</h3>
+<p>연습용 선호를 실제 업무에도 사용할지 먼저 결정합니다. 원치 않으면 건너뛰어도 됩니다.</p>
+<pre><code class="language-text">회사 필수 기준은 유지하고 허용된 범위에서 내 보고서 표현 선호를 개인 기억에 저장해줘.
+선호: 결론부터 간단히 설명하고 실제 확인한 범위와 미확인 부분을 구분해줘.
+이 선호 외 문서 본문이나 계정 정보는 저장하지 마. 실제 저장한 내용과 적용 범위를 알려줘.
+</code></pre>
+<p>또는 <strong>기억·하네스 관리 → 개인 전체 / 이 프로젝트 → 기억·지식 → 내 기억 추가</strong>에서 변경안을 보고 저장할 수 있습니다. 출처가 있는 용어·계산식은 같은 화면의 <strong>내 업무 지식 초안</strong>을 사용합니다. 이 관리 화면은 별도 모델을 호출하지 않습니다.</p>
+<p><strong>성공 확인:</strong> 기억 화면에 정확한 내용과 사용 상태가 나타납니다. 회사 기준이나 전역 설정이 덮어써지지 않습니다. 더 필요 없다면 사용 안 함으로 바꿀 수 있습니다.</p>
+<p><strong>막혔을 때:</strong> Project와 User 설치의 저장 범위가 같은지 확인합니다. 자동 학습 켜짐과 모든 내용 저장은 다릅니다. <a href="#handbook">핸드북</a>에서 기억과 학습 범위를 확인하세요.</p>
+<h3 id="onboarding-section-6">5. 새 업무에서 다시 쓰기</h3>
+<p>같은 작업 폴더에서 <strong>새 업무 시작</strong>으로 새 대화를 만들고 입력합니다.</p>
+<pre><code class="language-text">현재 적용 범위에 저장된 내 보고서 표현 선호를 찾아서 알려줘.
+실제로 조회한 내용만 설명하고 찾지 못한 기억은 지어내지 마. 설정이나 기억은 변경하지 마.
+</code></pre>
+<p><strong>성공 확인:</strong> 저장된 내용과 실제 조회 내용이 같습니다. 이어서 가상 자료를 요약해 달라고 하고 표현에도 적용되는지 봅니다. “저장됨 → 조회됨 → 결과 반영”을 따로 확인하세요.</p>
+<p><strong>막혔을 때:</strong> 다른 설치 범위나 다른 폴더인지 확인합니다. PC 전체를 검색하거나 기억 저장소를 합치도록 지시하지 않습니다.</p>
+<h3 id="onboarding-section-7">6. 공통 기억과 내 기억을 비교해 보기</h3>
+<p><strong>이 실습에서 판단할 것:</strong> “팀원이 같이 알아야 하는 내용인가, 나만 원하는 방식인가?” 같은 가상 자료를 다시 요청하며 저장·조회·반영을 구분합니다.</p>
+<h4>먼저 알아둘 차이</h4>
+<p><strong>공통 기억</strong>은 회사·팀이 검토해 배포한 지식이고 <strong>내 기억</strong>은 내가 저장한 선호·업무 지식입니다. 현재 별도의 공동 쓰기·실시간 동기화 저장소는 없습니다. ‘내 기억에 저장’은 공통 배포가 아닙니다. 회사 규정·공통 스킬을 기억이라고 묶지 않고 <strong>공통 하네스</strong>로 구분합니다.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>남길 내용</th>
+<th>적합한 곳</th>
+<th>누구에게, 언제 보이나요?</th>
+<th>변경·공유 방법</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>공통 용어·계산식·출처 자료</td>
+<td>공통 기억</td>
+<td>같은 지식 배포본을 사용하는 업무</td>
+<td>담당자의 갱신·배포</td>
+</tr>
+<tr>
+<td>나의 답변 순서·개인 업무 지식</td>
+<td>내 기억</td>
+<td>같은 개인 저장소를 쓰는 업무</td>
+<td>나의 검토·저장·사용 중단</td>
+</tr>
+<tr>
+<td>부서 필수 절차·공통 스킬</td>
+<td>공통 하네스</td>
+<td>그 구성을 배포받은 사용자</td>
+<td>담당자의 검토·배포</td>
+</tr>
+<tr>
+<td>내 반복 절차·계산 도구·폴더 지침</td>
+<td>내 하네스</td>
+<td>선택한 사용자/폴더 범위</td>
+<td>내 자산만 수정, 공유 원본은 관리 주체 확인</td>
+</tr>
+</tbody></table></div>
+<p>Company Agent 개인 기억과 Claude Code 자체 자동 기억은 서로 다른 기능이며 자동으로 합치지 않습니다. 한쪽을 끄거나 지웠다고 다른 쪽도 바뀌지 않습니다. 공유 파일에 적은 문장도 운영체제 권한을 바꾸지는 않습니다.</p>
+<h4>6-1. 별도의 연습 폴더와 기준선 만들기</h4>
+<p>탐색기로 같은 부모 아래에 <strong>온보딩-연습-A</strong>, <strong>온보딩-연습-B</strong>라는 빈 폴더를 만듭니다. B를 A 안에 만들지 않습니다. 기존 폴더를 재사용하거나 회사 자료를 복사하지 마세요. 부모 폴더의 <code>CLAUDE.md</code>도 영향을 줄 수 있으므로, 기존 지침이 있다면 삭제하지 말고 시험 기록에 남깁니다.</p>
+<p>A에서 새 대화를 열고 먼저 아래를 요청합니다. 이 단계는 조회만 합니다.</p>
+<pre><code class="language-text">온보딩 실습 전 현재 적용 범위를 확인해줘. 아직 파일이나 기억을 만들지 마.
+현재 작업 폴더, Company Agent 설치 범위(User/Project), 개인 저장소(stateRoot),
+확인 가능한 회사 기준과 프로젝트 CLAUDE.md 경로를 짧게 알려줘.
+Company Agent 개인 기억 중 보고서 표현 관련 내용이 있다면 제목과 식별자만 확인해줘.
+관찰할 수 없는 값은 미확인으로 남기고 다른 폴더·계정 전체를 검색하지 마.
+</code></pre>
+<p>작업 폴더·저장소는 자신의 화면에서 비교하고, 다른 사람에게 보낼 기록에서는 사용자명 등 개인 경로를 가립니다. 기존 선호와 실습 선호가 겹치면 기존 값을 덮어쓰지 말고 비교 계획부터 받습니다.</p>
+<h4>6-2. 공통 기억은 읽고, 공유 여부를 확인하기</h4>
+<p><strong>기억·하네스 관리 → 회사 공통 → 기억·지식</strong>에서 실제 등록된 항목 하나의 출처와 내용을 엽니다. 이어 <strong>개인 전체 → 기억·지식</strong>을 열어 공통 항목이 개인 편집 대상으로 섞이지 않는지 확인합니다. 공통 항목이 없으면 ‘현재 등록 없음/미확인’으로 남기고 억지로 만들지 않습니다.</p>
+<pre><code class="language-text">현재 설치에 연결된 공통 기억에서 월간 보고에 관련된 용어 또는 계산식이 있으면
+항목 이름, 실제 출처, 확인한 내용만 알려줘. 없거나 읽지 못하면 구분해서 알려줘.
+내 기억이나 회사 설정에 복사하지 말고, 동료에게 전송하지 마.
+</code></pre>
+<p><strong>성공 확인:</strong> 공통 출처를 실제로 조회했으며 개인 기억에 복사하지 않았습니다. 동료와 비교하려면 같은 배포본의 같은 항목만 확인합니다. 같은 모델 응답이 나온다는 사실만으로 공통 기억이 같다고 판단하지 마세요. 내 기억을 공통 자료로 제안하려면 <strong>검토용 내보내기 → 민감 내용 확인 → 담당자 검토·배포</strong>를 거칩니다. 내보내기 자체는 공통 반영이 아닙니다.</p>
+<h5>선택 실습: 공유 프로젝트 지침과도 비교하기</h5>
+<p>이하는 <strong>지식 저장 시험이 아닌 폴더 지침 시험</strong>입니다. <code>CLAUDE.md</code>는 사실과 작업 지침이 함께 적힐 수 있는 파일입니다. 파일 이름만으로 공통 기억·회사 규정이 되는 것은 아니며, Workspace의 공통 기억 목록으로 자동 수집하지 않습니다.</p>
+<p>A에서 다음을 보냅니다. 실제 회사 기준이 아닌 <strong>가상 프로젝트용 파일</strong>을 만드는 단계입니다.</p>
+<pre><code class="language-text">현재 폴더가 내가 선택한 온보딩-연습-A인지 확인해줘.
+기존 CLAUDE.md가 없을 때만, 아래 가상 프로젝트 지침으로 새 CLAUDE.md를 만들어줘.
+목적: 온보딩 월간 보고 연습. 수량 단위는 건. 자료에 없는 원인은 추정하지 않는다.
+결과 제목에 [연습 A]를 붙이고 실제 확인한 수치와 확인할 사항을 구분한다.
+기존 지침이 있으면 덮어쓰지 말고 알려줘. 회사 설정과 개인 기억은 변경하지 마.
+</code></pre>
+<p>파일에 들어갈 최소 예시는 다음과 같습니다. 위 요청으로 만들었다면 다시 만들 필요는 없습니다.</p>
+<!-- onboarding-example: team-claude -->
+<pre><code class="language-markdown"># 온보딩 월간 보고 — 가상 프로젝트 A
+- 목적: 가상 월간 실적을 요약한다.
+- 수량의 단위는 건이다. 자료에 없는 증가 원인은 추정하지 않는다.
+- 결과 제목에 [연습 A]를 붙인다.
+- 실제 확인한 수치와 확인할 사항을 구분한다.
+</code></pre>
+<p><strong>파일 생성 후 A의 새 대화에서</strong> 아래를 요청합니다. 새 대화를 쓰는 이유는 방금 지침을 말한 대화의 기억만으로 답하는 효과를 줄이기 위해서입니다.</p>
+<pre><code class="language-text">온보딩 월간 보고로 다음 가상 자료를 요약해줘.
+6월 목표 100건·실적 90건, 7월 목표 100건·실적 110건, 8월 목표 100건·실적 130건.
+실제로 참고한 프로젝트 지침과 개인 기억이 있으면 출처를 구분해 마지막에 짧게 알려줘.
+새로운 기억 저장이나 설정 변경은 하지 마.
+</code></pre>
+<p><strong>비교 기준:</strong> 제목의 <code>[연습 A]</code>, 단위 <strong>건</strong>, 합계 <strong>목표 300·실적 330·달성률 110%</strong>, 근거 없는 원인 없음. 파일 존재와 실제 로드는 다릅니다. 원본 CLI의 <code>/context</code>에서 Memory files를 확인할 수 있고, <code>/memory</code>는 Claude 자체 지침·기억을 확인하는 메뉴입니다. Company Agent 기억 목록을 대신하는 메뉴는 아닙니다. 출처를 확인하지 못했으면 ‘공유 지침 적용 미확인’으로 기록합니다.</p>
+<h4>6-3. 나만의 표현 선호를 더해 비교하기 — 저장 선택</h4>
+<p>4단계에서 이미 저장했다면 그 기억으로 비교해도 됩니다. 별도 실습용 선호를 원한다면 아래를 보냅니다.</p>
+<pre><code class="language-text">Company Agent 개인 기억에 &#39;온보딩 요약 순서&#39;라는 실습용 선호를 저장하고 싶어.
+온보딩 월간 보고를 요약할 때 &#39;핵심 결론 → 수치 → 확인할 사항&#39; 순서를 선호한다는 내용만 저장해줘.
+기존 보고서 선호와 겹치면 덮어쓰거나 중복 저장하지 말고 차이를 먼저 물어봐줘.
+회사 기준이나 프로젝트 지침을 바꾸지 마. 실제 저장 내용·식별자·적용 저장소를 알려줘.
+</code></pre>
+<p>A에서 다시 새 대화를 열고 <strong>6-2의 같은 가상 자료 요청</strong>을 보냅니다. 프로젝트 지침 선택 실습을 건너뛰었다면 1단계의 가상 자료로 비교하고 아래 표의 프로젝트 기준은 미시험으로 남깁니다. 이어서 실제 사용한 기억을 조회합니다. 첫 응답에 선호가 적용됐는지와, 조회를 요청한 뒤에야 적용됐는지는 따로 기록하세요.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>비교 항목</th>
+<th>개인 기억 저장 전</th>
+<th>개인 기억 저장 후</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>A의 프로젝트 기준</td>
+<td><code>[연습 A]</code>·단위·원인 비추정</td>
+<td>그대로 유지</td>
+</tr>
+<tr>
+<td>개인 표현 순서</td>
+<td>기존 선호 또는 기본 표현</td>
+<td>저장한 순서가 조회·적용되는지 확인</td>
+</tr>
+<tr>
+<td>자료의 수치</td>
+<td>목표 300·실적 330·110%</td>
+<td>동일해야 함</td>
+</tr>
+<tr>
+<td>다른 사람에게 전달</td>
+<td>공유할 것은 검토한 프로젝트 지침</td>
+<td>개인 저장소·대화는 공유하지 않음</td>
+</tr>
+</tbody></table></div>
+<p><strong>한 번만 다르게 요청하기:</strong> 같은 자료에 “이번에는 수치부터 설명해줘. 저장된 선호는 바꾸지 마”를 덧붙여 시험합니다. 이번 표현은 달라져도, 다시 조회한 개인 기억 원문은 그대로여야 합니다. 회사 필수 기준을 개인 선호로 해제하는 실습은 하지 않습니다.</p>
+<p><strong>두 사람이 비교할 수 있다면:</strong> 승인된 방법으로 가상 <code>CLAUDE.md</code>와 가상 입력만 동료에게 전달하고, 동료 자신의 환경에서 새 대화로 시험합니다. 프로젝트 기준은 공통이고 개인 표현은 다를 수 있습니다. 한 사람이 폴더만 바꾸는 시험은 다른 사용자 계정의 격리 시험을 대신하지 못합니다. 이 문서는 팀 공유 서버를 생성하거나 자료를 자동 전송하지 않습니다.</p>
+<p><strong>막혔을 때:</strong> 저장됐지만 조회되지 않으면 상태(active/사용 중)와 같은 stateRoot인지 먼저 확인합니다. 조회됐지만 적용되지 않으면 모델 적용 실패로 기록합니다. 다른 사람의 기억을 볼 수 있는지 확인하려고 그 계정 폴더를 탐색하지 않습니다.</p>
+<p><strong>정리:</strong> 실습용 기억이 불필요하면 <strong>선택한 범위 → 기억·지식</strong>에서 이번에 만든 식별자만 사용 안 함으로 바꿉니다. 이는 이력까지 삭제하는 작업이 아닙니다. 기존 기억·자동 학습 설정·회사 기준은 그대로 둡니다.</p>
+<h3 id="onboarding-section-8">7. 공통 하네스·내 하네스와 적용 폴더 비교하기</h3>
+<p><strong>한 줄로 이해하기:</strong> 회사 공통은 함께 쓰는 기준, 개인 전체는 내 여러 업무, 이 프로젝트는 현재 업무 전용입니다. <code>CLAUDE.md</code>는 프로젝트 지침 파일 중 하나이며 하네스 전체나 자동 기억 저장소와 같지 않습니다. 작은 규칙 네 줄에 작업자·도구를 전부 새로 만들 필요는 없습니다.</p>
+<h4>‘누가 관리하는가’와 ‘어디에 적용되는가’는 다릅니다</h4>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>구성</th>
+<th>역할</th>
+<th>적용 범위·공유</th>
+<th>이 실습에서 바꾸나요?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>회사·팀 공통 하네스</td>
+<td>공통 스킬·후크·업무 기준·검증 절차</td>
+<td>설치·활성화한 범위와 회사 배포 대상</td>
+<td>아니요. 읽어서 확인만</td>
+</tr>
+<tr>
+<td>내 하네스</td>
+<td>내 스킬·도구·폴더 지침과 내가 연결한 구성</td>
+<td>내 사용자 범위 또는 해당 폴더</td>
+<td>내 실습용 자산만. 외부·공유 원본은 보존</td>
+</tr>
+<tr>
+<td>User 설치</td>
+<td>현재 Windows 사용자에게 플러그인 제공</td>
+<td>그 사용자의 여러 작업 폴더; 전 직원 배포와 다름</td>
+<td>아니요</td>
+</tr>
+<tr>
+<td>Project 설치</td>
+<td>선택한 폴더에 플러그인 제공</td>
+<td>해당 프로젝트; 다른 폴더에 있다고 가정하지 않음</td>
+<td>아니요</td>
+</tr>
+<tr>
+<td>프로젝트 <code>CLAUDE.md</code></td>
+<td>목적·자료 단위·출력 조건</td>
+<td>해당 폴더와 하위 작업, 공유 시 파일을 받은 팀원</td>
+<td>새 연습 파일만</td>
+</tr>
+<tr>
+<td>Claude 사용자 <code>CLAUDE.md</code></td>
+<td>사용자 공통 지침</td>
+<td>보통 사용자 설정 루트의 파일; 개인 범위</td>
+<td>아니요</td>
+</tr>
+<tr>
+<td>프로젝트 하네스 생성기</td>
+<td>여러 단계·전문 작업자·검증 연결</td>
+<td>그 프로젝트의 생성 스킬·에이전트·규칙</td>
+<td>필요할 때 별도 선택</td>
+</tr>
+</tbody></table></div>
+<p>화면은 <strong>회사 공통 / 개인 전체 / 이 프로젝트</strong>의 세 범위를 보여줍니다. 이 프로젝트 안에도 나만 쓰는 자산과 팀이 공유한 파일이 있으므로 공유 여부를 따로 확인하세요. 어느 쪽도 회사 필수 기준을 해제하지 않습니다. Claude의 여러 지침 파일은 함께 문맥에 들어갈 수 있으므로 ‘프로젝트 파일이 전역을 전부 덮어쓴다’고 가정하지 마세요. 지침과 실제 강제 권한 설정 역시 다릅니다. <a href="https://code.claude.com/docs/en/memory">Claude Code 공식 기억·지침 문서</a>를 참고했고, 사내 배포 버전의 실제 로드는 별도로 확인합니다.</p>
+<p>Workspace에서는 <strong>회사 공통 → 업무 구성</strong>에 배포 기준·스킬·후크를, <strong>개인 전체 / 이 프로젝트 → 업무 구성</strong>에 해당 범위 자산을 표시합니다. 폴더 지침 편집은 이 프로젝트에만 있습니다. 외부 플러그인을 설치해도 Company Agent가 그 원본을 소유하거나 자동 학습으로 수정하지 않습니다. 스킬 목록 확인은 실제 연결·실행 성공과 별개입니다.</p>
+<h4>저장 범위와 자동 학습을 함께 시험하기</h4>
+<ol>
+<li>A 폴더에서 “가상 보고서에 연습-A라고 표시하는 선호를 기억해줘”라고 요청합니다. <strong>개인 전체 / 이 프로젝트</strong> 질문이 나오면 이 프로젝트를 선택합니다. 회사 공통을 저장 대상으로 제시하면 잘못된 동작입니다.</li>
+<li>같은 사용자 설치의 B 폴더에서 새 대화를 열고 기억을 조회합니다. A 전용 기억은 나오지 않아야 합니다. A에서는 다시 조회되어야 합니다. 실제 저장·조회와 모델 답변 반영은 각각 확인합니다.</li>
+<li>별도의 가상 선호를 “개인 전체에 저장해줘”라고 요청합니다. 재질문 없이 해당 범위에 저장하고 A/B에서 조회되는지 확인합니다. 프로젝트 지침·회사 원본은 바뀌지 않아야 합니다.</li>
+<li>스킬 만들기도 같은 범위 선택을 사용합니다. “이 프로젝트에 저장할 월간 요약 스킬”처럼 명시하면 범위 질문을 반복하지 않습니다. 기존 항목 수정은 원래 범위이며 자동 이동하지 않습니다.</li>
+<li>자동 학습 카드의 <strong>적용 범위</strong>를 확인합니다. User 설치는 개인 전체, 별도 Project 설치는 해당 설치 저장소입니다. 화면 이동이나 위 저장 선택만으로 자동 학습 범위가 바뀌지는 않습니다. User 설치의 프로젝트 전용 개인 자산은 명시적 저장/수정용이며 자동 수정 대상이 아닙니다.</li>
+</ol>
+<p>자동 학습 흐름은 <strong>피드백 후보 → 업무 완료·검증 → 짧은 선호/기존 개인 스킬 점검 항목 반영 → 다음 사용 평가</strong>입니다. 직접 교정은 완료 시 반영할 수 있고 추정한 선호는 독립된 업무의 반복 근거가 필요합니다. 읽지 않은 스킬·회사 정책·프로젝트 CLAUDE.md·도구 코드를 자동 변경하지 않습니다. 모델 훈련, 모든 답변마다 저장, 종료 후 백그라운드 실행이 아닙니다. 학습 끄기·내역 확인·되돌리기는 자동 학습 카드에서 합니다. 연습 후 이번 항목만 사용 중단하고 원본은 보존하세요.</p>
+<h4>7-1. A와 B에서 무엇이 달라지는지 시험하기</h4>
+<p>먼저 <strong>기억·하네스 관리 → 구성 한눈에</strong>를 엽니다. 세 영역의 스킬·기억·지침에서 <strong>위치 보기</strong>를 펼쳐 A의 현재 폴더와 저장소를 확인하세요. <strong>구성 지도 HTML 저장</strong>으로 A의 스냅샷을 보관한 뒤 B에서도 같은 순서로 조회합니다. AI 호출이나 설정 변경 없이 비교할 수 있습니다. HTML에는 경로·항목 이름이 들어가므로 외부에 바로 공유하지 마세요.</p>
+<p>두 화면에서 ‘사용 가능’ 항목이 같아도 모델이 사용했다는 뜻은 아닙니다. ‘본문 로드 기록’이 있으면 해당 대화에서 동일 본문을 읽은 기록까지만 확인한 것이며, 아래 가상 업무의 답변까지 대조해야 적용을 판단할 수 있습니다. 지도는 저장 시점의 상태이므로 설정을 바꾸었다면 Workspace에서 새로고침하세요.</p>
+<p>6단계에서 만든 B 폴더를 선택해 새 대화를 열고, 같은 범위 조회 요청으로 <strong>작업 폴더·설치 범위·stateRoot·부모 지침</strong>을 먼저 비교합니다. A 지침 선택 실습을 건너뛰었다면 6-2의 가상 프로젝트 파일 실습부터 하거나 이번 비교도 건너뜁니다. A 대화를 그대로 이어서 B를 말로만 지정하지 않습니다. B에 Company Agent가 설치·활성화되지 않았다면 그 사실을 기록하고 멈춥니다. 비교 때문에 자동 재설치하거나 저장소를 복사하지 않습니다.</p>
+<p>이어서 다음을 보냅니다.</p>
+<pre><code class="language-text">현재 폴더가 내가 선택한 온보딩-연습-B인지 확인해줘.
+기존 CLAUDE.md가 없을 때만 새 파일에 다음 가상 프로젝트 지침을 적어줘.
+온보딩 월간 보고를 요약한다. 수량 단위는 건이며 자료에 없는 원인은 추정하지 않는다.
+결과 제목에는 [연습 B]를 붙이고 실제 확인한 수치와 확인할 사항을 구분한다.
+A 폴더, 회사 설정, 개인 기억은 변경하지 마. 기존 파일이 있으면 덮어쓰지 마.
+</code></pre>
+<p>B의 새 대화에서 <strong>6-2와 동일한 가상 자료 요청</strong>을 사용합니다.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>관찰할 것</th>
+<th>A</th>
+<th>B</th>
+<th>의미</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>프로젝트 제목 표식</td>
+<td><code>[연습 A]</code></td>
+<td><code>[연습 B]</code></td>
+<td>폴더별 지침의 차이</td>
+</tr>
+<tr>
+<td>회사 스킬·후크</td>
+<td>실제 등록 확인</td>
+<td>실제 등록 확인</td>
+<td>같은 User 설치라면 공통 구성이 사용 가능한지 비교</td>
+</tr>
+<tr>
+<td>개인 기억</td>
+<td>저장한 식별자 확인</td>
+<td>같은 stateRoot이면 같은 기억 조회 가능; 다른 저장소면 별도</td>
+<td>폴더 이동과 개인 저장소 변경은 다른 일</td>
+</tr>
+<tr>
+<td>공통 수치·기준</td>
+<td>300·330·110%, 원인 추정 없음</td>
+<td>동일</td>
+<td>표현 차이로 자료 의미가 바뀌면 실패</td>
+</tr>
+</tbody></table></div>
+<p>같은 User 설치라도 B의 설정·정책 때문에 플러그인이 비활성일 수 있습니다. Project 설치끼리라면 저장소가 달라 개인 기억이 따라오지 않는 것이 정상일 수 있습니다. <strong>전역 설치 = 모든 팀원이 같은 기억을 쓴다</strong>는 뜻은 아닙니다.</p>
+<p><strong>막혔을 때:</strong> B에서 <code>[연습 A]</code>가 보이면 새 대화인지, B가 A의 하위 폴더인지, 부모 지침 또는 별도 자동 기억에 A의 설명이 남았는지 확인합니다. 기존 지침을 지워서 시험을 통과시키지 않습니다. 내 하네스의 폴더 지침 편집기가 관리하는 <code>.claude/rules/company-workspace-brief.md</code>와 직접 만든 <code>CLAUDE.md</code>도 다른 파일입니다.</p>
+<h4>7-2. 프로젝트 하네스는 언제 만드는가? — 선택</h4>
+<p>단위·문체·목적만 정하면 <code>CLAUDE.md</code>로 충분합니다. 자료 취합 → 초안 작성 → 별도 검토가 반복되고 단계별 역할이 필요할 때만 프로젝트 하네스를 검토합니다.</p>
+<pre><code class="language-text">이 연습 프로젝트의 월간 보고를 &#39;자료 확인 → 초안 작성 → 결과 검토&#39;로 반복하고 싶어.
+현재 CLAUDE.md만으로 충분한지 먼저 설명하고, 필요하다면 프로젝트 하네스 변경 계획만 보여줘.
+기존 파일, 생성할 파일, 사용할 실제 스킬, 대표 검증 방법을 구분해줘.
+아직 생성·설치·활성화하거나 회사 정책·모델·MCP 설정을 변경하지 마.
+</code></pre>
+<p>계획이 필요에 맞을 때만 생성 범위를 승인합니다. 현재 생성기는 자체 프로젝트 스킬·작업자·규칙과 소유권 기록을 만들며, 기존 <code>CLAUDE.md</code>를 교체하지 않습니다. 구조 검사 통과와 실제 보고서 생성 성공은 별개입니다. 초보자에게 하네스 생성을 필수 첫 단계로 요구하지 않습니다.</p>
+<p>새 폴더에서 파일 읽기·작성·수정 같은 작업을 요청하면 기존 지침이 없는 경우 <strong>기본 <code>CLAUDE.md</code>를 처음 한 번 자동 생성</strong>합니다. 폴더를 열기만 하거나 대화·계획 모드·변경 금지 요청일 때는 만들지 않습니다. 기존 <code>CLAUDE.md</code>, <code>.claude/CLAUDE.md</code>, 부모 프로젝트 지침이 있으면 그대로 사용합니다. 홈·설치·시스템 폴더에는 만들지 않습니다. <code>/init</code> 명령이나 추가 AI를 실행하는 것이 아니라 짧은 시작 안내와 실제 존재하는 시작 파일 이름만 기록합니다. 프로젝트 실행법·검증 명령을 분석했다고 간주하지 마세요.</p>
+<p><strong>시험:</strong> 지침 없는 별도 연습 폴더에서 <code>테스트 메모를 새 파일로 작성해줘</code>라고 요청한 뒤 <code>CLAUDE.md</code>를 확인합니다. 다시 요청해도 내용이 덮어써지지 않아야 합니다. 위 A/B 실습에서 기본 파일이 먼저 만들어졌다면 기존 내용을 확인하고 <code>[연습 A]</code> 또는 <code>[연습 B]</code> 지침만 추가해 달라고 요청하세요. 파일을 삭제하거나 공통 설정을 바꿀 필요가 없습니다.</p>
+<p>의미 있는 업무 후의 개인 자동 학습은 내 선호·제한된 개인 스킬을 대상으로 하며, 이 최초 생성과도 다릅니다. <code>/revise-claude-md</code>를 자동 실행하거나 프로젝트 문서를 계속 덮어쓰지 않습니다. 먼저 기존 파일·관리 주체·적용 폴더를 확인하고 필요한 변경만 요청하세요.</p>
+<p>문서 읽기 실습에서는 이제 별도 Windows 창 대신 Claude 안에서 읽을 파일·범위와 AI 처리 안내를 확인합니다. <strong>이 범위 읽기 승인</strong>을 누르면 그 범위만 읽고, <strong>취소</strong>하면 문서를 열지 않습니다. 질문 도구가 없는 환경에서는 <code>승인</code>/<code>취소</code>로 답합니다. 범위가 바뀌거나 15분이 지나면 다시 확인합니다. 중간 질문·피드백은 기본 한국어이며, 회사의 처리 허가나 Claude 자체 실행 권한을 대신하는 승인이 아닙니다.</p>
+<p><strong>정리:</strong> A/B 파일을 유지해 다음 실습에 써도 됩니다. 없애려면 먼저 이번 실습에서 만든 정확한 파일 목록을 확인하고 그 파일만 휴지통으로 옮기세요. 폴더 전체·부모 지침·개인 저장소를 일괄 삭제하지 않습니다.</p>
+<h3 id="onboarding-section-9">8. 개인 스킬과 도구를 직접 만들어 보기</h3>
+<p><strong>판단 기준:</strong> 기억은 ‘내 취향’, 지식은 ‘정의와 근거’, 스킬은 ‘반복 절차’, 도구는 ‘정해진 계산이나 동작’입니다. 새 기능부터 만들기보다 사용 가능한 목록에 같은 역할이 있는지 먼저 확인합니다.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>원하는 일</th>
+<th>가장 작은 시작점</th>
+<th>이 실습</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>결론부터 설명해 주기</td>
+<td>개인 기억</td>
+<td>6단계</td>
+</tr>
+<tr>
+<td>회의 메모에서 결정·할 일·미정 구분</td>
+<td>개인 스킬</td>
+<td>8-1</td>
+</tr>
+<tr>
+<td>같은 공식으로 합계·달성률 계산</td>
+<td>로컬 스크립트 도구</td>
+<td>8-2</td>
+</tr>
+<tr>
+<td>다른 시스템과 지속적으로 연결</td>
+<td>승인된 기존 도구, 필요할 때 MCP</td>
+<td>이번 기본 실습 제외</td>
+</tr>
+</tbody></table></div>
+<h4>8-1. 코드를 쓰지 않는 개인 스킬</h4>
+<p>새 연습 대화에서 아래를 요청합니다. 생성 의사가 명확한 예문이므로 실행하면 개인 자산이 생깁니다.</p>
+<pre><code class="language-text">회의 메모에서 결정된 것·할 일·미정 사항을 구분하는 개인 스킬을 만들고 싶어.
+먼저 사용 가능한 목록에 같은 역할이 있는지 확인하고, 겹치면 차이를 물어봐줘.
+적합한 것이 없으면 &#39;onboarding-meeting-check&#39;라는 이름으로 만들어줘.
+내가 제공한 회의 텍스트만 사용하고 외부 조회·메일 발송·파일 이동은 하지 마.
+할 일은 내용·담당자·기한을 구분하고, 없는 담당자나 기한은 &#39;미정&#39;으로 표시해줘.
+자료에 없는 결정을 만들지 마. 빈 입력에는 자료를 요청해줘.
+실제 개인 저장소에 저장하고 설치된 회사 플러그인 파일은 수정하지 마.
+이름이 충돌하면 덮어쓰거나 임의로 바꾸지 말고 알려줘.
+생성한 파일 위치와 사용 가능한 상태, 구조 검사에서 확인한 범위를 알려줘.
+실제 회의 예제 시험은 다음 요청에서 진행할게.
+</code></pre>
+<p>스킬은 <code>name</code>(이름), <code>description</code>(언제 쓰는가), 본문(어떤 절차인가)으로 이해하면 됩니다. 설명을 ‘모든 업무에 사용’처럼 넓게 쓰지 않습니다. <strong>내용 예시</strong>는 아래와 같으며, 하네스가 생성했다면 별도로 다시 설치하지 않습니다.</p>
+<!-- onboarding-example: personal-skill -->
+<pre><code class="language-markdown">---
+name: onboarding-meeting-check
+description: 제공된 회의 메모에서 결정 사항, 담당자와 기한이 있는 할 일, 미정 사항을 구분할 때 사용합니다.
+---
+# 회의 메모 확인
+- 제공된 텍스트만 사용한다. 입력이 없으면 메모를 요청한다.
+- 결정 사항 / 할 일 / 미정 사항으로 나눈다. 없는 결정을 지어내지 않는다.
+- 할 일은 내용·담당자·기한으로 정리한다. 없는 값은 미정으로 표시한다.
+- 외부 조회, 메일 발송, 파일 이동은 수행하지 않는다.
+</code></pre>
+<p><strong>첫 시험은 이름 없이</strong> 다음을 요청합니다.</p>
+<pre><code class="language-text">회의 메모를 결정 사항, 할 일, 미정 사항으로 정리해줘.
+가상 메모: 다음 보고서에는 누적 실적을 포함하기로 했다.
+지민은 금요일까지 표 초안을 만든다. 검토 담당자는 다음 회의에서 정한다.
+문서 저장이나 기억 저장은 하지 마.
+</code></pre>
+<p><strong>기대 결과:</strong> 결정은 ‘누적 실적 포함’, 할 일은 ‘표 초안 / 지민 / 금요일’, 미정은 ‘검토 담당자’입니다. 금요일의 날짜는 제공되지 않았으므로 특정 날짜를 만들어내면 안 됩니다. 실제로 생성된 스킬 본문을 읽었는지도 확인합니다. 결과만 비슷하다고 자동 선택 성공으로 보지 않습니다.</p>
+<p>이어서 새 대화에서 “방금 만든 개인 회의 메모 스킬로 같은 가상 메모를 정리해줘”라고 비교합니다. 이름 없이 실패하고 명시하면 성공하는 경우에는 <strong>자동 선택은 미확인/실패, 명시 사용은 성공</strong>으로 나눠 기록합니다. 마지막으로 빈 메모를 보내 자료를 요청하는지 시험합니다.</p>
+<p><strong>수정 연습:</strong> “이 스킬에서 기한이 없으면 추측하지 말고 미정으로 두는 예시를 보완해줘. 기존 이름과 외부 동작 없는 범위는 유지해줘”라고 요청하고 정상·누락 예제를 다시 확인합니다. 새로운 이름의 스킬을 중복 생성하지 않습니다.</p>
+<p><strong>저장 위치 주의:</strong> Company Agent 자산 생성기는 선택한 범위의 저장소 아래 <code>personal-root/.claude/skills/&lt;이름&gt;/SKILL.md</code>에 저장하고 자체 목록으로 발견합니다. User 설치의 ‘이 프로젝트’ 자산은 개인 상태 저장소의 <code>project-scopes/&lt;폴더 식별자&gt;</code> 아래에 보관합니다. Claude 자체 개인 스킬 폴더나 프로젝트 공유 폴더와 같은 경로라고 가정하지 마세요. 일반 Claude의 개인·프로젝트 스킬 위치는 <a href="https://code.claude.com/docs/en/skills">공식 스킬 문서</a>에 설명돼 있습니다. Company Agent 목록에 보인다는 것과 원본 CLI의 <code>/이름</code> 호출이 등록됐다는 것도 따로 확인합니다. 등록되지 않은 호출명을 반복 실행하지 않습니다.</p>
+<h4>8-2. 숫자를 일정하게 계산하는 로컬 도구</h4>
+<p>이번에는 AI가 매번 계산 코드를 새로 만드는 대신, 입력과 출력이 정해진 작은 도구를 만듭니다. 회사 시스템 연결·MCP·추가 패키지는 필요 없는 예제입니다.</p>
+<pre><code class="language-text">개인 로컬 스크립트 도구 &#39;onboarding-achievement&#39;를 만들어 검증 후 사용할 수 있게 해줘.
+먼저 같은 역할의 기존 도구와 이름 충돌을 확인하고, 겹치면 선택을 물어봐줘.
+입력은 targets와 actuals라는 길이가 같은 비어 있지 않은 정수 목록이야.
+각 값은 0 이상 1,000,000 이하, 항목은 12개 이하로 제한해줘.
+출력은 targetTotal, actualTotal, achievementRate야.
+달성률은 실적 합계 / 목표 합계 × 100을 소수점 둘째 자리까지 반올림해줘.
+목표 합계가 0이면 달성률은 숫자가 아니라 null(계산 불가)로 반환해줘.
+빈 목록, 길이 차이, 음수, 문자열·참/거짓 입력, 필수 항목 누락은 오류로 구분해줘.
+표준 Python으로만 만들고 외부 통신·임의 파일 읽기/쓰기·다른 프로그램 실행은 하지 마.
+정상 시험: targets=[100,100,100], actuals=[90,110,130]이면 합계 300·330, 달성률 110.
+반올림 시험: targets=[3], actuals=[1]이면 33.33.
+목표 0 시험: targets=[0], actuals=[30]이면 달성률 null.
+앞서 정한 잘못된 입력도 실제로 시험해줘. 생성만으로 완료라고 하지 마.
+검증 전에는 candidate 상태로 두고, 성공한 검증 기록으로만 활성화해줘.
+기존 회사 설정, 개인 스킬, MCP 등록은 변경하지 마.
+</code></pre>
+<p>여기서 파일 읽기/쓰기 제한은 <strong>생성된 도구의 업무 동작</strong>에 대한 것입니다. 하네스가 개인 도구 소스·시험 입력·검증 기록을 저장하고 승인된 Python 프로세스로 실행하는 단계는 필요합니다. 입력 검증과 시간 제한이 있다고 OS 샌드박스가 생기는 것은 아닙니다.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>시험</th>
+<th>입력</th>
+<th>기대 결과</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>정상</td>
+<td>targets <code>[100,100,100]</code>, actuals <code>[90,110,130]</code></td>
+<td>목표 300, 실적 330, 달성률 110</td>
+</tr>
+<tr>
+<td>반올림</td>
+<td>targets <code>[3]</code>, actuals <code>[1]</code></td>
+<td>33.33</td>
+</tr>
+<tr>
+<td>목표 0</td>
+<td>targets <code>[0]</code>, actuals <code>[30]</code></td>
+<td>달성률 null; 0%·무한대라고 하지 않음</td>
+</tr>
+<tr>
+<td>잘못된 입력</td>
+<td>빈 목록, 길이 차이, 음수, 문자열·참/거짓, 필드 누락</td>
+<td>오류; 성공한 계산값으로 꾸미지 않음</td>
+</tr>
+</tbody></table></div>
+<p><strong>확인 순서:</strong> 생성된 candidate → 실제 시험 결과와 검증 기록 → 활성화된 호출용 스킬 → 같은 입력 재실행. 현재 도구의 검증 기록은 시험한 코드·설정에 묶이며 모든 수학적 경우나 안전성을 증명하지는 않습니다. 코드를 바꾸면 재시험해야 합니다. 이번 연습은 AI에게 최종 수치 검증을 생략하도록 하는 것이 아닙니다.</p>
+<details>
+<summary>선택: 교육 담당자가 코드와 입력을 직접 검증할 때</summary>
+
+<p>아래는 위 조건의 최소 계산 예제입니다. 안내서를 열어도 실행되지 않으며, 전체 AssetSpec이나 CLI 명령이 아닙니다. 자산 생성기는 별도로 입력·출력 스키마를 구성합니다. 연습 검사는 이 코드와 입력을 임시 저장소에서 사용하며 실제 개인 설정을 바꾸지 않습니다.</p>
+<!-- onboarding-example: tool-code -->
+<pre><code class="language-python">import json
+import sys
+
+payload = json.load(sys.stdin)
+if not isinstance(payload, dict) or set(payload) != {&quot;targets&quot;, &quot;actuals&quot;}:
+    raise ValueError(&quot;targets and actuals are required&quot;)
+targets, actuals = payload[&quot;targets&quot;], payload[&quot;actuals&quot;]
+for values in (targets, actuals):
+    if not isinstance(values, list) or not 1 &lt;= len(values) &lt;= 12:
+        raise ValueError(&quot;provide 1 to 12 values&quot;)
+    if any(type(value) is not int or not 0 &lt;= value &lt;= 1000000 for value in values):
+        raise ValueError(&quot;values must be nonnegative integers up to 1000000&quot;)
+if len(targets) != len(actuals):
+    raise ValueError(&quot;list lengths must match&quot;)
+target_total, actual_total = sum(targets), sum(actuals)
+rate = round(actual_total / target_total * 100, 2) if target_total else None
+json.dump({&quot;targetTotal&quot;: target_total, &quot;actualTotal&quot;: actual_total,
+           &quot;achievementRate&quot;: rate}, sys.stdout, ensure_ascii=False)
+</code></pre>
+<!-- onboarding-example: tool-cases -->
+<pre><code class="language-json">[
+  {&quot;input&quot;:{&quot;targets&quot;:[100,100,100],&quot;actuals&quot;:[90,110,130]},&quot;expected&quot;:{&quot;targetTotal&quot;:300,&quot;actualTotal&quot;:330,&quot;achievementRate&quot;:110}},
+  {&quot;input&quot;:{&quot;targets&quot;:[3],&quot;actuals&quot;:[1]},&quot;expected&quot;:{&quot;targetTotal&quot;:3,&quot;actualTotal&quot;:1,&quot;achievementRate&quot;:33.33}},
+  {&quot;input&quot;:{&quot;targets&quot;:[0],&quot;actuals&quot;:[30]},&quot;expected&quot;:{&quot;targetTotal&quot;:0,&quot;actualTotal&quot;:30,&quot;achievementRate&quot;:null}},
+  {&quot;input&quot;:{&quot;targets&quot;:[],&quot;actuals&quot;:[]},&quot;error&quot;:true},
+  {&quot;input&quot;:{&quot;targets&quot;:[100],&quot;actuals&quot;:[90,110]},&quot;error&quot;:true},
+  {&quot;input&quot;:{&quot;targets&quot;:[-1],&quot;actuals&quot;:[10]},&quot;error&quot;:true},
+  {&quot;input&quot;:{&quot;targets&quot;:[&quot;100&quot;],&quot;actuals&quot;:[90]},&quot;error&quot;:true},
+  {&quot;input&quot;:{&quot;targets&quot;:[true],&quot;actuals&quot;:[90]},&quot;error&quot;:true},
+  {&quot;input&quot;:{&quot;targets&quot;:[100]},&quot;error&quot;:true}
+]
+</code></pre>
+</details>
+
+<h4>8-3. 언제 팀에 나누고, 어떻게 정리하나요?</h4>
+<p>개인 스킬·도구를 만들었다고 회사 전체에 배포되는 것은 아닙니다. 팀에 유용하다면 <strong>목적, 입력·출력, 정상/실패 시험, 권한·준비물, 담당자</strong>를 정리하고 민감 내용이 없는 소스만 담당자에게 검토 요청합니다. 회사 공통 반영은 별도 배포 작업입니다. 검증 기록을 다른 PC에 복사해 활성화를 대신하지 않습니다.</p>
+<p><strong>정리:</strong> 현재 온보딩에는 개인 자산 전체를 한 번에 삭제하는 버튼을 추가하지 않았습니다. 생성된 파일·등록·참조를 먼저 조회해 이번에 만든 이름만 정리할 계획을 받으세요. 실제 정리는 범위를 확인한 뒤 진행하고, 승인된 정리 방법이 없으면 유지합니다. 설치 캐시 수정·기존 스킬 비활성화·MCP 초기화로 충돌을 피하지 않습니다.</p>
+<p><strong>막혔을 때:</strong> 스킬 목록, 본문 로드, 도구 시험, 활성화를 나눠 확인합니다. 준비물이 없으면 설치를 추측해 진행하지 않습니다. MCP가 필요하지 않은 계산에 MCP 서버를 추가하거나, 연습을 이유로 전체 후크를 끄지 않습니다.</p>
+<h4>8-4. 선택 실습: 전사와 같은 형식으로 MCP 만들기</h4>
+<p>회사 표준으로 개발해 나중에 전사 플랫폼에 제출하려면 **<code>company-agent:platform-mcp-builder</code>**를 사용합니다. 일반 개인용 stdio MCP를 만드는 <code>asset-factory</code>와 목적이 다릅니다. 이 개발 스킬은 회사 공통이며, 연습 결과는 회사 공통 배포본이 아닌 내가 지정한 개발 폴더에 저장됩니다.</p>
+<pre><code class="language-text">전사 표준 tools.py / register_tools 형식으로 MCP를 개발하고 싶어.
+이 프로젝트에서만 연습할 거야. 새 개발 폴더는 [실제 절대 경로]야.
+먼저 합성 한글 문자열을 되돌려 주는 예제로 로컬 시험까지 진행해줘.
+MCP 연결 등록, 인터넷 패키지 설치, 회사 플랫폼 업로드는 하지 마.
+</code></pre>
+<p><strong>만들어지는 것:</strong> <code>src/mcp/tools.py</code>가 업무 코드입니다. 함께 제공하는 <code>config.py</code>·<code>local_server.py</code>·<code>requirements-local.txt</code>는 <strong>로컬 시험 전용</strong>이며 전사 파일을 교체하지 않습니다. <code>test_tools.py</code>는 실제 MCP SDK로 목록·입출력·실패 입력을 확인합니다. 기존 폴더를 덮어쓰지 않습니다. Python과 승인된 SDK 1.x 환경이 없으면 준비물을 안내하며 자동 설치하지 않습니다.</p>
+<p><strong>이렇게 되면 성공:</strong> 한글 응답이 원래 입력과 같고, 잘못된 입력은 오류로 구분되며, 검사한 코드 경로와 결과를 확인할 수 있습니다. 이 기본 검사는 포트를 열지 않는 로컬 HTTP 전송 시험입니다. 사용자가 별도 연결 시험을 요청하면 내 PC의 <code>127.0.0.1</code>에만 서버를 열어 확인합니다. 소스가 생성됐다고 CLI에 MCP가 등록되거나 다른 프로젝트에서 자동 사용되는 것은 아닙니다.</p>
+<p><strong>전사에 전달할 때:</strong> 기본 제출물은 <code>src/mcp/tools.py</code>와 추가 의존성·필요한 설정 항목명·사용 예제·시험 결과입니다. 업무용 보조 모듈이 있다면 목록을 함께 냅니다. 로컬 설정, 비밀값, 개인 기억, 개발 환경은 제외합니다. 담당자가 실제 전사 SDK·인증·권한을 검증한 뒤 배포합니다. “로컬 시험 통과”와 “전사 배포 완료”는 다릅니다. Markdown 스킬도 공유할 수 있지만 필요한 상대 참조 파일까지 포함하고, 개인 경로나 하네스 전용 호출을 그대로 전사에 적용하지 않습니다.</p>
+<h3 id="onboarding-section-10">9. 사용량과 결과 확인하기</h3>
+<p><strong>사용 현황 · 결과 확인</strong>을 엽니다. 토큰이 미제공이면 0으로 해석하지 않습니다. 실행 구간과 질문·승인 대기를 구분하고 CLI 보고값을 무조건 요청별로 합산하지 않습니다.</p>
+<p><strong>준비·결과 확인</strong>에서 내용·범위·파일을 직접 확인한 뒤 통과/실패/미확인/중지를 기록합니다. 스킬 목록의 개수나 준비물 점수가 실제 업무 정확도를 대신하지 않습니다. 확인 기록 내보내기는 자동 전송하지 않으며, 기록 비우기는 대화·기억·결과 파일 삭제와 다릅니다.</p>
+<p><strong>성공 확인:</strong> 확인하지 않은 항목은 미확인으로 남고, 같은 예제로 재시험할 때 전후 결과를 비교할 수 있습니다. 일반 업무를 위해 매번 진단 화면을 열 필요는 없습니다.</p>
+<h3 id="onboarding-section-11">10. 화면 조작은 필요할 때만 시험하기</h3>
+<p>Workspace의 업무 도우미에서 <strong>화면 조작 시험</strong>을 선택합니다. <strong>설치 후보·현재 연결 확인</strong>은 파일 후보와 이미 실행 중인 CLI의 보고만 읽습니다. Cua를 설치하거나 MCP를 연결하거나 화면을 캡처하지 않습니다.</p>
+<p>Driver 미발견이나 연결 미표시는 정상적인 미준비 상태일 수 있습니다. 준비와 회사 승인이 끝났다면 <a href="#cua">Cua Driver 시험 안내</a>의 계산기 관찰 → 계획 확인 → 작은 입력 → 실제 결과 확인 순서로 시험합니다. 해당 도구를 관찰하지 못했으면 앱은 실행 예문 버튼을 제공하지 않습니다.</p>
+<h3 id="onboarding-section-12">11. 마무리 체크리스트와 의견</h3>
+<ul>
+<li><input disabled="" type="checkbox"> 실제 설치 범위와 작업 폴더를 구분했다.</li>
+<li><input disabled="" type="checkbox"> 자료의 수치·범위를 직접 확인했다. 텍스트 연습과 Office 시험을 구분했다.</li>
+<li><input disabled="" type="checkbox"> 디자인 질문에 답하고 실제 결과 파일을 열었다.</li>
+<li><input disabled="" type="checkbox"> 이번 결과 수정과 장기 선호 저장을 구분했다.</li>
+<li><input disabled="" type="checkbox"> 선택한 경우 기억을 새 대화에서 조회·비교했다.</li>
+<li><input disabled="" type="checkbox"> 팀의 공유 기준과 개인 기억, Claude 자체 자동 기억이 다른 저장 방식임을 구분했다.</li>
+<li><input disabled="" type="checkbox"> A/B 폴더에서 프로젝트 지침과 개인 저장소의 적용 범위를 따로 비교했다.</li>
+<li><input disabled="" type="checkbox"> 개인 스킬은 발견·본문 로드·실제 결과를, 도구는 생성·시험·활성화를 구분했다.</li>
+<li><input disabled="" type="checkbox"> 토큰·시간의 미제공 값과 실제 관찰값을 구분했다.</li>
+<li><input disabled="" type="checkbox"> 불필요하거나 바꾸고 싶은 기능을 핸드북의 개선 의견 양식에 적었다.</li>
+</ul>
+<p>선택 실습을 하지 않았다면 해당 항목은 ‘미실행’으로 두세요. 다음 양식으로 관찰한 것만 남깁니다. 단순히 ‘모두 성공’이라고 쓰지 않습니다.</p>
+<pre><code class="language-text">실습 번호 / 날짜 / 설치 버전:
+작업 폴더: A / B / 동료의 별도 환경
+설치 범위와 개인 저장소: 같음 / 다름 / 미확인 (공유 기록에는 개인 경로 제외)
+확인한 지침·기억·스킬의 출처:
+저장·발견·로드·실행·결과 중 실제 확인한 단계:
+기대 결과 / 관찰 결과:
+결론: 통과 / 실패 / 미확인 / 미실행
+유지할 자산 / 사용 안 함 또는 정리한 항목 / 남은 한계:
+</code></pre>
+<p>앱을 끝낼 때는 오른쪽 위 전원 버튼을 사용합니다. 창의 X만 닫으면 서버가 남을 수 있습니다. 연습 파일·기억은 자동으로 지우지 않습니다. 유지할 것과 정리할 것을 직접 선택하세요.</p>
+<p class="back"><a href="#start">처음 안내로 돌아가기 ↑</a></p></section><section class="book" aria-labelledby="usage"><h2 id="usage">Company Agent 업무별 사용 가이드</h2>
+<p>대상: 코어 1.4.17 · Workspace 0.5 · 2026-09-19. 온보딩·기능 설명·명령어는 <strong>Company-Agent-Guide.html</strong> 한 파일에서 함께 읽습니다. 이 원본은 업무 예문만 관리하며 과거 변경 이력은 각 UPDATE 문서에 있습니다.</p>
+<p>Company Agent는 기존 Claude Code에 업무 절차를 더하는 하네스입니다. 회사 계정·모델·권한은 기존 환경을 사용합니다. Workspace는 별도 선택 화면이며 CLI를 새 AI로 바꾸지 않습니다. 설치됨·스킬 발견·실제 실행·결과 검증은 각각 확인합니다.</p>
+<h3 id="usage-section-1">1. 요청은 목적·자료·결과·제한 순서로</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>알려줄 것</th>
+<th>예</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>목적과 독자</td>
+<td>부서장에게 월간 실적을 설명</td>
+</tr>
+<tr>
+<td>자료와 범위</td>
+<td>가상 세 달 수치, 또는 첨부 파일 1~5장</td>
+</tr>
+<tr>
+<td>결과</td>
+<td>핵심 요약과 확인할 사항, 편집 가능한 PPT</td>
+</tr>
+<tr>
+<td>제한과 완료 조건</td>
+<td>원인 추측 금지, 원본 보존, 직접 확인한 범위만 보고</td>
+</tr>
+</tbody></table></div>
+<p>어렵다면 “필요한 정보만 한국어로 물어봐줘”라고 시작합니다. 질문이 오면 번호나 이름으로 답하고, 답변 대기 중 같은 제작 요청을 다시 보내지 않습니다.</p>
+<p>참고 파일은 필수가 아닙니다. <a href="#onboarding">온보딩</a> 1단계의 가상 자료 생성 요청을 먼저 보내면 MD 파일을 만들 수 있습니다. Office·참고 PPT 없이 시작하며, PPT도 2단계의 새 디자인 예문으로 만들고 읽기 실습에 재사용합니다.</p>
+<h3 id="usage-section-2">2. 문서 읽기와 비교</h3>
+<p>실제 파일은 CLI의 <code>@</code> 또는 Workspace의 파일 선택으로 지정합니다. 기존 Office 문서는 사용 가능한 <code>office-reader</code> 절차로 읽고, 파일·범위·AI 처리 안내를 확인한 뒤 승인합니다. 문서 본문이 대화에 전달될 수 있으므로 승인된 자료만 사용합니다.</p>
+<pre><code class="language-text">첨부한 가상 PPT의 1~5장을 읽고 핵심 내용·월별 수치·확인할 사항을 정리해줘.
+원본은 수정하지 말고 실제 읽은 장수와 미확인 부분을 알려줘.
+자료에 없는 증가 원인은 추측하지 마.
+</code></pre>
+<p>Office 읽기는 설치된 Excel·PowerPoint·Word와 선택 Python의 관련 라이브러리가 필요합니다. PPT 생성에 성공해도 Office 읽기가 준비됐다는 뜻은 아닙니다. 승인 대기에는 Office를 열지 않습니다. 실패·시간초과·개수 차이만으로 DRM 원인을 단정하거나 다른 사본으로 우회하지 않습니다.</p>
+<p>문서 비교 파일이 없어도 아래 예문으로 시작할 수 있습니다.</p>
+<pre><code class="language-text">다음 가상 문구 두 개를 비교해줘.
+이전안: 월 1회 점검. 변경안: 월 2회 점검. 그 외 조건은 동일.
+바뀐 항목과 바뀌지 않은 항목만 표로 정리해줘. 실제 회사 규정으로 기억하지 마.
+</code></pre>
+<h3 id="usage-section-3">3. 보고서·HTML·편집 가능한 PPT</h3>
+<p>먼저 디자인·분량·결과 형식을 정합니다. HTML은 새 디자인 또는 참고 HTML, PPT는 새 디자인·참고 캡처 2~3장·기존 PPT·저장한 HTML 양식 중 필요한 방식을 사용합니다. <strong>새 디자인에서는 참고 파일을 요구하지 않습니다.</strong></p>
+<pre><code class="language-text">가상 월간 실적으로 짧은 HTML 보고서를 만들어줘.
+6월 목표 100건·실적 90건, 7월 목표 100건·실적 110건, 8월 목표 100건·실적 130건.
+참고 파일은 없어. 새 디자인 목록에서 하나 고른 뒤 스크롤 방식으로 만들어줘.
+목표 300건·실적 330건·달성률 110%를 대조해줘. 원인과 연도는 추측하지 마.
+최종 HTML 한 파일만 전달하고 기존 파일은 덮어쓰지 마.
+</code></pre>
+<p>PPT는 전체 HTML 초안 → 사용자 확인 → 편집 가능한 PPT → 실제 결과 확인 순서입니다. 카드·둥근 모서리·그림자·태그는 지원하지만 임의의 웹 화면을 모두 동일하게 변환하지는 않습니다. 정적 HTML 배치 변환에는 로컬 Chrome/Edge와 python-pptx가 필요하며 소스 스크립트는 실행하지 않습니다. 복잡한 효과·동적 내용·병합 표 등은 제한을 확인합니다. CSS 막대 도형과 수치 편집이 가능한 네이티브 차트도 구분합니다.</p>
+<p>HTML 초안·변환 시도·검사 이미지는 내부 임시 작업 공간에 두고 한 요청에서는 최종 결과 한 개가 기본입니다. 여러 결과를 명시적으로 요청하거나 다음 질문에서 다른 형식을 요청하면 별도로 생성할 수 있습니다. 기존 결과는 자동 삭제하지 않습니다.</p>
+<p>대표 디자인은 내용·숫자·캡처를 제거한 <strong>HTML 양식</strong>으로 저장하고 개인 전체/이 프로젝트 중 범위를 고릅니다. 실제 파일이 있어야 저장 성공이며 기억에 선호를 적는 것과 다릅니다. 기존 PPT 이미지 크기만 수정하는 작업은 원본을 보존하며 별도 결과를 만듭니다. 그림을 키운다고 글자가 편집 가능해지는 것은 아닙니다.</p>
+<h3 id="usage-section-4">4. 회의 메모와 메일 초안</h3>
+<pre><code class="language-text">다음 가상 회의 메모를 결정 사항·진행 중·확인할 사항으로 정리해줘.
+점검표 수정 완료. 현장 확인 진행 중. 새 양식 적용일은 미정.
+담당자와 날짜를 만들어 넣지 마. 이어서 팀에 공유할 메일 초안도 대화에 보여줘.
+메일에 연결하거나 발송하지 마.
+</code></pre>
+<p>메일 초안은 연결 없이 작성할 수 있습니다. 실제 메일 조회·발송·PST 이동은 별도 승인된 연결과 본인 계정 범위가 필요합니다. 선택적 로컬 Outlook 점검기는 읽기 전용입니다. 초안 작성이나 조회 승인을 실제 발송 승인으로 해석하지 않습니다. 보호된 본문·첨부는 권한 범위에서만 처리합니다.</p>
+<h3 id="usage-section-5">5. 파일 정리와 회사 데이터</h3>
+<pre><code class="language-text">지금 연습 폴더 바로 아래 파일의 정리안만 보여줘.
+이동 전후 위치를 설명하고 아직 이동·삭제·덮어쓰기는 하지 마.
+내 답변을 기다려줘. 회사 공용 폴더와 다른 프로젝트는 확인하지 마.
+</code></pre>
+<p>이동은 계획 확인 후 허용된 범위에서만 합니다. 되돌리기도 이후 파일 상태와 기록을 확인해야 합니다. 파일이 없다면 ‘정리할 파일 없음’이 정상입니다. 실습을 위해 업무 파일을 복사할 필요는 없습니다.</p>
+<p>회사 DB 조회는 승인된 연결의 읽기 범위 안에서 수행합니다. 담당자가 제공한 테이블·필터·기간을 확인하고 임의의 회사 DB 접속이나 데이터 변경을 하지 않습니다. 연결이 없으면 가상 표로 계산 연습만 합니다.</p>
+<h3 id="usage-section-6">6. 기억·지식·스킬을 구분하기</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>내용</th>
+<th>예</th>
+<th>관리 방식</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>기억</td>
+<td>결론부터 짧게 답하는 선호</td>
+<td>저장할 범위와 내용 확인</td>
+</tr>
+<tr>
+<td>지식</td>
+<td>출처가 있는 용어·계산식</td>
+<td>출처·기준일 확인, 개인 초안 검토</td>
+</tr>
+<tr>
+<td>스킬</td>
+<td>반복 보고서를 만드는 절차</td>
+<td>설명서 생성 후 발견·로드·결과 시험</td>
+</tr>
+<tr>
+<td>도구</td>
+<td>달성률을 계산하는 프로그램</td>
+<td>후보 생성 → 실제 시험 → 검증 → 활성화</td>
+</tr>
+<tr>
+<td>하네스</td>
+<td>스킬·도구·규칙·후크를 연결한 구성</td>
+<td>누가 관리하고 어디에 적용되는지 확인</td>
+</tr>
+</tbody></table></div>
+<p>회사 공통 / 개인 전체 / 이 프로젝트를 먼저 구분합니다. 회사 공통은 담당자가 배포하고 사용자는 읽기·개선 제안을 합니다. 새 개인 기억·스킬·도구는 개인 전체 또는 이 프로젝트 중 하나를 선택하며 범위를 이미 명시하면 다시 묻지 않습니다. 폴더 공유가 개인 저장소의 자동 공유를 뜻하지 않습니다.</p>
+<pre><code class="language-text">내 보고서 표현 선호를 저장해줘. 결론부터 설명하고 미확인 내용은 구분하는 방식이 좋아.
+이 선호만 저장하고 원본 문서는 넣지 마.
+개인 전체와 이 프로젝트 중 어디에 저장할지 먼저 물어봐줘.
+</code></pre>
+<p>저장 후 새 대화에서 실제 조회하고 결과에 적용됐는지 각각 확인합니다. Company Agent 기억과 Claude Code 자체 자동 기억은 다른 저장소입니다. 자동 학습은 의미 있는 업무 종료의 제한된 경험을 검토하며 공통 정책·프로젝트 <code>CLAUDE.md</code>를 자동 수정하지 않습니다. 사용 중단과 삭제는 다릅니다. 자세한 비교 실습은 <a href="#onboarding">온보딩</a> 6~8단계에 있습니다.</p>
+<h3 id="usage-section-7">7. 겹치는 스킬과 프로젝트 지침</h3>
+<p>스킬 이름을 외우지 않고 업무부터 요청합니다. 사용 가능한 목록에 관련 스킬이 있으면 본문을 읽어 적용하고, 없으면 일반 작업을 합니다. 같은 역할이 여럿이고 우선 선택이 없으면 실제 이름·출처·차이를 질문합니다. 이번 선택과 지속적인 우선 설정 저장은 별개입니다. 없는 스킬을 설치하거나 추측 이름 <code>company</code>로 실행하지 않습니다.</p>
+<p>목록 확인·단순 파일 탐색마다 오류를 내는 방식은 아닙니다. 실제 관련 후보 본문을 건너뛴 실행에는 짧은 <code>[스킬 확인]</code> 교정이 한 번 보일 수 있습니다. 해당 도구는 아직 실행되지 않았고 파일 권한 오류도 아닙니다. 정확한 본문을 로드한 뒤 진행합니다. 회사 정책·도구 권한은 별도로 적용됩니다.</p>
+<p>새 작업 폴더에서 실제 작업 요청을 하면 조건에 따라 기본 <code>CLAUDE.md</code>를 한 번 생성합니다. 기존 지침·상위 지침은 보존하며 계획/변경 금지 요청이나 시스템·설정 폴더에는 만들지 않습니다. 이는 짧은 시작 안내이며 CLI <code>/init</code>의 프로젝트 분석을 실행하는 것은 아닙니다. 프로젝트 지침은 목적·단위·완료 기준부터 짧게 유지하세요.</p>
+<h3 id="usage-section-8">8. 느릴 때와 비용을 줄이는 방법</h3>
+<p>대상·기간·범위를 한 번에 지정하고 이미 답한 선택을 유지합니다. 같은 결과 생성·파일 이동·메일 발송을 대기 중에 재요청하지 않습니다. 전체 스킬 본문과 가이드를 매 업무에 읽힐 필요는 없습니다. 이 가이드는 자동 후크 문맥에 넣지 않습니다.</p>
+<p>Workspace 사용 현황에서는 실제 CLI 토큰 보고와 실행·질문·승인 대기를 구분합니다. 미제공 값은 0이 아니며 누적값을 요청별 값처럼 합산하지 않습니다. 사내 가격을 모르면 금액이나 절감률을 단정하지 않습니다. 대화가 길 때는 원본 CLI의 <code>/context</code>·<code>/compact</code>를 사용할 수 있지만 업무마다 강제 압축하지 않습니다. 압축은 영구 기억 저장이나 결과 검증의 대체가 아닙니다.</p>
+<h3 id="usage-section-9">9. 오류가 났을 때</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>상황</th>
+<th>먼저 할 일</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>목록은 있는데 스킬을 안 씀</td>
+<td><code>/skills</code>와 정확한 본문 로드 기록, 업무 실행을 따로 확인</td>
+</tr>
+<tr>
+<td><code>locked by plugin</code></td>
+<td>플러그인 관리 표시인지 확인. 비활성·미설치로 단정하지 않음</td>
+</tr>
+<tr>
+<td><code>Unknown skill</code></td>
+<td>현재 목록의 정확한 네임스페이스 확인. 캐시 존재만으로 호출 가능하다고 하지 않음</td>
+</tr>
+<tr>
+<td>승인 전 대기</td>
+<td>실행 준비·권한 판정·Office 시작을 구분. 승인 응답 대기라고 미리 단정하지 않음</td>
+</tr>
+<tr>
+<td>한글 깨짐</td>
+<td>기존 파일과 표시 인코딩부터 확인. 반복 생성·원본 손실 변환 금지</td>
+</tr>
+<tr>
+<td>스크립트 오류</td>
+<td>마지막 예외와 정확한 경로를 확인. 한글 문제로 단정하거나 중첩 실행하지 않음</td>
+</tr>
+<tr>
+<td>앱만 인증 실패</td>
+<td>기존 CLI 로그인과 앱의 실행·설정 환경을 비교. 인증 값 공유·전체 초기화 금지</td>
+</tr>
+<tr>
+<td>검증 오류 반복</td>
+<td>마지막 상태·파일 유무를 남기고 중지. 미검증을 성공으로 기록하지 않음</td>
+</tr>
+</tbody></table></div>
+<p>설치 ZIP을 모두 푼 뒤 <strong>Diagnose-CompanyAgent.cmd</strong>를 열고 실제 작업 폴더를 지정하면 설치·스킬 기록·준비물을 읽기 전용으로 확인할 수 있습니다. 문서·메일·DB 본문이나 모델을 자동 조회하지 않습니다. 로그를 공유하기 전 개인 경로·업무 내용·인증 값을 가리세요.</p>
+<h3 id="usage-section-10">10. 업데이트와 의견 보내기</h3>
+<p><a href="https://github.com/bongG-moon/claude_base_repo/releases/latest">최신 Release</a>의 직원용 설치 ZIP 전체를 풀고 기존과 같은 범위를 선택해 업데이트합니다. <code>Source code (zip)</code>은 직원용 설치 파일이 아닙니다. Workspace 사용자는 같은 Release의 별도 미리보기 ZIP을 사용합니다. 개인 기억·스킬·지식·모델·MCP·다른 플러그인을 임의로 초기화하지 않습니다. 업데이트 후 Claude Code를 다시 시작하세요.</p>
+<pre><code class="language-text">설치 버전 / 사용 화면 (CLI·VS Code·Workspace):
+실제 요청 (가상 자료로 재현):
+기대한 결과 / 관찰한 결과:
+확인한 파일·수치·범위 / 미확인 부분:
+개선하거나 선택 기능으로 바꾸고 싶은 점:
+</code></pre>
+<p>이 예문들은 사내 HCP·인증·DRM 환경 전체에서 검증된 업무 결과를 뜻하지 않습니다. 문서를 여는 것과 예문을 보내 실행하는 것도 다릅니다. 실제 사용 PC에서 작은 가상 예제로 확인한 뒤 업무에 적용하세요.</p>
+<p class="back"><a href="#start">처음 안내로 돌아가기 ↑</a></p></section><section class="book" aria-labelledby="handbook"><h2 id="handbook">Company Agent 핸드북</h2>
+<p>회사 공통 / 개인 전체 / 이 프로젝트를 먼저 구분하는 사용 설명서입니다. 각 범위 안에서 기억·지식과 업무 구성(스킬·도구·규칙)을 확인합니다.</p>
+<p>기준: 코어 1.4.17과 Workspace 0.5 · 2026-09-19. 통합 가이드 <code>Company-Agent-Guide.html</code>의 기능 설명 부분입니다. 같은 Release의 하네스와 Workspace ZIP을 사용하세요. 문서 열기는 업데이트가 아니며 Cua 실제 조작은 별도 승인·운영 시험이 필요합니다.</p>
+<h3 id="handbook-section-1">1. 처음이라면 여기부터</h3>
+<p><strong>먼저 <a href="#onboarding">처음부터 따라 하기</a>를 열고 작은 가상 업무 하나를 해보세요.</strong> 이 핸드북은 기능의 뜻과 바꾸는 방법이 궁금할 때 찾아보는 문서입니다. HTML판은 내려받아 더블클릭해 읽고 브라우저의 찾기·인쇄를 사용할 수 있습니다. 문서를 읽는 데 AI 호출·로그인은 필요 없습니다.</p>
+<p>회사에서 준비한 것은 업무 절차와 설정입니다. Claude Code와 승인된 Python, 필요한 Office·MCP는 별도 준비물입니다. “스킬이 목록에 있다”와 “업무를 실제로 성공했다”는 다릅니다.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>하고 싶은 일</th>
+<th>시작할 곳</th>
+<th>직접 확인할 것</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>자료 내용 확인</td>
+<td>원본 첨부 → 자료 읽고 정리하기</td>
+<td>페이지·표·수치와 미확인 범위</td>
+</tr>
+<tr>
+<td>보고서나 PPT</td>
+<td>보고서 만들기 / 발표 자료 준비하기</td>
+<td>디자인 확인 후 제작, 결과 파일 열기</td>
+</tr>
+<tr>
+<td>내 표현 방식·업무 지식 저장</td>
+<td>기억·하네스 관리 → 개인 전체 / 이 프로젝트 → 기억·지식</td>
+<td>저장 내용·사용 상태·적용 범위</td>
+</tr>
+<tr>
+<td>함께 참고할 지식 보기</td>
+<td>회사 공통 → 기억·지식</td>
+<td>회사·팀이 배포한 출처와 기준일</td>
+</tr>
+<tr>
+<td>공통 절차와 자동 처리 확인</td>
+<td>회사 공통 → 업무 구성</td>
+<td>공통 기준·스킬·후크, 읽기 전용</td>
+</tr>
+<tr>
+<td>내 스킬·도구·폴더 지침 확인</td>
+<td>개인 전체 / 이 프로젝트 → 업무 구성</td>
+<td>출처·관리 주체·적용 범위</td>
+</tr>
+<tr>
+<td>현재 폴더의 전체 구성 비교</td>
+<td>기억·하네스 관리 → 구성 한눈에</td>
+<td>세 영역의 상태·실제 위치·공유 여부, HTML 저장</td>
+</tr>
+<tr>
+<td>속도·사용량 확인</td>
+<td>사용 현황 · 결과 확인</td>
+<td>CLI 보고값과 사용자 대기 구간</td>
+</tr>
+<tr>
+<td>화면으로만 쓰는 프로그램 시험</td>
+<td>화면 조작 시험</td>
+<td>Cua 별도 준비, 실제 관찰 결과</td>
+</tr>
+</tbody></table></div>
+<h3 id="handbook-section-2">2. 용어를 쉽게 이해하기</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>용어</th>
+<th>여기서의 의미</th>
+<th>오해하기 쉬운 점</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CLI</td>
+<td>기존 Claude Code 실행 프로그램</td>
+<td>Workspace는 이를 대체하는 별도 AI가 아니라 입력·확인 창</td>
+</tr>
+<tr>
+<td>하네스</td>
+<td>AI의 업무 절차·도구·설정·검증을 연결하는 틀</td>
+<td>모델 자체를 더 똑똑하게 학습시키는 기능은 아님</td>
+</tr>
+<tr>
+<td>스킬(Skill)</td>
+<td>업무별 처리 설명서</td>
+<td>설치된 프로그램·실행 권한과는 별개</td>
+</tr>
+<tr>
+<td>후크(Hook)</td>
+<td>요청 시작·도구 실행·종료 시 자동으로 호출되는 처리</td>
+<td>모든 후크가 차단 장치인 것은 아님</td>
+</tr>
+<tr>
+<td>MCP</td>
+<td>외부 도구를 CLI에 연결하는 방식</td>
+<td>연결만으로 관련 스킬이 자동 활성화되는 것은 아님</td>
+</tr>
+<tr>
+<td>작업자(Agent)</td>
+<td>조율자가 맡긴 업무를 수행하는 별도 실행 역할</td>
+<td>이름이 표시됐다고 실제 실행이 증명되는 것은 아님</td>
+</tr>
+<tr>
+<td>기억(Memory)</td>
+<td>다음 업무에 참고할 내용. 공통 지식과 내 선호·업무 지식을 관리 주체로 구분</td>
+<td>원본 문서·대화 전체를 저장하는 창고가 아님</td>
+</tr>
+<tr>
+<td>지식(Knowledge)</td>
+<td>기억 중 출처를 확인할 용어·계산식·업무 자료</td>
+<td>별도 관리 영역이 아님. 참고 자료가 명령이나 권한이 되는 것도 아님</td>
+</tr>
+</tbody></table></div>
+<h3 id="handbook-section-3">3. 세 범위, 두 종류의 내용</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>범위</th>
+<th>무엇을 담나요?</th>
+<th>누가 바꾸나요?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>회사 공통</strong></td>
+<td>배포 지식과 공통 기준·스킬·후크</td>
+<td>담당자가 검토·배포. 사용자 화면은 읽기 전용</td>
+</tr>
+<tr>
+<td><strong>개인 전체</strong></td>
+<td>여러 프로젝트에서 쓸 선호·지식·개인 스킬·도구</td>
+<td>나. 저장 전 범위와 내용 확인</td>
+</tr>
+<tr>
+<td><strong>이 프로젝트</strong></td>
+<td>해당 프로젝트의 개인 기억·자산, 프로젝트 지침</td>
+<td>내 자산은 나. 공유 프로젝트 파일은 작성·공유 주체 확인</td>
+</tr>
+</tbody></table></div>
+<p>‘회사 공통’은 배포 주체이며 ‘개인 전체/이 프로젝트’는 적용 범위입니다. 각 화면에서 <strong>기억·지식 / 업무 구성</strong>을 선택합니다. 기존의 공통 기억·내 기억·공통 하네스·내 하네스라는 네 메뉴를 외울 필요는 없습니다. 기존 원본은 이동·복제하지 않습니다.</p>
+<p>새 기억·지식·스킬·도구를 저장할 때는 <strong>어디에 저장할까요? → 개인 전체 / 이 프로젝트</strong>를 선택합니다. 이미 요청에 범위를 명시했다면 재질문하지 않습니다. 기존 항목 수정은 원래 범위를 유지하고, 회사 공통은 직접 저장 선택지에서 제외합니다. ‘내 것’이라고만 말하면 두 범위 중 하나를 물어봅니다. 화면에서도 새 저장 범위는 미선택으로 시작합니다.</p>
+<p>User 설치의 프로젝트 전용 개인 자료는 기존 상태 경로 아래 <code>project-scopes/&lt;폴더 식별값&gt;</code>에 보관합니다. Project 설치의 기존 상태 경로는 그대로 사용합니다. Project 전용 설치에서 개인 전체 등록이 없으면 저장 위치를 임의로 만들지 않고 설치 확인을 안내합니다. 개인 자료는 프로젝트 파일 공유만으로 동료에게 전달되지 않습니다. Claude 자체 자동 기억은 개인 PC 안에서도 프로젝트별이며, 이 화면의 Company Agent 기억과 자동 통합하지 않습니다.</p>
+<p>부서 기준도 회사 영역에 포함합니다. 프로젝트는 “어느 폴더에 적용할지”이지 세 번째 정책 소유자가 아닙니다. 회사 필수 기준, 개인화 가능한 기본값, 참고 지식은 구분합니다. <code>required</code>라는 표시만으로 운영체제 권한이 강제되는 것은 아닙니다.</p>
+<p>User 설치와 Project 설치는 적용 범위·개인 저장소가 다를 수 있습니다. 다른 범위의 기억이 보이지 않는다고 삭제됐다고 단정하거나 자동으로 합치지 마세요. 회사 업데이트는 개인 기억·지식·스킬과 기존 모델·MCP 설정을 임의로 초기화하지 않습니다.</p>
+<p><strong>‘공통’과 ‘전역 설치’는 다릅니다.</strong> 공통은 관리 주체, User/Project는 적용 범위입니다. ‘내 사용자 설치’는 내 여러 폴더에, ‘이 프로젝트’는 해당 설치 범위에 적용됩니다. User 설치 하나로 다른 직원에게 배포되거나 개인 기억이 공유되지는 않습니다. ‘폴더에 있으니 내 것’이라고도 판단하지 마세요. 함께 받은 프로젝트 파일은 공유 구성일 수 있습니다.</p>
+<p>프로젝트 <code>CLAUDE.md</code>는 목적·단위·완료 조건을 적는 설명서입니다. 공통 스킬·후크·연결·검증을 포함하는 하네스 전체와 같지 않습니다. 작은 규칙은 짧은 프로젝트 지침으로 시작하고, 반복 업무에 여러 역할이 필요할 때 프로젝트 하네스를 생성하세요. 기존 <code>CLAUDE.md</code>를 생성기가 교체하지 않습니다. <a href="#onboarding">온보딩 코스</a> 7단계에서 A/B 폴더로 차이를 시험합니다.</p>
+<p><strong>새 작업 폴더의 첫 시작:</strong> 파일 읽기·작성·수정 같은 작업 요청이 들어오면 지침이 없는 작업 폴더에 짧은 기본 <code>CLAUDE.md</code>를 한 번 생성합니다. 기존 파일·<code>.claude/CLAUDE.md</code>·부모 프로젝트 지침이 있으면 보존합니다. 홈·시스템·설치/설정 폴더, 계획 모드, 변경 금지 요청에서는 생성하지 않습니다. 별도 AI 호출이나 전체 폴더 탐색 없이 시작 안내만 만들므로 <code>/init</code>의 코드 분석과 동일하지 않습니다. 실행법·프로젝트 지식은 확인 후 별도로 보완합니다. 단순히 폴더를 여는 것만으로는 생성하지 않습니다.</p>
+<p><strong>문서 읽기 확인:</strong> 별도 Windows 확인 창 대신 Claude 안에서 파일·범위·AI 처리와 기록 보존 안내를 보고 <strong>이 범위 읽기 승인 / 취소</strong>를 선택합니다. 질문 도구가 없으면 안내 뒤 <code>승인</code> 또는 <code>취소</code>라고 답합니다. 첫 실행은 승인 대기이며 Office를 열지 않습니다. 동일 대화·폴더·파일 상태·범위에만 15분 동안 유효하고 한 번 사용하면 끝납니다. 회사 정책·Office 권한·Claude 자체 실행 승인은 그대로 유지됩니다. 메일 본문 조회·파일 이동의 기존 확인 절차는 이번 문서 읽기 변경 대상이 아닙니다.</p>
+<p><strong>질문과 피드백 언어:</strong> 하네스가 작성하는 질문·선택지·추천 이유·승인 안내는 기본 한국어입니다. 명백한 영어 질문은 표시 전에 요청당 최대 한 번 한국어로 다시 작성하게 합니다. 별도 번역 API는 사용하지 않습니다. 사용자가 명시한 다른 대화 언어와 코드·파일명은 보존합니다. Claude 자체 메뉴·설문·Windows/Office 화면까지 번역하는 기능은 아닙니다.</p>
+<h3 id="handbook-section-4">4. 기본으로 들어 있는 스킬 13개</h3>
+<p><strong>이 폴더의 구성 지도:</strong> Workspace의 <strong>기억·하네스 관리 → 구성 한눈에</strong>에서 회사 공통 / 개인 전체 / 이 프로젝트를 나란히 볼 수 있습니다. 이름·상태·파일 위치를 펼쳐 확인하고 HTML로 저장합니다. 조회·새로고침에 AI를 호출하지 않으며 스킬 본문이나 지침을 대화에 자동 주입하지 않습니다. 기존 설치본에는 새 코어와 Workspace 반영이 필요합니다.</p>
+<p>설정 켜짐, 사용 가능, 정의 발견, 꺼짐, 미확인을 구분합니다. 스킬의 <strong>본문 로드 기록</strong>은 현재 폴더와 대화의 동일 본문 기록을 대조한 경우에만 표시하며 업무 적용·성공 증거가 아닙니다. MCP는 연결을 시도하지 않고 등록 상태만 보여줍니다. 저장한 HTML에는 경로와 이름이 포함되므로 공유 전 확인하세요. 전체 서버/OS 정책·실행 옵션·원격 도구나 다른 프로젝트 기억을 모두 탐색한 결과가 아닙니다.</p>
+<p>아래는 이 소스에 포함된 기본 구성입니다. 개인·다른 플러그인·회사 추가 구성은 PC마다 다릅니다. 실제 목록은 원본 CLI의 <code>/skills</code>, <code>/company-agent:skills</code> 또는 Workspace의 <strong>준비·결과 확인 → 발견한 스킬</strong>에서 확인하세요. 목록 조회는 설치나 실행 성공 확인이 아닙니다.</p>
+<p>호출명에는 <code>company-agent:</code>가 붙습니다. <code>company</code>는 이 플러그인의 스킬 호출명이 아닙니다. 평소에는 이름 대신 자연어로 요청하며, 자동 선택을 점검할 때만 정확한 이름을 지정해 비교하세요.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>스킬</th>
+<th>언제 쓰나요?</th>
+<th>준비물·한계</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>company-agent:office-reader</code></td>
+<td>기존 PPT·Excel/CSV·Word 내용을 읽고 정리</td>
+<td>설치된 Office, 선택 Python의 xlwings·pandas 또는 pywin32 등 필요. 실제 원본·범위 확인 필요</td>
+</tr>
+<tr>
+<td><code>company-agent:html-report</code></td>
+<td>HTML 보고서 만들기</td>
+<td>디자인 또는 첨부한 HTML 양식 선택. 참고 양식의 코드·외부 링크를 무조건 실행하지 않음</td>
+</tr>
+<tr>
+<td><code>company-agent:presentation</code></td>
+<td>HTML 초안 확인 후 편집 가능한 PPT 만들기</td>
+<td>정적 HTML 배치 변환, 카드·그림자·태그·자유 배치 지원. 새 디자인/참고 캡처/기존 PPTX/저장한 HTML → 초안 승인 → PPT. 기존 그림 크기만 수정하는 작업은 별도 제작 질문 없이 처리</td>
+</tr>
+<tr>
+<td><code>company-agent:file-organizer</code></td>
+<td>폴더 정리안 작성, 승인 후 이동</td>
+<td>삭제·덮어쓰기 없는 계획. 되돌리기는 기록과 이후 파일 상태가 맞는 이동만 대상</td>
+</tr>
+<tr>
+<td><code>company-agent:outlook-assistant</code></td>
+<td>메일 찾기·요약·답장 초안·보관 계획</td>
+<td>승인된 회사 연결 우선. 선택적 로컬 Outlook 조회는 읽기 전용; 새 발송/이동 연결을 자동 설치하지 않음</td>
+</tr>
+<tr>
+<td><code>company-agent:personal-memory</code></td>
+<td>개인 선호·지속적인 업무 맥락 저장/조회</td>
+<td>이번 수정과 장기 저장을 구분. Company Agent 저장소와 Claude 자체 기억을 자동 합치지 않음</td>
+</tr>
+<tr>
+<td><code>company-agent:personal-knowledge</code></td>
+<td>용어·지표 정의·업무 지식 정리</td>
+<td>회사 원본 보존, 출처·개인 적용 상태 구분</td>
+</tr>
+<tr>
+<td><code>company-agent:asset-factory</code></td>
+<td>개인 스킬·스크립트·MCP 제작·수정</td>
+<td>초안과 검증·활성화 구분. 모든 외부 실행 파일을 자동 등록하는 만능 설치기가 아님</td>
+</tr>
+<tr>
+<td><code>company-agent:platform-mcp-builder</code></td>
+<td>전사 표준 <code>tools.py</code> 형식의 MCP 개발·시험·제출 준비</td>
+<td>회사 공통 개발 스킬. 로컬 지원 파일과 전사 업무 코드 구분. MCP 등록·전사 배포는 별도</td>
+</tr>
+<tr>
+<td><code>company-agent:project-harness</code></td>
+<td>폴더별 업무 절차·작업자·검증 구조 구성</td>
+<td>기존 파일 충돌·백업 확인. 회사 MCP 서버 자체를 대신 구현하는 기능은 아님</td>
+</tr>
+<tr>
+<td><code>company-agent:company-agent</code></td>
+<td>작업 선택·위임·결과 확인 조율</td>
+<td>지원 역할. 모든 요청에서 별도로 실행할 업무 스킬은 아님</td>
+</tr>
+<tr>
+<td><code>company-agent:karpathy-guidelines</code></td>
+<td>코드·스크립트·실행형 도구 개발 지침</td>
+<td>작은 범위·명확한 근거·검증을 위한 지원 역할. 일반 요약에 불필요하게 호출하지 않음</td>
+</tr>
+<tr>
+<td><code>company-agent:self-learning</code></td>
+<td>업무 후 재사용할 교훈과 개인 개선 검토</td>
+<td>조건을 만족하는 개인 영역만. 회사 정책·인증·모델 가중치를 자동 변경하지 않음</td>
+</tr>
+</tbody></table></div>
+<p><strong>자동 선택의 실제 흐름:</strong> 사용 가능한 목록의 용도 비교 → 관련 본문만 로드 → 필요한 업무 실행. 맞는 스킬이 없으면 허용된 일반 방식으로 진행합니다. 같은 역할이 겹치면 기존 우선 선택 또는 사용자 답변을 따릅니다. 읽기와 제작처럼 서로 다른 단계는 중복이 아닙니다.</p>
+<p>목록은 모든 스킬의 본문이 아닙니다. 목록을 전달했다는 로그만으로 모델이 이를 적용했다고 볼 수 없습니다. 로컬 목록도 모든 원격·동적·기본 내장 스킬을 완전히 열거한다고 보장하지 않습니다.</p>
+<p>HTML/PPT는 한 요청에 최종 파일 한 개가 기본입니다. 초안·수정본·검사용 이미지는
+내부 임시 작업 공간에 보관하고, 확인한 최종 후보만 한 번 전달합니다. 다음 요청이나
+명시적인 복수 산출물은 별도로 만들 수 있고 기존 파일은 보존합니다. 이 규칙은 코드
+프로젝트의 여러 소스 파일을 하나로 합치라는 뜻이 아닙니다. 내부 캐시는 복구용으로
+남으며, 임의 도구가 만드는 모든 파일까지 강제로 제한하는 보안 장치는 아닙니다.</p>
+<h3 id="handbook-section-5">5. 자동으로 동작하는 후크 7개</h3>
+<p>후크는 별도 버튼 없이 CLI 이벤트에 따라 실행됩니다. <strong>안내, 실행 관찰, 정책 판단, 완료 검토를 구분해서</strong> 읽어주세요. 모델의 지침 준수와 운영체제 권한을 모두 보장하는 장치는 아닙니다.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>이벤트</th>
+<th>언제 / 무엇을 하나요?</th>
+<th>사용자에게 중요한 한계</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>SessionStart</code></td>
+<td>시작·재개 시 현재 설치와 실행 경로·스킬 목록·업무 맥락 준비</td>
+<td>준비 출력은 모델 적용·업무 성공 증거가 아님</td>
+</tr>
+<tr>
+<td><code>UserPromptSubmit</code></td>
+<td>요청별 업무 후보·작업자 등급·회사 기준·현재 작업 상태 안내</td>
+<td>전체 스킬 본문을 매번 넣거나 별도 분류 모델을 호출하지 않음</td>
+</tr>
+<tr>
+<td><code>PreToolUse</code></td>
+<td>실행 전 스킬 준비와 대상 회사 MCP 정책 확인, 회사 작업자에 실행 정보 전달</td>
+<td>명확한 단일 스킬의 누락은 요청/목록 기준 최대 한 번 교정 가능. 무관한 업무를 계속 차단하지 않음</td>
+</tr>
+<tr>
+<td><code>PermissionRequest</code></td>
+<td>정확히 확인된 읽기 전용 내부 준비 명령의 제한된 승인 처리</td>
+<td>현재 범위는 신뢰된 Python 진입점의 doctor/mail-capabilities 등 정해진 형태. 임의 명령·Office 열기·파일 쓰기 자동 승인이 아님</td>
+</tr>
+<tr>
+<td><code>PostToolUse</code></td>
+<td>도구 결과·스킬 본문 로드·변경 및 실행 관찰 기록</td>
+<td>도구 호출/본문 로드와 업무 내용의 정확성은 별개</td>
+</tr>
+<tr>
+<td><code>PostToolUseFailure</code></td>
+<td>실행 실패 관찰, 보완에 필요한 상태 유지</td>
+<td>출력을 못 봤다고 성공 기록을 만들지 않음</td>
+</tr>
+<tr>
+<td><code>Stop</code></td>
+<td>변경 작업의 완료 확인과 의미 있는 시점의 학습 검토</td>
+<td>질문·승인·작업자 대기를 완료로 오인하지 않아야 함. 보정은 제한되며 무한 반복하지 않음</td>
+</tr>
+</tbody></table></div>
+<p>“아직 실행하지 않았습니다”라고 나오면 해당 동작은 실행되지 않은 것입니다. 반대로 내부 참고 안내가 표시됐다는 사실만으로 파일 권한 오류라고 단정하지 마세요. 같은 안내가 반복되면 멈추고 해당 요청·버전·실제 상태를 담당자에게 전달합니다. 샌드박스를 끄거나 성공 기록을 꾸며서 통과시키지 않습니다.</p>
+<p>이 프로젝트에 다른 저장소의 <code>team-guards</code>, TDD Guard, AI-Ready 100점 진단이 기본 설치돼 있다고 가정하지 마세요. 여기의 구성은 위 목록과 실제 코드가 기준입니다.</p>
+<h3 id="handbook-section-6">6. 명령 3개와 작업자 3개</h3>
+<p>명령은 원본 CLI에서 사용할 수 있습니다. GUI는 터미널 전용 슬래시 화면 전체를 구현하지 않습니다. 필요하면 진행 중인 연결을 정리한 후 <strong>고급 · 원본 CLI 열기</strong>를 사용하세요.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>명령</th>
+<th>용도</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/company-agent:skills</code></td>
+<td>사용 가능한 스킬과 겹침 확인, 요청한 경우 사용할 후보·적용 범위 선택</td>
+</tr>
+<tr>
+<td><code>/company-agent:learning</code></td>
+<td>개인 자동 학습 내역 확인, 일시 중지/재개, 선택한 변경 복구</td>
+</tr>
+<tr>
+<td><code>/company-agent:business-check</code></td>
+<td>업무 기능의 의존성·준비 상태 확인. Office·메일을 실제로 열어 검증하지 않음</td>
+</tr>
+</tbody></table></div>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>작업자</th>
+<th>기본 모델 별칭</th>
+<th>역할</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>company-agent:small-worker</code></td>
+<td>haiku</td>
+<td>짧은 설명·조회·작은 수정</td>
+</tr>
+<tr>
+<td><code>company-agent:medium-worker</code></td>
+<td>sonnet</td>
+<td>일반 업무·개발·자료 분석</td>
+</tr>
+<tr>
+<td><code>company-agent:large-worker</code></td>
+<td>opus</td>
+<td>복잡한 설계·보안 검토·원인 분석·재사용 도구 제작</td>
+</tr>
+</tbody></table></div>
+<p>이 별칭이 사내 어느 HCP 모델로 연결되는지는 실제 회사 설정으로 확인합니다. UI가 임의로 모델을 바꾸거나 별도 모델 계정을 요구하지 않습니다. 작업자에게 위임했다는 문장 대신 실제 실행과 결과를 확인해야 합니다.</p>
+<h3 id="handbook-section-7">7. 범위별 기억과 업무 구성을 다듬는 방법</h3>
+<h4>회사 공통 → 기억·지식 — 함께 참고, 담당자가 갱신</h4>
+<p><strong>회사 공통 → 기억·지식</strong>에서 설치에 연결된 회사·팀의 배포 지식을 읽습니다. 회사 필수 규정과 실행 절차는 <strong>공통 하네스</strong>에서 봅니다. 현재 별도의 팀 공동 쓰기·실시간 동기화 메모리는 없습니다. 새 이름을 붙였다고 서버가 생긴 것은 아닙니다. 프로젝트 <code>CLAUDE.md</code>·일반 문서를 공통 기억 목록으로 자동 수집하지도 않습니다.</p>
+<h4>개인 전체 / 이 프로젝트 → 기억·지식 — 선호와 업무 지식을 한곳에서</h4>
+<p>Workspace <strong>기억·하네스 관리 → 개인 전체 / 이 프로젝트 → 기억·지식 → 내 기억 추가 → 변경안 확인 → 확인하고 저장</strong> 순서입니다. 제목과 짧은 선호만 적고 원본 문서·계정 정보는 넣지 마세요. 사용 안 함, 수정, 이전 내용 복원안을 지원합니다. 저장 위치와 적용 범위가 같아야 새 대화에서도 비교할 수 있습니다. Claude Code 자체 자동 기억은 별도 관리하며 자동으로 합치거나 덮어쓰지 않습니다.</p>
+<pre><code class="language-text">앞으로 내 보고서는 결론부터 짧게 설명하고 확인한 범위와 미확인 부분을 구분해줘.
+이 표현 선호만 개인 기억에 저장하고 문서 본문은 저장하지 마.
+</code></pre>
+<p>자동 학습은 User 설치에서는 개인 전체, Project 설치에서는 해당 설치 저장소에서만 작동합니다. 명시적 저장 범위 선택은 학습 설정을 바꾸지 않습니다. 의미 있는 업무 완료 시 조건을 확인해 선호나 실제 읽은 개인 스킬의 제한된 점검 항목을 개선하며 User 설치의 프로젝트 전용 자산은 자동 수정하지 않습니다. 모든 교정을 즉시 영구 저장하는 것은 아닙니다. 공통 자료·회사 정책·프로젝트 <code>CLAUDE.md</code>를 자동 수정하지 않습니다. 원하지 않으면 내 기억 화면에서 자동 학습을 끄고 내역을 확인하세요. 끄기와 기존 기억 삭제는 다른 일입니다.</p>
+<p>출처가 있는 용어·계산식은 같은 화면의 <strong>내 업무 지식 초안</strong>에서 저장하고, 직접 검토 후 사용으로 바꿉니다. 개인 초안을 만들었다고 공통 기억이 바뀌지 않습니다. <strong>공통 기억 검토용 내보내기</strong>는 로컬 ZIP 생성이며 자동 업로드·회사 반영이 아닙니다. 전달 전 민감 내용을 검토하세요. 공통 자료로의 반영은 담당자의 검토·배포 단계입니다.</p>
+<h4>회사 공통 → 업무 구성 — 실행 방식과 공통 규정</h4>
+<p><strong>공통 하네스</strong>는 회사 업무 기준·공통 스킬·후크 정의를 확인하는 화면입니다. 목록이 있다는 사실과 현재 CLI에서 실제 실행됐다는 사실은 다릅니다. 화면에 수정·삭제 버튼을 두지 않으며 개인 선호로 회사 필수 기준을 해제하지 않습니다.</p>
+<h4>개인 전체 / 이 프로젝트 → 업무 구성 — 내 추가 구성과 폴더별 지침</h4>
+<p><strong>개인 전체 / 이 프로젝트 → 업무 구성</strong>에서 개인·사용자 설치·프로젝트·외부 플러그인의 스킬 출처와 개인 도구 등록 기록을 확인합니다. 이는 모든 외부 도구의 연결 상태 목록이 아닙니다. 외부 설치 원본과 MCP 자격증명을 편집하지 않습니다. 등록·활성화 기록만으로 실행 성공을 판정하지 마세요.</p>
+<p>같은 화면의 <strong>이 폴더에만 적용할 업무 지침</strong>에 목표·입력·결과물·완료 기준을 적습니다. 저장 파일은 <code>.claude/rules/company-workspace-brief.md</code>이며 기존 <code>CLAUDE.md</code>와 다릅니다. 기존 또는 직접 수정한 지침은 덮어쓰지 않습니다. 회사 공통 규정을 개인 폴더에 복사해 별도 정책 계층으로 만들 필요는 없습니다.</p>
+<h5>개인 스킬·도구 만들기</h5>
+<p>반복하는 처리 순서는 스킬, 입력에 따른 일정한 계산은 로컬 스크립트 도구가 적합합니다. 외부 시스템 연결이 필요하지 않다면 MCP부터 만들지 않습니다. 사용 가능한 목록에 같은 기능이 있으면 먼저 비교하고, 이름이 겹치면 덮어쓰지 않습니다.</p>
+<p>자산 생성기의 개인 스킬은 현재 stateRoot의 <code>personal-root/.claude/skills</code>에, 스크립트는 <code>tools</code>에 저장됩니다. 설치된 회사 플러그인 캐시는 수정하지 않습니다. 스킬은 생성 후 자체 목록에서 사용 가능하며, 스크립트는 candidate → 실제 시험 → 검증 기록 → 활성화 순서입니다. 하네스가 발견한 개인 스킬을 Claude의 <code>/이름</code>으로도 호출할 수 있는지는 별도 등록 확인이 필요합니다.</p>
+<p><a href="#onboarding">온보딩 코스</a> 8단계에서 회의 메모 정리 스킬과 달성률 계산 도구를 만들어 봅니다. 이름 없는 자동 선택과 명시 사용을 따로 시험하고, 목표 0·누락 입력도 확인합니다. 안내서 읽기만으로 생성·활성화·공유되지는 않습니다. 생성된 코드는 Windows 사용자 권한으로 실행되므로 시험 통과를 OS 격리나 모든 안전성 보장으로 오해하지 마세요.</p>
+<h3 id="handbook-section-8">8. 느리거나 토큰을 많이 쓰면</h3>
+<ol>
+<li>요청에 대상 파일·확인 범위·완료 기준을 한 번에 적습니다.</li>
+<li>디자인·양식 등 이미 답한 내용은 유지해 달라고 요청합니다.</li>
+<li>새 주제는 새 대화로 나누고, 긴 자료는 필요한 범위부터 읽습니다.</li>
+<li>표시 인코딩만 깨졌다면 파일 생성·발송 등 원래 업무부터 반복하지 않습니다.</li>
+<li>화면 조작보다 기존 Office·전용 도구가 적합하면 그것을 먼저 사용합니다.</li>
+</ol>
+<p>새 폴더의 기본 <code>CLAUDE.md</code> 생성은 3장의 조건에서 지원합니다. <code>/revise-claude-md</code>라는 별도 명령, 업무 종료마다 강제 <code>/compact</code>, 자동 후속 질문 전송은 제공하지 않습니다. 개인 자동 학습과 CLI 자체 대화 압축은 프로젝트 지침의 자동 수정이나 공통 기억 공유가 아닙니다. 대화 압축과 기억 저장은 다른 일입니다.</p>
+<p>Workspace <strong>사용 현황</strong>은 CLI가 실제 제공한 토큰과 앱이 관찰한 실행·질문·승인 대기를 구분합니다. 빠진 값은 0이 아니라 미제공입니다. 요청 값이 세션 누적일 수 있으므로 서로 더하지 않습니다. 사내 모델 단가를 모르면서 청구 금액이나 절감률을 만들지 않습니다.</p>
+<p>토큰 알림은 다음 요청부터의 안내이며 강제 예산 제한이 아닙니다. 과거 로그 분석은 사용자가 고른 파일만 대상으로 하며 자동으로 대화 전체를 검색하지 않습니다. <strong>준비·결과 확인</strong>의 평가는 사용자가 직접 확인해 기록한 표본이지 모델 전체 성능 점수가 아닙니다.</p>
+<h3 id="handbook-section-9">9. 무엇을 빼거나 바꿀 수 있나요?</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>의견 또는 변경</th>
+<th>현재 방법</th>
+<th>주의점</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>보고서 표현·분량·디자인 변경</td>
+<td>해당 요청 또는 개인 선호</td>
+<td>이번 결과만 바꿀지 지속 적용할지 구분</td>
+</tr>
+<tr>
+<td>특정 개인 기억 사용 중단</td>
+<td>기억 화면의 사용 안 함</td>
+<td>삭제·과거 이력 제거와 다름</td>
+</tr>
+<tr>
+<td>개인 자동 학습 중지</td>
+<td>기억 화면 또는 learning 명령</td>
+<td>기존 기억은 보존</td>
+</tr>
+<tr>
+<td>겹친 스킬 중 하나 사용</td>
+<td>skills 명령으로 후보·범위 선택</td>
+<td>원본을 삭제하거나 Claude 전체 우선순위를 바꾸는 것은 아님</td>
+</tr>
+<tr>
+<td>Cua를 사용하지 않음</td>
+<td>등록하지 않고 시험 메뉴를 사용하지 않기</td>
+<td>기본 Office·HTML·PPT 기능과 독립</td>
+</tr>
+<tr>
+<td>회사 스킬/후크 자체 제거·수정</td>
+<td>담당자에게 영향 검토와 새 배포 요청</td>
+<td>현재 앱에는 회사 스킬/후크 개별 켜기·끄기 기능이 없음</td>
+</tr>
+<tr>
+<td>회사 필수 정책 변경</td>
+<td>회사 정책 담당자</td>
+<td>개인 선호로 해제하지 않음</td>
+</tr>
+</tbody></table></div>
+<p>설치 캐시의 SKILL.md나 후크 파일을 직원마다 직접 수정하면 업데이트 시 사라지거나 버전별 동작이 갈릴 수 있습니다. 원본 소스에서 변경·검증하고 새 배포로 전달하는 방식이 좋습니다. 유지/교체/업데이트 시에는 실제 설치 범위와 백업 내용을 확인하세요.</p>
+<h3 id="handbook-section-10">10. 자주 만나는 상황</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>상황</th>
+<th>먼저 확인할 것</th>
+<th>피할 행동</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>스킬을 안 쓰고 자체 파싱</td>
+<td>실제 목록 → 정확한 본문 로드 → 업무 도구 실행을 분리 확인</td>
+<td>company 같은 추측 이름 실행, 무조건 재설치</td>
+</tr>
+<tr>
+<td><code>locked by plugin</code></td>
+<td>플러그인이 관리하는 항목인지 실제 목록과 로드 결과 확인</td>
+<td>문구 하나로 미설치/비활성 단정</td>
+</tr>
+<tr>
+<td>목록은 있으나 <code>Unknown skill</code></td>
+<td>정확한 네임스페이스와 현재 세션 목록</td>
+<td>캐시 파일 존재만으로 현재 등록을 단정</td>
+</tr>
+<tr>
+<td>빨간 오류 뒤 파일이 없음</td>
+<td>해당 도구가 실제 실행됐는지, 원본 오류</td>
+<td>출력만 가려졌다고 쓰기 성공 처리</td>
+</tr>
+<tr>
+<td>승인 전에 오래 대기</td>
+<td>실행 준비·후크·CLI 권한 판정·Office 준비 구간</td>
+<td>사용자 응답 대기라고 미리 단정</td>
+</tr>
+<tr>
+<td>질문 후 계속 진행 중 표시</td>
+<td>답변 대기와 백그라운드 작업 상태</td>
+<td>새 제작을 중복 요청</td>
+</tr>
+<tr>
+<td>한글이 깨짐</td>
+<td>기존 출력/파일의 인코딩 확인</td>
+<td>원본을 손실 변환하거나 업무 재실행</td>
+</tr>
+<tr>
+<td>Office 읽기 오류·개수 차이</td>
+<td>실제 경로·Office 보고 개수·읽은 범위·준비물</td>
+<td>DRM 원인 단정, 다른 사본을 원본처럼 보고</td>
+</tr>
+<tr>
+<td>앱만 인증 실패</td>
+<td>기존 CLI 인증과 앱의 실행·설정 환경 차이</td>
+<td>인증 정보를 채팅에 붙이기, 전체 설정 초기화</td>
+</tr>
+</tbody></table></div>
+<h3 id="handbook-section-11">11. 개선 의견 보내기</h3>
+<p>아래를 복사해 사내 담당자에게 전달하세요. 이 양식은 자동 전송되지 않습니다. 대화 전체·원본 업무 문서·화면의 개인정보·인증 값은 빼고 가상 예제로 재현해 주세요.</p>
+<pre><code class="language-text">기능 이름 / 설치 버전:
+사용 화면: Workspace / 원본 CLI / VS Code
+원하는 변경: 유지 / 개선 / 선택 기능으로 전환 / 제거 검토
+실제 입력한 요청 (민감 내용 제외):
+기대한 동작:
+실제로 관찰한 동작:
+확인한 파일·수치·범위 / 미확인 부분:
+실행·질문·승인 중 오래 걸린 구간:
+다른 업무에 영향이 있을 것 같은 점:
+</code></pre>
+<p>담당자는 “모든 후크 제거” 같은 넓은 변경보다 해당 기능의 재현 조건 → 작은 수정 → 같은 예제로 재검증 순서로 처리합니다. 기능을 꺼서 빨간 표시가 사라진 것과 업무가 올바르게 끝난 것은 다릅니다.</p>
+<h3 id="handbook-section-12">12. 문서와 구현을 함께 관리하기</h3>
+<p>핸드북의 기본 스킬·후크·명령·작업자 목록은 자동 검사에서 실제 소스 목록과 비교합니다. HTML판은 Markdown 원본에서 생성합니다. 직원 ZIP과 별도 Workspace ZIP에도 이 문서들을 포함하도록 빌드 목록을 연결했습니다. ZIP 생성·Git 게시·회사 배포는 서로 다른 단계입니다.</p>
+<p>더 자세한 자료: <a href="#usage">기존 상세 사용 예문</a>, 로컬 화면의 지원 범위 <small>(담당자용 소스 문서 LOCAL_WORKSPACE.md)</small>, 회사·개인 관리 원칙 <small>(담당자용 소스 문서 COMPANY_PERSONAL_WORKFLOW.md)</small>, <a href="#cua">Cua 시험 안내</a>.</p>
+<p>참고한 자료: 사용자가 제공한 claude-code-starter의 핸드북과 온보딩 코스. 쉬운 개념 설명·따라 하기·완료 확인·오류 대응이라는 구성을 참고했고, 그 저장소의 스킬·후크·점수·가격·단축 명령이 여기에도 구현됐다고 옮겨 적지 않았습니다.</p>
+<p class="back"><a href="#start">처음 안내로 돌아가기 ↑</a></p></section><section class="book" aria-labelledby="commands"><h2 id="commands">Claude Code 명령어와 입력 방법</h2>
+<p>원본 Claude Code CLI 기준입니다. Workspace·VS Code의 메뉴와 키는 다를 수 있습니다. 현재 설치에서 <code>/</code>를 입력해 보이는 항목을 먼저 확인하세요. 없는 명령을 억지로 실행하거나 명령 하나 때문에 재설치하지 않습니다. 아래 기능은 별도 표시가 없으면 Claude Code 기능이며 Company Agent가 새로 만든 명령이 아닙니다.</p>
+<h3 id="commands-section-1">1. 입력·중단·확인에 필요한 키</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>하고 싶은 일</th>
+<th>키</th>
+<th>주의</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>보내기</td>
+<td>Enter</td>
+<td>보내기 전 대상 확인</td>
+</tr>
+<tr>
+<td>줄바꿈</td>
+<td>Ctrl+J</td>
+<td>Shift+Enter 지원은 터미널마다 다름</td>
+</tr>
+<tr>
+<td>파일 지정</td>
+<td>@</td>
+<td>목록에서 실제 파일 선택</td>
+</tr>
+<tr>
+<td>Windows 이미지 붙이기</td>
+<td>Alt+V</td>
+<td>첨부 표시 확인, 민감 내용 제외</td>
+</tr>
+<tr>
+<td>현재 응답 중단</td>
+<td>Esc</td>
+<td>이미 수행한 작업이 되돌아가지는 않음</td>
+</tr>
+<tr>
+<td>상세 실행 내용 보기</td>
+<td>Ctrl+O</td>
+<td>로그 공유 전 민감 내용 확인</td>
+</tr>
+<tr>
+<td>이전 입력 찾기</td>
+<td>Ctrl+R</td>
+<td>수정 후 다시 보내기</td>
+</tr>
+<tr>
+<td>계획 모드로 전환</td>
+<td>Shift+Tab</td>
+<td>하단이 Plan인지 확인; 승인 모드와 혼동 금지</td>
+</tr>
+<tr>
+<td>현재 키 도움말</td>
+<td>빈 입력칸에서 ?</td>
+<td>실제 설치의 키 설정 우선</td>
+</tr>
+</tbody></table></div>
+<p><a href="https://code.claude.com/docs/en/interactive-mode">공식 입력·키 안내</a>를 2026-09-19에 확인했습니다. 조직별 버전·키 재설정에 따라 다를 수 있습니다.</p>
+<h3 id="commands-section-2">2. 대화 안에서 쓰는 명령</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>명령</th>
+<th>언제 쓰나요?</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>/help</code></td>
+<td>현재 도움말</td>
+</tr>
+<tr>
+<td><code>/context</code></td>
+<td>대화에 들어간 내용과 사용량 확인</td>
+</tr>
+<tr>
+<td><code>/compact</code></td>
+<td>같은 업무를 이어가며 긴 대화 요약</td>
+</tr>
+<tr>
+<td><code>/clear</code></td>
+<td>다른 업무로 새 대화 시작</td>
+</tr>
+<tr>
+<td><code>/resume</code></td>
+<td>이전 대화 이어가기</td>
+</tr>
+<tr>
+<td><code>/init</code></td>
+<td>프로젝트를 분석해 시작 지침 준비</td>
+</tr>
+<tr>
+<td><code>/memory</code></td>
+<td>Claude 지침·기억 관리</td>
+</tr>
+<tr>
+<td><code>/skills</code></td>
+<td>사용 가능한 스킬 확인</td>
+</tr>
+<tr>
+<td><code>/plugin</code></td>
+<td>플러그인 등록 확인</td>
+</tr>
+<tr>
+<td><code>/hooks</code></td>
+<td>자동 처리 등록 확인</td>
+</tr>
+<tr>
+<td><code>/mcp</code></td>
+<td>연결 도구 확인</td>
+</tr>
+<tr>
+<td><code>/tasks</code></td>
+<td>백그라운드 작업 확인</td>
+</tr>
+<tr>
+<td><code>/model</code></td>
+<td>사용 모델 확인·선택 (회사 기준 유지)</td>
+</tr>
+</tbody></table></div>
+<p>명령은 메시지 맨 앞에 입력합니다. 현재 사용 가능한 항목은 계정·플랫폼·버전마다 다릅니다. <a href="https://code.claude.com/docs/en/commands">공식 명령 안내</a></p>
+<p>Company Agent가 제공하는 명령은 <code>/company-agent:skills</code>, <code>/company-agent:learning</code>, <code>/company-agent:business-check</code>입니다. 각각 스킬 선택, 자동 학습 관리, 업무 준비 확인 용도입니다. 진단 성공은 실제 Office·메일·DB 작업의 성공이 아닙니다. <code>/revise-claude-md</code>는 이 하네스에 포함되지 않습니다.</p>
+<h3 id="commands-section-3">3. 작업 중 다음 질문과 제안 문장</h3>
+<p>실행 중 보낸 메시지는 대기하다가 도구 실행 경계 등에 전달될 수 있습니다. ‘지금 작업을 보완’하는지 ‘다음 업무’인지 명확히 적으세요. 반드시 완료 후 시작해야 한다면 결과를 받은 다음 보냅니다. Tab은 다음 업무를 예약하는 키가 아닙니다.</p>
+<pre><code class="language-text">현재 요청 보충: 원본을 보존하고 실제 확인한 범위만 알려줘.
+</code></pre>
+<p>입력칸에 제안 문장이 보이는 것과 메시지를 전송하는 것은 다릅니다. 제안은 CLI·조직 설정에 따라 없을 수 있고, Company Agent가 자동으로 후속 질문을 보내지는 않습니다. <a href="https://code.claude.com/docs/en/interactive-mode#queue-messages-while-claude-works">공식 실행 중 메시지·제안 안내</a></p>
+<h3 id="commands-section-4">4. 압축·기억·프로젝트 지침은 다른 일</h3>
+<p>큰 작업이 끝났다고 매번 압축할 필요는 없습니다. 먼저 결과 파일과 남은 일을 확인합니다. 대화가 길어졌을 때 원본 CLI에서 아래처럼 중요한 조건을 남길 수 있습니다.</p>
+<pre><code class="language-text">/compact 현재 목표, 원본 보존 조건, 최종 파일 경로, 검증한 범위와 미확인 사항을 남겨줘
+</code></pre>
+<p>압축에도 처리가 필요하며 비용 절감률을 보장하지 않습니다. 회사 모델의 자동 압축 지원은 운영 환경에서 확인합니다. 이 하네스는 매 작업 후 강제 <code>/compact</code>를 실행하지 않습니다. <a href="https://code.claude.com/docs/en/sessions">공식 대화 관리</a></p>
+<p>Claude의 <code>CLAUDE.md</code>와 자동 기억은 대화 요약과 다릅니다. Company Agent 개인 기억도 별도입니다. 기본 <code>CLAUDE.md</code> 자동 생성은 짧은 시작 안내이며 <code>/init</code>의 코드 분석을 대신하지 않습니다. 자동 학습 역시 프로젝트 지침을 몰래 고치는 기능이 아닙니다. <a href="https://code.claude.com/docs/en/memory">공식 기억 안내</a></p>
+<h3 id="commands-section-5">5. 되돌리기·여러 세션·종료</h3>
+<p>원본 CLI의 <code>/rewind</code>는 되돌릴 대상을 확인하는 메뉴입니다. 모든 외부 작업·명령 실행·메일 발송을 취소하는 기능은 아닙니다. 중단 후에는 실제 파일과 실행 기록을 먼저 확인하세요. <a href="https://code.claude.com/docs/en/checkpointing">공식 되돌리기 한계</a></p>
+<p>서로 독립적인 업무만 별도 폴더·대화로 나눕니다. 같은 파일을 동시에 수정하면 충돌할 수 있습니다. 하나의 회사 계정 사용량이 세션별로 독립되는 것도 아닙니다. 폴더 간 이동과 새 대화는 기억·권한 범위를 다시 확인할 기회입니다.</p>
+<p>터미널에서 다시 시작할 때 <code>claude</code>는 새 실행, <code>claude --continue</code>는 최근 대화 이어가기 용도로 사용할 수 있습니다. 인증은 기존 회사 안내를 따릅니다. 이 명령들은 대화 입력칸의 슬래시 명령과 다릅니다. <a href="https://code.claude.com/docs/en/cli-reference">공식 CLI 실행 옵션</a></p>
+<p>Workspace는 전원 버튼으로 종료하며 창의 X만 닫으면 서버가 남을 수 있습니다. 기본 가이드 열기·문서 검색·인쇄는 AI 호출이나 설정 변경이 아닙니다. 복사한 요청문을 실제 대화에 보냈을 때만 업무가 시작됩니다.</p>
+<p class="back"><a href="#start">처음 안내로 돌아가기 ↑</a></p></section><section class="book" aria-labelledby="cua"><h2 id="cua">Cua Driver 가능성 확인 안내</h2>
+<p>API 없이 화면으로만 쓰는 프로그램을 조작할 수 있을지, 작은 가상 업무로 확인합니다.</p>
+<p>현재 제공하는 것은 <strong>실행 없는 준비 확인 + 사용자가 보내는 시험 예문</strong>입니다. Driver 자동 설치·MCP 자동 등록·권한 변경·자동 화면 조작은 구현하지 않았습니다. 실제 사내 HCP·회사 프로그램의 성공은 미검증입니다.</p>
+<h3 id="cua-section-1">1. 무엇이 추가됐나요?</h3>
+<p>Workspace → 첫 업무 따라 하기 또는 내 업무 방식 → <strong>화면 조작 시험</strong>에서 확인합니다.</p>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>확인 항목</th>
+<th>확인 근거</th>
+<th>증명하지 않는 것</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Driver 파일 후보</td>
+<td>명시한 절대 경로 또는 상속한 PATH의 제한된 경로</td>
+<td>정품·버전·실행 가능·전체 PC 설치 여부</td>
+</tr>
+<tr>
+<td>MCP 연결</td>
+<td>살아 있는 현재 CLI의 초기 연결 보고</td>
+<td>설치 파일과 같은 Driver인지, 계속 정상인지</td>
+</tr>
+<tr>
+<td>읽기·입력 도구</td>
+<td>같은 MCP 이름의 실제 보고된 도구 목록</td>
+<td>실제 권한·업무 성공·모델 이미지 이해</td>
+</tr>
+<tr>
+<td>실제 결과</td>
+<td>사용자가 요청한 시험 후 직접 관찰</td>
+<td>모든 프로그램·DRM·무인 운영 호환성</td>
+</tr>
+</tbody></table></div>
+<p>화면을 여는 것만으로 PC를 조사하지 않습니다. 확인 버튼을 누를 때만 경로와 현재 보고를 확인합니다. 모델 호출, 새 CLI 실행, 프로세스 실행, 화면/인증 정보 수집, 개인 설정 변경, 결과 디스크 저장을 하지 않습니다. 오래된 대화 기록은 현재 연결 증거로 사용하지 않습니다. 체험 모드는 실제 준비 상태도 조사하지 않습니다.</p>
+<h3 id="cua-section-2">2. 회사 담당자의 사전 준비</h3>
+<ol>
+<li>대상 Windows 프로그램과 데이터 처리 범위를 승인합니다. 처음에는 계산기만 사용합니다.</li>
+<li>공식 Driver의 고정 버전·출처·해시를 검토하고 사내 승인 경로로 준비합니다. 이 프로젝트의 직원 ZIP에는 Cua 실행 파일을 넣지 않습니다.</li>
+<li>기존 Claude 실행·설정 범위를 확인하고 그 범위에만 MCP를 별도로 등록합니다. 개인 모델·인증·다른 MCP·스킬을 초기화하지 않습니다. Windows MCP 등록은 공식 안내의 <code>cua-driver mcp</code> 연결 방식입니다.</li>
+<li>기본 standard 모드는 여러 앱에 입력할 수 있으므로, 앱·도구·경로가 제한된 bounded 구성과 승인된 manifest를 검토합니다. 이는 PC 전체를 격리하는 샌드박스가 아닙니다.</li>
+<li>시작 전에 사용 통계와 별도 업데이트 확인을 검토합니다. 필요하면 MCP 프로세스 환경에 <code>CUA_DRIVER_RS_TELEMETRY_ENABLED=false</code>, <code>CUA_DRIVER_RS_UPDATE_CHECK=false</code>를 설정합니다. 앱이 대신 바꾸지는 않습니다.</li>
+<li>화면·도구 결과가 기존 Claude/HCP 모델로 전달되는 범위를 확인합니다. 로컬 Driver라고 모델 처리까지 오프라인인 것은 아닙니다.</li>
+<li>실제 사용할 스킬을 파일로 등록할지 검토합니다. MCP의 원격 skill 리소스가 Claude의 시작 스킬 목록에 자동 등록되는 것은 아닙니다. 스킬만 설치해도 Driver가 생기는 것은 아닙니다.</li>
+</ol>
+<p>Windows의 bounded MCP는 런타임 소유 프로세스의 <code>CUA_DRIVER_PERMISSION_MODE</code>, <code>CUA_DRIVER_CAPABILITY_MANIFEST_FILE</code>, <code>CUA_DRIVER_CAPABILITY_MANIFEST_APPROVED</code> 또는 별도 승인된 daemon 연결로 구성합니다. 승인 표시는 담당자가 검토한 정확한 manifest에만 적용해야 합니다. 모델에게 권한 확대를 맡기지 않습니다.</p>
+<p>브라우저의 허용 사이트 제한과 일반 데스크톱 입력은 같은 정책이라고 가정하지 마세요. 공식 문서는 사이트 제한 브라우저와 일반 앱 조작에 별도 런타임·범위를 요구합니다. 범용 클릭이 브라우저까지 닿으면 사이트 제한의 의미가 사라질 수 있습니다.</p>
+<p>공식 근거: <a href="https://cua.ai/docs/how-to-guides/driver/connect-your-agent">Claude Code 연결</a>, <a href="https://cua.ai/docs/how-to-guides/driver/install-agent-skill">스킬 등록</a>, <a href="https://cua.ai/docs/how-to-guides/driver/write-a-bounded-manifest">범위 제한</a>, <a href="https://cua.ai/docs/reference/cua-driver/telemetry">통계와 업데이트</a>. 확인일 2026-09-19. 버전별 차이는 도입 시 다시 확인합니다.</p>
+<h3 id="cua-section-3">3. 준비 확인 화면 읽는 법</h3>
+<ul>
+<li><strong>파일 후보 발견:</strong> 파일이 있다는 뜻입니다. 버전 검사 명령도 실행하지 않았습니다.</li>
+<li><strong>미발견:</strong> 제한된 PATH 또는 지정 경로에서 못 찾았다는 뜻입니다. 다른 설치 위치를 자동 검색하지 않습니다.</li>
+<li><strong>현재 CLI 연결 보고 없음:</strong> 아직 요청을 보내지 않았거나 연결이 종료됐을 수 있습니다. 준비 확인만 위해 AI 요청을 자동으로 보내지 않습니다.</li>
+<li><strong>연결됨으로 보고:</strong> CLI의 초기 보고를 관찰했습니다. Driver 기능을 실행해 시험한 것은 아닙니다.</li>
+<li><strong>도구 미확인:</strong> 도구 목록이 지연 노출되거나 버전·프로필에 따라 이름이 다를 수 있습니다. 없는 도구를 추측해 실행하지 않습니다.</li>
+<li><strong>여러 후보:</strong> 사용할 MCP 이름 하나를 입력합니다. <code>cua-driver</code>, <code>cua-computer-use</code>, <code>cua</code>를 기본 후보로 보며 사용자 지정 이름은 현재 목록에 있는 정확한 이름으로 확인합니다.</li>
+</ul>
+<p>연결 설정을 변경했다면 진행 중인 업무를 먼저 마치거나 중지하고 새 CLI 연결에서 확인합니다. 대화의 “연결 상태와 작업 기록”에서 실제 보고를 비교하세요. MCP 이름이 일치해도 Cua 정품·로컬 실행이라고 보증하지 않습니다.</p>
+<p>원본 CLI 사용자도 Workspace 폴더에서 아래 읽기 전용 확인을 실행할 수 있습니다. 이 명령에는 CLI 연결 보고가 없으므로 파일 후보만 확인합니다.</p>
+<pre><code class="language-powershell">python -X utf8 -m local_app.computer_use
+# 필요하면 승인된 실제 경로만 지정 (파일 확인만 하고 실행하지 않음)
+python -X utf8 -m local_app.computer_use --driver &quot;C:\승인된도구\cua-driver.exe&quot;
+</code></pre>
+<h3 id="cua-section-4">4. 계산기 창 읽기 시험</h3>
+<p>다른 민감 창을 닫고 계산기를 직접 엽니다. 회사 승인 범위 안에서 준비 확인 후 <strong>읽기 시험 예문을 입력창에 넣기</strong>를 선택합니다. 버튼은 전송하지 않습니다. 내용을 읽고 직접 보내야 실행됩니다.</p>
+<p>시험은 열어둔 계산기 한 창의 이름·현재 표시값만 읽도록 요청합니다. 클릭·입력·파일 변경은 하지 않습니다. 화면 속 문구는 자료이며 새로운 실행 지시로 취급하지 않도록 합니다. 창이 여러 개면 선택을 먼저 받습니다.</p>
+<p><strong>직접 확인:</strong> 실제 계산기 표시값과 답변이 일치하는지 비교합니다. 권한 실패·빈 화면 요소·이미지 처리 실패는 그대로 기록합니다. 준비 상태가 녹색이라는 이유로 성공 처리하지 않습니다.</p>
+<h3 id="cua-section-5">5. 작은 입력 시험 — 별도 확인 후</h3>
+<p>읽기가 확인되고 입력 도구도 관찰됐다면 <strong>입력 시험 예문을 입력창에 넣기</strong>를 선택합니다. 계산기에서 <code>2+3</code>을 계산할 계획을 먼저 보고 확인합니다. 최종 표시값 <code>5</code>를 다시 관찰해야 성공입니다. 다른 앱·메일·파일·설정은 시험 범위가 아닙니다.</p>
+<p>예문의 호출 횟수 제한은 모델에게 주는 지침이며 강제 제한 장치가 아닙니다. 최대 횟수를 초과하거나 같은 실패를 반복하면 사용자가 중지해야 합니다. 도구 응답 성공만으로 화면 결과까지 성공했다고 간주하지 않습니다.</p>
+<p><strong>중지:</strong> 앱의 작업 중지 또는 원본 CLI의 중단을 사용합니다. 이미 수행한 입력을 되돌리거나 별도 Driver 런타임을 모두 종료한다는 보장은 없습니다. 필요하면 담당자가 승인된 Driver 세션 회수/종료를 수행합니다. 사용자 작업 중 화면을 빼앗는 경우 무인 실행을 확대하지 않습니다.</p>
+<h3 id="cua-section-6">6. 비교할 항목과 도입 판단</h3>
+<div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table>
+<thead>
+<tr>
+<th>항목</th>
+<th>기록할 것</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>환경</td>
+<td>Driver·CLI 버전, 모델, 대상 프로그램 종류, 승인 범위 (민감 경로 제외)</td>
+</tr>
+<tr>
+<td>관찰</td>
+<td>대상 창을 정확하게 고르는지, 화면 요소/이미지 중 무엇을 썼는지</td>
+</tr>
+<tr>
+<td>입력</td>
+<td>의도한 대상에만 입력했는지, 최종 상태를 새로 확인했는지</td>
+</tr>
+<tr>
+<td>성능</td>
+<td>CLI 제공 토큰, 전체 경과, 질문·승인 대기, 도구 실패·재시도 수</td>
+</tr>
+<tr>
+<td>판정</td>
+<td>통과 / 실패 / 미확인과 실제 확인 범위</td>
+</tr>
+</tbody></table></div>
+<p>기존 office-reader·API·브라우저 구조화 도구로 가능한 업무를 먼저 사용합니다. Cua는 화면만 있는 업무의 보완 수단입니다. 필요한 창·필요한 도구만 노출하고 화면 요소 수·깊이를 제한하는 것이 성능 시험의 출발점입니다. <a href="https://cua.ai/docs/how-to-guides/driver/run-with-local-model">공식 최적화 안내</a></p>
+<p>Windows에서 일부 백그라운드 입력·관리자 권한 경계·브라우저 경로에는 제한이 있습니다. 지원 목록에 있는 프로그램과 실제 회사 버전·보안 환경이 같다고 가정하지 않습니다. <a href="https://cua.ai/docs/reference/cua-driver/platform-support">지원 범위</a></p>
+<p>이번 확인에는 새 상시 후크·분류 모델·전체 스킬 본문 주입을 추가하지 않았습니다. Cua가 없으면 기존 업무는 그대로 사용합니다. 시험 결과가 충분히 좋을 때만 회사의 선택 기능으로 배포할지 결정합니다.</p>
+<p><a href="#handbook">전체 핸드북</a> · <a href="#onboarding">처음부터 따라 하기</a></p>
+<p class="back"><a href="#start">처음 안내로 돌아가기 ↑</a></p></section><footer>수정용 원본: ONBOARDING_COURSE.md · USER_GUIDE.md · COMPANY_AGENT_HANDBOOK.md · CLAUDE_CODE_COMMANDS.md · CUA_DRIVER_PILOT.md<br>자동 생성된 오프라인 통합본입니다. 외부 요청·스크립트 실행·자동 저장·모델 호출이 없으며 후크에 전체 내용을 주입하지 않습니다.</footer></main></div></body></html>

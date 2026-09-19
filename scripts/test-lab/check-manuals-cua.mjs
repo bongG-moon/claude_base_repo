@@ -18,12 +18,12 @@ try{
   page.on('dialog',d=>d.accept()); // only isolated fixture UI confirmations
   await page.goto(runtime.url);
   const origin=new URL(runtime.url).origin;
-  for(const [route,title] of [['handbook','Company Agent 핸드북'],['onboarding','Company Agent 처음부터 따라 하기'],['cua','Cua Driver 가능성 확인 안내']]){
+  for(const [route,title] of [['guide','Company Agent 통합 가이드'],['handbook','안내서를 하나로 합쳤습니다'],['onboarding','안내서를 하나로 합쳤습니다'],['cua','안내서를 하나로 합쳤습니다']]){
     await page.goto(origin+'/manual/'+route);
     await page.getByRole('heading',{name:title,exact:true}).waitFor();
     if(await page.locator('script').count())throw Error('Manual has executable code');
     await page.screenshot({path:path.join(output,route+'-1440.png')});
-    const links=await page.locator('a[href$=".html"]').evaluateAll(nodes=>[...new Set(nodes.map(n=>n.href))]);
+    const links=await page.locator('a[href*=".html"]').evaluateAll(nodes=>[...new Set(nodes.map(n=>n.href.split('#')[0]))]);
     for(const link of links){const r=await page.request.get(link);if(r.status()!==200)throw Error('Broken manual link '+link);}
     await page.setViewportSize({width:390,height:844});
     if(await page.evaluate(()=>document.documentElement.scrollWidth>innerWidth+1))throw Error('Page overflow on phone: '+route);
@@ -72,5 +72,5 @@ try{
   if(!inputPrompt.includes('2+3')||!inputPrompt.includes('내 답변을 기다려'))throw Error('Input trial confirmation lost');
   if(sends!==0)throw Error('Guide/check sent model request');
   if(errors.length||external.length)throw Error(JSON.stringify({errors,external}));
-  console.log(JSON.stringify({manuals:3,manualViewports:[390,1440],panelViewports:[390,768,1440],checks,sends,errors,external,output}));
+  console.log(JSON.stringify({manuals:1,legacyRoutes:3,manualViewports:[390,1440],panelViewports:[390,768,1440],checks,sends,errors,external,output}));
 }finally{await browser.close();}

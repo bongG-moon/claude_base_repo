@@ -67,8 +67,17 @@ def main() -> int:
                 # In particular, an old/malformed receipt can have the wrong
                 # JSON shape. Only this optional step is fail-soft.
                 return {}
-        if event == 'PreToolUse' and not corporate_tool:
+        if event == 'PreToolUse' and not corporate_tool and payload.get('tool_name') != 'AskUserQuestion':
             preparation = prepare_skill_review()
+        if event == 'PreToolUse' and payload.get('tool_name') == 'AskUserQuestion':
+            from company_agent.user_language import question_preflight
+            from company_agent.office_consent import observe as observe_consent
+            payload['hook_event_name'] = event
+            result = question_preflight(user_state_root(), payload)
+            if not result:
+                observe_consent(user_state_root(), cwd, payload)
+            print(json.dumps(result, ensure_ascii=True))
+            return 0
         if event == "SessionStart":
             result = session_start(plugin, cwd, session_id=str(payload.get("session_id") or ""), source=str(payload.get("source") or ""))
             runtime_text = result.get('hookSpecificOutput', {}).get('additionalContext', '')
@@ -112,12 +121,19 @@ def main() -> int:
                 sys.stdin = original_stdin
             result = json.loads(output.getvalue() or "{}")
             if event == "UserPromptSubmit":
+                from company_agent.user_language import prepare_questions
+                from company_agent.office_consent import observe as observe_consent
+                from company_agent.project_bootstrap import initialize
+                prepare_questions(user_state_root(), payload)
+                consent_context = observe_consent(user_state_root(), cwd, payload)
+                project_context = initialize(cwd, payload)
                 text = result["hookSpecificOutput"]["additionalContext"]
                 runtime_text = runtime_context(
                     plugin, cwd, str(payload.get("prompt", payload.get("user_prompt", ""))),
                     session_id=str(payload.get("session_id") or "")
                 )
-                result["hookSpecificOutput"]["additionalContext"] = task_prompt_context(text, runtime_text)
+                result["hookSpecificOutput"]["additionalContext"] = '\n'.join(filter(None, [
+                    task_prompt_context(text, runtime_text), project_context, consent_context]))
             if event == "PostToolUse":
                 from company_agent.skill_workflow import observe
                 from company_agent.paths import user_state_root
@@ -127,6 +143,12 @@ def main() -> int:
                     # No fabricated read receipt; a later preflight reports the
                     # missing preparation without turning it into a Stop error.
                     pass
+                if payload.get('tool_name') == 'AskUserQuestion':
+                    from company_agent.office_consent import observe as observe_consent
+                    notice = observe_consent(user_state_root(), cwd, payload)
+                    if notice:
+                        target = result.setdefault('hookSpecificOutput', {'hookEventName': event})
+                        target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), notice]))
                 if payload.get("tool_name") in {"Bash", "PowerShell"}:
                     from company_agent.execution_contract import _trusted_arguments
                     inputs = payload.get("tool_input") or {}

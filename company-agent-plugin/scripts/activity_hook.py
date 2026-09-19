@@ -36,7 +36,7 @@ def main() -> int:
             if (state.get("learningStatus") == "complete"
                     and _is_own_learning_command(command, session_id, state, root)):
                 result = {"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext":
-                    "Routine personal learning is complete. Keep this bookkeeping receipt quiet: do not narrate accepted, review, checkpoint, or verification status. Return to the original business result in the user's language. Explain only an actual warning requiring action, or learning details explicitly requested by the user. Do not repeat business actions."}}
+                    "개인 학습 기록을 마쳤습니다. 내부 접수·검토·체크포인트·검증 상태를 중계하지 말고 원래 업무 결과로 돌아가세요. 기본 한국어로 안내하되 사용자가 명시한 언어는 요청한 범위에만 적용하세요. 조치가 필요한 실제 경고나 사용자가 요청한 학습 내용만 설명하세요. 업무를 중복 실행하지 마세요."}}
     except (OSError, UnicodeError, ValueError, TypeError):
         result = {"systemMessage": "작업 결과를 기록하지 못했습니다. 기록이 없다는 이유로 성공했다고 판단하지 마세요."}
     json.dump(result, sys.stdout, ensure_ascii=True)

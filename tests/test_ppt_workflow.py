@@ -77,7 +77,7 @@ class PptWorkflowTests(unittest.TestCase):
             spec={'creationMode':'reference','referenceMode':'preserve','purpose':'보고','audience':'부서장','slideCount':1,
                   'slides':[{'title':'새 결과'}], 'templateSlides':[{'sourceSlide':1,'title':2}]}
             with patch.object(artifacts,'_office',return_value={'ok':False,'code':'render_refused','message':'미리보기 제한'}):
-                preview=artifacts.create_ppt(spec,folder/'draft.pptx',path,require_choices=True,preview_only=True)
+                preview=artifacts.create_ppt(spec,folder/'draft.html',path,require_choices=True,preview_only=True)
                 self.assertTrue(preview['ok'],preview)
                 spec['designReview']={**preview['designReview'],'confirmed':True}
                 result=artifacts.create_ppt(spec,folder/'out.pptx',path,require_choices=True)
@@ -91,6 +91,11 @@ class PptWorkflowTests(unittest.TestCase):
             self.assertEqual(old.text_frame.paragraphs[0].runs[0].font.name,new.text_frame.paragraphs[0].runs[0].font.name)
             self.assertEqual(before,path.read_bytes())
             self.assertEqual(1,len(deck.slides))
+            from company_agent import ppt_html
+            saved=folder/'not-portable.html'
+            self.assertEqual('preserved_template_not_portable',ppt_html.save_template(spec,saved,path)['code'])
+            self.assertFalse(saved.exists())
+            self.assertIn('고정 개체', (folder/'draft.html').read_text(encoding='utf-8'))
 
     def test_missing_mapping_duplicate_and_overflow_do_not_publish(self):
         with tempfile.TemporaryDirectory() as tmp:

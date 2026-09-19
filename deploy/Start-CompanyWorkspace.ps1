@@ -28,7 +28,7 @@ try {
             $origin = $uri.GetLeftPart([UriPartial]::Authority)
             $health = Invoke-RestMethod -Uri ($origin + '/api/bootstrap') -Headers @{ Authorization = ('Bearer ' + $auth) } -TimeoutSec 2
             if ($health.application -eq 'company-workspace' -and [bool]$health.demo -eq [bool]$Demo) {
-                if ($health.workspaceVersion -eq '0.4' -and $health.appRoot -eq $appRoot) {
+                if ($health.workspaceVersion -eq '0.5' -and $health.appRoot -eq $appRoot) {
                     if ($NoBrowser) { return }
                     $edge = Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'
                     if (Test-Path -LiteralPath $edge) { Start-Process -FilePath $edge -ArgumentList @('--new-window', ('--app=' + $uri.AbsoluteUri)) -WindowStyle Normal | Out-Null }

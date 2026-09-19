@@ -3,7 +3,8 @@ param(
     [Parameter(Mandatory = $true)][string] $BundleZip,
     [Parameter(Mandatory = $true)][string] $UpdateBundleZip,
     [Parameter(Mandatory = $true)][string] $ClaudeCommand,
-    [Parameter(Mandatory = $true)][string] $PythonCommand
+    [Parameter(Mandatory = $true)][string] $PythonCommand,
+    [switch] $KeepArtifacts
 )
 
 # Positive old-release -> new-release integration using both unmodified ZIPs.
@@ -99,7 +100,13 @@ try {
         'skills\office-reader\SKILL.md', 'skills\html-report\SKILL.md',
         'resources\first-work.html', 'resources\onboarding-course.json',
         'resources\manuals\Company-Agent-Handbook.html', 'resources\manuals\Company-Agent-Onboarding.html',
-        'resources\manuals\Company-Agent-Cua-Pilot.html'
+        'resources\manuals\Company-Agent-Cua-Pilot.html',
+        'resources\manuals\Company-Agent-Guide.html',
+        'scripts\company_agent\office_consent.py', 'scripts\company_agent\project_bootstrap.py',
+        'scripts\company_agent\artifact_delivery.py', 'scripts\company_agent\ppt_html.py',
+        'scripts\company_agent\ppt_html_import.py', 'scripts\company_agent\ppt_dom_capture.js',
+        'scripts\company_agent\ppt_scene.py', 'scripts\company_agent\ppt_image_edit.py',
+        'skills\platform-mcp-builder\SKILL.md'
     )) {
         $cachedModule = Join-Path $current[0].installPath $relative
         $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
@@ -121,11 +128,12 @@ try {
         status = 'pass'; previousVersion = $oldVersion; updatedVersion = $newVersion
         nativeClaudeRegistration = $true; nativeSessionStart = $true
         personalStatePreserved = $true; originalArchivesPreserved = $true
+        artifactsKept = [bool]$KeepArtifacts; testRoot = $testRoot
     }
 }
 finally {
     foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }
-    if (Test-Path -LiteralPath $testRoot) {
+    if (-not $KeepArtifacts -and (Test-Path -LiteralPath $testRoot)) {
         $resolved = ConvertTo-CompanyAgentFullPath -Path $testRoot
         $tempRoot = (ConvertTo-CompanyAgentFullPath -Path ([IO.Path]::GetTempPath())).TrimEnd('\')
         if (-not $resolved.StartsWith(($tempRoot + '\'), [StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notlike 'CompanyAgent-ReleaseUpgrade-*') { throw 'Unsafe release upgrade cleanup path.' }

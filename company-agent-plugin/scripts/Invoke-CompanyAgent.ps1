@@ -20,7 +20,7 @@ $officeRead = $Mode -eq 'Cli' -and $CliArguments.Count -ge 2 -and
     $CliArguments[0] -eq 'business' -and $CliArguments[1] -eq 'office-read' -and
     '-h' -notin $CliArguments -and '--help' -notin $CliArguments
 $officeWatch = [Diagnostics.Stopwatch]::StartNew()
-if ($officeRead) { [Console]::Error.WriteLine(('"[\ubb38\uc11c \uc77d\uae30] \uc2e4\ud589 \uc900\ube44 \uc911 \u2014 Python \ud655\uc778 (\uc544\uc9c1 \ud655\uc778 \ucc3d \ub300\uae30 \uc804)"' | ConvertFrom-Json)) }
+if ($officeRead) { [Console]::Error.WriteLine(('"[\ubb38\uc11c \uc77d\uae30] \uc2e4\ud589 \uc900\ube44 \uc911 \u2014 Python \ud655\uc778"' | ConvertFrom-Json)) }
 
 function Invoke-OfficePythonProbe {
     param([string] $Executable, [string[]] $Prefix)
@@ -105,7 +105,7 @@ foreach ($candidate in $candidates) {
         if ($officeRead) {
             $attempt = Invoke-OfficePythonProbe -Executable $info.Source -Prefix $prefix
             if ($attempt.timedOut) {
-                [Console]::Error.WriteLine(('"[\ubb38\uc11c \uc77d\uae30] Python \uc900\ube44 \uc2dc\uac04 \ucd08\uacfc. \ud655\uc778 \ucc3d\uacfc Office\ub294 \uc544\uc9c1 \uc5f4\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4."' | ConvertFrom-Json))
+                [Console]::Error.WriteLine(('"[\ubb38\uc11c \uc77d\uae30] Python \uc900\ube44 \uc2dc\uac04 \ucd08\uacfc. Office\ub294 \uc544\uc9c1 \uc5f4\uc9c0 \uc54a\uc558\uc2b5\ub2c8\ub2e4."' | ConvertFrom-Json))
                 @{ ok = $false; status = 'unavailable'; code = 'office_bootstrap_timeout'; stage = 'python_probe'; retryAllowed = $false; elapsedMs = $officeWatch.ElapsedMilliseconds } | ConvertTo-Json -Compress
                 exit 2
             }

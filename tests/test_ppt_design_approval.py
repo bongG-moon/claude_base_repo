@@ -23,9 +23,8 @@ class PptDesignApprovalTests(unittest.TestCase):
                             ('월간 실적','핵심 요약','월별 비교','상세표','확인할 사항')]}
 
     def preview(self,job=None):
-        # Rendering explicitly unavailable in this fixture, never a visual-pass claim.
-        with patch.object(artifacts,'_office',return_value={'ok':False,'code':'render_refused'}):
-            return artifacts.create_ppt(job or self.job,self.root/'representative.pptx',require_choices=True,preview_only=True)
+        with patch.object(artifacts,'_office',side_effect=AssertionError('HTML draft must not start Office')):
+            return artifacts.create_ppt(job or self.job,self.root/'representative.html',require_choices=True,preview_only=True)
 
     def test_new_mode_does_not_skip_design_or_confirmation(self):
         self.assertEqual('design',flow.choices(self.job)['stage'])
@@ -33,7 +32,7 @@ class PptDesignApprovalTests(unittest.TestCase):
         self.assertEqual('design_preview',flow.choices(self.job)['stage'])
         preview=self.preview()
         self.assertTrue(preview['ok'],preview)
-        self.assertEqual(2,preview['slides'])
+        self.assertEqual(5,preview['slides'])
         self.assertEqual(5,len(preview['outline']))
         self.job['designReview']=preview['designReview']
         self.assertFalse(self.job['designReview']['confirmed'])
@@ -58,7 +57,7 @@ class PptDesignApprovalTests(unittest.TestCase):
             result=artifacts.create_ppt(changed,target,require_choices=True)
             self.assertEqual('design_review_changed',result['code'])
             self.assertFalse(target.exists())
-        (self.root/'representative.pptx').write_bytes(b'changed')
+        (self.root/'representative.html').write_bytes(b'changed')
         self.assertEqual('design_preview_changed',artifacts.create_ppt(self.job,self.root/'bad.pptx',require_choices=True)['code'])
 
     def test_metadata_write_is_not_a_business_change_but_job_is(self):
@@ -70,6 +69,7 @@ class PptDesignApprovalTests(unittest.TestCase):
                 'file_path':str(path or state/'tmp/ppt-choices-test.json'),'content':json.dumps(spec)}},state)
         record(choices)
         record({**choices,'designPreset':'monochrome'})
+        record({**choices,'creationMode':'reference','referenceImages':[str(self.root/'reference.png')]})
         self.assertEqual(0,load_session('ppt-choice',state)['mutationCount'])
         self.assertEqual({},stop_decision({'session_id':'ppt-choice'},state))
         record(self.job)
@@ -81,10 +81,12 @@ class PptDesignApprovalTests(unittest.TestCase):
         state=self.root/'state';ensure_user_layout(state)
         begin_turn('ppt-choice','MEDIUM',True,(),state)
         for content,path in [({'creationMode':'new'},self.root/'ppt-choices-test.json'),
-                             ({'slideCount':True},state/'tmp/ppt-choices-test.json')]:
+                             ({'slideCount':True},state/'tmp/ppt-choices-test.json'),
+                             ({'creationMode':'reference','referenceImages':['https://example.invalid/a.png']},state/'tmp/ppt-choices-test.json'),
+                             ({'creationMode':'reference','referenceImages':[str(self.root/'a.png')]*4},state/'tmp/ppt-choices-test.json')]:
             record_activity({'session_id':'ppt-choice','tool_name':'Write','tool_input':{
                 'file_path':str(path),'content':json.dumps(content)}},state)
-        self.assertEqual(2,load_session('ppt-choice',state)['mutationCount'])
+        self.assertEqual(4,load_session('ppt-choice',state)['mutationCount'])
 
     def test_palettes_are_actually_applied(self):
         from company_agent import presentation_design
@@ -106,10 +108,10 @@ class PptDesignApprovalTests(unittest.TestCase):
             'rows':[['6월','150','145'],['7월','150','175'],['8월','150','210']]}}
         result=self.preview()
         self.assertTrue(result['ok'],result)
-        draft=Presentation(str(self.root/'representative.pptx'))
-        self.assertEqual(2,len(draft.slides))
+        draft=(self.root/'representative.html').read_text(encoding='utf-8')
+        self.assertEqual(5,draft.count('class="ppt-page"'))
         self.assertEqual('누적 실적 530백만원',result['outline'][1])
-        self.assertIn('530',' '.join(s.text for s in draft.slides[1].shapes if s.has_text_frame))
+        self.assertIn('530',draft)
         self.job['designReview']={**result['designReview'],'confirmed':True}
         with patch.object(artifacts,'_office',return_value={'ok':False,'code':'render_refused'}):
             final=artifacts.create_ppt(self.job,self.root/'final.pptx',require_choices=True)
@@ -125,7 +127,7 @@ class PptDesignApprovalTests(unittest.TestCase):
         import argparse
         from company_agent import business
         parser=argparse.ArgumentParser();business.register(parser.add_subparsers())
-        args=parser.parse_args(['business','ppt-design-preview','--spec','job.json','--output','draft.pptx'])
+        args=parser.parse_args(['business','ppt-design-preview','--spec','job.json','--output','draft.html'])
         self.assertEqual('ppt-design-preview',args.business_action)
 
     def test_digest_tracks_image_bytes_at_unchanged_path(self):

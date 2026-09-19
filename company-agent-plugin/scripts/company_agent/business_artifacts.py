@@ -134,12 +134,16 @@ def _image(value: Any) -> dict[str, str]:
             "data": base64.b64encode(raw).decode("ascii"), "mime": mime}
 
 
-def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
-    if not isinstance(spec, dict):
-        raise ArtifactError("invalid_spec", "작업 내용은 JSON 객체로 전달해 주세요.")
+def _check_content_scope(spec):
     if (spec.get("drmRestricted") or spec.get("protected") or spec.get("permissionGranted") is False or
             str(spec.get("accessStatus", "")).lower() in ("blocked", "denied", "protected")):
         raise ArtifactError("protected_input", "보호 또는 접근 제한이 표시된 자료는 자동 처리하지 않습니다.")
+
+
+def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
+    if not isinstance(spec, dict):
+        raise ArtifactError("invalid_spec", "작업 내용은 JSON 객체로 전달해 주세요.")
+    _check_content_scope(spec)
     style = spec.get("style", "minimalism")
     aliases = {"글래스모피즘": "glassmorphism", "브루탈리즘": "brutalism", "뉴모피즘": "neumorphism",
                "미니멀리즘": "minimalism", "벤토그리드": "bento-grid", "그라디언트 메시": "gradient-mesh",
@@ -449,13 +453,19 @@ def inspect_template(path: Path) -> dict[str, Any]:
 
 
 def capabilities() -> dict[str, Any]:
+    from .ppt_html_import import browser_path
     found = importlib.util.find_spec("pptx") is not None
     shell = _windows_powershell()
     return {"ok": True, "html": {"available": True, "styles": list(STYLES), "modes": list(MODES), "offline": True},
-            "ppt": {"pythonPptxAvailable": found, "powerShellAvailable": shell is not None,
+            "ppt": {"ok":True,"pythonPptxAvailable": found, "powerShellAvailable": shell is not None,
                     "powerPointInstalled": "checked-when-requested" if shell else "unavailable",
-                    "automaticDownload": False, "templateFormats": [".pptx"],
-                    "notes": "생성은 python-pptx 또는 Windows PowerPoint가 필요합니다. 이미지 미리보기는 PowerPoint가 있어야 합니다."}}
+                    "automaticDownload": False, "templateFormats": [".pptx", ".html"],
+                    "draftFormat": "html", "savedDesignFormat": "html",
+                    "nativeElements":['text','table','chart','rect','roundRect','ellipse','shadow','image'],
+                    "freeformRequiresPythonPptx":True,"imageFit":['contain','cover','stretch'],
+                    "existingImageResize":found,"htmlLayoutBrowserAvailable":browser_path() is not None,
+                    "htmlImport":"static-local-no-source-scripts","templateSaveCommand":"business ppt-template",
+                    "notes": "HTML 초안은 Office 없이 만듭니다. 승인 후 PPT 생성은 python-pptx 또는 Windows PowerPoint가 필요하며 최종 이미지 검토에는 PowerPoint가 필요합니다."}}
 
 
 def _windows_powershell() -> str | None:
@@ -545,7 +555,10 @@ def preview_template(template: Path, output: Path) -> dict[str, Any]:
         return _failure(exc)
 
 
-def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None, *, require_choices: bool = False, preview_only: bool = False) -> dict[str, Any]:
+def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None, *, require_choices: bool = False, preview_only: bool = False, preview_directory: Path | None = None) -> dict[str, Any]:
+    from . import ppt_html
+    if preview_only:
+        return ppt_html.create_draft(spec, output, template, require_choices=require_choices)
     try:
         output = _target(output, ".pptx")
         from . import ppt_workflow
@@ -553,57 +566,28 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
             from .business_safety import blocked_input
             if (blocked := blocked_input(spec)) is not None:
                 return blocked
-            selected = ppt_workflow.choices(spec, template, for_preview=preview_only)
+            selected = ppt_workflow.choices(spec, template)
             if not selected.get('ok'):
                 return selected
-            if not preview_only:
-                ppt_workflow.verify_design_review(spec, template)
-        data = _normalize(spec)
-        if require_choices and spec['slideCount'] != len(data['sections']):
-            raise ArtifactError('slide_count_mismatch','생성할 장수가 선택한 장수와 다릅니다. 몰래 늘리거나 줄이지 않았습니다.')
-        review_digest = ppt_workflow.design_digest(spec,template) if preview_only else None
-        preserve = bool(template and spec.get('referenceMode') == 'preserve')
-        from . import presentation_design, report_facts
-        try:
-            arithmetic = presentation_design.prepare(spec, data)
-        except (presentation_design.DesignError, report_facts.FactError) as exc:
-            raise ArtifactError("ppt_design_invalid", str(exc)) from None
-        # Resolve facts against the FULL job before selecting representative pages.
-        # Preview does not grant authority to generate the remaining slides.
-        preview_indices = list(range(min(2,len(data['sections']))))
-        preview_outline = [row['title'] for row in data['sections']]
-        if preview_only:
-            data['sections'] = [data['sections'][i] for i in preview_indices]
-        _fit_preflight(data)
-        inspected = inspect_template(template) if template else None
-        if inspected and not inspected["ok"]:
-            return inspected
-        if inspected and inspected["hasExternalRelationships"]:
-            raise ArtifactError("external_template_links", "양식에 현재 제작 기능이 지원하지 않는 외부 연결이 있어 자동 제작을 중단했습니다.")
-        size = inspected.get("sizeEmu", {}) if inspected else {}
-        try:
-            data['presentationPlan'] = presentation_design.plan(
-                data, size.get('width', 12192000) / 12700, size.get('height', 6858000) / 12700) if not preserve else {}
-        except presentation_design.DesignError as exc:
-            raise ArtifactError("ppt_design_invalid", str(exc)) from None
+            ppt_workflow.verify_design_review(spec, template)
+        data, arithmetic, inspected, native_template, preserve = ppt_html.prepare(spec, template)
         python_available = importlib.util.find_spec("pptx") is not None
-        if preserve and not python_available:
-            raise ArtifactError('template_engine_unavailable','양식 유지 제작에 필요한 python-pptx가 없습니다. 자동 설치나 다른 제작 방식으로 바꾸지 않았습니다.')
+        extended=bool(spec.get('htmlSource') or any('elements' in r or r.get('imageFit','contain')!='contain' for r in data['sections']))
+        if (preserve or extended) and not python_available:
+            raise ArtifactError('template_engine_unavailable','자유 배치/HTML 변환/양식 유지 제작에는 python-pptx가 필요합니다. 자동 설치하거나 표 중심/이미지형으로 바꾸지 않았습니다.')
         # Office can retain a handle after a timeout. Do not kill its process or
         # mask a saved output with cleanup errors when a temporary file is locked.
         with tempfile.TemporaryDirectory(prefix="company-presentation-", ignore_cleanup_errors=True) as temp:
             work = Path(temp)
             draft = work / "draft.pptx"
             copy = None
-            if template:
+            if native_template:
                 copy = work / "template.pptx"
-                copy.write_bytes(Path(template).read_bytes())
+                copy.write_bytes(Path(native_template).read_bytes())
                 if hashlib.sha256(copy.read_bytes()).hexdigest() != inspected["sha256"]:
                     raise ArtifactError("template_changed", "확인 후 원본 양식이 변경되었습니다. 다시 확인해 주세요.")
             if python_available:
                 mappings=spec.get('templateSlides')
-                if preview_only and isinstance(mappings,list):
-                    mappings=[mappings[i] for i in preview_indices if i<len(mappings)]
                 native = ppt_workflow.fill_template(data,draft,copy,mappings) if preserve else _python_ppt(data, draft, copy)
                 engine = "python-pptx"
                 visual = _office(data, draft, None, work, True)
@@ -624,17 +608,20 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
             quality['archforge'] = ppt_workflow.optional_archforge(draft)
             if quality['archforge']['status']=='issues_found':
                 quality['status']='issues_found'
-            if preview_only and review_digest != ppt_workflow.design_digest(spec,template):
-                raise ArtifactError('design_review_changed','대표 슬라이드 생성 중 명세 또는 원본 양식이 달라졌습니다.')
-            if require_choices and not preview_only:
+            if require_choices:
                 ppt_workflow.verify_design_review(spec,template)
             _publish(draft, output)
             previews = []
             preview_source = work / "preview"
             if visual.get("ok") and preview_source.is_dir():
-                preview_target = output.parent / (output.stem + "-preview")
                 try:
-                    preview_target.mkdir(exist_ok=False)
+                    # QA images are internal, not additional user deliverables.
+                    if preview_directory is None:
+                        preview_target = Path(tempfile.mkdtemp(prefix='company-ppt-review-'))
+                    else:
+                        preview_target = safe_path(preview_directory)
+                        _reject_reparse(preview_target)
+                        preview_target.mkdir(exist_ok=False)
                     for picture in sorted(preview_source.glob("slide-*.png")):
                         _publish(picture, preview_target / picture.name)
                         previews.append(str(preview_target / picture.name))
@@ -647,17 +634,16 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
                     visual["message"] = "PPT 파일은 생성했지만 미리보기 저장은 완료하지 못했습니다. 다른 경로로 재출력하지 않았습니다."
             warnings = ["사진·배경 이미지와 원본의 지원하지 않는 개체는 개별 편집을 보장하지 않습니다.",
                         "이미지 출력은 육안 품질 검토를 돕습니다. 글자 잘림과 회사 양식 일치 여부는 미리보기에서 확인해 주세요."]
-            if template:
+            warnings.extend(data['presentationPlan'].get('warnings',[]))
+            if native_template:
                 warnings.append('지정한 원본 슬라이드의 개체 배치를 유지하고 내용을 교체했습니다. 혼합 서식·그룹 개체 등은 지원하지 않습니다.' if preserve else "원본 테마·마스터·레이아웃을 재사용하며 예시 슬라이드는 제거합니다. 원본 화면의 정확한 재구성은 보장하지 않습니다.")
+            elif template:
+                warnings.append('저장한 HTML 대표 양식의 디자인 정보를 사용했습니다. 임의 HTML/CSS를 변환한 것은 아닙니다.')
             if quality.get('status') != 'checked':
                 warnings.append('개체 범위·글자 크기 검사에 확인할 항목이 있습니다. 최종 완료로 보고하지 말고 확인해 주세요.')
             if not visual.get("ok"):
                 warnings.append(visual.get("message", "이미지 미리보기를 만들지 못했습니다."))
-            review = {'designReview':{'specSha256':review_digest,
-                       'previewPath':str(output.resolve()),'previewSha256':hashlib.sha256(output.read_bytes()).hexdigest(),
-                       'confirmed':False}, 'previewOnly':True,'stage':'design_confirm',
-                       'outline':preview_outline} if preview_only else {}
-            return {**review,"ok": True, "status": "created" if visual.get("ok") and quality.get('status') == 'checked' else "partial", "outputPath": str(output),
+            return {"ok": True, "status": "created" if visual.get("ok") and quality.get('status') == 'checked' else "partial", "outputPath": str(output),
                     "engine": engine, "slides": len(data["sections"]), "editability": native,
                     "validation": {"structure": "passed", "render": visual, "visualReview": "required",
                                    "arithmetic": arithmetic, "quality":quality, "layout": 'template-slots-preserved' if preserve else "bounded-plan-checked-not-visual-proof"},

@@ -33,19 +33,35 @@ def choices(spec, template=None, *, for_preview=False):
         for key in ('purpose','audience'):
             if key in spec and (not isinstance(spec[key], str) or not spec[key].strip() or len(spec[key]) > 200):
                 raise ArtifactError('invalid_choice', '목적과 대상을 짧은 문장으로 알려 주세요.')
-        known = {k:spec[k] for k in ('creationMode','referenceMode','purpose','audience','slideCount','designPreset','designReview') if k in spec}
-        if spec.get('creationMode') == 'new' and (template or 'referenceMode' in spec):
+        images = spec.get('referenceImages', [])
+        if (not isinstance(images,list) or len(images)>3 or any(not isinstance(p,str) or len(p)>2048
+                or not Path(p).is_absolute() or Path(p).suffix.lower() not in ('.png','.jpg','.jpeg') for p in images)):
+            raise ArtifactError('invalid_choice','참고 캡처는 로컬 PNG/JPEG 경로 1~3개로 지정해 주세요. 보통 2~3장이면 충분합니다.')
+        html_template = bool(template and Path(template).suffix.lower() in ('.html','.htm'))
+        html_source = spec.get('htmlSource')
+        if html_source:
+            if not isinstance(html_source,dict) or not isinstance(html_source.get('path'),str) or not Path(html_source['path']).is_absolute():
+                raise ArtifactError('invalid_choice','기준 HTML의 절대경로를 htmlSource.path에 지정해 주세요.')
+            if template or images or spec.get('referenceMode')=='preserve':
+                raise ArtifactError('invalid_choice','HTML 직접 변환은 다른 양식/캡처 또는 PPTX 개체 유지와 섞지 않습니다.')
+        known = {k:spec[k] for k in ('creationMode','referenceMode','purpose','audience','slideCount','designPreset','designReview','referenceImages') if k in spec}
+        if spec.get('creationMode') == 'new' and (template or images or html_source or 'referenceMode' in spec):
             raise ArtifactError('invalid_choice', '새 디자인 제작과 기존 양식 유지 조건이 함께 지정되었습니다. 제작 방식을 확인해 주세요.')
         result = {'ok':False,'status':'input_required','preservedChoices':known,'waitForUser':True}
         if 'creationMode' not in spec:
             return {**result,'stage':'method','missing':['creationMode'],
                     'question':'어떤 방식으로 PPT를 만들까요?',
-                    'options':['내용에 맞춰 새 디자인으로 만들기','기존 PPT·회사 양식을 첨부해서 만들기','이전에 저장한 내 양식으로 만들기']}
+                    'options':['내용에 맞춰 새 디자인으로 만들기','참고 슬라이드 캡처 2~3장 또는 기존 PPT 첨부','저장한 HTML 대표 양식으로 만들기']}
         if spec['creationMode'] != 'new':
-            if not template:
+            if not template and not images and not html_source:
                 return {**result,'stage':'reference_file','missing':['template'],
-                        'question':'참고할 PPTX 파일을 첨부하거나 이 PC의 파일 경로를 알려 주세요.'}
-            if 'referenceMode' not in spec:
+                        'question':('저장한 HTML 대표 양식을 첨부하거나 경로를 알려 주세요. 기존 PPTX 양식도 사용할 수 있습니다.'
+                                    if spec['creationMode']=='saved' else '원하는 PPT의 캡처 2~3장(표지·본문·표/차트)을 첨부해 주세요. 1장이나 기존 PPTX/HTML 양식도 괜찮습니다.')}
+            if (images or html_template) and spec.get('referenceMode') == 'preserve':
+                raise ArtifactError('invalid_choice','캡처·HTML 양식은 디자인 참고용입니다. 원본 개체·마스터 유지에는 기존 PPTX 양식이 필요합니다.')
+            if template and images:
+                raise ArtifactError('invalid_choice','이번 디자인의 기준을 캡처 또는 양식 파일 중 하나로 정해 주세요.')
+            if 'referenceMode' not in spec and not (images or html_template or html_source):
                 return {**result,'stage':'reference_scope','missing':['referenceMode'],
                         'question':'기존 양식을 어느 정도 유지할까요?',
                         'options':['색감·폰트·분위기를 참고해서 새로 구성','기존 슬라이드 배치와 개체를 유지하고 내용 교체']}
@@ -56,23 +72,27 @@ def choices(spec, template=None, *, for_preview=False):
             return {**result,'stage':'design','missing':['designPreset'],
                     'question':'새 PPT의 디자인을 선택해 주세요. 기존 PPT를 참고하는 방식으로 바꿀 수도 있습니다.',
                     'designOptions':[{'id':key,'label':name,'description':description} for key,(name,description,_) in DESIGNS.items()],
-                    'referenceOption':'참고 PPT 첨부로 변경'}
+                    'referenceOption':'참고 캡처·PPT 첨부로 변경'}
         if for_preview:
             return {'ok':True,'status':'preview_ready','stage':'preview_ready','selection':known}
         review = spec.get('designReview')
         if review is None:
             return {**result,'status':'preview_required','stage':'design_preview','missing':['designReview'],'waitForUser':False,
-                    'question':'전체 구성과 실제 대표 슬라이드 미리보기를 준비한 뒤 승인을 기다리세요. 최종 PPT는 아직 만들지 않습니다.',
-                    'previewCommand':'business ppt-design-preview --spec FULL_JOB.json --output NEW_DRAFT.pptx'}
+                    'question':'전체 슬라이드의 HTML 초안을 준비해 보여주고 승인을 기다리세요. 최종 PPT는 아직 만들지 않습니다.',
+                    'previewCommand':'business ppt-design-preview --spec FULL_JOB.json --work WORK_FILE'}
+        if isinstance(review,dict) and str(review.get('previewPath','')).lower().endswith('.pptx'):
+            return {**result,'status':'preview_required','stage':'design_preview','missing':['designReview'],'waitForUser':False,
+                    'question':'이전 PPT 미리보기 대신 HTML 초안을 생성해 확인해 주세요.',
+                    'previewCommand':'business ppt-design-preview --spec FULL_JOB.json --work WORK_FILE'}
         if (not isinstance(review,dict) or set(review) != {'specSha256','previewPath','previewSha256','confirmed'}
                 or type(review.get('confirmed')) is not bool
                 or any(not isinstance(review.get(k),str) or not re.fullmatch('[a-f0-9]{64}',review[k]) for k in ('specSha256','previewSha256'))
                 or not isinstance(review.get('previewPath'),str) or not Path(review['previewPath']).is_absolute()
-                or len(review['previewPath'])>2048 or Path(review['previewPath']).suffix.lower()!='.pptx'):
-            raise ArtifactError('invalid_choice','대표 디자인 확인 정보를 다시 준비해 주세요.')
+                or len(review['previewPath'])>2048 or Path(review['previewPath']).suffix.lower()!='.html'):
+            raise ArtifactError('invalid_choice','HTML 초안 확인 정보를 다시 준비해 주세요.')
         if not review['confirmed']:
             return {**result,'stage':'design_confirm','missing':['designReview.confirmed'],
-                    'question':'구성과 대표 슬라이드를 확인해 주세요. 이대로 제작 / 수정 요청 / 참고 PPT로 변경 중 선택해 주세요.'}
+                    'question':'HTML 초안의 구성·디자인·수치를 확인해 주세요. 이대로 PPT 제작 / 수정 요청 / 참고 디자인 변경 중 선택해 주세요.'}
         return {'ok':True,'status':'choices_ready','stage':'ready','selection':known,
                 'message':'대표 디자인 승인 조건이 입력되었습니다. 생성기는 원본 명세와 미리보기 일치 여부를 확인한 뒤 제작합니다.'}
     except Exception as exc:
@@ -83,14 +103,24 @@ def design_digest(spec, template=None):
     import hashlib
     import json
     from .business_artifacts import _source
-    reference = hashlib.sha256(_source(Path(template),('.pptx',)).read_bytes()).hexdigest() if template else None
+    reference = hashlib.sha256(_source(Path(template),('.pptx','.html','.htm')).read_bytes()).hexdigest() if template else None
     images=[]
     for row in spec.get('sections',spec.get('slides',[])):
         if isinstance(row,dict) and isinstance(row.get('image'),dict):
             from .business_artifacts import _image
             image=_image(row['image'])
             images.append(hashlib.sha256(image['data'].encode('ascii')).hexdigest())
-    data = {'spec':{k:v for k,v in spec.items() if k!='designReview'},'templateSha256':reference,'imageSha256':images}
+        if isinstance(row,dict):
+            for element in row.get('elements',[]):
+                if isinstance(element,dict) and element.get('kind')=='image':
+                    from .business_artifacts import _image
+                    images.append(hashlib.sha256(_image(element['image'])['data'].encode('ascii')).hexdigest())
+    for path in spec.get('referenceImages', []):
+        from .business_artifacts import _image
+        images.append(hashlib.sha256(_image({'path':path})['data'].encode('ascii')).hexdigest())
+    from .ppt_html_import import fingerprint
+    data = {'spec':{k:v for k,v in spec.items() if k!='designReview'},'templateSha256':reference,'imageSha256':images,
+            'htmlSource':fingerprint(spec['htmlSource']) if spec.get('htmlSource') else None}
     return hashlib.sha256(json.dumps(data,ensure_ascii=True,sort_keys=True,separators=(',',':'),allow_nan=False).encode()).hexdigest()
 
 
@@ -99,8 +129,8 @@ def verify_design_review(spec, template=None):
     from .business_artifacts import ArtifactError, _source
     review=spec['designReview']
     if review['specSha256']!=design_digest(spec,template):
-        raise ArtifactError('design_review_changed','구성·내용·디자인 또는 참고 양식이 달라졌습니다. 새 대표 미리보기를 보여주고 다시 확인해 주세요.')
-    preview=_source(Path(review['previewPath']),('.pptx',))
+        raise ArtifactError('design_review_changed','구성·내용·디자인 또는 참고 자료가 달라졌습니다. HTML 초안을 다시 보여주고 확인해 주세요.')
+    preview=_source(Path(review['previewPath']),('.html',))
     if hashlib.sha256(preview.read_bytes()).hexdigest()!=review['previewSha256']:
         raise ArtifactError('design_preview_changed','대표 미리보기 파일이 변경되었습니다. 다시 확인해 주세요.')
 
@@ -122,6 +152,18 @@ def installed_fonts():
 
 
 def analyze(template):
+    if Path(template).suffix.lower() in ('.html','.htm'):
+        from .ppt_html import read_template
+        from .business_artifacts import _failure
+        try:
+            meta=read_template(template)
+            return {'ok':True,'status':'analyzed','format':'html','presentationFrame':meta['presentationFrame'],
+                    'presentationTheme':meta['presentationTheme'],'presentationFont':meta['presentationFont'],
+                    'layouts':[{'layoutIndex':i+1,'textSlots':p['textSlots'],
+                                'chartSlots':sum(e['kind']=='chart' for e in p['elements']),
+                                'tableSlots':sum(e['kind']=='table' for e in p['elements'])} for i,p in enumerate(meta.get('layouts',[]))]}
+        except Exception as exc:
+            return _failure(exc)
     from .business_artifacts import inspect_template, _xml, A, P
     import hashlib
     inspected = inspect_template(Path(template))
@@ -154,7 +196,7 @@ def analyze(template):
                 continue
             root = _xml(package.read(name))
             shapes=[]
-            for node in root.findall(f'.//{{{P}}}sp') + root.findall(f'.//{{{P}}}graphicFrame'):
+            for node in root.findall(f'.//{{{P}}}sp') + root.findall(f'.//{{{P}}}graphicFrame') + root.findall(f'.//{{{P}}}pic'):
                 identity=node.find(f'.//{{{P}}}cNvPr')
                 if identity is None:
                     continue
@@ -246,7 +288,7 @@ def optional_archforge(path):
         return {'status':'unavailable','message':'추가 PPT 검사기를 완료하지 못했습니다. 기본 검사 결과와 별개입니다.'}
 
 
-def fill_template(data, draft, template, mappings):
+def fill_template(data, draft, template, mappings, *, html_only=False):
     """Fill existing native slots; no arbitrary code, cloning, or screenshot slides."""
     from .business_artifacts import ArtifactError
     from .presentation_design import _lines
@@ -257,6 +299,7 @@ def fill_template(data, draft, template, mappings):
     deck=Presentation(str(template))
     selected=[]
     native={'text':0,'tables':0,'charts':0,'images':0}
+    preview_pages=[]
     def fail():
         raise ArtifactError('template_mapping_invalid','양식의 교체 대상·남겨둘 개체·내용 분량을 다시 확인해야 합니다. 임의 새 배치로 바꾸지 않았습니다.')
     def replace(frame,text):
@@ -346,6 +389,38 @@ def fill_template(data, draft, template, mappings):
         # Speaker notes can retain prior business content: clear on the new copy only.
         if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
             slide.notes_slide.notes_text_frame.clear()
+        if html_only:
+            # This is an explicit content/geometry projection, not a claim to
+            # reproduce inherited masters, fixed artwork or Office typography.
+            elements=[]
+            for field in ('title','body','table','chart'):
+                if field not in mapping:
+                    continue
+                shape=shapes[mapping[field]]
+                e={'kind':'text' if field in ('title','body') else field,
+                   **{key:getattr(shape,attr)/12700 for key,attr in (('x','left'),('y','top'),('w','width'),('h','height'))}}
+                if e['w']<=0 or e['h']<=0 or e['x']<0 or e['y']<0 or e['x']+e['w']>deck.slide_width/12700+1 or e['y']+e['h']>deck.slide_height/12700+1:
+                    raise ArtifactError('template_geometry_invalid','양식 개체가 화면 밖에 있거나 크기가 잘못되었습니다.')
+                if field in ('title','body'):
+                    runs=[r for p in shape.text_frame.paragraphs for r in p.runs]
+                    ink='title' if field=='title' else 'text'
+                    if runs:
+                        try:
+                            candidate=str(runs[0].font.color.rgb)
+                            if re.fullmatch('[0-9A-Fa-f]{6}',candidate):
+                                ink=candidate
+                        except (AttributeError,ValueError):
+                            pass
+                    e.update(text=row[field],size=max([r.font.size.pt for r in runs if r.font.size] or [30 if field=='title' else 18]),
+                             color=ink,bold=any(r.font.bold for r in runs))
+                elif field=='table':
+                    e.update(columnWidths=[c.width/12700 for c in shape.table.columns],
+                             rowHeights=[r.height/12700 for r in shape.table.rows],size=16)
+                elements.append(e)
+            preview_pages.append({'elements':elements})
+    if html_only:
+        return {'width':deck.slide_width/12700,'height':deck.slide_height/12700,'pages':preview_pages,
+                'font':data['presentationFont'],'theme':data['presentationTheme']}
     original=list(deck.slides._sldIdLst)
     for i,relation in enumerate(original):
         deck.slides._sldIdLst.remove(relation)

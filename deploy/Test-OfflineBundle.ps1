@@ -122,6 +122,15 @@ function Assert-EmployeeBundle {
         'docs/PPT_DESIGN_APPROVAL_2026-09-15.md',
         'payload/core/plugin/scripts/company_agent/background_work.py',
         'payload/core/plugin/skills/presentation/references/design-review.md',
+        'payload/core/plugin/skills/presentation/references/html-template.md',
+        'payload/core/plugin/scripts/company_agent/ppt_html.py',
+        'payload/core/plugin/scripts/company_agent/ppt_scene.py',
+        'payload/core/plugin/scripts/company_agent/ppt_html_import.py',
+        'payload/core/plugin/scripts/company_agent/ppt_dom_capture.js',
+        'payload/core/plugin/scripts/company_agent/ppt_image_edit.py',
+        'payload/core/plugin/skills/presentation/references/native-layout.md',
+        'payload/core/plugin/scripts/company_agent/artifact_delivery.py',
+        'payload/core/plugin/skills/company-agent/references/output-delivery.md',
         'docs/HTML_AND_SKILL_PREPARATION_FIX_2026-09-15.md',
         'docs/HTML_THEME_REVIEW_2026-09-15.md',
         'payload/core/plugin/scripts/company_agent/html_reference.py',
@@ -146,6 +155,16 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.3.5.md',
         'payload/core/plugin/skills/asset-factory/references/authoring.md',
         'payload/core/plugin/skills/asset-factory/references/windows-setup.md',
+        'payload/core/plugin/skills/platform-mcp-builder/SKILL.md',
+        'payload/core/plugin/skills/platform-mcp-builder/references/platform-contract.md',
+        'payload/core/plugin/skills/platform-mcp-builder/scripts/create_project.py',
+        'payload/core/plugin/skills/platform-mcp-builder/assets/template/src/mcp/tools.py',
+        'payload/core/plugin/skills/platform-mcp-builder/assets/template/src/mcp/__init__.py',
+        'payload/core/plugin/skills/platform-mcp-builder/assets/template/src/__init__.py',
+        'payload/core/plugin/skills/platform-mcp-builder/assets/template/local_server.py',
+        'payload/core/plugin/skills/platform-mcp-builder/assets/template/config.py',
+        'payload/core/plugin/skills/platform-mcp-builder/assets/template/test_tools.py',
+        'payload/core/plugin/skills/platform-mcp-builder/assets/template/requirements-local.txt',
         'payload/core/plugin/skills/personal-knowledge/references/term-quality.md',
         'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md',
         'docs/LEAN_SKILL_INTEGRATION.md'
@@ -181,9 +200,9 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Diagnose-CompanyAgent.cmd') -PathType Leaf) 'Root diagnostic launcher is missing.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -PathType Leaf) 'First-work guide is missing.'
     $firstWork = Get-Content -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -Raw -Encoding UTF8
-    Assert-OfflineBundle ($firstWork.Contains('href="docs/Company-Agent-Onboarding.html"')) 'ZIP start guide does not link to its onboarding course.'
+    Assert-OfflineBundle ($firstWork.Contains('href="docs/Company-Agent-Guide.html"')) 'ZIP start guide does not link to its unified course.'
     Assert-OfflineBundle (-not $firstWork.Contains('href="manuals/')) 'ZIP guide uses the installed-only manual path.'
-    foreach ($book in @('Company-Agent-Onboarding.html', 'Company-Agent-Handbook.html', 'Company-Agent-Cua-Pilot.html')) {
+    foreach ($book in @('Company-Agent-Guide.html', 'Company-Agent-Onboarding.html', 'Company-Agent-Handbook.html', 'Company-Agent-Cua-Pilot.html', 'Company-Agent-사용자-안내서.html', 'Claude-Code-필수-사용법.html')) {
         $installedBook = Join-Path $ExpandedPath ('payload\core\plugin\resources\manuals\' + $book)
         Assert-OfflineBundle ((Get-FileHash -LiteralPath $installedBook -Algorithm SHA256).Hash -ceq
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $book)) -Algorithm SHA256).Hash) 'Installed manual differs from source.'
@@ -213,7 +232,7 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
     }
     $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter 'Company-Agent-*.html' -File)
-    Assert-OfflineBundle ($htmlGuides.Count -eq 5) 'Expected two existing readers and three beginner/Cua manuals.'
+    Assert-OfflineBundle ($htmlGuides.Count -eq 6) 'Expected unified guide, four compatibility pages and the operator validation reader.'
     foreach ($htmlGuide in $htmlGuides) {
         Assert-OfflineBundle ((Get-FileHash -LiteralPath $htmlGuide.FullName -Algorithm SHA256).Hash -ceq
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $htmlGuide.Name)) -Algorithm SHA256).Hash) 'HTML guide content changed during packaging.'

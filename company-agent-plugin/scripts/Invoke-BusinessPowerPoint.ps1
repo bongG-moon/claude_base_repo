@@ -70,8 +70,8 @@ try {
         }
         else {
             $presentation = $application.Presentations.Add(0)
-            $presentation.PageSetup.SlideWidth = 960
-            $presentation.PageSetup.SlideHeight = 540
+            $presentation.PageSetup.SlideWidth = [double]$request.spec.presentationPlan.width
+            $presentation.PageSetup.SlideHeight = [double]$request.spec.presentationPlan.height
         }
         # If Office will not expose permission state, do not guess or export via
         # screenshots or alternative readers. Fail and report an unknown result.
@@ -192,6 +192,7 @@ try {
                         $picture.Height = $usable
                         if ($picture.Width -gt $blockWidth) { $picture.Width = $blockWidth }
                         $picture.Left = $left + ($blockWidth-$picture.Width)/2
+                        $picture.Top = $top + ($usable-$picture.Height)/2
                         $picture.AlternativeText = [string]$row.image.alt
                     }
                 }

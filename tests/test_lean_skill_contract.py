@@ -21,11 +21,13 @@ class LeanSkillContractTests(unittest.TestCase):
             "company-agent", "asset-factory", "file-organizer", "html-report",
             "karpathy-guidelines", "outlook-assistant", "personal-knowledge",
             "personal-memory", "presentation", "project-harness", "self-learning", "office-reader",
+            "platform-mcp-builder",
         })
 
     def test_conditional_reference_links_exist_inside_plugin(self):
         links = {
             "asset-factory/SKILL.md": ["references/authoring.md", "references/windows-setup.md"],
+            "platform-mcp-builder/SKILL.md": ["references/platform-contract.md"],
             "project-harness/SKILL.md": ["../asset-factory/references/authoring.md"],
             "personal-knowledge/SKILL.md": ["references/term-quality.md"],
             "karpathy-guidelines/SKILL.md": ["references/evidence-diagnosis.md"],

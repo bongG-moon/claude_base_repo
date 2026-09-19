@@ -17,7 +17,9 @@ Hook 정보가 없으면 이미 읽은 이 SKILL.md의 실제 경로를 기준�
 -File "<실제 plugin 경로>/scripts/Invoke-CompanyAgent.ps1" -Mode Cli`가 진입점입니다.
 이 설치 진입점이 현재 폴더의 설치 범위·Python·개인 상태를 결정하므로 stateRoot를
 추측하지 않습니다. 뒤에 `business office-read --file "<사용자가 지정한 절대경로>"`를
-붙이면 됩니다. JSON 파일도 cd도 필요 없습니다. 범위는 `--start 1 --end 5`,
+붙이고 `--session "<company_agent_session_id>" --state-root "<stateRoot>"`를 전달합니다.
+세션 정보가 없으면 대화의 후크 연결을 확인합니다. 승인 값을 임의로 만들거나 별도 팝업을 열지 않습니다.
+JSON 파일도 cd도 필요 없습니다. 범위는 `--start 1 --end 5`,
 알려진 총 장수는 `--expected-count 4`, Excel은 `--sheet 1 --range A1:F50`입니다.
 진입점이 설치 오류를 반환하면 그 오류만 알리고 멈춥니다. 홈 전체 find, which,
 PYTHONPATH 조작, 직접 dispatch, 자체 추출 코드, 결과의 임시 파일 리다이렉트는 금지합니다.
@@ -47,7 +49,7 @@ The same fixed mapping applies to ordinary and DRM-labelled corporate documents.
 Do not turn a mere DRM label into a reported access denial; those are different.
 Unsupported file types require a separate workflow; do not rename extensions.
 
-1. Ask only for a missing file or reading scope, in Korean. Use the user's exact
+1. Ask for a missing file/reading scope and the reader's one-time AI-processing confirmation, in Korean. Use the user's exact
    local source, no recursive PC scan. Default to the bounded preview in the
    reference and explain its range. AskUserQuestion must not imply that a click
    grants company policy exceptions. Do not ask novices to create scripts/JSON.
@@ -56,16 +58,21 @@ Unsupported file types require a separate workflow; do not rename extensions.
    Report the reader's actual result and any incomplete range. Do not infer the
    cause of an error or claim unread content was obtained.
 3. Prefer the installed `company_agent_runtime.cliCommand` followed by
-   `business office-read --file "<exact absolute source>"` and only needed range flags.
+   `business office-read --file "<exact absolute source>" --session "<company_agent_session_id>" --state-root "<stateRoot>"` and only needed range flags.
    No request/output files or doctor preflight are needed for this normal path.
    For an existing spec workflow, use that command exactly, followed by
-   `business office-read --spec "<request.json>" --state-root "<stateRoot>"`.
+   `business office-read --spec "<request.json>" --session "<company_agent_session_id>" --state-root "<stateRoot>"`.
    Place the request at `<stateRoot>/tmp/office-read-<unique-id>.json`.
    Write only file path and selection metadata in this request, never source body,
    a password, executable code, or an approved flag.
-   The shipped reader presents a real local confirmation before opening Office.
-   `[문서 읽기]`는 단계 안내이며 오류가 아닙니다. `확인 창 여는 중`과
-   `확인 창 표시됨`을 구분하세요. 전자는 아직 사용자 응답 대기가 아닙니다.
+   첫 호출의 `input_required`는 정상 승인 대기이며 Office를 열지 않습니다.
+   코디네이터가 반환된 `questions`를 AskUserQuestion에 그대로 전달하고 기다립니다.
+   질문 도구가 없으면 같은 질문을 대화에 보여주고 `승인` 또는 `취소` 답변을 기다립니다.
+   사용자가 승인한 뒤 같은 세션·파일·범위로 한 번만 재실행합니다. 작업자에게 넘기면
+   승인된 부모 session ID와 stateRoot도 그대로 전달합니다. 승인 없이 위임·재시도하지 않습니다.
+   후크가 실제 답변을 확인합니다. JSON의 approved, 자체 승인 기록, WinForms 창은 쓰지 않습니다.
+   파일·범위 변경 또는 15분 만료 시 새 확인이 필요합니다. 취소하면 중단합니다.
+   `[문서 읽기]`는 단계 안내이며 오류가 아닙니다. 승인 대기는 Office 실행 시간이 아닙니다.
    지연 시 `code`·`stage`·`diagnostics.progress`만 확인하고 재실행하지 마세요.
 4. Use the shipped bounded reader and its supported options. If a requested
    capability is unavailable, explain the missing capability. No pip install.

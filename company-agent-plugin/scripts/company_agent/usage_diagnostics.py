@@ -152,4 +152,4 @@ def inspect_office_timing(path: Path) -> dict:
               if name in {*LABELS, 'bootstrap'} and _count(value) is not None}
     return {'status': 'observed' if stages else 'unavailable', 'stageMs': stages,
             'nativeApprovalWaitMs': None,
-            'notice': '선택한 Office 결과에 기록된 시간입니다. 확인 창 준비와 응답 대기를 구분합니다. Claude 자체 승인 대기 시간은 이 결과로 확인할 수 없습니다.'}
+            'notice': '선택한 Office 결과에 기록된 실행 시간입니다. 현재 문서 읽기는 Claude 대화에서 승인받으며 사용자 응답 대기는 이 결과에 포함되지 않습니다. 이전 버전 결과의 확인 창 준비·응답 대기는 별도로 표시합니다.'}

@@ -276,10 +276,11 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         # Viewing the fixed shipped picker is not a business artifact change.
         # This classification does not grant native execution permission.
         args = [value for value in args if value != '--open']
-    if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "html-designs")}:
+    if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "ppt-capabilities"), ("business", "html-designs")}:
         allowed = {"--state-root"}
     elif head == ('business','office-read'):
         allowed = {'--state-root','--spec'} if '--spec' in args else {'--state-root','--file','--start','--end','--sheet','--range','--max-chars','--expected-count'}
+        allowed.add('--session')
         required = {'--spec'} if '--spec' in args else {'--file'}
     elif head in {("business", "mail-search"), ("business", "html-choices")}:
         allowed, required = {"--state-root", "--spec"}, {"--spec"}
@@ -301,7 +302,7 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         allowed = {"--project", "--session"}
     else:
         return "unknown"
-    suffixes = ('.html', '.htm') if head == ('business', 'html-template') else ('.pptx',)
+    suffixes = ('.html', '.htm') if head == ('business', 'html-template') else ('.pptx', '.html', '.htm') if head in {('business','ppt-choices'),('business','ppt-analyze')} else ('.pptx',)
     return "read_only" if _fields(args[2:], allowed, required, template_suffixes=suffixes) is not None else "unknown"
 
 
@@ -312,10 +313,12 @@ def internal_plan_command(command: str, root: Path) -> bool:
     exemption. Explicit alternate state roots remain business changes.
     """
     args = _trusted_arguments(command)
-    if not args or args[:2] != ["business", "files-plan"]:
+    if not args or args[:2] not in (["business", "files-plan"], ["business", "artifact-start"]):
         return False
-    fields = _fields(args[2:], {"--folder", "--state-root"}, {"--folder"})
-    return bool(fields is not None and _absolute(fields["--folder"])
+    key = '--output' if args[1] == 'artifact-start' else '--folder'
+    fields = _fields(args[2:], {key, "--state-root"}, {key})
+    return bool(fields is not None and _absolute(fields[key])
+                and (key != '--output' or Path(fields[key]).suffix.lower() in {'.pptx','.html'})
                 and ("--state-root" not in fields or _same(fields["--state-root"], root)))
 
 
