@@ -98,7 +98,7 @@ def _fields(arguments: list[str], allowed: set[str], required: set[str] | None =
         fields[key] = value
     if not (required or set()).issubset(fields):
         return None
-    for name in ("--state-root", "--spec", "--project", "--file", "--template"):
+    for name in ("--state-root", "--spec", "--project", "--project-root", "--base", "--index", "--file", "--template"):
         if name in fields and not _absolute(fields[name]):
             return None
     if "--spec" in fields and Path(fields["--spec"]).suffix.casefold() != ".json":
@@ -246,17 +246,28 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         return "read_only" if fields is not None and re.fullmatch(r"[a-f0-9]{32}", fields["--id"]) else "unknown"
     if len(args) >= 2 and args[0] == "skill":
         return "read_only" if _skill_lookup(args[1:]) else "unknown"
-    if head == ("memory", "search") and len(args) >= 3 and not args[2].startswith("-"):
-        fields = _fields(args[3:], {"--limit", "--state-root"})
-        if fields is not None and ("--limit" not in fields or re.fullmatch(r"[1-9][0-9]{0,2}", fields["--limit"])):
-            return "read_only"
-        return "unknown"
+    # Exact help calls must be handled before missing-storage-scope questions.
+    # Neither form performs a save or creates a completion obligation.
     if args[-1:] == ["--help"] and head in {
         ("memory", "search"), ("memory", "upsert"), ("session", "verify"),
         ("work", "checkpoint"), ("learning", "stage"), ("learning", "review"),
         ("business", "eml-read"), ("business", "files-plan"),
     } and len(args) == 3:
         return "read_only"
+    if head in {('memory', 'upsert'), ('knowledge', 'upsert'), ('asset', 'create')} and '--storage-scope' not in args:
+        # These commands now return needs_scope_choice before opening the spec
+        # or creating state. A question must not create a false Stop obligation.
+        fields = _fields(args[2:], {'--spec', '--state-root', '--project-root', '--base'}, {'--spec'})
+        return 'read_only' if fields is not None else 'unknown'
+    if head in {("memory", "search"), ("knowledge", "search")} and len(args) >= 3 and not args[2].startswith("-"):
+        allowed = {"--limit", "--state-root", "--storage-scope", "--project-root"}
+        if head[0] == 'knowledge':
+            allowed.add('--index')
+        fields = _fields(args[3:], allowed)
+        if (fields is not None and fields.get('--storage-scope', 'personal') in {'personal', 'project'}
+                and ("--limit" not in fields or re.fullmatch(r"[1-9][0-9]{0,2}", fields["--limit"]))):
+            return "read_only"
+        return "unknown"
     allowed: set[str]
     required: set[str] = set()
     if head == ('business', 'html-designs') and '--open' in args:
@@ -284,6 +295,10 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         allowed = {"--state-root", "--session"}
     elif head == ("context", "audit"):
         allowed = {"--project"}
+    elif head == ("context", "map"):
+        # Metadata-only form. --output creates a real artifact and deliberately
+        # remains unknown/mutating; this classification grants no permission.
+        allowed = {"--project", "--session"}
     else:
         return "unknown"
     suffixes = ('.html', '.htm') if head == ('business', 'html-template') else ('.pptx',)

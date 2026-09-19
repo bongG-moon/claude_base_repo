@@ -90,12 +90,16 @@ try {
         'scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py',
         'scripts\company_agent\office_progress.py', 'scripts\company_agent\office_reader.py',
         'scripts\company_agent\business_safety.py', 'scripts\company_agent\workspace_api.py',
+        'scripts\company_agent\resource_scope.py', 'scripts\company_agent\harness_map.py',
+        'scripts\company_agent\harness_map_html.py',
         'scripts\company_agent\company_policy.py', 'scripts\company_agent\skill_decision.py',
         'scripts\company_agent\workflow_evidence.py', 'scripts\company_agent\state.py',
         'scripts\company_agent\html_reference.py', 'scripts\company_agent\knowledge.py',
         'scripts\Invoke-CompanyAgent.ps1', 'scripts\Confirm-BusinessAction.ps1',
         'skills\office-reader\SKILL.md', 'skills\html-report\SKILL.md',
-        'resources\first-work.html', 'resources\onboarding-course.json'
+        'resources\first-work.html', 'resources\onboarding-course.json',
+        'resources\manuals\Company-Agent-Handbook.html', 'resources\manuals\Company-Agent-Onboarding.html',
+        'resources\manuals\Company-Agent-Cua-Pilot.html'
     )) {
         $cachedModule = Join-Path $current[0].installPath $relative
         $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative

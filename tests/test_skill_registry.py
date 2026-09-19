@@ -142,6 +142,8 @@ class SkillRegistryTests(unittest.TestCase):
         self.assertEqual({item["origin"] for item in self.inventory()["skills"]}, {"active@market"})
         scoped = self.inventory(project_root=self.project)
         self.assertEqual({item["origin"] for item in scoped["skills"]}, {"active@market", "local@market"})
+        self.assertEqual({'active@market':'personal','local@market':'project'},
+                         {item['origin']:item['storageScope'] for item in scoped['skills']})
         self.json_file(self.project / ".claude" / "settings.local.json", {"enabledPlugins": {"active@market": False, "disabled@market": True}})
         scoped = self.inventory(project_root=self.project)
         self.assertEqual({item["origin"] for item in scoped["skills"]}, {"disabled@market", "local@market"})

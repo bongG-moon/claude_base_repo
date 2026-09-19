@@ -291,10 +291,16 @@ try {
     foreach ($docName in @('UPDATE_1.4.15.md', 'LOCAL_WORKSPACE.md', 'BEGINNER_WORKFLOW_DESIGN_2026-09-19.md', 'LOCAL_DECISION_WORKFLOW_2026-09-19.md', 'VALIDATION_AUDIT_FIXES_2026-09-19.md', 'VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md', 'VALIDATION_COMPANY_PERSONAL_2026-09-18.md', 'VALIDATION_EXECUTION_RECOVERY_2026-09-19.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-18.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-19.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
+    foreach ($docName in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CUA_DRIVER_PILOT.md', 'Company-Agent-Handbook.html', 'Company-Agent-Onboarding.html', 'Company-Agent-Cua-Pilot.html', 'VALIDATION_CUA_MANUALS_2026-09-19.md', 'UPDATE_1.4.16.md', 'VALIDATION_RESOURCE_SCOPES_2026-09-19.md', 'VALIDATION_HARNESS_MAP_2026-09-19.md')) {
+        Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
+    }
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'Diagnose-CompanyAgent.cmd') -Destination (Join-Path $stagePath 'Diagnose-CompanyAgent.cmd') -Force
-    Copy-Item -LiteralPath (Join-Path $pluginSource 'resources\first-work.html') -Destination (Join-Path $stagePath 'First-Work.html') -Force
+    # The installed guide uses sibling resources/manuals; the ZIP entry guide
+    # links to the existing docs directory instead of duplicating those books.
+    $firstWorkHtml = Get-Content -LiteralPath (Join-Path $pluginSource 'resources\first-work.html') -Raw -Encoding UTF8
+    Write-CompanyAgentUtf8File -Path (Join-Path $stagePath 'First-Work.html') -Content ($firstWorkHtml.Replace('href="manuals/Company-Agent-', 'href="docs/Company-Agent-'))
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\COMPANY_PERSONAL_WORKFLOW.md') -Destination (Join-Path $stagePath 'docs\COMPANY_PERSONAL_WORKFLOW.md') -Force
 
     if (-not $IncludeBundledPython) {

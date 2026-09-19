@@ -1,11 +1,15 @@
 ---
 name: personal-knowledge
-description: 회사 용어·테이블·연결 규칙·지표 정의·업무 기준을 개인 지식으로 기록하고 검색·보완합니다. 회사 공통 원본은 유지하며 개인 적용 기준을 구분합니다.
+description: 공통 기억인 회사 용어·계산식·테이블·연결 규칙·지표·업무 기준을 조회하고, 내 기억의 업무 지식을 기록·검색·보완합니다. 공통 원본은 유지하며 개인 적용 기준을 구분합니다.
 ---
 
 # Personal Knowledge writer
 
-Personal Knowledge is a writable overlay under the active `company_agent_runtime.stateRoot` (or `COMPANY_AGENT_USER_STATE`) plus `knowledge`. User and Project installations have distinct state roots. The administrator's Corporate Base remains immutable.
+사용자에게 Corporate Base는 ‘공통 기억’, Personal Knowledge는 ‘내 기억의 업무 지식’으로 안내합니다. 회사 정책·공통 절차는 ‘공통 하네스’이며 참고 지식과 다릅니다. 개인 저장·로컬 검토용 내보내기를 공통 반영이나 실시간 공유로 설명하지 마세요.
+
+Personal Knowledge uses the selected private resource root plus `knowledge`. The administrator's Corporate Base remains immutable. 화면에서는 회사 공통 / 개인 전체 / 이 프로젝트 안의 ‘기억·지식’으로 구분합니다.
+
+새 지식 저장 범위가 미지정이면 AskUserQuestion으로 **개인 전체(여러 프로젝트)** / **이 프로젝트(현재 작업에서만)**를 한 번 묻고 답변을 기다립니다. 질문 도구가 없으면 일반 질문 후 멈춥니다. 회사 공통 저장은 선택지에 넣지 않습니다. 명시한 범위는 다시 묻지 않고 기존 항목은 원래 범위에서 수정합니다. 생성·수정·내보내기 명령에 `--storage-scope personal|project --project-root "<company_agent_runtime.project>"`를 붙이고 runtime.stateRoot는 그대로 둡니다. 범위 없는 조회는 현재 프로젝트와 개인 전체만 확인하며 다른 프로젝트를 검색하지 않습니다.
 
 When authoring or reconciling terminology, table meanings or business definitions, read `references/term-quality.md`. Ordinary lookup does not load this authoring reference.
 
@@ -18,7 +22,7 @@ Use the exact `company_agent_runtime.cliCommand` prefix and `stateRoot` for the 
 - A tone or interaction preference becomes Personal Memory, not business knowledge.
 - A one-off value, query result, email body, credential, or personal/sensitive row must not be stored.
 
-When the user explicitly says “기억해”, “앞으로”, “등록해”, or corrects a prior answer, save the extracted fact automatically after validation. For an inferred pattern, ask once with simple choices: save personally, use once, or edit.
+An explicit durable request such as “기억해” or “등록해” can save a validated extracted fact after scope selection. A correction alone is not permission to retain a company fact: use it in the current task and ask if durable storage is unclear. Do not guess the destination from a file's location.
 
 ## Write safely
 

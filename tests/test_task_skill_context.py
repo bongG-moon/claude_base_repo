@@ -23,6 +23,18 @@ class TaskSkillContextTests(unittest.TestCase):
         context = self.f.context('관련 없는 질문')
         self.assertEqual([], context['taskSkills']['groups'])
 
+    def test_memory_word_does_not_force_personal_storage_for_common_knowledge(self):
+        context = self.f.context('공통 기억의 계산식을 조회해줘. 저장하지 마.')
+        reminders = ' '.join(context.get('taskReminders', []))
+        self.assertIn('공통 기억은 배포 지식 조회', reminders)
+        self.assertIn('조회만 요청하면 저장하지 않습니다', reminders)
+        self.assertIn('없는 스킬은 강제 호출하지 않습니다', reminders)
+        self.assertNotIn('먼저 company-agent:personal-memory', reminders)
+        actual = inventory_skills(self.f.state, project_root=self.f.project, claude_root=self.f.claude,
+                                  plugin_root=PLUGIN)
+        hints = task_candidates(actual, '공통 기억의 계산식을 조회해줘')
+        self.assertIn('personal-knowledge', [g['name'] for g in hints['groups']])
+
     def test_actual_ppt_prompt_keeps_hints_on_first_and_later_requests(self):
         self.f.context(source='startup')
         for _ in range(2):

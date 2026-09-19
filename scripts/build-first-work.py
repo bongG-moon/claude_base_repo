@@ -17,6 +17,16 @@ def render():
     esc, parts = html.escape, []
     nav = ''.join('<a href="#' + s['id'] + '">' + esc(s['title']) + '</a>' for s in course['steps'])
     parts.append('<nav aria-label="첫 업무 선택">' + nav + '</nav><p id="status" role="status" aria-live="polite"></p>')
+    parts.append('<section id="onboarding-start"><h2>처음이라면 전체 코스부터</h2>'
+                 '<p>준비하기 → 자료 읽기 → 결과 만들기 → 수정 → 내 방식 저장 → 새 업무에서 재사용 순서로 따라 해보세요. '
+                 '각 단계에 요청 예문, 성공 확인 기준, 막혔을 때의 방법이 있습니다. 저장 단계는 선택입니다.</p>'
+                 '<p>회사 공통 / 개인 전체 / 이 프로젝트를 먼저 구분합니다. 각 범위 안에서 기억·지식과 업무 구성을 확인합니다. 새 기억·스킬 저장은 개인 전체 또는 이 프로젝트를 선택합니다.</p>'
+                 '<p>더 익숙해지면 전체 코스의 6–8단계에서 공통·내 기억 비교, 공통·내 하네스와 폴더 적용 범위의 차이, '
+                 '개인 스킬·계산 도구 만들기도 실습할 수 있습니다. 확장 실습은 선택입니다.</p>'
+                 '<nav aria-label="사용 설명서"><a href="manuals/Company-Agent-Onboarding.html">전체 온보딩 코스 따라 하기</a>'
+                 '<a href="manuals/Company-Agent-Handbook.html">스킬·후크와 바꿀 수 있는 기능 보기</a></nav>'
+                 '<p class="muted">읽기만 해도 됩니다. 안내서를 여는 것만으로 AI 호출·설정 변경·업무 실행은 하지 않습니다. '
+                 '이미 익숙하다면 아래 필요한 예문부터 바로 사용하세요.</p></section>')
     parts.append('<p>' + esc(course['intro']) + ' 저장 요청은 동의할 때만 보내세요.</p>')
     for step in course['steps']:
         body = '<section id="' + step['id'] + '"><h2>' + esc(step['title']) + '</h2><p>' + esc(step['concept']) + '</p>'

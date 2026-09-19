@@ -82,6 +82,20 @@ class NativeMcpTests(unittest.TestCase):
         self.assertEqual("local", child.call_args.args[0][-1])
         self.assertFalse((self.project / ".mcp.json").exists())
 
+    def test_explicit_project_selection_under_user_install_is_local_only(self) -> None:
+        with patch.object(native.Path, 'cwd', return_value=self.project), \
+                patch.object(native, '_claude_argv', return_value=['claude.exe']), \
+                patch.object(native.subprocess, 'run', side_effect=self.fake_add):
+            result=native.sync_native_mcp(self.state,self.name,storage_scope='project',project_root=self.project)
+        self.assertEqual('local',result['scope'])
+        self.assertNotIn(self.name,load_json(native._config_file()).get('mcpServers',{}))
+        self.assertFalse((self.project/'.mcp.json').exists())
+
+    def test_invalid_scope_never_registers_a_native_tool(self) -> None:
+        with patch.object(native.subprocess,'run') as child, self.assertRaises(ValueError):
+            native.sync_native_mcp(self.state,self.name,storage_scope='company')
+        child.assert_not_called()
+
     def test_external_same_name_and_cross_scope_collisions_are_preserved(self) -> None:
         for document in (
             {"mcpServers": {self.name: self.desired}},

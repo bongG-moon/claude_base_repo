@@ -125,7 +125,7 @@ class CliEncodingTests(unittest.TestCase):
         missing = self.root / "없는 파일 — 😀.json"
         for encoding in ENCODINGS:
             with self.subTest(encoding=encoding):
-                result = self.run_cli(encoding, "asset", "create", "--state-root", str(self.state), "--spec", str(missing), expected=1)
+                result = self.run_cli(encoding, "asset", "create", "--state-root", str(self.state), "--storage-scope", "personal", "--project-root", str(self.root), "--spec", str(missing), expected=1)
                 self.assertEqual(b"", result.stdout)
                 error = json.loads(result.stderr.decode("ascii"))
                 self.assertFalse(error["ok"])

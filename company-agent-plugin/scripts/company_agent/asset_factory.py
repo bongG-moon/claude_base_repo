@@ -974,8 +974,12 @@ description: {json.dumps(str(manifest["description"]), ensure_ascii=False)}
 
 # Personal script tool: {name}
 
-1. Convert the requested input to a JSON object and save it to a temporary file under `%COMPANY_AGENT_USER_STATE%\\tmp`.
-2. Run `company-agent asset run-tool --name {name} --input "<input.json>"`.
+This tool belongs to `{state_root.absolute().as_posix()}`. Use that exact bound
+state root below, not a different hook/session store. It is already resolved;
+do not add --storage-scope again. Reuse the current runtime's exact cliCommand prefix.
+
+1. Convert the requested input to a JSON object and save it to a new temporary file under `{(state_root.absolute() / 'tmp').as_posix()}`.
+2. Append `asset run-tool --name {name} --input "<input.json>" --state-root "{state_root.absolute().as_posix()}"` to cliCommand.
 3. Parse the returned JSON and explain the result in the user's language.
 4. Do not add shell operators or invoke the underlying script directly.
 '''

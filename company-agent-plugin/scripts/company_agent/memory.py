@@ -381,6 +381,20 @@ def search_memory(root: Path, query: str, limit: int = 10) -> list[dict[str, Any
     return selected
 
 
+def search_scoped_memory(root: Path, project: Path, query: str, limit: int = MAX_MEMORY_RESULTS) -> list[dict[str, Any]]:
+    """Current project + personal, within the existing total context budget."""
+    from .resource_scope import readable_roots
+    results, seen = [], set()
+    for scope, folder in readable_roots(root, project):
+        if not (folder / 'memory/items').is_dir():
+            continue
+        for item in search_memory(folder, query, limit):
+            if item['content_hash'] not in seen:
+                results.append({**item, 'storageScope': scope})
+                seen.add(item['content_hash'])
+    return results[:max(0, min(limit, MAX_MEMORY_RESULTS))]
+
+
 def render_memory_context(
     memories: list[dict[str, Any]],
     *,
@@ -421,6 +435,8 @@ def render_memory_context(
             "body": _compact_text(memory.get("body", ""), MAX_MEMORY_CONTEXT_ITEM_CHARS),
             "revision": memory.get("revision", 1) if type(memory.get("revision", 1)) is int else 1,
         }
+        if memory.get('storageScope') in {'personal', 'project'}:
+            item['storageScope'] = memory['storageScope']
         if not item["id"] or not item["title"] or not item["body"]:
             continue
         candidate = render(selected + [item])

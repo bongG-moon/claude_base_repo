@@ -5,9 +5,9 @@ Company Agent ZIP을 로컬 PC의 폴더에 완전히 압축 해제한 뒤 이 �
 직접 설치하려면 같은 폴더의 `Install-CompanyAgent.cmd`를 더블클릭하면 된다.
 
 이 안내는 **Claude Code와 회사 승인 Python 3.11 이상이 이미 설치된 PC**를 기준으로 한다.
-현재 1.3.3 ZIP에는 Python 실행 파일이나 DLL을 포함하지 않는다. 기존 사내 모델 설정을 그대로 사용한다. 이전 1.x 버전을 설치한 PC도 동일 범위로 업데이트할 수 있으며 개인 자료와 자동 학습 설정은 유지한다. 이전 `0.3.x`는 배포 전 개발 버전이다.
+직원용 기본 ZIP에는 Python 실행 파일이나 DLL을 포함하지 않는다. 실제 버전은 동봉된 `bundle-manifest.json`을 기준으로 확인한다. 기존 사내 모델 설정을 그대로 사용한다. 이전 1.x 버전을 설치한 PC도 동일 범위로 업데이트할 수 있으며 개인 자료와 자동 학습 설정은 유지한다. 이전 `0.3.x`는 배포 전 개발 버전이다.
 
-1.3.3 설치 후 Claude를 다시 열고 필요하면 `/company-agent:business-check`로 기본 조건을 확인한다. 폴더별 자동 스킬 목록은 시작/다음 요청 때 준비되므로 별도 생성 명령이 필요 없다. 메일 본문이나 운영 문서를 설치 점검 중 자동 조회하지 않는다. DRM 정책을 바꾸거나 인터넷에서 패키지를 설치하지 않는다. 실제 메일 발송·PST 이동은 별도 연결된 `corp-outlook-self` 기능이 있을 때만 사용한다. 로컬 Outlook 점검기는 읽기 전용이다. 설치 안내는 `docs/UPDATE_1.3.3.md`, 테스트 요청은 `docs/BUSINESS_PILOT_GUIDE.md`를 참고한다.
+설치 후 Claude를 다시 열고 필요하면 `/company-agent:business-check`로 기본 조건을 확인한다. 폴더별 자동 스킬 목록은 시작/다음 요청 때 준비되므로 별도 생성 명령이 필요 없다. 메일 본문이나 운영 문서를 설치 점검 중 자동 조회하지 않는다. DRM 정책을 바꾸거나 인터넷에서 패키지를 설치하지 않는다. 실제 메일 발송·PST 이동은 별도 연결된 `corp-outlook-self` 기능이 있을 때만 사용한다. 로컬 Outlook 점검기는 읽기 전용이다. 처음 사용하는 사람은 [온보딩 코스](docs/Company-Agent-Onboarding.html), 운영 시험은 `docs/BUSINESS_PILOT_GUIDE.md`를 참고한다.
 
 이전 설치 시 `cp949 codec can't encode character` 오류가 있었다면 수정된 ZIP을 새 폴더에 완전히 풀어 사용한다. 기존 Skill 내용을 삭제하거나 Windows 전역 인코딩/Python을 재설정하지 않는다. 압축 해제한 설치기 일부만 바꾸면 무결성 검증에 실패하므로 수정 ZIP 전체를 사용한다.
 
@@ -74,8 +74,8 @@ Company Agent ZIP을 로컬 PC의 폴더에 완전히 압축 해제한 뒤 이 �
    `status: installed`는 처음 설치, `updated`는 버전 변경, `reapplied`는 같은 버전 다시 적용 완료다.
    버전 변경이면 `previousCoreVersion`과 `coreVersion`으로 이전 버전 → 적용 버전을 설명한다.
    `Keep`으로 종료한 경우 설치되었다고 말하지 않는다. 재시작도 필요 없다.
-8. 실제 설치가 완료된 경우에만 새 세션에서 “이 프로젝트에 맞는 하네스를 만들어 줘” 또는
-   `/company-agent:project-harness`를 사용할 수 있다고 안내한다. Skill별·프로젝트별 선택은 `/company-agent:skills`에서 할 수 있다.
+8. 실제 설치가 완료된 경우에만 `First-Work.html`의 **전체 온보딩 코스 따라 하기** 또는 설치 완료 화면에 표시된 `Company-Agent-Onboarding.html`을 안내한다. 처음에는 가상 자료 읽기 한 단계만 해도 된다. 안내서를 자동 실행하거나 읽기·제작·기억 저장 요청을 대신 보내지 않는다.
+   폴더별 별도 업무 구조가 필요한 경우에만 “이 프로젝트에 맞는 하네스를 만들어 줘” 또는 `/company-agent:project-harness`를 안내한다. 기본 사용을 위해 새 프로젝트 하네스를 또 만들 필요는 없다. Skill별·프로젝트별 선택은 `/company-agent:skills`에서 할 수 있다.
    `Keep`이면 이 안내 없이 종료한다.
 
 ## 설치 프로그램이 자동으로 처리하는 내용

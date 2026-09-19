@@ -32,12 +32,25 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/THIRD_PARTY_NOTICES.md',
         'payload/core/plugin/resources/first-work.html',
         'payload/core/plugin/resources/onboarding-course.json',
+        'payload/core/plugin/resources/manuals/Company-Agent-Onboarding.html',
+        'payload/core/plugin/resources/manuals/Company-Agent-Handbook.html',
+        'payload/core/plugin/resources/manuals/Company-Agent-Cua-Pilot.html',
         'payload/core/plugin/scripts/company_agent/workspace_api.py',
+        'payload/core/plugin/scripts/company_agent/resource_scope.py',
+        'payload/core/plugin/scripts/company_agent/harness_map.py',
+        'payload/core/plugin/scripts/company_agent/harness_map_html.py',
         'payload/core/plugin/scripts/company_agent/company_policy.py',
         'payload/core/plugin/scripts/company_agent/usage_diagnostics.py',
         'payload/core/plugin/scripts/company_agent/diagnostic_report.py',
         'payload/config/managed.json',
         'docs/COMPANY_PERSONAL_WORKFLOW.md',
+        'docs/COMPANY_AGENT_HANDBOOK.md',
+        'docs/ONBOARDING_COURSE.md',
+        'docs/CUA_DRIVER_PILOT.md',
+        'docs/Company-Agent-Handbook.html',
+        'docs/Company-Agent-Onboarding.html',
+        'docs/Company-Agent-Cua-Pilot.html',
+        'docs/VALIDATION_CUA_MANUALS_2026-09-19.md',
         'payload/core/plugin/scripts/company_agent/skill_catalog.py',
         'payload/core/plugin/scripts/company_agent/skill_discovery.py',
         'docs/UPDATE_1.4.7.md',
@@ -49,6 +62,9 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.4.13.md',
         'docs/UPDATE_1.4.14.md',
         'docs/UPDATE_1.4.15.md',
+        'docs/UPDATE_1.4.16.md',
+        'docs/VALIDATION_RESOURCE_SCOPES_2026-09-19.md',
+        'docs/VALIDATION_HARNESS_MAP_2026-09-19.md',
         'docs/LOCAL_WORKSPACE.md',
         'docs/VALIDATION_AUDIT_FIXES_2026-09-19.md',
         'docs/VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md',
@@ -164,6 +180,14 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Install-CompanyAgent.cmd') -PathType Leaf) 'Root installer is missing.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Diagnose-CompanyAgent.cmd') -PathType Leaf) 'Root diagnostic launcher is missing.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -PathType Leaf) 'First-work guide is missing.'
+    $firstWork = Get-Content -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -Raw -Encoding UTF8
+    Assert-OfflineBundle ($firstWork.Contains('href="docs/Company-Agent-Onboarding.html"')) 'ZIP start guide does not link to its onboarding course.'
+    Assert-OfflineBundle (-not $firstWork.Contains('href="manuals/')) 'ZIP guide uses the installed-only manual path.'
+    foreach ($book in @('Company-Agent-Onboarding.html', 'Company-Agent-Handbook.html', 'Company-Agent-Cua-Pilot.html')) {
+        $installedBook = Join-Path $ExpandedPath ('payload\core\plugin\resources\manuals\' + $book)
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath $installedBook -Algorithm SHA256).Hash -ceq
+            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $book)) -Algorithm SHA256).Hash) 'Installed manual differs from source.'
+    }
     $standards = (Read-CompanyAgentJson -Path (Join-Path $ExpandedPath 'payload\config\managed.json')).workStandards
     Assert-OfflineBundle ($standards.revision -eq '1' -and @($standards.rules).Count -ge 2) 'Default company standards did not reach the bundle.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'INSTALL_WITH_CLAUDE.md') -PathType Leaf) 'Installation guide is missing.'
@@ -189,10 +213,14 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
     }
     $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter 'Company-Agent-*.html' -File)
-    Assert-OfflineBundle ($htmlGuides.Count -eq 2) 'Expected offline user guide and validation chat reader.'
+    Assert-OfflineBundle ($htmlGuides.Count -eq 5) 'Expected two existing readers and three beginner/Cua manuals.'
     foreach ($htmlGuide in $htmlGuides) {
         Assert-OfflineBundle ((Get-FileHash -LiteralPath $htmlGuide.FullName -Algorithm SHA256).Hash -ceq
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $htmlGuide.Name)) -Algorithm SHA256).Hash) 'HTML guide content changed during packaging.'
+    }
+    foreach ($manual in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CUA_DRIVER_PILOT.md')) {
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('docs\' + $manual)) -Algorithm SHA256).Hash -ceq
+            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $manual)) -Algorithm SHA256).Hash) 'Manual source changed during packaging.'
     }
     return $manifest
 }

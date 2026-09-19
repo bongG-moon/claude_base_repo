@@ -637,6 +637,8 @@ try {
     Write-Host "개인 자료 저장 위치: $UserStateRoot"
     $firstWorkGuide = Join-Path $releasePlugin 'resources\first-work.html'
     if (Test-Path -LiteralPath $firstWorkGuide -PathType Leaf) { Write-Host "첫 업무 시작 안내 (선택): $firstWorkGuide" }
+    $onboardingGuide = Join-Path $releasePlugin 'resources\manuals\Company-Agent-Onboarding.html'
+    if (Test-Path -LiteralPath $onboardingGuide -PathType Leaf) { Write-Host "처음이라면 이 파일을 열고 1단계부터 따라 해보세요 (선택): $onboardingGuide" }
     Write-Host "백업 위치: $backupPath"
     if ($null -ne $harnessTransaction) { Write-Host '기존 하네스 복원 자료: 백업 폴더의 previous-harness (현재 Windows 계정으로 복원)' }
     foreach ($note in @($existingHarness.inheritedNotes)) { Write-Host ([string]$note) }

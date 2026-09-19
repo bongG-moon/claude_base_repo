@@ -39,6 +39,49 @@ class ExecutionContractTests(unittest.TestCase):
             with self.subTest(arguments=arguments):
                 self.assertEqual("read_only", classify_command(f"{self.cli} {arguments}"))
 
+    def test_scope_question_is_not_mutation_or_permission_grant(self):
+        for head in ('memory upsert','knowledge upsert','asset create'):
+            cmd=f'{self.cli} {head} --spec "{self.root / "not-written.json"}" --state-root "{self.root}"'
+            self.assertEqual('read_only',classify_command(cmd))
+            self.assertIsNone(self.permission(cmd))
+            self.assertEqual('unknown',classify_command(cmd+' --storage-scope personal'))
+            self.assertEqual('unknown',classify_command(cmd+' --storage-scope=project'))
+            self.assertEqual('unknown',classify_command(cmd+'; echo changed'))
+            begin_turn('scope-choice','SMALL',False,[],self.root)
+            state=record_activity({'session_id':'scope-choice','hook_event_name':'PostToolUse',
+                'tool_name':'Bash','tool_input':{'command':cmd},
+                'tool_response':{'stdout':'{"status":"needs_scope_choice","written":false}'}},self.root)
+            self.assertEqual(0,state['mutationCount'])
+            self.assertEqual({},stop_decision({'session_id':'scope-choice'},self.root))
+
+    def test_exact_help_precedes_scope_question_without_granting_permission(self):
+        cmd = f'{self.cli} memory upsert --help'
+        self.assertEqual('read_only', classify_command(cmd))
+        self.assertIsNone(self.permission(cmd))
+        for suffix in (' > help.txt', '; echo changed', ' --unexpected value'):
+            self.assertEqual('unknown', classify_command(cmd + suffix))
+            self.assertIsNone(self.permission(cmd + suffix))
+
+    def test_harness_map_query_is_readonly_but_html_export_is_not(self):
+        cmd = f'{self.cli} context map --project "{self.root}" --session current-123'
+        self.assertEqual('read_only', classify_command(cmd))
+        self.assertIsNone(self.permission(cmd))
+        for suffix in (' --output map.html', ' > map.json', '; echo changed', ' --other x'):
+            self.assertEqual('unknown', classify_command(cmd + suffix))
+            self.assertIsNone(self.permission(cmd + suffix))
+        begin_turn('map-read', 'SMALL', False, [], self.root)
+        state = record_activity({'session_id':'map-read','hook_event_name':'PostToolUse',
+            'tool_name':'Bash','tool_input':{'command':cmd},'tool_response':{'stdout':'{}'}}, self.root)
+        self.assertEqual(0, state['mutationCount'])
+        self.assertEqual({}, stop_decision({'session_id':'map-read'}, self.root))
+
+    def test_scoped_search_does_not_create_verification_or_permission(self):
+        for kind in ('memory','knowledge'):
+            cmd=f'{self.cli} {kind} search "가상" --storage-scope project --project-root "{self.root}"'
+            self.assertEqual('read_only',classify_command(cmd))
+            self.assertIsNone(self.permission(cmd))
+            self.assertEqual('unknown',classify_command(cmd+' --output result.json'))
+
     def test_listing_stderr_to_null_does_not_create_mutation_or_auto_permission(self):
         command = 'ls -la "claude-code-starter-main/" 2>/dev/null || ls -la claude-code-starter-main/ 2>/dev/null; pwd'
         self.assertEqual('read_only', classify_command(command))

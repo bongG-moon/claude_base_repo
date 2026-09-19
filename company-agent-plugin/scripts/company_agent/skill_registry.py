@@ -314,7 +314,7 @@ def _plugin_skill_roots(plugin: Path, manifest: dict[str, Any], warnings: list[s
     return list(dict.fromkeys(roots))
 
 
-def _installed_plugins(claude: Path, project: Path | None, lineage: list[Path], warnings: list[str]) -> list[tuple[str, Path]]:
+def _installed_plugins(claude: Path, project: Path | None, lineage: list[Path], warnings: list[str]) -> list[tuple[str, Path, str]]:
     enabled: dict[str, bool] = {}
     settings = [claude / "settings.json"]
     for directory in reversed(lineage):
@@ -364,13 +364,14 @@ def _installed_plugins(claude: Path, project: Path | None, lineage: list[Path], 
                     raise ValueError("Installed plugin has no absolute installPath.")
                 path = _path(record["installPath"], absolute_required=True)
                 _no_reparse(path)
-                eligible.append((rank, path))
+                eligible.append((rank, path, 'personal' if scope == 'user' else 'project'))
             except (OSError, ValueError) as exc:
                 _warn(warnings, str(exc))
         if eligible:
             # Native project installations override the user installation of
             # the same plugin ID. Inventory order breaks equal-scope ties.
-            result.append((plugin_id, max(enumerate(eligible), key=lambda item: (item[1][0], item[0]))[1][1]))
+            chosen = max(enumerate(eligible), key=lambda item: (item[1][0], item[0]))[1]
+            result.append((plugin_id, chosen[1], chosen[2]))
     return result
 
 
@@ -397,7 +398,8 @@ def _resolution(name: str, candidates: list[dict[str, Any]], effective: dict[str
 def inventory_skills(state_root: Path, *, project_root: Path | None = None,
                      claude_root: Path | None = None, plugin_root: Path | None = None,
                      incoming_plugin: Path | None = None, incoming_skill: Path | None = None,
-                     knowledge_root: Path | None = None, metadata_cache: bool = False) -> dict[str, Any]:
+                     knowledge_root: Path | None = None, metadata_cache: bool = False,
+                     resource_record: dict[str, Any] | None = None) -> dict[str, Any]:
     """Read known skill locations; optional runtime-only disposable metadata cache."""
     preference_file, preferences = _preferences(state_root)
     state = _path(state_root)
@@ -492,6 +494,13 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
         scan(directory / ".claude" / "skills", "project", _canonical(directory))
     personal = state / "personal-root" / ".claude" / "skills"
     scan(personal, "personal", _canonical(state))
+    if project is not None:
+        from .resource_scope import readable_roots
+        for storage_scope, resource_root in readable_roots(state, project, resource_record or {'claudeConfigRoot': str(claude)}):
+            scan(resource_root / 'personal-root/.claude/skills', 'personal', _canonical(resource_root))
+            for candidate in candidates.values():
+                if candidate['source'] == 'personal' and candidate['origin'] == _canonical(resource_root):
+                    candidate['storageScope'] = storage_scope
     if knowledge_root is not None:
         corporate = _path(knowledge_root)
         scan(corporate / ".claude" / "skills", "corporate", _canonical(corporate))
@@ -514,14 +523,14 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
             _warn(warnings, str(exc))
     company_name = active[2] if active else "company-agent"
     installed = []
-    for plugin_id, path in _installed_plugins(claude, project, lineage, warnings):
+    for plugin_id, path, storage_scope in _installed_plugins(claude, project, lineage, warnings):
         try:
             manifest = _manifest(path, warnings)
-            installed.append((plugin_id, path, manifest, _plugin_name(path, {"name": plugin_id.split("@", 1)[0], **manifest})))
+            installed.append((plugin_id, path, manifest, _plugin_name(path, {"name": plugin_id.split("@", 1)[0], **manifest}), storage_scope))
         except ValueError as exc:
             _warn(warnings, str(exc))
     incoming_installed_ids = [item[0] for item in installed if incoming and item[3] == incoming[2]]
-    for plugin_id, path, manifest, name in installed:
+    for plugin_id, path, manifest, name, storage_scope in installed:
         # An explicitly active/new company version is one logical plugin, not
         # an extra competing installation. Version paths never enter its ID.
         if name == company_name and (active or (incoming and incoming[2] == company_name)):
@@ -530,6 +539,9 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
             continue
         for root in _plugin_skill_roots(path, manifest, warnings):
             scan(root, "plugin", plugin_id.casefold(), path, name)
+        for candidate in candidates.values():
+            if candidate['source'] == 'plugin' and candidate['origin'] == plugin_id.casefold():
+                candidate['storageScope'] = storage_scope
     for item, is_incoming in ((active, False), (incoming, True)):
         if item is None:
             continue

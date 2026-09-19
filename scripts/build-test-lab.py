@@ -192,6 +192,7 @@ def build(destination: Path, bundle: Path) -> dict:
     dashboard = (TEMPLATES / "dashboard.html").read_text(encoding="utf-8")
     write(destination / "00_START_HERE.html", dashboard.replace("@@VERSION@@", html.escape(version)).replace("@@CASES@@", articles).replace("@@NAV@@", nav))
     shutil.copyfile(REPO / 'company-agent-plugin/resources/first-work.html', destination / '00_FIRST_WORK.html')
+    shutil.copytree(REPO / 'company-agent-plugin/resources/manuals', destination / 'manuals')
     organize = destination / "workspace" / "01-folder-organize"
     inputs = {p.relative_to(destination / "workspace").as_posix(): digest(p)
               for p in sorted((destination / "workspace").rglob("*")) if p.is_file() and not p.is_relative_to(organize)}

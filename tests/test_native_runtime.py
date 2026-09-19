@@ -91,7 +91,7 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
         huge = {"id": "term.test", "title": "조회" * 20_000, "kind": "term", "source": "corporate",
                 "path": "C:/knowledge/test.md", "aliases": ["MUST-NOT-INJECT" * 50_000],
                 "overlays": [{"path": "secret-metadata" * 50_000}]}
-        with patch("company_agent.native_runtime.search_catalog", return_value=[huge] * 3):
+        with patch("company_agent.resource_scope.search_knowledge", return_value=[huge] * 3):
             text = runtime_context(PLUGIN, self.project, "조회")
         self.assertLessEqual(len(text), MAX_RUNTIME_CONTEXT_CHARS)
         cards = json.loads(text)["company_agent_runtime"]["knowledgeMatches"]

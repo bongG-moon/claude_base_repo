@@ -89,6 +89,7 @@ def resolve_registration(registrations: Path, cwd: Path, *, claude_root: Path | 
 
 
 def configure_runtime(plugin: Path, cwd: Path) -> bool:
+    os.environ['COMPANY_AGENT_CWD'] = str(cwd.absolute())
     metadata = load_json(plugin / "company-agent-install.json", {})
     if metadata.get("registrationsRoot"):
         record = resolve_registration(Path(metadata["registrationsRoot"]), cwd)
@@ -148,11 +149,12 @@ def _personal_skills(root: Path, prompt: str, limit: int = MAX_PERSONAL_SKILL_MA
     return [item for _, item in matches[:max(0, min(limit, MAX_PERSONAL_SKILL_MATCHES))]]
 
 
-def _knowledge_matches(root: Path, prompt: str) -> list[dict[str, Any]]:
+def _knowledge_matches(root: Path, prompt: str, project: Path | None = None) -> list[dict[str, Any]]:
     """Discovery cards only. Read the effective source/overlays on demand."""
     entries: list[dict[str, Any]] = []
     try:
-        found = search_catalog(root / "knowledge" / "generated-index", prompt, MAX_KNOWLEDGE_MATCHES) if prompt else []
+        from .resource_scope import search_knowledge
+        found = search_knowledge(root, project or Path.cwd(), prompt, MAX_KNOWLEDGE_MATCHES) if prompt else []
         for entry in found:
             path = str(entry.get("path", ""))
             if not path or len(path) > 2_048:
@@ -160,6 +162,7 @@ def _knowledge_matches(root: Path, prompt: str) -> list[dict[str, Any]]:
             card = {key: _short(entry.get(key), limit) for key, limit in
                     (("id", 160), ("title", 200), ("kind", 40), ("source", 40))}
             card["path"] = path
+            card['storageScope'] = entry.get('storageScope')
             # Do not silently apply a truncated overlay list as authoritative.
             # The reader must retrieve ALL overlays for a selected document.
             card["hasOverlays"] = bool(entry.get("overlays"))
@@ -346,6 +349,7 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
                                  if k not in {'sha256', 'id'}}
     runtime['instructions'] = (
         MANAGEMENT_RULE +
+        '기억·지식·스킬·도구 저장 요청은 개인 전체/이 프로젝트 중 미지정 범위를 한 번 물으세요. 회사 공통은 저장 선택지가 아닙니다. 명시한 범위는 다시 묻지 않고 --storage-scope와 --project-root로 전달합니다. '
         'skillIndex와 세션 스킬의 용도를 확인해 관련 스킬 우선, 없으면 일반 실행합니다. '
         '후보 없음은 스킬 없음이 아닙니다. review는 전체 목록의 용도를 비교하고, reuse는 실제 로드했던 동일 본문만 재사용합니다. '
         'load 후보가 맞으면 Skill/Read로 본문을 불러오고, 맞지 않으면 목록에서 다시 판단합니다. '
@@ -509,9 +513,10 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
             "personalSkills": [item for item in skill_cards if item["source"] == "personal"],
             "preferredSkills": [item for item in skill_cards if item["source"] != "personal"],
             "skillSelection": skill_selection,
-            "knowledgeMatches": _knowledge_matches(root, prompt),
+            "knowledgeMatches": _knowledge_matches(root, prompt, cwd),
             "instructions": (
                 MANAGEMENT_RULE + KOREAN_DEFAULT_RULE + TASK_SKILL_RULE + WINDOWS_TEXT_RULE +
+                '기억·지식·스킬·도구를 저장할 때 개인 전체/이 프로젝트 중 미지정 범위를 한 번 질문합니다. 회사 공통에는 직접 저장하지 않습니다. 명시한 범위는 재질문 없이 --storage-scope personal|project와 --project-root로 전달합니다. '
                 "company_agent_runtime is the JSON metadata here, NOT a Python module or executable to locate. "
                 "Use cliCommand literally, preserving quotes; no extra --, variables, aliases or chains. Put flags after the leaf subcommand. "
                 "Discover inputs with Glob, known files with Read, content with Grep; no unnecessary Bash/PowerShell scans or temporary scripts. "
@@ -568,7 +573,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
     if ".eml" in lowered or "eml 파일" in lowered:
         reminders.append("로컬 EML은 company-agent:outlook-assistant Skill을 먼저 읽고 metadataCommand 뒤에 business eml-read --file 절대경로를 직접 붙여 읽으세요. 지정된 경로를 바로 쓰고 목록이 필요할 때만 Glob을 쓰세요. Bash find/echo 체인이나 자체 Python/base64/추출 스크립트는 필요 없습니다. 실제 읽은 범위와 제외 범위를 알리세요. Outlook 연결로 표현하지 마세요.")
     if any(word in lowered for word in ("기억", "remember", "memory")):
-        reminders.append("기억 저장/조회는 먼저 company-agent:personal-memory Skill을 읽으세요. 명시 저장 요청만 즉시 저장하고 일반 교정은 업무 종료 때 반영하세요. spec은 stateRoot/tmp/memory-고유ID.json에 Write로 생성하세요. 거절되면 직접 Memory파일 편집이나 다른 shell경로로 우회하지 마세요.")
+        reminders.append("공통 기억은 배포 지식 조회, 내 기억은 개인 선호·업무 지식입니다. '기억'이라는 말만으로 개인 저장 스킬을 선택하지 말고 사용 가능한 목록의 용도와 비교하세요. 조회만 요청하면 저장하지 않습니다. 개인 저장은 공통 반영이 아니며 프로젝트는 적용 범위입니다. 없는 스킬은 강제 호출하지 않습니다. 저장 절차·명시 요청·권한 거절은 선택한 본문을 따르세요.")
     if reminders:
         runtime["taskReminders"] = reminders
     if source == "compact":

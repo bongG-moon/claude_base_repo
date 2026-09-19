@@ -42,7 +42,22 @@ def _path(value: str | None, default: Path | None = None) -> Path | None:
 
 
 def _state_root(args: argparse.Namespace) -> Path:
-    return _path(getattr(args, "state_root", None), user_state_root())  # type: ignore[return-value]
+    root = _path(getattr(args, "state_root", None), user_state_root())
+    if getattr(args, 'storage_scope', None):
+        from .resource_scope import selected_root
+        project = Path(getattr(args, 'project_root', None) or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd())
+        if not project.is_absolute() or not project.is_dir():
+            raise ValueError('현재 프로젝트의 존재하는 절대경로를 --project-root로 지정해 주세요.')
+        return selected_root(root, project, args.storage_scope)
+    return root
+
+
+def _storage_choice_missing(args):
+    if not getattr(args, 'storage_scope', None):
+        from .resource_scope import choice_response
+        _print_json(choice_response())
+        return True
+    return False
 
 
 def _base_root(args: argparse.Namespace) -> Path | None:
@@ -114,13 +129,19 @@ def cmd_knowledge_build(args: argparse.Namespace) -> int:
 
 
 def cmd_knowledge_search(args: argparse.Namespace) -> int:
-    layout = ensure_user_layout(_state_root(args))
-    results = search_catalog(_path(args.index, layout["index"]), args.query, args.limit)  # type: ignore[arg-type]
+    if not args.index and not args.storage_scope:
+        from .resource_scope import search_knowledge
+        results = search_knowledge(_state_root(args), Path(args.project_root or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd()), args.query, args.limit)
+    else:
+        layout = ensure_user_layout(_state_root(args))
+        results = search_catalog(_path(args.index, layout["index"]), args.query, args.limit)
     _print_json({"query": args.query, "count": len(results), "results": results})
     return 0
 
 
 def cmd_knowledge_upsert(args: argparse.Namespace) -> int:
+    if _storage_choice_missing(args):
+        return 0
     with Path(args.spec).open("r", encoding="utf-8-sig") as stream:
         spec = json.load(stream)
     path = upsert_personal(spec, _state_root(args), _base_root(args))
@@ -144,6 +165,8 @@ def cmd_knowledge_export(args: argparse.Namespace) -> int:
 
 
 def cmd_asset_create(args: argparse.Namespace) -> int:
+    if _storage_choice_missing(args):
+        return 0
     with Path(args.spec).open("r", encoding="utf-8-sig") as stream:
         spec = json.load(stream)
     path = create_asset(spec, _state_root(args))
@@ -162,15 +185,22 @@ def cmd_asset_activate_mcp(args: argparse.Namespace) -> int:
     native = None
     if os.environ.get("COMPANY_AGENT_SCOPE") in {"User", "Project"}:
         from .native_mcp import sync_native_mcp
-        native = sync_native_mcp(_state_root(args), args.name)
+        native = sync_native_mcp(_state_root(args), args.name, **_mcp_scope(args))
     _print_json({"ok": True, "registry": str(registry), "name": args.name, "nativeRegistration": native})
     return 0
 
 
 def cmd_asset_sync_mcp(args: argparse.Namespace) -> int:
     from .native_mcp import sync_native_mcp
-    _print_json(sync_native_mcp(_state_root(args), args.name))
+    _print_json(sync_native_mcp(_state_root(args), args.name, **_mcp_scope(args)))
     return 0
+
+
+def _mcp_scope(args):
+    if not getattr(args, 'storage_scope', None):
+        return {}
+    return {'storage_scope': args.storage_scope,
+            'project_root': Path(args.project_root or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd())}
 
 
 def cmd_asset_activate_tool(args: argparse.Namespace) -> int:
@@ -211,6 +241,8 @@ def cmd_asset_run_tool(args: argparse.Namespace) -> int:
 
 
 def cmd_memory_upsert(args: argparse.Namespace) -> int:
+    if _storage_choice_missing(args):
+        return 0
     with Path(args.spec).open("r", encoding="utf-8-sig") as stream:
         spec = json.load(stream)
     path = upsert_memory(spec, _state_root(args))
@@ -219,7 +251,11 @@ def cmd_memory_upsert(args: argparse.Namespace) -> int:
 
 
 def cmd_memory_search(args: argparse.Namespace) -> int:
-    results = search_memory(_state_root(args), args.query, args.limit)
+    if not args.storage_scope:
+        from .memory import search_scoped_memory
+        results = search_scoped_memory(_state_root(args), Path(args.project_root or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd()), args.query, args.limit)
+    else:
+        results = search_memory(_state_root(args), args.query, args.limit)
     _print_json({"query": args.query, "count": len(results), "results": results})
     return 0
 
@@ -323,6 +359,19 @@ def cmd_work(args: argparse.Namespace) -> int:
 
 def cmd_context_audit(args: argparse.Namespace) -> int:
     _print_json(audit_context(Path(args.project)))
+    return 0
+
+
+def cmd_context_map(args: argparse.Namespace) -> int:
+    from .harness_map import build_map
+    from .harness_map_html import write_map
+    report = build_map(Path(args.project), session_id=args.session)
+    if args.output:
+        path = write_map(Path(args.output), report)
+        _print_json({'ok': True, 'path': path, 'project': report['project'],
+                     'elapsedMs': report['elapsedMs'], 'warnings': report['warnings'], 'modelCalls': 0})
+    else:
+        _print_json(report)
     return 0
 
 
@@ -683,6 +732,11 @@ def build_parser() -> argparse.ArgumentParser:
     context_audit = context_sub.add_parser("audit")
     context_audit.add_argument("--project", default=str(Path.cwd()))
     context_audit.set_defaults(func=cmd_context_audit)
+    context_map = context_sub.add_parser("map", help="Read-only three-area harness map; optional standalone HTML.")
+    context_map.add_argument("--project", default=str(Path.cwd()))
+    context_map.add_argument("--output", help="New HTML file; existing files are never overwritten.")
+    context_map.add_argument("--session", help="Optional exact current Claude session ID; never searches other sessions.")
+    context_map.set_defaults(func=cmd_context_map)
 
     memory = subparsers.add_parser("memory", help="Store extracted personal preferences without session transcripts.")
     memory_sub = memory.add_subparsers(dest="memory_command", required=True)
@@ -760,6 +814,13 @@ def build_parser() -> argparse.ArgumentParser:
     workspace = subparsers.add_parser("workspace", help="On-demand local UI services; no model calls.")
     workspace.add_argument("--project", required=True)
     workspace.set_defaults(func=cmd_workspace)
+    # Selection never accepts a browser/model supplied destination path. Existing
+    # state-root remains the installation/session root, not a second scope flag.
+    for action in (upsert, create, memory_upsert, memory_search, memory_compact,
+                   test_tool, test_mcp, activate, activate_tool, sync_mcp, run_tool, rebind_mcp,
+                   search, build, export, reconcile):
+        action.add_argument('--storage-scope', choices=('personal', 'project'))
+        action.add_argument('--project-root')
     from .business import register as register_business
     register_business(subparsers)
     return parser

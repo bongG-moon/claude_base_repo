@@ -1,6 +1,6 @@
 {
   "name": "company-agent",
-  "version": "1.4.15",
+  "version": "1.4.16",
   "description": "Windows-first enterprise Claude Code harness with personal knowledge, guarded tools, feedback loops, and tiered model routing.",
   "author": {
     "name": "Company Agent Platform Team"

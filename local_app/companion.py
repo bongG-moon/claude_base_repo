@@ -15,6 +15,7 @@ import threading
 import time
 
 from .harness_client import HarnessClient, safe, read_object
+from .computer_use import readiness
 
 METRICS = ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')
 STEPS = {'read', 'report', 'revise', 'remember', 'reuse'}
@@ -111,17 +112,24 @@ class Companion:
         tmp.replace(path)
 
     def snapshot(self, item, view='checks'):
-        if view not in {'guide','memory','knowledge','brief','usage','checks'}:
+        if view not in {'guide','memory','knowledge','brief','usage','checks','computer','map',
+                        'shared-memory','my-memory','shared-harness','my-harness',
+                        'personal-memory','project-memory','personal-harness','project-harness'}:
             raise ValueError('지원하지 않는 관리 화면입니다.')
         result = {'course': course(), 'records': self.records(item['workspace']), 'telemetry': telemetry(item), 'demo': self.demo}
         if self.demo:
             result['unavailable'] = '화면 체험 모드입니다. 실제 기억·설정·로그는 읽거나 변경하지 않습니다.'
-        elif view not in {'guide', 'usage'}:
+        elif view not in {'guide', 'usage', 'computer'}:
             try:
-                result['harness'] = self.client.call(item['workspace'], {'operation': 'snapshot', 'view':view})
+                request = {'operation': 'snapshot', 'view':view}
+                if view == 'map' and item.get('sessionId'):
+                    request['sessionId'] = item['sessionId']
+                result['harness'] = self.client.call(item['workspace'], request)
                 item['reviewScope'] = {key: result['harness']['scope'].get(key) for key in ('id', 'kind', 'coreVersion')}
             except (ValueError, OSError) as exc:
-                result['unavailable'] = str(exc)
+                result['unavailable'] = ('현재 Company Agent 설치가 새 관리 화면을 지원하지 않습니다. '
+                    'Workspace와 Company Agent를 같은 배포본으로 업데이트해 주세요. 기존 자료와 대화는 그대로입니다.'
+                    if '지원하지 않는 관리 화면' in str(exc) else str(exc))
         outcomes = result['records'].get('outcomes', [])
         groups = {}
         for row in outcomes:
@@ -140,6 +148,12 @@ class Companion:
         with self.lock:
             action = request.get('action')
             workspace = item['workspace']
+            if action == 'computer-check':
+                # Explicit click only; no executable/version probe or new CLI.
+                bridge = item.get('bridge')
+                return readiness(item.get('connection'), demo=self.demo,
+                    live=bool(bridge and not bridge.closed), driver_path=request.get('driverPath'),
+                    server_name=request.get('serverName') or None)
             if action == 'budget':
                 value = request.get('tokenAlert')
                 if value is not None and (type(value) is not int or not 1 <= value <= 10**9):
@@ -185,7 +199,7 @@ class Companion:
                     'checks': sorted(set(checks)), 'userReportedRepairs': repairs, 'time': time.time(),
                     'model': str(connection.get('model') or 'unavailable')[:160], 'demo': self.demo,
                     'source': 'user-confirmed', 'artifactPreviewObserved': bool(obs['previewed']),
-                    'reviewScope': item.get('reviewScope'), 'uiVersion': '0.3',
+                    'reviewScope': item.get('reviewScope'), 'uiVersion': '0.4',
                     'observedState': obs['terminal'], 'skillsObserved': sorted(obs['skills'])}
                 records = self.records(workspace)
                 records['outcomes'] = [x for x in records['outcomes'] if x['id'] != record['id']][-99:] + [record]
@@ -215,5 +229,7 @@ class Companion:
                     'rollback': ('changeId', 'confirmed'), 'share': ('itemIds', 'confirmed'),
                     'usage': ('paths', 'officeResult'), 'list':('category','cursor'),
                     'detail':('category','entryKey')}[action]
-                return self.client.call(workspace, {'operation': action, **{key: request[key] for key in allowed if key in request}})
+                return self.client.call(workspace, {'operation': action,
+                    **({'storageScope':request['storageScope']} if 'storageScope' in request else {}),
+                    **{key: request[key] for key in allowed if key in request}})
             raise ValueError('지원하지 않는 안내 작업입니다.')

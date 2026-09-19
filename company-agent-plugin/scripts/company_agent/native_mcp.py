@@ -137,16 +137,21 @@ def _claude_argv() -> list[str]:
     raise ValueError("Native Claude executable is unavailable. Repair the existing Claude installation and retry MCP registration.")
 
 
-def sync_native_mcp(state_root: Path, name: str) -> dict[str, Any]:
+def sync_native_mcp(state_root: Path, name: str, *, storage_scope: str | None = None,
+                    project_root: Path | None = None) -> dict[str, Any]:
     _validate_name(name)
     if name.casefold() in _RESERVED:
         raise ValueError("Corporate MCP names are reserved; choose a unique personal MCP name.")
     selected = os.environ.get("COMPANY_AGENT_SCOPE", "")
     if selected not in {"User", "Project"}:
         raise ValueError("Native MCP sync requires a User or Project Company Agent installation; use the launcher for launcher-only installations.")
+    if storage_scope is not None:
+        if storage_scope not in {'personal', 'project'}:
+            raise ValueError('Invalid resource storage scope.')
+        selected = 'User' if storage_scope == 'personal' else 'Project'
     project = None
     if selected == "Project":
-        raw_project = os.environ.get("COMPANY_AGENT_PROJECT_ROOT", "")
+        raw_project = str(project_root) if project_root is not None else os.environ.get("COMPANY_AGENT_PROJECT_ROOT", "")
         project = Path(raw_project).expanduser()
         if not raw_project or not project.is_absolute() or not project.is_dir():
             raise ValueError("Project MCP registration requires the installed absolute project folder.")

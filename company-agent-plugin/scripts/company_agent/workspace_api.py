@@ -61,6 +61,8 @@ class WorkspaceService:
         self.record = record
         self.project, self.plugin = project.absolute(), plugin.absolute()
         self.root = Path(record['userStateRoot']).absolute()
+        self.install_root = self.root
+        self.resource_scope = None
         self.config = Path(record['claudeConfigRoot']).absolute()
         for path in (self.root, self.project, self.config, self.plugin):
             _no_reparse(path)
@@ -70,11 +72,24 @@ class WorkspaceService:
                    for p in (self.root, self.config)] + [record['scope'], record.get('projectRoot') or '']
         self.scope_id = digest(json.dumps(binding).encode())
 
+    def in_scope(self, selection):
+        from .resource_scope import selected_root
+        target = selected_root(self.install_root, self.project, selection, self.record)
+        scoped = object.__new__(WorkspaceService)
+        scoped.__dict__ = {**self.__dict__, 'root': target, 'resource_scope': selection}
+        scoped.scope_id = digest(json.dumps([str(self.install_root), str(self.config),
+                                            str(self.project), selection, str(target)]).encode())
+        return scoped
+
     def scope(self):
+        from .resource_scope import LABELS, destinations
         return {'id': self.scope_id, 'kind': self.record['scope'], 'stateRoot': str(self.root),
                 'projectRoot': self.record.get('projectRoot'), 'coreVersion': self.record.get('coreVersion'),
-                'label': '이 프로젝트의 개인 자료' if self.record['scope'] == 'Project' else '사용자 설치의 개인 자료',
-                'notice': '프로젝트 설치가 따로 있는 폴더의 기억과 자동 합쳐지지 않습니다.'}
+                'resourceScope': self.resource_scope,
+                'choices': list(destinations(self.install_root, self.project, self.record).values()),
+                'label': '적용 범위: ' + (LABELS[self.resource_scope] if self.resource_scope else
+                                         '이 프로젝트 설치' if self.record['scope'] == 'Project' else '내 사용자 설치'),
+                'notice': '회사 공통은 배포 담당자가 관리합니다. 개인 전체와 이 프로젝트의 저장소는 별도이며 자동 공유·이동하지 않습니다.'}
 
     def document(self, path):
         raw = bounded(path)
@@ -84,11 +99,14 @@ class WorkspaceService:
     def _record_roots(self, category):
         if category == 'memory':
             return {'memory': self.root / 'memory/items'}
-        if category != 'knowledge':
+        if category not in {'knowledge', 'shared-knowledge', 'personal-knowledge'}:
             raise ValueError('지원하지 않는 목록입니다.')
-        roots = {'entries': self.root / 'knowledge/entries', 'overlays': self.root / 'knowledge/overlays'}
+        # Filter roots before enumeration/paging: one owner's large collection
+        # must not hide the other's first page or share its pagination cursor.
+        roots = {} if category == 'shared-knowledge' else {
+            'entries': self.root / 'knowledge/entries', 'overlays': self.root / 'knowledge/overlays'}
         base = self.record.get('knowledgeBaseRoot')
-        if base:
+        if base and category != 'personal-knowledge':
             roots['company'] = Path(base)
         return roots
 
@@ -157,6 +175,7 @@ class WorkspaceService:
                 for key in ('id','kind','title','status','source','revision','updated_at','extends')}
         review = meta.get('workspace_review')
         item.update(body=body, sha256=digest(raw), entryKey=key, applied='not-observable',
+                    storageScope=self.resource_scope,
                     ownership='company' if parts[0] == 'company' else 'personal',
                     pathKey=path.name if parts[0] != 'company' else None,
                     review={k:str(review[k])[:400] for k in ('reference','reviewedAt','reviewAfter') if review.get(k)} if isinstance(review, dict) else {})
@@ -180,7 +199,7 @@ class WorkspaceService:
                 result.append(item)
             except (ValueError, OSError, UnicodeError, TypeError):
                 # Untyped company navigation is not a broken knowledge record.
-                if not (category == 'knowledge' and key.startswith('company/') and key.split('/')[-1].lower() == 'readme.md'):
+                if not (key.startswith('company/') and key.split('/')[-1].lower() == 'readme.md'):
                     warnings.append('읽을 수 없는 항목이 있습니다. 원본은 보존했습니다.')
         next_offset = offset + limit
         return {'items': result, 'limited': limited, 'warnings': list(dict.fromkeys(warnings)),
@@ -192,26 +211,97 @@ class WorkspaceService:
     def knowledge(self):
         return self.listing('knowledge', include_body=True, limit=MAX_ITEMS)
 
-    def snapshot(self, view='checks'):
+    def harness_inventory(self, shared):
+        """On-demand, read-only source metadata; never execute/install an asset.
+
+        Project and external-plugin sources are connections, not proof of
+        private ownership. Do not read MCP environment values or tool code.
+        """
+        from .skill_registry import inventory_skills
+        inv = inventory_skills(self.install_root, project_root=self.project, claude_root=self.config,
+                               plugin_root=self.plugin,
+                               knowledge_root=Path(self.record['knowledgeBaseRoot']) if self.record.get('knowledgeBaseRoot') else None,
+                               metadata_cache=False, resource_record=self.record)
+        candidates = [c for c in inv.get('skills', []) if (c.get('source') in {'company', 'corporate'}) == shared]
+        if self.resource_scope:
+            candidates = [c for c in candidates if c.get('storageScope',
+                          'project' if c.get('source') == 'project' else 'personal') == self.resource_scope]
+        rows = [{key: c.get(key) for key in ('id', 'name', 'source', 'description', 'invocation', 'explicitOnly', 'storageScope')}
+                for c in candidates[:MAX_ITEMS]]
+        return {'items': rows, 'limited': len(candidates) > MAX_ITEMS or not inv.get('complete', False),
+                'warnings': inv.get('warnings', []), 'conflicts': len(inv.get('conflicts', [])),
+                'notice': '발견한 스킬 목록입니다. 실제 본문 로드·도구 연결·업무 성공은 별도 확인합니다.'}
+
+    def personal_tools(self):
+        """Show only safe fields from the managed asset registry, with bounds."""
+        try:
+            registry = read_json(self.root / 'assets/registry.json', {'assets': []})
+            assets = registry.get('assets')
+            if not isinstance(assets, list) or any(not isinstance(row, dict) for row in assets):
+                raise ValueError('invalid registry')
+            rows = [row for row in assets if row.get('type') in {'script-tool', 'mcp'}]
+            return {'items': [{key: str(row.get(key) or '')[:200] for key in ('name', 'type', 'status')}
+                              for row in rows[:MAX_ITEMS]], 'limited': len(rows) > MAX_ITEMS,
+                    'notice': '내가 만든 도구의 등록 기록만 표시합니다. 외부 MCP 전체 목록이나 현재 연결 상태가 아닙니다.'}
+        except (ValueError, OSError, UnicodeError, TypeError, AttributeError):
+            return {'items': [], 'status': 'unavailable', 'notice': '도구 등록 기록을 확인하지 못했습니다. 기존 설정은 변경하지 않았습니다.'}
+
+    def shared_hooks(self):
+        try:
+            hooks = read_json(self.plugin / 'hooks/hooks.json', {}).get('hooks')
+            if not isinstance(hooks, dict):
+                raise ValueError('invalid hooks')
+            return {'events': [str(name)[:80] for name in list(hooks)[:40]], 'status': 'available',
+                    'notice': '공통 플러그인의 후크 정의입니다. 현재 CLI 등록·실행 여부를 뜻하지 않습니다.'}
+        except (ValueError, OSError, UnicodeError, TypeError, AttributeError):
+            return {'events': [], 'status': 'unavailable', 'notice': '후크 정의를 확인하지 못했습니다.'}
+
+    def snapshot(self, view='checks', *, session_id=None):
+        if view in {'personal-memory', 'project-memory', 'personal-harness', 'project-harness'}:
+            selection, category = view.split('-', 1)
+            return self.in_scope(selection).snapshot('my-' + category)
         from .learning import learning_status
         from .company_policy import inspect_policy
         from .context_audit import audit_context
         from .skill_registry import inventory_skills
         result = {'apiVersion': 2, 'scope': self.scope(),
                   'notice': '목록 발견·지침 존재는 실제 실행/결과 정확성의 증거가 아닙니다.'}
+        if view == 'map':
+            from .harness_map import build_map
+            from .harness_map_html import render_map
+            report = build_map(self.project, config=self.config, record=self.record,
+                               plugin=self.plugin, session_id=session_id)
+            return {**result, 'map': report, 'html': render_map(report)}
         if view in {'guide', 'usage'}:
             return result
+        if view == 'shared-memory':
+            return {**result, 'knowledge': self.listing('shared-knowledge'),
+                    'configured': bool(self.record.get('knowledgeBaseRoot')),
+                    'notice': '공통 기억은 회사·팀이 검토해 배포한 업무 지식입니다. 읽기 전용이며 공동 쓰기·실시간 동기화 저장소가 아닙니다.'}
+        if view == 'shared-harness':
+            policy = inspect_policy(Path(self.record['managedConfigPath'])) if self.record.get('managedConfigPath') else {'status':'not-configured','rules':[]}
+            return {**result, 'policy': policy, 'inventory': self.harness_inventory(True), 'hooks': self.shared_hooks()}
+        if view == 'my-harness':
+            return {**result, 'brief': self.brief() if self.resource_scope != 'personal' else None,
+                    'inventory': self.harness_inventory(False), 'tools': self.personal_tools()}
         if view == 'brief':
             return {**result, 'brief': self.brief()}
         if view == 'knowledge':
             policy = inspect_policy(Path(self.record['managedConfigPath'])) if self.record.get('managedConfigPath') else {'status':'not-configured','rules':[]}
             return {**result, 'policy':policy, 'knowledge':self.listing('knowledge')}
-        if view == 'memory':
+        if view in {'memory', 'my-memory'}:
             try:
                 learning = learning_status(self.root)
+                learning['activeInstallation'] = self.root == self.install_root
+                learning['scopeLabel'] = '이 프로젝트' if self.record['scope'] == 'Project' else '개인 전체'
+                learning['scopeNotice'] = ('자동 학습은 현재 설치의 ' + learning['scopeLabel'] +
+                    ' 저장소에만 적용됩니다. 명시적 저장의 범위 선택이나 화면 이동으로 학습 범위가 바뀌지 않습니다.')
             except (ValueError, OSError, TypeError, KeyError):
                 learning = {'status':'unavailable','notice':'학습 이력을 확인하지 못했습니다. 초기화하지 않습니다.'}
-            return {**result, 'memory':self.listing('memory'), 'learning':learning}
+            result.update(memory=self.listing('memory'), learning=learning)
+            if view == 'my-memory':
+                result['knowledge'] = self.listing('personal-knowledge')
+            return result
         if view != 'checks':
             raise ValueError('지원하지 않는 관리 화면입니다.')
         inv = inventory_skills(self.root, project_root=self.project, claude_root=self.config,
@@ -243,7 +333,7 @@ class WorkspaceService:
         path = self.project / BRIEF
         raw = bounded(path) if path.exists() else None
         body = raw.decode('utf-8-sig') if raw is not None else ''
-        owner = read_json(self.root / 'workspace' / ('brief-' + digest(str(self.project).encode()) + '.json'), {})
+        owner = read_json(self.install_root / 'workspace' / ('brief-' + digest(str(self.project).encode()) + '.json'), {})
         sha = digest(raw) if raw is not None else None
         return {'path': str(path), 'body': body, 'sha256': sha,
                 'owned': bool(body and owner.get('sha256') == sha),
@@ -253,10 +343,18 @@ class WorkspaceService:
         if not isinstance(request, dict):
             raise ValueError('변경할 내용을 올바른 형식으로 입력해 주세요.')
         kind = request.get('kind')
+        if kind in {'memory', 'knowledge'}:
+            selection = request.get('storageScope')
+            if selection not in {'personal', 'project'}:
+                raise ValueError('어디에 저장할까요? 개인 전체 또는 이 프로젝트를 선택해 주세요.')
+            if self.resource_scope != selection:
+                return self.in_scope(selection).plan(request)
         if kind == 'memory':
             mid = identifier(request.get('itemId') or ('memory.preference.' + uuid.uuid4().hex))
             path = self.memory_path(mid)
             old = self.document(path) if path.exists() else None
+            if request.get('itemId') and not old:
+                raise ValueError('선택한 범위에 기존 기억이 없습니다. 다른 범위로 복사하거나 이동하지 않았습니다.')
             if old and request.get('expectedSha256') != old[2]:
                 raise ValueError('기억이 바뀌었습니다. 새로고침한 뒤 변경안을 다시 확인하세요.')
             spec = {'id': mid, 'kind': request.get('memoryKind', old[0]['kind'] if old else 'preference'),
@@ -277,6 +375,8 @@ class WorkspaceService:
             kid = identifier(request.get('itemId') or ('personal.term.' + uuid.uuid4().hex))
             path = self.root / 'knowledge/entries' / (kid + '.md')
             old = self.document(path) if path.exists() else None
+            if request.get('itemId') and not old:
+                raise ValueError('선택한 범위에 기존 지식이 없습니다. 원래 범위에서 수정해 주세요.')
             if old and (request.get('expectedSha256') != old[2] or old[0].get('kind') != 'term' or old[0].get('scope') != 'personal'):
                 raise ValueError('변경된 지식 또는 다른 유형의 지식은 이 화면에서 덮어쓰지 않습니다.')
             status = request.get('status', 'draft')
@@ -296,7 +396,9 @@ class WorkspaceService:
         else:
             raise ValueError('지원하지 않는 변경 유형입니다.')
         return {'schemaVersion': 1, 'operationId': uuid.uuid4().hex, 'scopeId': self.scope_id,
-                'project': str(self.project), 'kind': kind, 'expectedSha256': expected, 'spec': spec}
+                'project': str(self.project), 'kind': kind, 'expectedSha256': expected, 'spec': spec,
+                'storageScope': self.resource_scope,
+                'storageLabel': '이 프로젝트 · 폴더 지침(공유 여부 별도 확인)' if kind == 'brief' else self.scope()['label']}
 
     def versions(self, mid):
         path = self.memory_path(mid)
@@ -322,6 +424,8 @@ class WorkspaceService:
         return {'versions': result, 'notice': '최근 확인 가능한 최대 10개입니다. 현재 내용과 비교 후 적용하세요.'}
 
     def apply(self, plan):
+        if isinstance(plan, dict) and plan.get('storageScope') and plan['storageScope'] != self.resource_scope:
+            return self.in_scope(plan['storageScope']).apply(plan)
         if not isinstance(plan, dict) or plan.get('scopeId') != self.scope_id or plan.get('project') != str(self.project):
             raise ValueError('설치 범위가 바뀌었습니다. 변경안을 다시 확인하세요.')
         if plan.get('schemaVersion') != 1 or not isinstance(plan.get('spec'), dict):
@@ -390,8 +494,14 @@ class WorkspaceService:
         if not isinstance(request, dict):
             raise ValueError('올바른 요청 형식이 아닙니다.')
         operation = request.get('operation')
+        if operation not in {'plan', 'apply', 'snapshot'} and 'storageScope' in request:
+            selection = request['storageScope']
+            if selection != self.resource_scope:
+                return self.in_scope(selection).dispatch(request)
+        if operation in {'learning', 'rollback'} and self.root != self.install_root:
+            raise ValueError('자동 학습은 현재 설치 저장소에서 관리합니다. 화면의 저장 범위 선택은 자동 학습 범위를 바꾸지 않습니다.')
         if operation == 'snapshot':
-            return self.snapshot(request.get('view', 'checks'))
+            return self.snapshot(request.get('view', 'checks'), session_id=request.get('sessionId'))
         if operation == 'list':
             return self.listing(request.get('category'), request.get('cursor'))
         if operation == 'detail':
@@ -451,6 +561,6 @@ def command(args):
     if len(raw) > 64 * 1024:
         raise ValueError('요청 크기를 줄여 주세요.')
     request = json.loads(raw.decode('utf-8-sig'))
-    service = WorkspaceService(record, project, Path(__file__).resolve().parents[2])
+    service = WorkspaceService({**record, 'registrationsRoot':str(registrations)}, project, Path(__file__).resolve().parents[2])
     print(json.dumps(service.dispatch(request), ensure_ascii=True))
     return 0

@@ -243,10 +243,38 @@ class ServerTests(unittest.TestCase):
         with self.assertRaises(HTTPError):
             self.request("/../server.py", token=False)
 
+    def test_manual_routes_are_fixed_public_static_documents(self):
+        for route in ('handbook','onboarding','cua','Company-Agent-Handbook.html','Company-Agent-Onboarding.html','Company-Agent-Cua-Pilot.html'):
+            with self.request('/manual/'+route,token=False) as response:
+                body=response.read().decode('utf-8')
+                self.assertIn('<html lang="ko">',body)
+                self.assertIn("script-src 'none'",body)
+                self.assertNotIn(self.app.token,body)
+        for route in ('../server.py','COMPANY_AGENT_HANDBOOK.md','../../.claude.json'):
+            with self.assertRaises(HTTPError) as caught:
+                self.request('/manual/'+route,token=False)
+            self.assertEqual(404,caught.exception.code)
+
+    def test_computer_check_uses_existing_auth_and_folder_trust_without_cli(self):
+        body={'id':self.id,'action':'computer-check'}
+        with self.assertRaises(HTTPError) as caught:
+            self.request('/api/companion',body,token=False)
+        self.assertEqual(403,caught.exception.code)
+        with patch('local_app.computer_use.find_driver',return_value={'status':'not-found'}), patch('local_app.server.ClaudeSession') as cli:
+            with self.request('/api/companion',body) as response:
+                result=json.load(response)
+            self.assertFalse(result['canPrepareReadTrial'])
+            self.assertEqual('not-observed',result['connection']['status'])
+            cli.assert_not_called()
+        self.app.get(self.id)['trusted']=False
+        with self.assertRaises(HTTPError) as caught:
+            self.request('/api/companion',body)
+        self.assertEqual(400,caught.exception.code)
+
     def test_bootstrap_identifies_shared_cli_without_claiming_login_success(self):
         with self.request("/api/bootstrap") as response:
             value = json.load(response)
-        self.assertEqual(value["workspaceVersion"], "0.3")
+        self.assertEqual(value["workspaceVersion"], "0.4")
         self.assertEqual(value["appRoot"], str(ROOT))
         self.assertEqual(value["runtime"]["authentication"], "shared-with-cli")
         self.assertNotIn("loggedIn", value["runtime"])

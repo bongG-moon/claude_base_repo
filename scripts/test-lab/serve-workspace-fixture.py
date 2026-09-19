@@ -33,12 +33,22 @@ def save(path,data):
 
 record={'schemaVersion':1,'scope':'User','nativeClaudeScope':'user','userStateRoot':str(state),
         'pythonCommand':sys.executable,'coreVersion':'qa-source','claudeConfigRoot':str(config),
-        'claudeConfigDirOverride':True,'pluginId':'company-agent@company-agent-local'}
+        'claudeConfigDirOverride':True,'pluginId':'company-agent@company-agent-local',
+        'knowledgeBaseRoot':str(root/'common-knowledge'),'managedConfigPath':str(root/'managed.json')}
+save(root/'managed.json',{'workStandards':{'revision':'qa','rules':[
+    {'id':'source-only','level':'required','workflows':['*'],'text':'가상 공통 기준: 확인한 수치만 보고합니다.'}]}})
+(root/'common-knowledge').mkdir()
+(root/'common-knowledge/company.term.fixture.md').write_text(dump_frontmatter(
+    {'id':'company.term.fixture','kind':'term','title':'가상 공통 계산식','status':'active','owner':'qa'},
+    '달성률은 실적을 목표로 나눈 비율입니다. 가상 공통 배포 지식입니다.'),encoding='utf-8')
+save(state/'assets/registry.json',{'assets':[{'type':'mcp','name':'fixture-candidate','status':'candidate'}]})
 save(root/'local/CompanyAgent/installations/user/company-agent-install.json',record)
 save(config/'plugins/installed_plugins.json',{'plugins':{'company-agent@company-agent-local':[{'scope':'user','version':'qa-source','installPath':str(ROOT/'company-agent-plugin')}]}})
 save(config/'settings.json',{'enabledPlugins':{'company-agent@company-agent-local':True},'model':'preserve-fixture-model','mcpServers':{'preserve':{'disabled':True}}})
+(config/'skills/my-fixture').mkdir(parents=True)
+(config/'skills/my-fixture/SKILL.md').write_text('---\nname: my-fixture\ndescription: 가상 개인 스킬\n---\n시험용입니다.\n',encoding='utf-8')
 service=WorkspaceService(record,project,ROOT/'company-agent-plugin')
-service.apply(service.plan({'kind':'memory','title':'가상 보고서 선호','body':'결론과 확인 범위를 간단히 구분한다.'}))
+service.apply(service.plan({'kind':'memory','storageScope':'personal','title':'가상 보고서 선호','body':'결론과 확인 범위를 간단히 구분한다.'}))
 (state/'knowledge/entries').mkdir(parents=True,exist_ok=True)
 for i in range(25):
     (state/'knowledge/entries'/f'personal.term.fixture-{i:02}.md').write_text(dump_frontmatter(

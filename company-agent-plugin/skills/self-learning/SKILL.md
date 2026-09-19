@@ -6,6 +6,12 @@ description: 재사용 가능한 피드백을 모았다가 의미 있는 업무�
 
 # Automatic personal learning
 
+## 자동 학습의 범위
+
+모델 가중치를 훈련하는 기능이 아니라 완료된 업무의 피드백을 짧은 선호와 기존 개인 스킬의 제한된 점검 항목으로 반영합니다. 현재 자동 학습 엔진은 runtime.stateRoot, 즉 User 설치에서는 **개인 전체**, Project 설치에서는 **그 프로젝트 설치** 안에서만 작동합니다. 다른 저장 범위·회사 배포본·프로젝트 CLAUDE.md로 자동 승격하거나 이동하지 않습니다. User 설치에서 명시적으로 ‘이 프로젝트’에 만든 별도 자산은 이 자동 수정 대상이 아닙니다.
+
+명시적인 새 기억·스킬 저장 요청은 personal-memory/asset-factory에서 개인 전체 또는 이 프로젝트를 한 번 선택합니다. 이 선택은 해당 저장 작업에만 적용되며 자동 학습의 전역 설정을 바꾸지 않습니다. 이미 요청한 자동 학습에 속하는 안전한 업데이트마다 같은 범위를 다시 질문하지 않습니다. 범위 변경이 필요한 개선은 자동으로 쓰지 말고 사용자에게 별도 저장을 제안하세요.
+
 This is a BUSINESS completion workflow, not a per-message ritual or interview.
 Connection -> search -> summary -> user edits is one work unit. Do not run a
 review for each step, or merely because a response is ending. Use it only for

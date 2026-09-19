@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import json
 import sys
+from pathlib import Path
 
-from company_agent.memory import MAX_MEMORY_RESULTS, render_memory_context, search_memory
+from company_agent.memory import MAX_MEMORY_RESULTS, render_memory_context, search_scoped_memory
 from company_agent.model_router import MEDIUM, RouteDecision, hook_output, classify_prompt
 from company_agent.paths import user_state_root
 from company_agent.state import begin_turn, learning_context, safe_session_id
@@ -40,7 +41,8 @@ def main() -> int:
             # Search happens in memory only. Neither this query nor the raw
             # hook payload is persisted, logged, or returned.
             try:
-                memories = search_memory(user_state_root(), prompt_text, limit=MAX_MEMORY_RESULTS)
+                memories = search_scoped_memory(user_state_root(), Path(payload.get('cwd') or Path.cwd()),
+                                                prompt_text, limit=MAX_MEMORY_RESULTS)
                 personal_memory_context = render_memory_context(memories)
             except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
                 # Corrupt/unreadable memory is ignored. Routing must remain

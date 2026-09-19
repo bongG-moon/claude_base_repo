@@ -40,7 +40,7 @@ class ServiceTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def memory(self, **kwargs):
-        return self.service.plan({'kind': 'memory', 'title': '보고서 표현', 'body': '보고서는 결론부터 간단히 정리한다.', **kwargs})
+        return self.service.plan({'kind': 'memory', 'storageScope':'personal', 'title': '보고서 표현', 'body': '보고서는 결론부터 간단히 정리한다.', **kwargs})
 
     def test_snapshot_is_read_only_and_reports_skills_not_fake_performance(self):
         value = self.service.snapshot()
@@ -100,6 +100,74 @@ class ServiceTests(unittest.TestCase):
             with self.subTest(key=key), self.assertRaises(ValueError):
                 self.service.detail('memory',key)
 
+    def test_shared_and_personal_memory_filter_before_paging_and_reject_cross_owner_keys(self):
+        from company_agent.frontmatter import dump_frontmatter
+        company = self.base / 'company-knowledge'
+        personal = self.state / 'knowledge/entries'
+        for folder, prefix in ((company, 'company'), (personal, 'personal')):
+            folder.mkdir(parents=True)
+            for i in range(25):
+                (folder/f'{prefix}.term.{i:02}.md').write_text(dump_frontmatter(
+                    {'id': f'{prefix}.term.{i:02}', 'kind': 'term', 'status': 'active', 'title': f'{prefix} {i}'},
+                    '가상 업무 지식'), encoding='utf-8')
+        service = WorkspaceService({**self.record, 'knowledgeBaseRoot':str(company)}, self.project, ROOT/'company-agent-plugin')
+        with patch('company_agent.skill_registry.inventory_skills', side_effect=AssertionError('memory does not scan skills')):
+            shared = service.snapshot('shared-memory')
+            mine = service.snapshot('my-memory')
+        for view, category, owner in ((shared, 'shared-knowledge', 'company'), (mine, 'personal-knowledge', 'personal')):
+            page = view['knowledge']
+            self.assertEqual(20, len(page['items']))
+            self.assertTrue(all(row['ownership'] == owner and 'body' not in row for row in page['items']))
+            last = service.dispatch({'operation':'list','category':category,'cursor':page['nextCursor']})
+            self.assertEqual(5, len(last['items']))
+            self.assertIsNone(last['nextCursor'])
+            self.assertEqual(25, len({row['id'] for row in page['items'] + last['items']}))
+        with self.assertRaises(ValueError):
+            service.listing('personal-knowledge', shared['knowledge']['nextCursor'])
+        for category,key in [('personal-knowledge','company/company.term.00.md'),
+                             ('shared-knowledge','entries/personal.term.00.md')]:
+            with self.subTest(category=category), self.assertRaises(ValueError):
+                service.detail(category,key)
+        before = {p.name:p.read_bytes() for p in company.glob('*.md')}
+        with self.assertRaises(ValueError):
+            service.plan({'kind':'shared-memory','title':'edit common','body':'not allowed'})
+        self.assertEqual(before, {p.name:p.read_bytes() for p in company.glob('*.md')})
+        self.assertNotIn('policy', shared)
+        self.assertIn('learning', mine)
+
+    def test_four_views_are_read_only_and_do_not_create_or_migrate_personal_state(self):
+        for view in ('shared-memory','my-memory','shared-harness','my-harness'):
+            with self.subTest(view=view):
+                result = self.service.snapshot(view)
+                self.assertEqual(self.service.scope(), result['scope'])
+                self.assertFalse(self.state.exists())
+        self.assertIn('설치', self.service.scope()['label'])
+        self.assertFalse(self.service.snapshot('shared-memory')['configured'])
+        self.assertIn('PreToolUse', self.service.snapshot('shared-harness')['hooks']['events'])
+
+    def test_harness_views_preserve_sources_and_do_not_read_tool_secrets(self):
+        sources = ('company','corporate','personal','user','project','plugin')
+        inv = {'skills':[{'id':s,'name':s,'source':s,'description':'예제'} for s in sources],
+               'complete':True,'conflicts':[],'warnings':[]}
+        write_json(self.state/'assets/registry.json', {'assets':[
+            {'type':'mcp','name':'mine','status':'candidate','env':{'TOKEN':'DO-NOT-EXPOSE'},'path':'DO-NOT-OPEN'},
+            {'type':'script-tool','name':'calc','status':'active','command':'DO-NOT-EXECUTE'},
+            {'type':'skill','name':'already-listed','status':'active'}]})
+        before = (self.state/'assets/registry.json').read_bytes()
+        with patch('company_agent.skill_registry.inventory_skills',return_value=inv):
+            common = self.service.snapshot('shared-harness')
+            mine = self.service.snapshot('my-harness')
+        self.assertEqual(['company','corporate'], [s['source'] for s in common['inventory']['items']])
+        self.assertEqual(['personal','user','project','plugin'], [s['source'] for s in mine['inventory']['items']])
+        self.assertEqual(['mine','calc'], [t['name'] for t in mine['tools']['items']])
+        self.assertNotIn('DO-NOT-', json.dumps(mine))
+        self.assertNotIn('policy', mine)
+        self.assertNotIn('brief', common)
+        self.assertEqual(before, (self.state/'assets/registry.json').read_bytes())
+        self.assertFalse((self.project/BRIEF).exists())
+        write_json(self.state/'assets/registry.json', ['malformed'])
+        self.assertEqual('unavailable', self.service.personal_tools()['status'])
+
     def test_guide_and_usage_do_not_scan_documents_or_inventory(self):
         with patch.object(self.service,'listing',side_effect=AssertionError('no document scans')), \
                 patch('company_agent.skill_registry.inventory_skills',side_effect=AssertionError('no inventory')):
@@ -155,7 +223,7 @@ class ServiceTests(unittest.TestCase):
         self.assertEqual(global_file.read_text(encoding='utf-8'),'개인 전역 기준')
 
     def test_knowledge_draft_review_activation_and_local_export(self):
-        spec = {'kind':'knowledge','title':'테스트 지표','body':'목표 대비 실적 비율로 확인한다.','reference':'가상 자료 직접 검토','reviewAfter':'2027-01-01'}
+        spec = {'kind':'knowledge','storageScope':'personal','title':'테스트 지표','body':'목표 대비 실적 비율로 확인한다.','reference':'가상 자료 직접 검토','reviewAfter':'2027-01-01'}
         saved = self.service.apply(self.service.plan(spec))
         rows = self.service.knowledge()['items']
         self.assertEqual(len(rows),1)
@@ -264,7 +332,7 @@ class ClientTests(unittest.TestCase):
         with patch.dict(os.environ,{'LOCALAPPDATA':str(self.root),'CLAUDE_CONFIG_DIR':str(self.config)}):
             snap=client.call(self.project,{'operation':'snapshot'})
             self.assertEqual(snap['scope']['stateRoot'],str(self.root/'state'))
-            plan=client.call(self.project,{'operation':'plan','data':{'kind':'memory','title':'간단히','body':'결론 먼저'}})
+            plan=client.call(self.project,{'operation':'plan','data':{'kind':'memory','storageScope':'personal','title':'간단히','body':'결론 먼저'}})
             result=client.call(self.project,{'operation':'apply','confirmed':True,'plan':plan})
             self.assertTrue(Path(result['path']).exists())
 
@@ -294,6 +362,21 @@ class CompanionTests(unittest.TestCase):
         with patch.object(self.companion.client,'call',side_effect=AssertionError('no subprocess')):
             for view in ('guide','usage'):
                 self.assertIn('course',self.companion.snapshot(self.item,view))
+
+    def test_four_domain_views_are_forwarded_without_model_calls(self):
+        self.companion.demo = False
+        with patch.object(self.companion.client,'call',return_value={'scope':{'id':'test','kind':'User'}}) as call:
+            for view in ('shared-memory','my-memory','shared-harness','my-harness'):
+                self.assertIn('harness',self.companion.snapshot(self.item,view))
+                call.assert_called_with(self.item['workspace'],{'operation':'snapshot','view':view})
+
+    def test_old_core_shows_update_hint_without_install_or_retry(self):
+        self.companion.demo = False
+        with patch.object(self.companion.client,'call',side_effect=ValueError('지원하지 않는 관리 화면입니다.')) as call:
+            result = self.companion.snapshot(self.item,'my-memory')
+        self.assertIn('같은 배포본으로 업데이트',result['unavailable'])
+        self.assertNotIn('harness',result)
+        self.assertEqual(1,call.call_count)
 
     def test_missing_fields_duplicate_result_and_tool_id_are_not_totals(self):
         begin_turn(self.item)

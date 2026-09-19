@@ -24,7 +24,7 @@ ASSETS = Path(__file__).parent / "web"
 SAFE_FILES = {".md", ".txt", ".csv", ".tsv", ".html", ".htm", ".pdf", ".pptx", ".docx", ".xlsx", ".png", ".jpg", ".jpeg", ".webp"}
 MAX_BODY = 256 * 1024
 MAX_PREVIEW = 1024 * 1024
-WORKSPACE_VERSION = "0.3"
+WORKSPACE_VERSION = "0.4"
 
 
 def folder(value):
@@ -158,6 +158,7 @@ class LocalApp:
                     bridge = ClaudeSession(self.command, self.info, Path(item["workspace"]),
                                            lambda kind, data: self.emit(sid, kind, data), item.get("sessionId"))
                     item["bridge"] = bridge
+                    item.pop('connection', None)  # no stale init evidence during reconnect
             item["trusted"] = True
             item["attachments"] = list(dict.fromkeys(item.get("attachments", []) + paths))
             if item["title"] == "새 업무":
@@ -340,6 +341,13 @@ class Handler(BaseHTTPRequestHandler):
                                                'message':'정적 미리보기입니다. 모든 구역을 표시하며 스크립트·외부 연결은 실행하지 않습니다. 선택은 채팅으로 알려 주세요.'})
                     return self.reply({"kind": "text", "name": path.name, "text": text})
                 return self.reply({"kind": "external", "name": path.name, "message": "Office·PDF 원본은 원래 앱에서 열어 확인해 주세요."})
+            manuals = {'/manual/handbook': 'Company-Agent-Handbook.html',
+                       '/manual/onboarding': 'Company-Agent-Onboarding.html',
+                       '/manual/cua': 'Company-Agent-Cua-Pilot.html'}
+            manuals.update({'/manual/' + name: name for name in list(manuals.values())})
+            if route.path in manuals:
+                return self.reply((ASSETS.parent.parent / 'docs' / manuals[route.path]).read_bytes(),
+                                  content_type='text/html; charset=utf-8')
             assets = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
                       "/companion.js": ("companion.js", "text/javascript; charset=utf-8"),
                       "/app.css": ("app.css", "text/css; charset=utf-8")}

@@ -20,6 +20,10 @@ For each `company-agent` example, use the exact `company_agent_runtime.cliComman
 
 ## Build contract
 
+저장 범위가 미지정이면 제작 전에 AskUserQuestion으로 **개인 전체(여러 프로젝트)** / **이 프로젝트(현재 작업에서만)** 중 하나를 물어 답변을 기다립니다. 질문 도구가 없으면 한국어 질문 후 멈춥니다. 회사 공통은 직접 저장 선택지가 아닙니다. 사용자가 명시했다면 다시 묻지 않습니다. 기존 자산 수정은 원래 범위를 유지하고 다른 저장소로 이동·복사하지 않습니다.
+
+아래 asset create/test/activate/sync/run 명령에 `--storage-scope personal|project --project-root "<company_agent_runtime.project>"`를 동일하게 붙입니다. runtime.stateRoot는 설치/세션 경로 그대로 유지합니다. 생성 결과의 실제 경로를 검증하며 대상 저장소를 추측하지 않습니다. 범위 누락 시 `needs_scope_choice`는 생성 전 질문 대기입니다. 회사 원본이나 `~/.claude`를 직접 덮어써 이 선택을 우회하지 않습니다. 별도 Project 설치 없이도 User 설치의 프로젝트 전용 개인 저장소를 사용할 수 있습니다.
+
 1. Consult Effective Knowledge before defining inputs, table meanings, or business rules.
    Search relevant existing Skills and tools for the same capability before creating another asset; a different name does not prove a different purpose. Reuse a compatible selected candidate when it satisfies the request. If the user explicitly requests a separate asset, honor that scope without overwriting the existing one.
 2. Ask only for missing material choices, using at most three simple options.
@@ -54,6 +58,6 @@ For each `company-agent` example, use the exact `company_agent_runtime.cliComman
 11. In native User/Project installations, activation also registers the receipt-validated server through Claude's native `mcp add-json` for that scope. Restart Claude afterwards. If registration fails, report that native activation is pending and resolve the stated cause; retry with `company-agent asset sync-mcp --name "<name>"`. Existing/unowned MCP names are never overwritten. In the machine launcher, restart Company Agent to reload its MCP registry. Script Tool and personal Skill changes are available through live contextual retrieval.
 12. After Skill creation or Script Tool activation, resolve its name again in the same project. If the user explicitly chose a preferred candidate and scope, use the returned exact candidate ID with `company-agent skill prefer --name "<name>" --candidate "<ID>" --scope project --project-root "<absolute project>"`, or `--scope default` for that choice. Verify project choices with the same project resolve. For defaults, first verify the candidate in `company-agent skill inventory --no-project`, then verify the saved choice with `company-agent skill resolve "<name>" --no-project`; project-only candidates cannot be default choices. Otherwise preserve the existing selection and use `/company-agent:skills` to choose project/default scope only if an overlap needs a missing or stale priority choice. Never edit preference JSON by hand. Read the selected full `SKILL.md` before using it; this preference does not change Claude's native `/name` precedence or intercept third-party installers.
 
-Never write personal assets into the plugin installation directory. That directory is replaced on Core update. Store every generated asset under the user state directory selected by the harness.
+Never write personal assets into the plugin installation directory. That directory is replaced on Core update. Store generated assets under the selected private resource root resolved by the harness. Project-private assets are not shared repository files; sharing requires a separate explicit request and review.
 
 Script Tools and personal MCP servers run with the current Windows user's privileges. Hash receipts, static analysis, schemas, and time/output limits reduce mistakes but are not an OS sandbox. Do not activate code that needs broader access than the user explicitly reviewed.
