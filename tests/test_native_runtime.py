@@ -69,6 +69,16 @@ class NativeRuntimeTestBase(unittest.TestCase):
 
 
 class NativeRuntimeTests(NativeRuntimeTestBase):
+    def test_session_start_rebuilds_knowledge_once_and_retains_errors(self):
+        from company_agent import knowledge
+        atomic_write_text(self.base/'broken.md', '---\nmalformed\n---\n')
+        with patch.object(knowledge,'build_index', wraps=knowledge.build_index) as built, \
+                patch('company_agent.native_runtime.runtime_context', return_value='{"company_agent_runtime":{}}'), \
+                patch.dict(os.environ, {'CLAUDE_ENV_FILE':''}):
+            result = session_start(PLUGIN, self.project, session_id='single-build', source='compact')
+        self.assertEqual(1, built.call_count)
+        self.assertIn('회사 지식에 확인이 필요한 오류', result['systemMessage'])
+
     def test_unrelated_personal_skill_is_not_injected_even_when_only_one_exists(self) -> None:
         file = self.state / "personal-root" / ".claude" / "skills" / "chart" / "SKILL.md"
         atomic_write_text(file, dump_frontmatter({"name": "chart", "description": "차트 그리기"}, "# private procedure"))
@@ -203,6 +213,39 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
     def test_legacy_launcher_can_supply_explicit_state_without_install_metadata(self) -> None:
         self.assertTrue(configure_runtime(PLUGIN, self.project))
         self.assertEqual(str(self.state), os.environ["COMPANY_AGENT_USER_STATE"])
+
+    def test_managed_policy_is_resolved_from_installation_not_working_directory(self) -> None:
+        plugin, managed = self.root / 'plugin', self.root / 'company-config.json'
+        self.register('user', 'User', managedConfigPath=str(managed))
+        atomic_write_json(plugin / 'company-agent-install.json', {'registrationsRoot': str(self.registrations)})
+        atomic_write_json(managed, json.loads((ROOT / 'config/managed.example.json').read_text(encoding='utf-8')))
+        atomic_write_json(self.project / 'managed.json', {'workStandards': 'untrusted project data'})
+        self.assertTrue(configure_runtime(plugin, self.project))
+        self.assertEqual(str(managed), os.environ['COMPANY_AGENT_MANAGED_CONFIG'])
+        text = runtime_context(PLUGIN, self.project, 'HTML 보고서 작성')
+        runtime = json.loads(text)['company_agent_runtime']
+        self.assertEqual('available', runtime['companyPolicy']['status'])
+        self.assertIn('report-style', [rule['id'] for rule in runtime['companyPolicy']['rules']])
+        self.assertIn('회사/개인', runtime['instructions'])
+        self.assertIn('required', runtime['instructions'])
+        self.assertLessEqual(len(text), MAX_RUNTIME_CONTEXT_CHARS)
+
+    def test_long_installed_paths_with_company_standards_keep_runtime_and_budget(self) -> None:
+        plugin = Path('C:/Users/employee/AppData/Local/Temp/CompanyAgent-ScopedSmoke-123456789012') / 'profile 한글—🚀' / 'AppData/Local/CompanyAgent-Distribution/marketplace/versions/1.4.14/plugin'
+        managed = plugin.parent / 'config/managed.json'
+        policy = {'status':'available', 'path':str(managed), 'revision':'1', 'forWorkflows':[],
+                  'rules':[{'id':'personal-preservation','level':'required','text':'개인 자료 보존'}], 'truncated':False}
+        selection = {'status':'ready','catalog':{'status':'ready', 'path':str(plugin / ('a'*64) / 'SKILL_CATALOG.md'), 'revision':'a'*64}}
+        with patch('company_agent.native_runtime._skill_routing', return_value=([], selection)), \
+                patch('company_agent.native_runtime._knowledge_matches', return_value=[]), \
+                patch('company_agent.native_runtime.policy_context', return_value=policy):
+            encoded = runtime_context(plugin, plugin.parent / '업무 폴더', source='startup')
+        runtime = json.loads(encoded)['company_agent_runtime']
+        self.assertNotIn('contextStatus', runtime)
+        self.assertEqual(cli_command(plugin), runtime['cliCommand'])
+        self.assertEqual(str(managed), runtime['companyPolicy']['path'])
+        self.assertIn('scope', runtime)
+        self.assertLessEqual(len(encoded), MAX_RUNTIME_CONTEXT_CHARS)
 
     def test_stale_project_install_record_falls_back_to_enabled_native_user_install(self) -> None:
         profile = self.root / "claude-profile"

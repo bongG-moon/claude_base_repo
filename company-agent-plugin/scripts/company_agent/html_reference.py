@@ -118,6 +118,36 @@ def theme_css(reference: dict) -> str:
     return ':is(body,.style-preview)[data-style]{'+';'.join(declarations)+'}'
 
 
+def validate_review_metadata(review: dict) -> None:
+    from .business_artifacts import ArtifactError
+    if (not isinstance(review, dict) or set(review) != {'templateSha256', 'previewPath', 'previewSha256', 'confirmed'}
+            or type(review.get('confirmed')) is not bool
+            or any(not isinstance(review.get(key), str) or not re.fullmatch('[a-f0-9]{64}', review[key])
+                   for key in ('templateSha256', 'previewSha256'))
+            or not isinstance(review.get('previewPath'), str) or len(review['previewPath']) > 2048
+            or not Path(review['previewPath']).is_absolute() or Path(review['previewPath']).suffix.lower() != '.html'):
+        raise ArtifactError('invalid_choice', '첨부 양식 미리보기의 확인 정보를 다시 준비해 주세요.')
+
+
+def review_stage(spec: dict) -> str | None:
+    """Template-only checkpoint. Confirmed means a recorded user answer, not proof of viewing."""
+    from .business_artifacts import ArtifactError, _source
+    review = spec.get('templateReview')
+    if review is None:
+        return 'template_preview'
+    validate_review_metadata(review)
+    reference = analyze(Path(spec['htmlTemplate']['path']))
+    if reference['sha256'] != spec['htmlTemplate']['sha256'] or reference['sha256'] != review['templateSha256']:
+        raise ArtifactError('template_changed', '첨부 양식이 변경되었습니다. 새 미리보기를 보여주고 다시 확인해 주세요.', 'input_required')
+    preview = _source(Path(review['previewPath']), ('.html',))
+    with preview.open('rb') as stream:
+        raw = stream.read(1024 * 1024 + 1)
+    marker = ('<meta name="company-agent-template-sha256" content="'+reference['sha256']+'">').encode()
+    if len(raw) > 1024 * 1024 or hashlib.sha256(raw).hexdigest() != review['previewSha256'] or marker not in raw:
+        raise ArtifactError('template_preview_changed', '미리보기 파일이 달라졌습니다. 다시 생성하고 확인해 주세요.', 'input_required')
+    return None if review['confirmed'] else 'template_confirm'
+
+
 def inspect_template(path: Path, output: Path | None = None, *, open_preview: bool = False) -> dict:
     from .business_artifacts import _failure, create_html, open_local_preview, ArtifactError
     try:
@@ -131,10 +161,13 @@ def inspect_template(path: Path, output: Path | None = None, *, open_preview: bo
                 'htmlTemplate':result['htmlTemplate'], 'style':'minimalism','mode':'scroll','length':'short',
                 'sections':[{'title':'핵심 내용을 한눈에', 'layout':'cover','body':'첨부 양식에서 확인한 색상과 글꼴을 적용한 예시입니다.'},
                             {'title':'실적 비교 · 예시 자료','layout':'table',
-                             'table':{'headers':['항목','목표','실적'],'rows':[['예시 A',100,110],['예시 B',80,90]]}}]}, output)
+                             'table':{'headers':['항목','목표','실적'],'rows':[['예시 A',100,110],['예시 B',80,90]]}}]}, output, template_preview=True)
             if not preview.get('ok'):
                 return preview
             result['outputPath'] = preview['outputPath']
+            result['templateReview'] = {'templateSha256': reference['sha256'], 'previewPath': preview['outputPath'],
+                                        'previewSha256': hashlib.sha256(Path(preview['outputPath']).read_bytes()).hexdigest(),
+                                        'confirmed': False}
             if open_preview:
                 result.update(open_local_preview(Path(preview['outputPath'])))
         return result

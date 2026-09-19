@@ -19,5 +19,5 @@ if __name__ == '__main__':
         print('Packaged picker matches production themes.')
     else:
         target.parent.mkdir(parents=True,exist_ok=True)
-        target.write_text(text,encoding='utf-8')
+        target.write_text(text,encoding='utf-8',newline='\n')
         print(target)

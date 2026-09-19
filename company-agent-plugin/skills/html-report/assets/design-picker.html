@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-sYawyVJ7wD8bKB9Fa22/oBx3iy2MI8DHazC1BHmWbHc='; base-uri 'none'; form-action 'none'"><title>HTML 보고서 디자인 선택</title><style>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-bhVGpEaqhm3g+ksIDePL/i8TX4uzhwHFwO1GYnREdQ4='; base-uri 'none'; form-action 'none'"><title>HTML 보고서 디자인 선택</title><style>
 :root{color-scheme:light;--bg:#f5f6f8;--paper:#fff;--ink:#172132;--muted:#526075;--accent:#315da8;--line:#dce1e9;--radius:14px}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:17px/1.65 'Malgun Gothic','Segoe UI',sans-serif}
 header,main,footer{max-width:1150px;margin:auto;padding:24px}header{padding-top:48px}h1{font-size:clamp(30px,5vw,52px);line-height:1.2;margin:0 0 16px}
@@ -143,7 +143,7 @@ body.picker{background:#f4f6fa;color:#20364c;font:16px/1.65 'Malgun Gothic','Seg
     if(length.value!=='keep')parts.push('분량: '+length.options[length.selectedIndex].text);
     if(mode.value!=='keep')parts.push('보기: '+mode.options[mode.selectedIndex].text);
     result.value='HTML 보고서를 만들어줘. '+parts.join(' / ')+'. 따로 지정하지 않은 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목만 물어봐줘. 원자료와 요청 내용은 앞서 전달한 것을 사용해줘.';
-    if(choice==='template')result.value='HTML 보고서에 내가 첨부할 HTML 양식을 참고해줘. 먼저 양식 파일을 받고 미리보기를 보여줘. 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목은 양식 확인 후에만 물어봐줘.';
+    if(choice==='template')result.value='HTML 보고서에 내가 첨부할 HTML 양식을 참고해줘. '+(parts.length>1?parts.slice(1).join(' / ')+'. ':'')+'먼저 양식 파일을 받고 미리보기를 보여줘. 따로 지정하지 않은 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목은 양식 확인 후에만 물어봐줘.';
     status.textContent='이 선택은 아직 Claude에 전달되지 않았습니다. 아래 문장을 복사해 채팅에 붙여 넣어 주세요.';
   }
   buttons.forEach(button=>button.addEventListener('click',()=>{choice=button.dataset.choice;label=button.dataset.label;update();}));

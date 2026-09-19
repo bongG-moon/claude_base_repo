@@ -45,7 +45,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
             diag = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))['hookDiagnostics']
             self.assertEqual(len(result['hookSpecificOutput']['additionalContext']), diag['UserPromptSubmit']['contextChars'])
             advice = self.hook('PreToolUse', tool_name='Bash', tool_input={'command':'pwd && ls -la test.pptx'})
-            self.assertEqual('deny', advice['hookSpecificOutput']['permissionDecision'])
+            self.assertEqual({}, advice)
             self.assertNotIn('먼저 스킬 목록을 Read', json.dumps(advice, ensure_ascii=False))
             # A delivery is not native Read evidence or model adherence.
             # This separately simulates a genuine body Read receipt.
@@ -175,7 +175,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         first = self.hook("PreToolUse", **execution)
         self.assertEqual('load', runtime['skillExecution']['mode'])
         self.assertEqual('deny', first['hookSpecificOutput']['permissionDecision'])
-        self.assertIn('스킬 목록 확인 1회', first['hookSpecificOutput']['permissionDecisionReason'])
+        self.assertIn('[스킬 확인]', first['hookSpecificOutput']['permissionDecisionReason'])
         self.assertEqual({}, self.hook('PreToolUse', **execution))
         # Even before catalogue receipt, advisory discovery cannot bypass DB policy.
         denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query':'DELETE FROM employees'})
@@ -243,7 +243,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.hook('UserPromptSubmit', prompt='PPT 읽어줘')
         result = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query': 'DELETE FROM employees'})
         self.assertEqual('deny', result['hookSpecificOutput']['permissionDecision'])
-        self.assertNotIn('스킬 목록 확인 1회', result['hookSpecificOutput']['permissionDecisionReason'])
+        self.assertNotIn('[스킬 확인]', result['hookSpecificOutput']['permissionDecisionReason'])
         route = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))['skillWorkflow']
         self.assertNotIn('reviewCheckpoint', route)
 
@@ -258,6 +258,27 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
             'subagent_type': 'company-agent:medium-worker', 'prompt': 'PPT 읽어줘'})
         self.assertNotIn('permissionDecision', result['hookSpecificOutput'])
         self.assertIn('selectedSkill', result['hookSpecificOutput']['updatedInput']['prompt'])
+
+    def test_general_startup_listing_and_write_are_not_preparation_denials(self):
+        self.hook('UserPromptSubmit', prompt='폴더 구조를 확인하고 간단한 설명 파일을 작성해줘')
+        command = 'ls -la "claude-code-starter-main/" 2>/dev/null || ls -la claude-code-starter-main/ 2>/dev/null; pwd'
+        self.assertEqual({}, self.hook('PreToolUse', tool_name='Bash', tool_input={'command': command}))
+        result = self.hook('PreToolUse', tool_name='Write', tool_input={'file_path': str(self.project / 'description.md')})
+        self.assertNotIn('permissionDecision', result.get('hookSpecificOutput', {}))
+        denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query': 'DELETE FROM employees'})
+        self.assertEqual('deny', denied['hookSpecificOutput']['permissionDecision'])
+
+    def test_regex_failure_delivers_bounded_recovery_not_an_encoding_diagnosis(self):
+        self.hook('UserPromptSubmit', prompt='문자열 검색 코드를 실행해줘')
+        failure = {'tool_name': 'Bash', 'tool_input': {'command': 'python search.py'},
+                   'error': 'Traceback (most recent call last):\nre.error: unterminated character set at position 0'}
+        result = self.hook('PostToolUseFailure', **failure)
+        advice = result['hookSpecificOutput']['additionalContext']
+        self.assertIn('Python -X utf8', advice)
+        self.assertIn('단정하지', advice)
+        self.assertNotIn('permissionDecision', result['hookSpecificOutput'])
+        self.assertNotIn('systemMessage', result)
+        self.assertEqual({}, self.hook('PostToolUseFailure', **failure))
 
 
 if __name__ == "__main__":

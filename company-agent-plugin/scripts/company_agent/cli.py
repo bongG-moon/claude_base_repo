@@ -757,9 +757,18 @@ def build_parser() -> argparse.ArgumentParser:
     _add_state_argument(doctor)
     _add_base_argument(doctor)
     doctor.set_defaults(func=cmd_doctor)
+    workspace = subparsers.add_parser("workspace", help="On-demand local UI services; no model calls.")
+    workspace.add_argument("--project", required=True)
+    workspace.set_defaults(func=cmd_workspace)
     from .business import register as register_business
     register_business(subparsers)
     return parser
+
+
+def cmd_workspace(args: argparse.Namespace) -> int:
+    # UI services must not add imports or work to the ordinary hook hot path.
+    from .workspace_api import command
+    return command(args)
 
 
 def main(argv: list[str] | None = None) -> int:

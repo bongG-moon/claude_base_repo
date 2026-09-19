@@ -30,6 +30,14 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle ($manifest.runtime.command -ceq 'python') 'Default Python command is not recorded.'
     foreach ($relative in @(
         'payload/core/plugin/THIRD_PARTY_NOTICES.md',
+        'payload/core/plugin/resources/first-work.html',
+        'payload/core/plugin/resources/onboarding-course.json',
+        'payload/core/plugin/scripts/company_agent/workspace_api.py',
+        'payload/core/plugin/scripts/company_agent/company_policy.py',
+        'payload/core/plugin/scripts/company_agent/usage_diagnostics.py',
+        'payload/core/plugin/scripts/company_agent/diagnostic_report.py',
+        'payload/config/managed.json',
+        'docs/COMPANY_PERSONAL_WORKFLOW.md',
         'payload/core/plugin/scripts/company_agent/skill_catalog.py',
         'payload/core/plugin/scripts/company_agent/skill_discovery.py',
         'docs/UPDATE_1.4.7.md',
@@ -40,6 +48,12 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.4.12.md',
         'docs/UPDATE_1.4.13.md',
         'docs/UPDATE_1.4.14.md',
+        'docs/UPDATE_1.4.15.md',
+        'docs/LOCAL_WORKSPACE.md',
+        'docs/VALIDATION_AUDIT_FIXES_2026-09-19.md',
+        'docs/VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md',
+        'payload/core/plugin/scripts/company_agent/skill_decision.py',
+        'payload/core/plugin/scripts/company_agent/workflow_evidence.py',
         'docs/OFFICE_READ_PROGRESS_2026-09-17.md',
         'payload/core/plugin/scripts/company_agent/office_progress.py',
         'docs/SKILL_LIST_REVIEW_2026-09-17.md',
@@ -149,6 +163,9 @@ function Assert-EmployeeBundle {
     }
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Install-CompanyAgent.cmd') -PathType Leaf) 'Root installer is missing.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Diagnose-CompanyAgent.cmd') -PathType Leaf) 'Root diagnostic launcher is missing.'
+    Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -PathType Leaf) 'First-work guide is missing.'
+    $standards = (Read-CompanyAgentJson -Path (Join-Path $ExpandedPath 'payload\config\managed.json')).workStandards
+    Assert-OfflineBundle ($standards.revision -eq '1' -and @($standards.rules).Count -ge 2) 'Default company standards did not reach the bundle.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'INSTALL_WITH_CLAUDE.md') -PathType Leaf) 'Installation guide is missing.'
     foreach ($relative in @('docs\SELF_LEARNING.md', 'docs\USER_GUIDE.md', 'docs\BUSINESS_PILOT_GUIDE.md',
         'payload\core\plugin\scripts\company_agent\learning.py',
@@ -187,7 +204,7 @@ $testRoot = Join-Path $temporaryBase ('CompanyAgent-OfflineBundleTest-' + [guid]
 try {
     New-CompanyAgentDirectory -Path $testRoot
     $sourceRoot = Join-Path $testRoot 'source'
-    foreach ($directory in @('deploy', 'company-agent-plugin', 'corporate-knowledge', 'docs')) {
+    foreach ($directory in @('deploy', 'company-agent-plugin', 'corporate-knowledge', 'docs', 'config')) {
         Copy-CompanyAgentDirectoryContents -Source (Join-Path $repositoryRoot $directory) -Destination (Join-Path $sourceRoot $directory)
     }
     foreach ($name in @('Install-CompanyAgent.cmd', 'Diagnose-CompanyAgent.cmd', 'INSTALL_WITH_CLAUDE.md')) {

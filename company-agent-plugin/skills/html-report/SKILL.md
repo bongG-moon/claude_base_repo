@@ -67,7 +67,12 @@ and ask which colors/layout to retain rather than claiming faithful reproduction
 Show the preview link and explain in Korean what can be retained and what cannot.
 Ask `이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부` before format.
 Use the structure summary to plan cover/table/summary sections; it is not a DOM copy.
-After acceptance, merge returned `htmlTemplate:{path,sha256}` into the choices/job;
+Merge returned `htmlTemplate:{path,sha256}` and `templateReview` into choices/job.
+The template branch is attach -> template_preview -> template_confirm -> format -> ready.
+Keep `templateReview.confirmed:false` until the user actually accepts the preview;
+then set only `confirmed:true`. Opening a file is not acceptance. Preserve the
+helper's preview path and hashes; the factory checks both source and preview.
+After acceptance,
 keep an explicit base style if provided, otherwise minimalism. The hash comes from
 the helper, never ask the user to type it. The factory rechecks the source hash.
 This is a reference-based rebuild, not pixel-identical cloning. Report that limit.
@@ -79,7 +84,7 @@ When command execution is within the user's request, before asking choices run `
 --state-root "<stateRoot>"` through the exact installed cliCommand. Keep this small
 ordinary-input JSON at `<stateRoot>/tmp/html-choices-<short-id>.json` (subject to
 normal file permissions), not durable memory. This file contains only designMenu,
-style, length, mode and optional htmlTemplate; keep report content in a separate
+style, length, mode and optional htmlTemplate/templateReview; keep report content in a separate
 job file. Choice preparation is not a report change or a code test failure.
 Include only confirmed style/length/mode; when 추가 디자인 is requested, set
 `designMenu:"additional"` and omit style until a specific design is chosen.

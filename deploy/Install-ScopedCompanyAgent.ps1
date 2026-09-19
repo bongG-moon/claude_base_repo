@@ -635,6 +635,8 @@ try {
     else { Write-Host '현재 Windows 계정의 Claude Code 작업에서 사용할 수 있습니다.' }
     Write-Host '모델 설정은 기존 값을 재사용하며, MCP는 별도로 연결할 수 있습니다.'
     Write-Host "개인 자료 저장 위치: $UserStateRoot"
+    $firstWorkGuide = Join-Path $releasePlugin 'resources\first-work.html'
+    if (Test-Path -LiteralPath $firstWorkGuide -PathType Leaf) { Write-Host "첫 업무 시작 안내 (선택): $firstWorkGuide" }
     Write-Host "백업 위치: $backupPath"
     if ($null -ne $harnessTransaction) { Write-Host '기존 하네스 복원 자료: 백업 폴더의 previous-harness (현재 Windows 계정으로 복원)' }
     foreach ($note in @($existingHarness.inheritedNotes)) { Write-Host ([string]$note) }

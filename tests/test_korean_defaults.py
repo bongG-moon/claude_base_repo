@@ -95,7 +95,7 @@ class KoreanDefaultTests(unittest.TestCase):
         result = factory.apply_project_harness(self.project, self.spec)
         self.assertTrue(result["ok"])
         manifest = json.loads((self.project / factory.MANIFEST).read_text(encoding="utf-8"))
-        self.assertEqual(2, manifest["generatorVersion"])
+        self.assertEqual(3, manifest["generatorVersion"])
         for relative in manifest["files"]:
             self.assertIn("기본 한국어", (self.project / relative).read_text(encoding="utf-8"))
         self.assertTrue(factory.validate_project_harness(self.project)["ok"])

@@ -42,8 +42,11 @@ def build(output):
     (output / 'picker.html').write_text(picker_html(), encoding='utf-8')
     reference = output / 'reference.html'
     reference.write_text('<!doctype html><html><head><style>:root{--paper:#ffeedd;--accent:#763314;--section-radius:9px}</style></head><body><h1>검토용 양식</h1></body></html>', encoding='utf-8')
-    selected = inspect_template(reference)['htmlTemplate']
-    result = create_html({**spec, 'style': 'glassmorphism', 'htmlTemplate': selected}, output / 'reference-report.html', require_choices=True)
+    selected = inspect_template(reference, output/'reference-preview.html')
+    # Synthetic test approval, not an assertion that a real user viewed a file.
+    selected['templateReview']['confirmed'] = True
+    result = create_html({**spec, 'style': 'glassmorphism', 'htmlTemplate': selected['htmlTemplate'],
+                          'templateReview':selected['templateReview']}, output / 'reference-report.html', require_choices=True)
     if not result['ok']:
         raise RuntimeError(result)
     (output / 'fixtures.json').write_text(json.dumps({'styles': [x[0] for x in STYLES], 'generated': len(results)}, indent=2), encoding='utf-8')

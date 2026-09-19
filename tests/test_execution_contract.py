@@ -11,6 +11,7 @@ SCRIPTS = Path(__file__).resolve().parents[1] / "company-agent-plugin" / "script
 sys.path.insert(0, str(SCRIPTS))
 
 from company_agent.execution_contract import classify_command, safe_permission, _powershell
+from company_agent.state import begin_turn, record_activity, stop_decision
 
 
 class ExecutionContractTests(unittest.TestCase):
@@ -37,6 +38,21 @@ class ExecutionContractTests(unittest.TestCase):
         ):
             with self.subTest(arguments=arguments):
                 self.assertEqual("read_only", classify_command(f"{self.cli} {arguments}"))
+
+    def test_listing_stderr_to_null_does_not_create_mutation_or_auto_permission(self):
+        command = 'ls -la "claude-code-starter-main/" 2>/dev/null || ls -la claude-code-starter-main/ 2>/dev/null; pwd'
+        self.assertEqual('read_only', classify_command(command))
+        self.assertEqual('unknown', classify_command(command, tool='PowerShell'))
+        self.assertIsNone(self.permission(command))
+        begin_turn('listing', 'SMALL', False, [], self.root)
+        state = record_activity({'session_id': 'listing', 'hook_event_name': 'PostToolUse',
+                                'tool_name': 'Bash', 'tool_input': {'command': command},
+                                'tool_response': {'stdout': 'folder'}}, self.root)
+        self.assertEqual(0, state['mutationCount'])
+        self.assertEqual({}, stop_decision({'session_id': 'listing'}, self.root))
+        for cmd in ('ls > report.txt', 'ls; python reader.py', 'ls 2> error.txt',
+                    'ls | python read.py', 'ls &> report.txt', 'ls; rm file'):
+            self.assertEqual('unknown', classify_command(cmd), cmd)
 
     def test_handoff_read_is_not_mutation_or_permission_grant(self):
         args = f'handoff read --id {"a" * 32} --project "{self.root}" --state-root "{self.root}"'

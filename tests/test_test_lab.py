@@ -177,6 +177,16 @@ class TestLab(unittest.TestCase):
         self.assertIn("미실행", source)
         self.assertIn("connect-src 'none'", source)
 
+    def test_first_work_is_optional_offline_and_links_to_existing_lab(self):
+        source = (REPO / 'company-agent-plugin/resources/first-work.html').read_text(encoding='utf-8')
+        self.assertEqual(7, source.count('data-copy='))
+        self.assertIn("connect-src 'none'", source)
+        for forbidden in ('https://', 'fetch(', 'localStorage', 'XMLHttpRequest'):
+            self.assertNotIn(forbidden, source)
+        self.assertIn('복사 버튼은 업무를 실행하거나 개인 정보를 저장하지 않습니다', source)
+        self.assertIn('동의할 때만', source)
+        self.assertIn('00_FIRST_WORK.html', (builder.TEMPLATES / 'dashboard.html').read_text(encoding='utf-8'))
+
 
 if __name__ == "__main__":
     unittest.main()

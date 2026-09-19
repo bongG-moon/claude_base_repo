@@ -15,6 +15,7 @@ import re
 from typing import Any
 
 from .paths import atomic_write_json
+from .execution_contract import discovery_command as _discovery_command
 from .skill_catalog import MAX_CATALOG_BYTES
 from .skill_registry import MAX_SKILL_BYTES, _canonical, _no_reparse, _read, _resolution, _frontmatter_field
 from .state import _locked_session, _stale_native_prompt, load_session, safe_session_id
@@ -65,6 +66,7 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
             route.update(turn=turn, selected=None, fallback=None, turnChoices={}, taskCandidates=[], executionPlan={})
             route['loadObservation'] = {'status': 'not-observed', 'turn': turn}
             route.pop('reviewCheckpoint', None)
+            route.pop('businessObservation', None)
         if prompt:
             # Exact native slash invocations only, not a general opt-out guess.
             route["explicit"] = re.findall(r"(?<!\S)/([A-Za-z0-9][A-Za-z0-9:_-]{0,159})(?=\s|$)", prompt)[:8]
@@ -338,8 +340,15 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
         return {}
     if not any(not x.get('explicitOnly') or x.get('invocation') in route.get('explicit', []) for x in data['skills']):
         return {}
-    reason = '[스킬 목록 확인 1회] 아직 실행하지 않았습니다. 권한 오류가 아닙니다. '
     plan = route.get('executionPlan', {})
+    if plan.get('mode') != 'load':
+        # A shortlist miss is not a missing prerequisite. The full index is
+        # already supplied at prompt time; do not require a redundant Read or
+        # force an unrelated Skill just to unlock Write/Bash.
+        return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'additionalContext':
+            '제공된 스킬 목록의 용도를 비교해 관련 본문만 불러오세요. 없으면 일반 실행하고, 같은 역할이 겹치면 사용자에게 물으세요. '
+            '목록이 보이지 않을 때만 skillSelection.catalog.path를 Read합니다. 이 안내는 실행 차단이나 권한 오류가 아닙니다.'}}
+    reason = '[스킬 확인] 아직 실행하지 않았습니다. 권한 오류가 아닙니다. '
     item = next((x for x in data['skills'] if x['id'] == plan.get('id')), None)
     if item and _allowed(item, data, route):
         try:
@@ -350,7 +359,7 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
         action = json.dumps(load_target(item, data['skills']), ensure_ascii=False, separators=(',', ':'))
         reason += f'요청에 맞으면 {action}로 본문을 불러오세요. 아니면 제공된 스킬 목록을 확인하세요.'
     else:
-        reason += f"Read({route['catalog']})로 용도를 확인하세요."
+        return {}  # Never force an unavailable/ambiguous load target.
     reason += ' 관련 스킬이 없으면 일반 실행하세요.'
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                                   'permissionDecisionReason': reason}}
@@ -435,6 +444,10 @@ def preflight(root: Path, project: Path, payload: dict) -> dict:
     session_id = str(payload.get('session_id') or '')
     if not session_id:
         return {}
+    inputs = payload.get('tool_input') or {}
+    if (payload.get('tool_name') in {'Bash', 'PowerShell'} and isinstance(inputs, dict)
+            and _discovery_command(str(inputs.get('command') or inputs.get('cmd') or ''), tool=payload['tool_name'])):
+        return {}  # Neither consume the correction nor claim a Skill was read.
     existing = load_session(session_id, root)
     route = existing.get('skillWorkflow', {})
     if route.get('reminded') == [existing.get('turnId', ''), route.get('revision', '')]:
@@ -459,5 +472,7 @@ def preflight(root: Path, project: Path, payload: dict) -> dict:
         route['reminded'] = marker
         if advice.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny':
             route['reviewCheckpoint'] = {'turn': marker[0], 'revision': marker[1], 'status': 'redirected'}
+        else:
+            route['reviewCheckpoint'] = {'turn': marker[0], 'revision': marker[1], 'status': 'advised'}
         atomic_write_json(path, state)
     return advice

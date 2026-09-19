@@ -26,8 +26,8 @@ class DocumentReadingGuidanceTests(unittest.TestCase):
         for old in ('No fallback after denial', 'Never suggest an unprotected copy',
                     'no alternate capture/OCR', '보호 해제 사본·캡처·다른 추출 경로를 제안하지 마세요'):
             self.assertNotIn(old, text)
-        self.assertIn('DB SELECT only', text)
-        self.assertIn('Outlook authenticated own account only', text)
+        self.assertIn('DB SELECT 전용', text)
+        self.assertIn('Outlook 인증된 본인 계정만 허용합니다', text)
 
     def test_error_guidance_retains_partial_result_reporting(self):
         text = protection_notice({'tool_response': {'code':'protected_input'}})

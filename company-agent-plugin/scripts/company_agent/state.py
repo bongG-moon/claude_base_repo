@@ -654,10 +654,10 @@ def _is_ppt_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> 
 def _is_html_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
     """Disposable design choices only; not report jobs, artifacts or permission."""
     import json
-    if tool_name.casefold() != "write":
+    if tool_name.casefold() not in {"write", "edit"}:
         return False
     value, content = tool_input.get("file_path"), tool_input.get("content")
-    if not isinstance(value, str) or not isinstance(content, str) or len(content.encode("utf-8")) > 8192:
+    if not isinstance(value, str):
         return False
     path = Path(value)
     if (path.parent != root.absolute() / "tmp"
@@ -665,26 +665,19 @@ def _is_html_choices_spec_write(tool_name: str, tool_input: dict, root: Path) ->
             or not _safe_local_path(path, root, allow_missing_leaf=True)):
         return False
     try:
-        spec = json.loads(content)
-        from .report_styles import STYLES
-        enums = {"designMenu": {"additional", "template"},
-                 "style": {item[0] for item in STYLES} | {"minimal", "bento"},
-                 "length": {"short", "standard", "detailed"},
-                 "mode": {"scroll", "slides", "both"}}
-        if not isinstance(spec, dict) or set(spec) - (set(enums) | {"htmlTemplate"}):
+        if tool_name.casefold() == 'edit':
+            # PostToolUse only: validate the complete resulting metadata, not
+            # an arbitrary replacement fragment. Never exempt jobs or reports.
+            with path.open('rb') as stream:
+                content = stream.read(8193).decode('utf-8-sig')
+        if not isinstance(content, str) or len(content.encode('utf-8')) > 8192:
             return False
-        for key, choices in enums.items():
-            if key in spec and (not isinstance(spec[key], str) or spec[key] not in choices):
-                return False
-        if "htmlTemplate" in spec:
-            template = spec["htmlTemplate"]
-            if (not isinstance(template, dict) or set(template) != {"path", "sha256"}
-                    or not isinstance(template["path"], str) or len(template["path"]) > 2048
-                    or not Path(template["path"]).is_absolute()
-                    or Path(template["path"]).suffix.casefold() not in {".html", ".htm"}
-                    or not isinstance(template["sha256"], str)
-                    or not re.fullmatch(r"[a-fA-F0-9]{64}", template["sha256"])):
-                return False
+        spec = json.loads(content)
+        from .business_artifacts import html_choice_selection, ArtifactError
+        try:
+            html_choice_selection(spec, metadata_only=True)
+        except ArtifactError:
+            return False
         return True
     except (ValueError, TypeError, OSError):
         return False
@@ -824,6 +817,11 @@ def record_activity(
     with _locked_session(session_id, root) as (state, path):
         if _stale_native_prompt(payload, state):
             return state
+        from .workflow_evidence import observe_business_result
+        try:
+            observe_business_result(state, payload, not_performed=not_performed)
+        except (OSError, ValueError, TypeError, KeyError, RecursionError):
+            pass  # Optional diagnostics cannot block work or alter permissions.
         from .background_work import observe as observe_background
         observe_background(state, payload, failed)
         if not_performed:
@@ -847,12 +845,12 @@ def record_activity(
         bookkeeping = bookkeeping or _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
         bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
         bookkeeping = bookkeeping or _is_office_read_spec_write(tool_name, tool_input, root or user_state_root())
-        bookkeeping = bookkeeping or _is_html_choices_spec_write(tool_name, tool_input, root or user_state_root())
+        bookkeeping = bookkeeping or (not failed and _is_html_choices_spec_write(tool_name, tool_input, root or user_state_root()))
         bookkeeping = bookkeeping or _is_ppt_choices_spec_write(tool_name, tool_input, root or user_state_root())
         if tool_name.casefold().strip() in {"bash", "powershell"}:
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
             from .execution_contract import classify_command, internal_plan_command
-            classification = classify_command(command)
+            classification = classify_command(command, tool=tool_name)
             if classification == "read_only":
                 mutated = False
             if internal_plan_command(command, root or user_state_root()):

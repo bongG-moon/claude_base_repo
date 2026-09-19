@@ -99,7 +99,7 @@ class CompletionFeedbackTests(unittest.TestCase):
         for marker in ("cliCommand", "company_agent_session_id", "session verify", "learning review",
                        "unavailable", "partial", "2,000", "not conversation", "transcripts"):
             self.assertIn(marker, body)
-        self.assertIn("Read completionGuide", context["instructions"])
+        self.assertRegex(context["instructions"], r"Read completionGuide|변경한 업무만 completionGuide를 읽고")
         self.assertNotIn(body, context["instructions"])
 
 

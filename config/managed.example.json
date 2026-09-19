@@ -4,6 +4,14 @@
   "knowledgePacks": [
     "corporate-base"
   ],
+  "workStandards": {
+    "revision": "1",
+    "rules": [
+      {"id": "verified-results", "level": "required", "workflows": ["*"], "text": "설치·스킬 로드와 실제 업무 성공을 구분하고, 확인하지 않은 내용이나 결과를 성공으로 보고하지 않습니다."},
+      {"id": "personal-preservation", "level": "required", "workflows": ["*"], "text": "회사 업데이트는 개인 기억·지식·스킬과 기존 모델·MCP 설정을 임의로 덮어쓰지 않습니다."},
+      {"id": "report-style", "level": "default", "workflows": ["html-report", "presentation"], "text": "별도 요청이 없으면 쉬운 한국어 업무 보고로 작성합니다. 표현·디자인은 사용자가 요청한 범위에서 조정합니다."}
+    ]
+  },
   "policy": {
     "database": "select-only",
     "outlookSender": "initialized-user-only",

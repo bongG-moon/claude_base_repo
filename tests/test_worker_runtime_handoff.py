@@ -68,6 +68,19 @@ class WorkerRuntimeHandoffTests(unittest.TestCase):
         entry = (PLUGIN / "scripts" / "native_entry.py").read_text(encoding="utf-8")
         self.assertIn('result = worker_runtime_input(plugin, cwd, payload)', entry)
 
+    def test_company_policy_reaches_worker_without_changing_permissions_or_model(self):
+        config = Path(self.temp.name) / '회사 기준.json'
+        config.write_bytes((ROOT / 'config/managed.example.json').read_bytes())
+        with patch.dict(os.environ, {'COMPANY_AGENT_MANAGED_CONFIG': str(config)}):
+            result = self.call({'subagent_type':'company-agent:medium-worker', 'prompt':'work', 'model':'sonnet'})['hookSpecificOutput']
+        self.assertNotIn('permissionDecision', result)
+        self.assertEqual('sonnet', result['updatedInput']['model'])
+        text = result['updatedInput']['prompt']
+        self.assertIn('personal-preservation', text)
+        self.assertIn('companyPolicy', text)
+        self.assertIn('required', text)
+        self.assertNotIn('report-style', text)  # No report workflow was selected.
+
     def test_broken_installation_does_not_block_unrelated_agents(self):
         import native_entry
         for name in ("general-purpose", "other:medium-worker"):

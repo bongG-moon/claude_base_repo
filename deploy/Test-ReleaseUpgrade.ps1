@@ -86,7 +86,17 @@ try {
     $entries = @((Read-CompanyAgentJson -Path (Join-Path $config 'plugins\installed_plugins.json')).plugins.'company-agent@company-agent-local')
     $current = @($entries | Where-Object { $_.scope -eq 'user' -and $_.version -eq $newVersion })
     Assert-ReleaseUpgrade ($current.Count -eq 1) 'Native Claude registry did not select the new version'
-    foreach ($relative in @('scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py', 'scripts\company_agent\office_progress.py', 'scripts\company_agent\office_reader.py', 'scripts\company_agent\business_safety.py', 'scripts\Invoke-CompanyAgent.ps1', 'scripts\Confirm-BusinessAction.ps1', 'skills\office-reader\SKILL.md')) {
+    foreach ($relative in @(
+        'scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py',
+        'scripts\company_agent\office_progress.py', 'scripts\company_agent\office_reader.py',
+        'scripts\company_agent\business_safety.py', 'scripts\company_agent\workspace_api.py',
+        'scripts\company_agent\company_policy.py', 'scripts\company_agent\skill_decision.py',
+        'scripts\company_agent\workflow_evidence.py', 'scripts\company_agent\state.py',
+        'scripts\company_agent\html_reference.py', 'scripts\company_agent\knowledge.py',
+        'scripts\Invoke-CompanyAgent.ps1', 'scripts\Confirm-BusinessAction.ps1',
+        'skills\office-reader\SKILL.md', 'skills\html-report\SKILL.md',
+        'resources\first-work.html', 'resources\onboarding-course.json'
+    )) {
         $cachedModule = Join-Path $current[0].installPath $relative
         $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
         Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedModule -Algorithm SHA256).Hash) "Updated file was not installed intact: $relative"

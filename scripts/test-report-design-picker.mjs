@@ -36,6 +36,8 @@ for(const choice of [...new Set(buttons.map(b=>b.dataset.choice))]){
 elements['length-choice'].selectedIndex=3;elements['length-choice'].value='detailed';elements['length-choice'].handlers.change();
 elements['mode-choice'].selectedIndex=2;elements['mode-choice'].value='slides';elements['mode-choice'].handlers.change();
 assert.match(elements['choice-result'].value,/상세.*페이지 넘김/);checks++;
+buttons.find(b=>b.dataset.choice==='template').handlers.click();
+assert.match(elements['choice-result'].value,/HTML 양식.*분량: 상세.*보기: 페이지 넘김/);checks++;
 elements['length-choice'].value='keep';elements['length-choice'].selectedIndex=0;elements['length-choice'].handlers.change();
 assert.doesNotMatch(elements['choice-result'].value,/분량:/);assert.match(elements['choice-result'].value,/보기: 페이지 넘김/);checks++;
 await elements['copy-choice'].handlers.click();assert.equal(copied,elements['choice-result'].value);checks++;

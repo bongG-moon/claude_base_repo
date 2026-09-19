@@ -13,6 +13,7 @@ import importlib.util
 import json
 import math
 import os
+import re
 from io import BytesIO
 from pathlib import Path
 import shutil
@@ -231,18 +232,39 @@ def _html_table(headers: list[str], rows: list[list[Any]], caption: str = "") ->
             ''.join('<tr>' + ''.join(f'<td>{esc(v)}</td>' for v in row) + '</tr>' for row in rows) + '</tbody></table></div>')
 
 
+def html_choice_selection(spec: dict[str, Any], *, metadata_only: bool = False) -> dict[str, Any]:
+    """Shared choice contract; metadata validation never opens source assets."""
+    if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional', 'template'):
+        raise ArtifactError('invalid_choice', '디자인 선택 단계의 형식을 확인해 주세요.')
+    if metadata_only and set(spec) - {'style', 'length', 'mode', 'designMenu', 'htmlTemplate', 'templateReview'}:
+        raise ArtifactError('invalid_choice', '선택 파일에는 디자인·분량·보기 선택만 넣어 주세요.')
+    fields = {key: spec[key] for key in ('style','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus') if key in spec}
+    # Also used by the report generator: aliases and numbered styles stay identical.
+    normalized = _normalize({**fields, 'sections': [{}]})
+    selection = {key: normalized[key] for key in ('style','length','mode')}
+    if 'htmlTemplate' in spec:
+        template = spec['htmlTemplate']
+        if (not isinstance(template, dict) or set(template) != {'path', 'sha256'}
+                or not isinstance(template['path'], str) or len(template['path']) > 2048
+                or not Path(template['path']).is_absolute()
+                or Path(template['path']).suffix.casefold() not in {'.html', '.htm'}
+                or not isinstance(template['sha256'], str)
+                or not re.fullmatch(r'[a-fA-F0-9]{64}', template['sha256'])):
+            raise ArtifactError('invalid_choice', '분석한 HTML 양식의 경로와 해시를 사용해 주세요.')
+        selection['htmlTemplate'] = dict(template)
+    if 'templateReview' in spec:
+        from .html_reference import validate_review_metadata
+        validate_review_metadata(spec['templateReview'])
+        selection['templateReview'] = dict(spec['templateReview'])
+    return selection
+
+
 def html_choices(spec: dict[str, Any]) -> dict[str, Any]:
     """Read-only next-question contract, without reading report source assets."""
     try:
-        if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional', 'template'):
-            raise ArtifactError('invalid_choice', '디자인 선택 단계의 형식을 확인해 주세요.')
-        fields = {key: spec[key] for key in ('style','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus') if key in spec}
-        normalized = _normalize({**fields, 'sections': [{}]})
+        selection = html_choice_selection(spec)
         from .report_styles import choices
         pending = choices(spec)
-        selection = {key: normalized[key] for key in ('style','length','mode')}
-        if isinstance(spec.get('htmlTemplate'), dict):
-            selection['htmlTemplate'] = {key: spec['htmlTemplate'].get(key) for key in ('path','sha256')}
         return pending or {'ok': True, 'status': 'choices_ready', 'stage': 'ready',
                            'selection': selection,
                            'message': '디자인·분량·보기 방식이 정해졌습니다. 같은 조건을 다시 묻지 않고 제작합니다.'}
@@ -282,7 +304,7 @@ def html_designs(output: Path | None = None, *, open_preview: bool = False) -> d
         return _failure(exc)
 
 
-def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = False) -> dict[str, Any]:
+def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = False, template_preview: bool = False) -> dict[str, Any]:
     try:
         output = _target(output, ".html")
         data = _normalize(spec)
@@ -336,6 +358,8 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
         except FactError as exc:
             raise ArtifactError("numeric_validation_failed", str(exc)) from None
         document = render(data, _CSS, _JS, _html_table)
+        if template_preview and reference:
+            document = document.replace('<head>', '<head><meta name="company-agent-template-sha256" content="'+reference['sha256']+'">', 1)
         with tempfile.TemporaryDirectory(prefix="company-report-") as temp:
             draft = Path(temp) / "report.html"
             draft.write_text(document, encoding="utf-8")

@@ -1,5 +1,5 @@
 ﻿[CmdletBinding()]
-param([string] $ProjectRoot, [string] $Session, [switch] $FunctionsOnly)
+param([string] $ProjectRoot, [string] $Session, [string] $ReportPath, [string[]] $UsageLog, [string] $OfficeResult, [switch] $FunctionsOnly)
 $ErrorActionPreference = 'Stop'
 function Get-DiagnosticValue {
     param($Object, [string] $Name)
@@ -114,6 +114,9 @@ foreach ($candidate in $candidates) {
     if ($LASTEXITCODE -ne 0) { continue }
     $options = @('--project-root', $ProjectRoot)
     if ($Session) { $options += @('--session', $Session) }
+    if ($ReportPath) { $options += @('--report', $ReportPath) }
+    foreach ($logPath in $UsageLog) { $options += @('--usage-log', $logPath) }
+    if ($OfficeResult) { $options += @('--office-result', $OfficeResult) }
     & $app.Source @prefix -X utf8 -B $reader @options
     exit $LASTEXITCODE
 }

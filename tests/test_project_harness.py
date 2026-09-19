@@ -195,6 +195,27 @@ class ProjectHarnessTests(unittest.TestCase):
             factory.plan_project_harness(self.project, self.spec)
         self.assertFalse(factory.validate_project_harness(self.project)["ok"])
 
+    def test_v2_manifest_remains_valid_and_upgrades_without_losing_user_files(self) -> None:
+        spec = factory._spec(self.spec)
+        files = factory._render(spec, 2)
+        for name, body in files.items():
+            target = self.project / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(body.encode('utf-8'))
+        manifest = {'schemaVersion':1, 'generatorVersion':2, 'spec':spec,
+                    'files':{name:factory._digest(body.encode('utf-8')) for name, body in files.items()}}
+        (self.project / factory.MANIFEST).parent.mkdir(parents=True, exist_ok=True)
+        (self.project / factory.MANIFEST).write_text(json.dumps(manifest), encoding='utf-8')
+        personal = self.project / 'MY_NOTES.md'
+        personal.write_text('개인 자료 그대로', encoding='utf-8')
+        self.assertTrue(factory.validate_project_harness(self.project)['ok'])
+        self.assertTrue(factory.apply_project_harness(self.project, self.spec)['ok'])
+        self.assertEqual(3, json.loads((self.project / factory.MANIFEST).read_text(encoding='utf-8'))['generatorVersion'])
+        self.assertEqual('개인 자료 그대로', personal.read_text(encoding='utf-8'))
+        contract = (self.project / '.claude/skills/company-project-weekly/references/contract.md').read_text(encoding='utf-8')
+        self.assertIn('별도 팀팩이 아닙니다', contract)
+        self.assertTrue(factory.validate_project_harness(self.project)['ok'])
+
     def test_lock_prevents_concurrent_apply(self) -> None:
         lock = self.project / factory.LOCK
         lock.parent.mkdir(parents=True)

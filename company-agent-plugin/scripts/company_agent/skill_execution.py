@@ -12,6 +12,7 @@ from pathlib import Path
 from .frontmatter import parse_frontmatter_text
 from .paths import atomic_write_json
 from .skill_task_context import _features
+from .skill_decision import decide_preparation
 from .skill_workflow import _allowed, _current, _snapshot
 from .state import _locked_session, load_session
 
@@ -89,9 +90,8 @@ def routing_prompt(root: Path, project: Path, session: str, prompt: str) -> tupl
 def prepare_execution(runtime: dict) -> tuple[dict, str]:
     """Suggest an existing load target; never equate delivery with selection."""
     hints = runtime.get('taskSkills', {})
-    groups = hints.get('groups', [])
     selection = runtime.get('skillSelection', {})
-    if (hints.get('status') in {'incomplete', 'check-catalog'} or runtime.get('contextStatus')
+    if (not isinstance(hints, dict) or hints.get('status') in ('incomplete', 'check-catalog') or runtime.get('contextStatus')
             or selection.get('status') != 'ready' or selection.get('catalog', {}).get('status') != 'ready'):
         return {'mode': 'inspect', 'reason': 'catalog-not-complete'}, ''
     workflow = runtime.get('skillWorkflow', {})
@@ -106,25 +106,14 @@ def prepare_execution(runtime: dict) -> tuple[dict, str]:
         data = _snapshot(root, project, route)
     except (OSError, ValueError, TypeError, KeyError):
         return {'mode': 'inspect', 'reason': 'catalog-unavailable'}, ''
-    eligible = [x for x in data['skills'] if not x.get('explicitOnly')
-                or x.get('invocation') in route.get('explicit', [])]
-    if not eligible:
-        return {'mode': 'general', 'reason': 'no-eligible-catalog-skills'}, ''
-    if not groups:
-        return {'mode': 'review', 'reason': 'shortlist-miss-not-skill-absence',
-                'catalogReviewed': bool(route.get('indexRead'))}, ''
-    if hints.get('status') == 'needs-choice':
-        return {'mode': 'choose', 'reason': 'overlap-or-stale-preference'}, ''
-    if len(groups) != 1 or hints.get('matchingGroups') != 1 or hints.get('moreInCatalog'):
-        return {'mode': 'select', 'reason': 'compare-relevant-workflows'}, ''
-    group = groups[0]
-    if group.get('resolution') not in {'available', 'selected', 'explicit'} or len(group.get('candidates', [])) != 1:
-        return {'mode': 'choose', 'reason': 'unresolved-choice'}, ''
-    candidate = group['candidates'][0]
-    result = {key: candidate.get(key, '') for key in ('id', 'name', 'source', 'path', 'invocation')}
-    result.update(mode='load', load=candidate.get('load', {}))
+    decision = decide_preparation(hints, data['skills'], route.get('explicit', []))
+    result = decision.plan()
+    if decision.mode != 'load':
+        if decision.mode == 'review':
+            result['catalogReviewed'] = bool(route.get('indexRead'))
+        return result, ''
     try:
-        item = next(x for x in data['skills'] if x['id'] == candidate['id'])
+        item = next(x for x in data['skills'] if x['id'] == decision.candidate_id)
         if not _allowed(item, data, route):
             return {'mode': 'choose', 'reason': 'preference-changed'}, ''
         raw = _current(item, route)

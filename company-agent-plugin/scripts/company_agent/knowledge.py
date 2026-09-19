@@ -105,10 +105,11 @@ def discover_documents(root: Path | None) -> tuple[list[MarkdownDocument], list[
         if _ignored(path, root):
             continue
         try:
-            head = path.read_text(encoding="utf-8-sig")[:4]
-            if not head.startswith("---"):
+            raw = path.read_text(encoding="utf-8-sig")
+            if not raw.startswith("---"):
                 continue
-            documents.append(load_markdown(path))
+            metadata, body = parse_frontmatter_text(raw, str(path))
+            documents.append(MarkdownDocument(path=path, metadata=metadata, body=body, raw=raw))
         except (OSError, UnicodeError, ValueError) as exc:
             issues.append(KnowledgeIssue("error", "invalid_markdown", str(exc), str(path)))
     return documents, issues
@@ -653,9 +654,12 @@ def reconcile_overlays(state_root: Path, base_root: Path, apply_safe: bool = Fal
             }
             report["conflicts"].append(conflict)
             atomic_write_json(layout["conflicts"] / f"{_slug(str(metadata.get('id')))}.json", conflict)
-    atomic_write_json(layout["conflicts"] / "report.json", report)
     if apply_safe:
-        build_index(base_root, layout["knowledge"], layout["index"])
+        # This reconciliation owns the rebuild. Callers consume its diagnostics
+        # instead of immediately rebuilding the same index a second time.
+        _, issues = build_index(base_root, layout["knowledge"], layout["index"])
+        report['indexIssues'] = [asdict(issue) for issue in issues]
+    atomic_write_json(layout["conflicts"] / "report.json", report)
     return report
 
 

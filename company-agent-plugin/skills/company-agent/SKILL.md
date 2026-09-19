@@ -4,14 +4,15 @@ company-agent-role: support
 description: company_agent_route가 있는 업무를 조율합니다. SMALL·MEDIUM·LARGE 작업자와 회사 지식을 활용하고 결과를 확인하며 쉬운 한국어 선택지를 안내합니다.
 ---
 
+회사/개인 두 영역으로 관리합니다. 부서 기준은 회사 기준에 포함하고 프로젝트는 적용 범위이며 별도 팀팩이 아닙니다. 회사 필수 기준은 유지하고 기본값만 개인화합니다. 개인 Memory/Knowledge/Skills와 모델/MCP는 보존합니다.
+`companyPolicy`는 설치된 회사 기준입니다. truncated이거나 선택 업무가 forWorkflows에 없으면 path의 `workStandards`를 확인하고, unavailable을 정책 없음으로 해석하지 마세요. 지식·개인 자료는 회사 정책으로 자동 승격하지 않습니다.
+초보자에게 `../../resources/first-work.html`을 안내할 수 있습니다. 선택 안내서이며 매 업무의 필수 단계가 아닙니다.
+
 # Company Agent orchestration contract
 
 The `UserPromptSubmit` hook adds a JSON object named `company_agent_route`. Use it as the routing decision for the current user request.
 
-When `company_agent_runtime` is present, its `cliCommand` is the full, already-quoted
-command prefix for every `company-agent ...` example in these Skills. Use that
-prefix in a Bash tool; it invokes the selected installed Python without requiring
-Python on PATH. Use the indicated `stateRoot`, never assume the global state path.
+Use `company_agent_runtime.cliCommand` as the full, already-quoted prefix for every `company-agent ...` example in Bash. It invokes the selected installed Python without requiring Python on PATH. Use its `stateRoot`, never assume a global state path.
 Use the injected `skillIndex` across all sources; `personalSkills` / `preferredSkills` are fallback hints.
 `inline` contains the selection rows already: do not read the catalogue again. `reuse` refers to the same revision in this conversation. `pages` provides source directories to Read, then the relevant description pages; unexamined pages are not proof there is no suitable Skill.
 Compare intent and descriptions semantically, including Korean requests against English descriptions.
@@ -34,11 +35,10 @@ After the user's answer use `skill choose --session SESSION --turn TURN --candid
 Use `/company-agent:skills` for listing or explicitly requested persistent priorities; never edit preference JSON manually. Preferences do not change native `/name` precedence: read the selected full path instead of assuming `Skill(name)` invokes it.
 
 Use the registered UTF-8 execution path; necessary standalone Python uses `-X utf8` and explicit file encodings. Preserve known CP949/UTF-16 sources unchanged.
+If Write fails, check its response and the exact absolute target with Read before diagnosing encoding. Put nontrivial code/regex in a verified UTF-8 `.py`/`.ps1` file and invoke Python `-X utf8` or PowerShell `-File`; do not nest Bash, PowerShell `-Command`, and Python `-c`. New Windows PowerShell 5.1 `.ps1` files containing Korean need UTF-8 BOM; ordinary UTF-8 data/Python files do not. Check the final traceback before fixing a regex (literal search: `re.escape`). Inspect prior effects before retrying; never retry an actual permission denial through another tool.
 A garbled display is not proof a job failed: inspect existing results first. Never repeat mail sending, file moves or artifact generation just to repair console text.
 
-For “이 프로젝트 하네스를 구성해줘” or equivalent, invoke
-`company-agent:project-harness`. The factory inspects the project, asks only for
-missing goals/choices, and generates project-local agents, Skills and QA rules.
+For “이 프로젝트 하네스를 구성해줘”, use `company-agent:project-harness`: inspect the project, ask only missing goals/choices, then generate project-local agents, Skills and QA rules.
 Pass runtime context and the sanitized session ID explicitly to every worker.
 
 For folder cleanup, mail work, HTML reports or editable PPTs, use the selected

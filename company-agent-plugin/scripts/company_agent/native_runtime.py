@@ -14,10 +14,11 @@ import sys
 from typing import Any
 
 from .frontmatter import parse_frontmatter_text
-from .knowledge import build_index, reconcile_overlays, search_catalog
+from .knowledge import reconcile_overlays, search_catalog
 from .paths import atomic_write_json, ensure_user_layout, load_json, user_state_root, knowledge_base_root
 from .user_language import KOREAN_DEFAULT_RULE
-from .text_encoding import WINDOWS_TEXT_RULE
+from .text_encoding import SCRIPT_EXECUTION_RULE, WINDOWS_TEXT_RULE
+from .company_policy import MANAGEMENT_RULE, POLICY_RULE, policy_context
 from .skill_task_context import MAX_TASK_SKILL_CHARS, MAX_SKILL_BRIEF_CHARS, TASK_SKILL_RULE, task_candidates, skill_brief
 
 
@@ -98,6 +99,11 @@ def configure_runtime(plugin: Path, cwd: Path) -> bool:
         os.environ["COMPANY_AGENT_SCOPE"] = str(record["scope"])
         os.environ["COMPANY_AGENT_PROJECT_ROOT"] = str(record.get("projectRoot") or "")
         os.environ["COMPANY_AGENT_REGISTRATIONS_ROOT"] = str(metadata["registrationsRoot"])
+        managed = metadata.get("managedConfigPath") or record.get("managedConfigPath")
+        if managed:
+            os.environ["COMPANY_AGENT_MANAGED_CONFIG"] = str(managed)
+        else:
+            os.environ.pop("COMPANY_AGENT_MANAGED_CONFIG", None)
         if record.get("claudeConfigDirOverride") is False:
             os.environ.pop("CLAUDE_CONFIG_DIR", None)
         elif record.get("claudeConfigRoot") and record.get("claudeConfigDirOverride") is True:
@@ -201,21 +207,22 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
             if not runtime.get('guidanceCondensed'):
                 runtime['guidanceCondensed'] = True
                 runtime['instructions'] = (
-                    KOREAN_DEFAULT_RULE +
+                    MANAGEMENT_RULE + (POLICY_RULE if runtime.get('companyPolicy') else '') + KOREAN_DEFAULT_RULE +
                     TASK_SKILL_RULE + WINDOWS_TEXT_RULE +
-                    'company_agent_runtime is this JSON metadata, NOT a module or executable. '
-                    'Use Glob/Read/Grep for file inspection, not shell probes. Keep preparation and verification receipts silent; communicate only useful results in Korean. '
-                    'Use cliCommand literally; never search the PC, invent python -m, change cwd or call dispatch. '
-                    'skillIndex contains metadata, never bodies or permissions. Inline: use supplied rows; reuse: use that revision already in context; pages: Read relevant pages. Missing descriptions do not mean no skill. For missing metadata Read skillSelection.catalog.path. Load a unique registered invocation with Skill; use Read on roots[root]/file for personal files or exact-path preferences/collisions. Reuse unchanged bodies only in current context. Respect explicitOnly, priorities and user choices. '
-                    'skillWorkflow tracks observed preparation, not permissions. Reuse unchanged bodies already read in this context; skill route is optional, never a required extra command. No relevant Skill means proceed normally. Keep ordinary advice silent. '
-                    'A [스킬 목록 확인 1회] denial means the tool did NOT run: load a relevant existing Skill or Read the catalogue, then continue. This is not a file/sandbox permission error. Other advice is non-blocking. Actual permission/protection denials stay pending for the denied action; do not infer every shell command is unavailable from one denial. '
-                    'Respect source preferences and user scope. Report actual reading results and incomplete ranges. '
-                    'Reading and request metadata alone need no mutation verification. '
-                    'Read completionGuide only for changed work; never clear older obligations. '
-                    'Learn silently at meaningful milestones, not every reply. '
-                    'Corporate DB SELECT only; Outlook authenticated own account only. '
-                    'Office count differences/timeouts do not establish DRM causes. No substitute copies.'
+                    'company_agent_runtime은 메타데이터이며 모듈·실행 파일이 아닙니다. cliCommand를 그대로 쓰고 PC 탐색·임의 python -m·cd·dispatch는 하지 마세요. 파일 탐색은 Glob/Read/Grep을 사용합니다. '
+                    'skillIndex는 본문·권한이 아닌 목록입니다. inline은 제공 행, reuse는 현재 대화의 같은 판, pages는 관련 페이지를 Read합니다. 설명 누락은 스킬 부재가 아니며 부족하면 skillSelection.catalog.path를 읽습니다. '
+                    '고유 등록 이름은 Skill로, 개인 파일·우선 선택·이름 충돌은 roots[root]/file의 정확한 본문을 Read합니다. explicitOnly·우선순위·사용자 선택을 지키고 같은 대화의 변경 없는 본문만 재사용합니다. '
+                    'skillWorkflow는 준비 관찰이며 권한이 아닙니다. skill route는 선택 사항입니다. 관련 스킬이 없으면 일반 실행합니다. '
+                    '폴더 조회·일반 목록 비교는 차단하지 않습니다. [스킬 확인]은 실제 후보 본문을 건너뛴 도구가 아직 미실행이라는 뜻입니다. 본문 확인 후 계속하고 파일·샌드박스 권한 오류로 오해하지 마세요. 실제 권한 거절은 해당 동작의 미완료로 유지하세요. '
+                    '사용자 범위·출처 선택을 지키고 실제 읽은 범위와 누락만 보고합니다. 조회·요청 메타데이터는 변경 검증 대상이 아닙니다. 변경한 업무만 completionGuide를 읽고 기존 미검증 의무를 지우지 마세요. '
+                    '준비·검증 기록과 학습은 조용히 처리하며 학습은 업무 이정표에서만 합니다. DB SELECT 전용, Outlook 인증된 본인 계정만 허용합니다. Office 개수 차이·시간 초과만으로 DRM 원인을 단정하거나 다른 사본으로 바꾸지 마세요.'
                 )
+                value = encode()
+                continue
+            policy = runtime.get('companyPolicy', {})
+            if policy.get('rules'):
+                policy['rules'].pop()
+                policy['truncated'] = True
                 value = encode()
                 continue
             # Never slice an executable path/command or output invalid JSON.
@@ -338,18 +345,22 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
     runtime['skillExecution'] = {k: v for k, v in execution.items()
                                  if k not in {'sha256', 'id'}}
     runtime['instructions'] = (
+        MANAGEMENT_RULE +
         'skillIndex와 세션 스킬의 용도를 확인해 관련 스킬 우선, 없으면 일반 실행합니다. '
         '후보 없음은 스킬 없음이 아닙니다. review는 전체 목록의 용도를 비교하고, reuse는 실제 로드했던 동일 본문만 재사용합니다. '
         'load 후보가 맞으면 Skill/Read로 본문을 불러오고, 맞지 않으면 목록에서 다시 판단합니다. '
-        '[스킬 목록 확인 1회]는 도구 미실행입니다. 목록/본문 확인 후 계속하며 파일 권한 오류로 오해하지 마세요. '
+        '폴더 조회·일반 목록 비교는 차단하지 않습니다. [스킬 확인]은 후보 본문을 건너뛴 도구 미실행입니다. 본문 확인 후 계속하며 파일 권한 오류로 오해하지 마세요. '
         '목록 확인 실패는 스킬 부재가 아닙니다. 같은 역할이 겹치면 한국어로 선택받고, 읽기→제작은 다른 단계입니다. '
         '설명·선택만 요청받으면 실행하지 마세요. runtime은 메타데이터이지 모듈이 아닙니다. cliCommand를 그대로 사용하고 탐색은 Glob/Read/Grep만 사용합니다. '
         '질문·선택지·결과는 한국어, 입출력은 UTF-8(별도 Python -X utf8)입니다. 표시 깨짐만으로 업무를 재실행하지 마세요. '
+        + SCRIPT_EXECUTION_RULE +
         '내부 준비·학습은 조용히 처리합니다. 실제 변경 완료 때만 completionGuide로 확인하며 이전 미검증 변경은 유지합니다. '
         '학습은 업무 종료 시 self-learning 절차로 처리합니다. 조회·선택에는 검증 기록이 필요 없습니다. '
         '사용자 요청·기존 권한·회사 정책을 유지하고 거절된 동작을 다른 도구·작업자로 재시도하지 마세요. '
         'DB SELECT 전용, Outlook 인증된 본인 계정만 허용합니다. 읽은 범위만 보고하며 DRM 원인 추측·다른 사본 대체는 하지 마세요.'
     )
+    if runtime.get('companyPolicy'):
+        runtime['instructions'] += ' ' + POLICY_RULE
     route = json.loads(route_text)
     if 'company_agent_instruction' in route:
         route['company_agent_instruction'] = (
@@ -372,14 +383,9 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
     if task:
         runtime['taskSkills'] = {k: v for k, v in task.items() if k != 'groups'}
     workflow = runtime.get('skillWorkflow', {})
-    if execution['mode'] == 'reuse':
-        workflow.update(selected=execution['name'], nextAction='apply-selected-skill')
-    elif execution['mode'] == 'general':
-        workflow.update(selected=None, nextAction='general-if-no-relevant-skill')
-    elif execution['mode'] == 'load':
-        workflow.update(selected=None, nextAction='load-relevant-skill')
-    elif execution['mode'] == 'review':
-        workflow.update(selected=None, nextAction='compare-available-list')
+    from .skill_decision import NEXT_ACTIONS
+    workflow.update(selected=execution.get('name') if execution['mode'] == 'reuse' else None,
+                    nextAction=NEXT_ACTIONS[execution['mode']])
     context = bounded_prompt_context(route_text, json.dumps(data, ensure_ascii=False, separators=(',', ':')))
     if len(brief) > MAX_SKILL_BRIEF_CHARS:
         raise ValueError('Skill action brief exceeds budget')
@@ -436,6 +442,13 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
                     metadata["selectedSkill"] = {key: workflow["selected"][key] for key in ("name", "path")}
                 elif workflow.get("fallback") == "no-relevant-skill":
                     metadata["skillFallback"] = "no-relevant-skill"
+    names = [str(card.get('name', '')) for card in cards]
+    names.extend(str(group.get('name', '')) for group in selection.get('_taskSkills', {}).get('groups', []))
+    if metadata.get('selectedSkill'):
+        names.append(metadata['selectedSkill']['name'])
+    standards = policy_context(names)
+    if standards['status'] != 'not-configured':
+        metadata['companyPolicy'] = standards
     encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
     while len(encoded) > 4000 and metadata["preferredSkills"]:
         metadata["preferredSkills"].pop()
@@ -443,6 +456,10 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
     if len(encoded) > 4000 and "skillCatalog" in metadata:
         metadata.pop("skillCatalog")
         encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+    while len(encoded) > 4000 and metadata.get('companyPolicy', {}).get('rules'):
+        metadata['companyPolicy']['rules'].pop()
+        metadata['companyPolicy']['truncated'] = True
+        encoded = json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
     if len(encoded) > 4000:
         return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "permissionDecision": "deny",
                 "permissionDecisionReason": "Worker runtime paths exceed the budget. Repair the installation paths; do not guess another CLI or state."}}
@@ -459,7 +476,7 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
         metadata['taskSkills'] = {k: v for k, v in metadata['taskSkills'].items() if k != 'groups'}
         encoded = json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
     context = ("\n\nCompany Agent runtime supplied by the installed hook (not task material):\n" + encoded +
-               "\n" + KOREAN_DEFAULT_RULE + WINDOWS_TEXT_RULE +
+               "\n" + MANAGEMENT_RULE + (POLICY_RULE if metadata.get('companyPolicy') else '') + KOREAN_DEFAULT_RULE + WINDOWS_TEXT_RULE +
                'Relevant overlapping workflows without a saved/explicit choice require a Korean user question. If user interaction is unavailable, return the alternatives to the coordinator; do not choose arbitrarily or change preferences. ' +
                "\nUse this cliCommand literally, with leaf-command flags after it; never invent python -m, cd/pipe aliases or echo permission probes. "
                "Before executing, load the selected Skill in YOUR conversation. A parent's load receipt does not load your context. Read the inherited exact path; do not reselect or substitute via native same-name precedence. "
@@ -479,6 +496,9 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
     skill_cards, skill_selection = _skill_routing(root, plugin, cwd, query)
     selection_index = skill_selection.pop('_selectionIndex', None)
     task_skills = skill_selection.pop('_taskSkills', None)
+    names = [str(item.get('name', '')) for item in skill_cards]
+    names.extend(str(group.get('name', '')) for group in (task_skills or {}).get('groups', []))
+    standards = policy_context(names)
     runtime: dict[str, Any] = {
             "scope": os.environ.get("COMPANY_AGENT_SCOPE", "MachineLauncher"),
             "project": str(cwd), "stateRoot": str(root),
@@ -491,7 +511,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
             "skillSelection": skill_selection,
             "knowledgeMatches": _knowledge_matches(root, prompt),
             "instructions": (
-                KOREAN_DEFAULT_RULE + TASK_SKILL_RULE + WINDOWS_TEXT_RULE +
+                MANAGEMENT_RULE + KOREAN_DEFAULT_RULE + TASK_SKILL_RULE + WINDOWS_TEXT_RULE +
                 "company_agent_runtime is the JSON metadata here, NOT a Python module or executable to locate. "
                 "Use cliCommand literally, preserving quotes; no extra --, variables, aliases or chains. Put flags after the leaf subcommand. "
                 "Discover inputs with Glob, known files with Read, content with Grep; no unnecessary Bash/PowerShell scans or temporary scripts. "
@@ -522,6 +542,9 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
                 "Report exactly which bodies/attachments/sources were excluded; never infer unread content or store protected source text as learning."
             ),
     }
+    if standards['status'] != 'not-configured':
+        runtime['companyPolicy'] = standards
+        runtime['instructions'] += ' ' + POLICY_RULE
     if session_id:
         from .skill_workflow import prepare
         runtime["skillWorkflow"] = prepare(root, cwd, session_id, skill_selection.get("catalog", {}),
@@ -610,8 +633,7 @@ def session_start(plugin: Path, cwd: Path, *, session_id: str = "", source: str 
     base = knowledge_base_root()
     issues = []
     if base and base.is_dir():
-        reconcile_overlays(root, base, apply_safe=True)
-        _, issues = build_index(base, layout["knowledge"], layout["index"])
+        issues = reconcile_overlays(root, base, apply_safe=True).get('indexIssues', [])
     env_file = os.environ.get("CLAUDE_ENV_FILE")
     if env_file:
         # Claude owns this explicit env-file capability. It is not a project scan result.
@@ -628,7 +650,7 @@ def session_start(plugin: Path, cwd: Path, *, session_id: str = "", source: str 
     skill_message = _skill_startup_message(selection)
     if skill_message:
         result["systemMessage"] = skill_message
-    if any(issue.level == "error" for issue in issues):
+    if any(issue.get('level') == "error" for issue in issues):
         result["systemMessage"] = (result.get("systemMessage", "") + " 회사 지식에 확인이 필요한 오류가 있습니다. 내용을 사용하기 전에 지식 검사를 요청해 주세요.").strip()
     if source != "compact":
         from .context_audit import audit_context

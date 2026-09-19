@@ -24,6 +24,7 @@ LOAD_LABELS = {
     'native-skill-outside-catalog': '로컬 목록 밖 호스트 스킬의 성공한 호출 확인(현재 요청만)',
 }
 REVIEW_LABELS = {
+    'advised': '목록 비교 안내만 전달(차단 없음, 본문 적용 여부 미확인)',
     'redirected': '목록/본문 확인 누락으로 첫 실행 1회 교정(원래 도구 미실행)',
     'catalog-read': '교정 후 전체 목록 읽기 확인',
     'skill-loaded': '교정 후 스킬 본문 로드 확인',
@@ -115,6 +116,10 @@ def inspect(claude_root: Path, local_data: Path, project: Path, session: str = '
         return report
     state = Path(rec['userStateRoot']) / 'sessions'
     report['selectedStateRoot'] = rec['userStateRoot']
+    from .company_policy import inspect_policy
+    managed = rec.get('managedConfigPath')
+    policy = inspect_policy(Path(managed)) if isinstance(managed, str) and managed else {'status': 'not-configured'}
+    report['companyPolicy'] = {key: policy[key] for key in ('status', 'path', 'revision', 'enforcement') if key in policy}
     if session and not re.fullmatch(r'[A-Za-z0-9_-]{1,120}', session):
         raise ValueError('세션 ID 형식이 올바르지 않습니다.')
     try:
@@ -145,7 +150,13 @@ def inspect(claude_root: Path, local_data: Path, project: Path, session: str = '
             checkpoint = mapping(workflow.get('reviewCheckpoint'))
             review = checkpoint.get('status') if checkpoint.get('turn') == data.get('turnId') and data.get('turnId') else None
             mode = mapping(workflow.get('executionPlan')).get('mode') if workflow.get('turn') == data.get('turnId') else None
+            verification = mapping(data.get('verification')).get('status')
+            counts = {key: data[key] for key in ('taskToolCount', 'taskFailureCount')
+                      if type(data.get(key)) is int and 0 <= data[key] <= 1_000_000}
+            from .workflow_evidence import workflow_progress
             report['sessions'].append({'sessionFile': file.name, 'updatedAt': datetime.fromtimestamp(file.stat().st_mtime).isoformat(timespec='seconds'),
+                'workflowProgress': workflow_progress(data),
+                **counts, 'verificationStatus': verification if verification in {'pass', 'fail', 'partial', 'unavailable', 'not_applicable'} else None,
                 'indexRead': workflow.get('indexRead') is True,
                 'executionMode': mode if mode in {'load', 'reuse', 'review', 'choose', 'select', 'general', 'inspect', 'provided'} else 'unknown',
                 'reviewStatus': review if review in REVIEW_LABELS else 'not-observed',
@@ -164,14 +175,25 @@ def main(argv=None):
     parser.add_argument('--project-root', type=Path, default=Path.cwd())
     parser.add_argument('--session', default='')
     parser.add_argument('--json', action='store_true')
+    parser.add_argument('--report', type=Path, help='새 HTML 파일에 진단 저장 (기존 파일 보존)')
+    parser.add_argument('--usage-log', type=Path, action='append', default=[], help='선택한 UTF-8 JSONL만 사용량 분석; 자동 탐색하지 않음')
+    parser.add_argument('--office-result', type=Path, help='선택한 Office 결과 JSON의 단계 시간만 확인')
     args = parser.parse_args(argv)
     result = inspect(args.claude_root, args.local_appdata, args.project_root, args.session)
     from .environment_checks import inspect_environment
     result['environment'] = inspect_environment()
+    from .usage_diagnostics import analyze_usage, inspect_office_timing
+    result['usage'] = analyze_usage(args.usage_log)
+    if args.office_result:
+        result['officeTiming'] = inspect_office_timing(args.office_result)
+    if args.report:
+        from .diagnostic_report import write_report
+        write_report(args.report, result)
+        result['reportPath'] = str(args.report.absolute())
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
-    print('Company Agent 진단 — 설정 변경·모델 호출·문서 읽기 없음')
+    print('Company Agent 진단 — 설정 변경·모델 호출·업무 문서 열기 없음 (선택한 로그/결과만 별도 읽기)')
     print('확인 폴더:', result['projectRoot'])
     print('Claude 설정:', result['claudeConfigRoot'])
     for plugin in result['plugins']:
@@ -182,6 +204,13 @@ def main(argv=None):
     for rec in result['registrations']:
         print('설치 기록:', rec['coreVersion'], rec['scope'], '/ 설정 경로 일치:', flag(rec['configMatches']))
     print('개인 상태:', result.get('selectedStateRoot', '확인 못함'))
+    print('관리 구조: 회사 기준 / 개인 업무 (프로젝트는 적용 범위, 별도 팀팩 없음)')
+    print('회사 업무 기준:', result.get('companyPolicy', {}).get('status', '확인 못함'))
+    if args.report:
+        print('진단 화면:', result['reportPath'])
+    if args.usage_log:
+        print('사용량(선택한 로그의 관찰분):', json.dumps(result['usage']['tokens'], ensure_ascii=False))
+        print(result['usage']['costReason'])
     print('\n업무별 준비 상태 (프로그램 실행 없이 확인):')
     print('진단에 사용한 Python:', result['environment']['python'])
     for item in result['environment']['features']:
@@ -197,6 +226,11 @@ def main(argv=None):
             if row.get('errorType'):
                 print('오류 종류:', row['errorType'])
         print('본문 읽기:', record['loadMessage'])
+        progress = record['workflowProgress']
+        print('이번 요청 준비:', progress['decision'], '/', progress['bodyMessage'])
+        print('업무 실행 관찰:', progress['operation'] or '없음', '/', progress['executionMessage'])
+        if progress['operation']:
+            print('실행 응답 시 본문 상태:', progress['bodyAtResponseMessage'], '(스킬 적용·결과 정확성 검증과 별개)')
         print('전체 목록 읽기:', flag(record['indexRead']), '/ 준비 단계:', record['executionMode'])
         print('목록 확인 교정:', record['reviewMessage'])
     for warning in result['warnings']:

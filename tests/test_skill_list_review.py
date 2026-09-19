@@ -7,7 +7,7 @@ from unittest.mock import patch
 import test_skill_execution as execution
 import test_skill_discovery as discovery
 from company_agent.paths import atomic_write_json, atomic_write_text
-from company_agent.skill_workflow import observe, preflight
+from company_agent.skill_workflow import observe, preflight, _discovery_command
 from company_agent.state import stop_decision
 
 
@@ -52,8 +52,9 @@ class ListReviewTests(unittest.TestCase):
         ctx, _ = self.output('섭씨를 화씨로 바꿔줘')
         self.assertEqual('review', ctx['skillExecution']['mode'])
         first = self.pre('Write', file_path=str(self.f.project / 'temperature.txt'))
-        self.assertEqual('deny', first['hookSpecificOutput']['permissionDecision'])
-        self.assertNotIn('office-reader', first['hookSpecificOutput']['permissionDecisionReason'])
+        self.assertNotIn('permissionDecision', first['hookSpecificOutput'])
+        self.assertNotIn('office-reader', first['hookSpecificOutput']['additionalContext'])
+        self.assertEqual('advised', self.state()['skillWorkflow']['reviewCheckpoint']['status'])
         self.f.read(Path(ctx['skillSelection']['catalog']['path']))
         self.f.read(file)
         self.assertEqual('thermal-helper', self.state()['skillWorkflow']['selected']['name'])
@@ -89,9 +90,9 @@ class ListReviewTests(unittest.TestCase):
     def test_startup_and_prompt_do_not_describe_a_denied_tool_as_executed(self):
         startup = self.f.context(source='startup')
         self.assertNotIn('Preparation advice never blocks execution', startup['instructions'])
-        self.assertIn('tool did NOT run', startup['instructions'])
+        self.assertIn('폴더 조회·일반 목록 비교는 차단하지 않습니다', startup['instructions'])
         ctx, _ = self.output()
-        self.assertIn('[스킬 목록 확인 1회]는 도구 미실행', ctx['instructions'])
+        self.assertIn('[스킬 확인]은 후보 본문을 건너뛴 도구 미실행', ctx['instructions'])
 
     def test_empty_actual_catalogue_never_forces_a_skill(self):
         plugin = self.f.root / 'empty-plugin'
@@ -140,7 +141,8 @@ class ListReviewTests(unittest.TestCase):
             'tool_name': 'Read', 'tool_input': {'file_path': str(file)},
             'tool_response': {'file': {'content': file.read_text(encoding='utf-8').splitlines()[0], 'startLine': 1}}})
         self.assertFalse(self.state()['skillWorkflow']['indexRead'])
-        self.assertEqual('deny', self.pre()['hookSpecificOutput']['permissionDecision'])
+        self.assertNotIn('permissionDecision', self.pre()['hookSpecificOutput'])
+        self.assertFalse(self.state()['skillWorkflow']['indexRead'])
 
     def test_removed_hint_does_not_force_a_nonexistent_skill(self):
         file = self.f.skill('unique-helper', 'uniquetask')
@@ -149,7 +151,39 @@ class ListReviewTests(unittest.TestCase):
         self.assertEqual({}, self.pre())
         ctx, _ = self.output('uniquetask')
         self.assertEqual('review', ctx['skillExecution']['mode'])
-        self.assertNotIn('unique-helper', self.pre()['hookSpecificOutput']['permissionDecisionReason'])
+        self.assertNotIn('unique-helper', self.pre()['hookSpecificOutput']['additionalContext'])
+
+    def test_reported_initial_listing_never_blocks_or_consumes_skill_correction(self):
+        command = 'ls -la "claude-code-starter-main/" 2>/dev/null || ls -la claude-code-starter-main/ 2>/dev/null; pwd'
+        for prompt in ('이 폴더를 확인해줘', 'PPT 읽어줘'):
+            self.output(prompt)
+            self.assertEqual({}, self.pre(command=command))
+            self.assertNotIn('reviewCheckpoint', self.state()['skillWorkflow'])
+            self.assertIsNone(self.state()['skillWorkflow']['selected'])
+        # Listing does not load the relevant Skill or exempt a subsequent reader.
+        self.assertEqual('deny', self.pre(command='python reader.py')['hookSpecificOutput']['permissionDecision'])
+
+    def test_general_write_does_not_require_redundant_catalog_read(self):
+        self.output('이 폴더에 온도 변환 코드를 작성해줘')
+        first = self.pre('Write', file_path=str(self.f.project / 'convert.py'))['hookSpecificOutput']
+        self.assertNotIn('permissionDecision', first)
+        self.assertLess(len(first['additionalContext']), 230)
+        with patch('company_agent.skill_workflow._snapshot', side_effect=AssertionError('must not rescan')):
+            self.assertEqual({}, self.pre('Write'))
+        route = self.state()['skillWorkflow']
+        self.assertEqual('advised', route['reviewCheckpoint']['status'])
+        self.assertFalse(route['indexRead'])
+        self.assertEqual({}, route['readSkills'])
+
+    def test_literal_discovery_exemption_never_matches_execution_or_output_writes(self):
+        for command in ('pwd && ls -la "한글 폴더/"', 'ls -la', 'git status --short',
+                        'Get-ChildItem -LiteralPath "C:/한글 폴더" -Name; Get-Location'):
+            self.assertTrue(_discovery_command(command), command)
+        for command in ('ls; python read.py', 'ls || unzip -p file.pptx', 'ls > output.txt',
+                        'ls &> output.txt', 'ls $(python read.py)', 'ls `whoami`',
+                        'ls | cat', 'ls 2> errors.txt', 'ls; rm file', 'ls &', 'ls "unterminated',
+                        'ls --block-size=1; python script.py', 'pwd\npython read.py'):
+            self.assertFalse(_discovery_command(command), command)
 
     def test_one_corrective_action_for_ppt_html_and_custom_skills(self):
         for prompt in ('PPT 읽기', 'HTML 보고서 만들기', '유일한새작업'):

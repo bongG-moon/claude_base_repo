@@ -185,6 +185,9 @@ try {
     Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $user.safetyBackup 'previous-harness')) 'Replace has no encrypted recovery snapshot'
     Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $user.safetyBackup 'claude-config\rules\old-guidance.md')) 'Selective backup omitted rules'
     $userRecord = Read-CompanyAgentJson -Path $user.registrationPath
+    Assert-ScopedSmoke (Test-Path -LiteralPath $userRecord.managedConfigPath -PathType Leaf) 'Registered company policy file is absent'
+    $installedStandards = (Read-CompanyAgentJson -Path $userRecord.managedConfigPath).workStandards
+    Assert-ScopedSmoke ($installedStandards.revision -eq '1') 'Company standards were dropped during scoped installation'
     Assert-ScopedSmoke ($userRecord.userStateRoot -eq (Join-Path $localAppData 'CompanyAgent\states\user')) 'Default User state path changed'
     Assert-ScopedSmoke ($userRecord.claudeConfigDirOverride -eq $true -and $userRecord.claudeConfigRoot -eq $configRoot) 'Explicit isolated Claude configuration was not recorded as an override'
     $otherConfigRoot = Join-Path $profileRoot 'other-claude-config'

@@ -1,5 +1,9 @@
 # Company Agent Harness Architecture
 
+## Company and personal ownership
+
+There are two management domains: company policy/work standards (including department applicability) and personal work. Project scope is not a third policy authority or an installable team pack. Optional `workStandards` in the registered managed config distinguishes required guidance from overridable defaults. It does not replace existing enforcement or grant native permissions. Only matching bounded rules are passed to the coordinator and owned workers; references are not promoted into policy. See [company/personal workflow](COMPANY_PERSONAL_WORKFLOW.md) for the schema, offline onboarding, opt-in diagnostics, and limitations.
+
 ## Native installation scopes (1.1.0)
 
 1.0.0 is the first-release baseline. 1.1.0 adds automatic personal learning without replacing personal state.
@@ -182,3 +186,7 @@ Knowledge and Skills are not enforcement boundaries.
 ## Feedback loop
 
 The activity Hook records only minimal session metadata. If a mutating tool ran after the last successful verification, the Stop Hook returns corrective context and prevents completion. The Agent runs the relevant deterministic check and records a short pass/fail summary. Equivalent failure retry is bounded at two attempts to prevent an endless loop.
+
+## Local preparation decisions and evidence
+
+Skill preparation uses a finite, local decision contract over the verified catalogue. Candidate delivery, observed body loading, business-command results, and output verification remain separate. The existing activity write stores only bounded execution metadata; it grants no permission and never drives Stop retries. No additional model/API or prompt payload is introduced. See [local decision workflow](LOCAL_DECISION_WORKFLOW_2026-09-19.md).

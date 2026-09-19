@@ -24,7 +24,8 @@ class HtmlChoiceBookkeepingTests(unittest.TestCase):
                                     "file_path": str(path or self.path), "content": content}}, self.root)
 
     def test_selection_steps_are_silent_and_keep_no_business_content(self):
-        for spec in ({}, {"designMenu": "additional"},
+        for spec in ({}, {"designMenu": "initial"}, {"designMenu": "additional"},
+                     {"designMenu": "additional", "style": "4"}, {"style": "글래스모피즘"},
                      {"designMenu": "additional", "style": "neumorphism", "length": "detailed", "mode": "scroll"},
                      {"designMenu": "template", "htmlTemplate": {"path": str(self.root / "form.html"), "sha256": "a" * 64}}):
             state = self.write(json.dumps(spec))
@@ -32,6 +33,22 @@ class HtmlChoiceBookkeepingTests(unittest.TestCase):
             self.assertEqual([], state["work"]["pending"])
             self.assertIsNone(state["verification"])
             self.assertEqual({}, stop_decision({"session_id": "choices"}, self.root))
+
+    def test_successful_edit_checks_complete_bounded_choice_file(self):
+        self.path.write_text('{"designMenu":"additional","style":"4","length":"detailed"}', encoding='utf-8')
+        payload = {"session_id":"choices", "hook_event_name":"PostToolUse", "tool_name":"Edit",
+                   "tool_input":{"file_path":str(self.path), "old_string":"3", "new_string":"4"}}
+        self.assertEqual(0, record_activity(payload, self.root)['mutationCount'])
+        self.assertEqual({}, stop_decision({'session_id':'choices'}, self.root))
+        self.path.write_text('{"style":"minimalism","sections":[{}]}', encoding='utf-8')
+        self.assertEqual(1, record_activity(payload, self.root)['mutationCount'])
+
+    def test_missing_or_large_edit_is_not_choice_bookkeeping(self):
+        from company_agent.state import _is_html_choices_spec_write
+        tool_input = {'file_path':str(self.path)}
+        self.assertFalse(_is_html_choices_spec_write('Edit', tool_input, self.root))
+        self.path.write_text(' ' * 8192 + '{}', encoding='utf-8')
+        self.assertFalse(_is_html_choices_spec_write('Edit', tool_input, self.root))
 
     def test_report_content_invalid_values_and_other_paths_are_not_exempt(self):
         cases = [('{"sections": []}', self.path), ('{"title":"Report"}', self.path),

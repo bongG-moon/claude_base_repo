@@ -19,6 +19,10 @@ class TaskSkillContextTests(unittest.TestCase):
         self.addCleanup(self.fixture.doCleanups)
         self.f = self.fixture
 
+    def test_generic_question_words_do_not_select_unrelated_mail_skill(self):
+        context = self.f.context('관련 없는 질문')
+        self.assertEqual([], context['taskSkills']['groups'])
+
     def test_actual_ppt_prompt_keeps_hints_on_first_and_later_requests(self):
         self.f.context(source='startup')
         for _ in range(2):

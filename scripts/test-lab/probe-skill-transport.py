@@ -43,7 +43,8 @@ def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
             text = '\n'.join(str(b.get('text', '')) for b in blocks)
             tools = [t['name'] for t in data.get('tools', [])]
             results = [b for b in blocks if b.get('type') == 'tool_result']
-            redirected = any(b.get('is_error') and '[스킬 목록 확인 1회]' in json.dumps(b, ensure_ascii=False) for b in results)
+            redirected = any(b.get('is_error') and any(label in json.dumps(b, ensure_ascii=False)
+                             for label in ('[스킬 확인]', '[스킬 목록 확인 1회]')) for b in results)
             if tools:
                 observations.append({'tools': tools, 'hasTaskCandidates': '"taskSkills"' in text,
                                      'briefBeforeRoute': 0 <= text.find('[업무 시작: 관련 스킬 우선]') < text.find('"company_agent_route"'),
@@ -52,10 +53,12 @@ def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
                                      'hasReviewRedirect': redirected,
                                      'hasLoadedBody': 'Base directory for this skill:' in text and 'business office-read' in text})
             skip_scenario = scenario.startswith('skip-list')
-            skip_first = bool(tools) and skip_scenario and not results
-            invoke = bool(tools) and (not results or skip_scenario and len(results) == 1)
+            discovery = scenario == 'list-before-skill'
+            skip_first = bool(tools) and (skip_scenario or discovery) and not results
+            invoke = bool(tools) and (not results or (skip_scenario or discovery) and len(results) == 1)
             tool_name = ('Write' if scenario == 'skip-list-write' else 'Bash') if skip_first else 'Skill'
             tool_input = ({'file_path': str(root / 'workspace/probe.txt'), 'content': 'unexpected write'} if tool_name == 'Write'
+                          else {'command': 'ls -la "claude-code-starter-main/" 2>/dev/null || ls -la claude-code-starter-main/ 2>/dev/null; pwd'} if tool_name == 'Bash' and discovery
                           else {'command': "printf 'probe_unexpected_execution'"} if tool_name == 'Bash'
                           else {'skill': 'company-agent:office-reader'})
             content = ({'type': 'tool_use', 'id': 'toolu_probe_' + tool_name, 'name': tool_name, 'input': {}}
@@ -102,8 +105,8 @@ def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
             args = [str(claude), '-p', '--verbose', '--output-format', 'stream-json', '--include-hook-events',
                     '--setting-sources', '', '--settings', '{}', '--plugin-dir', str(REPO / 'company-agent-plugin'),
                     '--model', model, '--strict-mcp-config', '--mcp-config', str(root / 'empty-mcp.json'),
-                    '--no-session-persistence', '--tools', 'Bash,Write,Read,Skill' if scenario.startswith('skip-list') else 'Read,Skill',
-                    '--allowedTools', 'Skill,Bash,Write' if scenario.startswith('skip-list') else 'Skill']
+                    '--no-session-persistence', '--tools', 'Bash,Write,Read,Skill' if scenario != 'native-load' else 'Read,Skill',
+                    '--allowedTools', 'Skill,Bash,Write' if scenario != 'native-load' else 'Skill']
             started = time.monotonic()
             result = subprocess.run(args, input='@PPT_검증전용_없는파일.pptx 내용을 파악해줘.',
                                     cwd=root / 'workspace', env=env, capture_output=True, encoding='utf-8', timeout=55)
@@ -133,6 +136,12 @@ def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
                 checks['hostBlockedFirstAction'] = any(o['hasReviewRedirect'] for o in observations)
                 checks['reviewRecovered'] = state.get('skillWorkflow', {}).get('reviewCheckpoint', {}).get('status') == 'skill-loaded'
                 checks['noUnintendedFile'] = not (root / 'workspace/probe.txt').exists()
+            if scenario == 'list-before-skill':
+                checks['noReviewRedirect'] = not any(o['hasReviewRedirect'] for o in observations)
+                checks['noToolErrors'] = not any(b.get('is_error') for e in events
+                    for b in (e.get('message', {}).get('content', []) if isinstance(e.get('message', {}).get('content'), list) else [])
+                    if isinstance(b, dict) and b.get('type') == 'tool_result')
+                checks['noCorrectionConsumed'] = not state.get('skillWorkflow', {}).get('reviewCheckpoint')
             return {'kind': 'scripted-transport-not-model-behavior', 'scenario': scenario,
                     'ok': result.returncode == 0 and all(checks.values()),
                     'exitCode': result.returncode, 'elapsedSeconds': round(time.monotonic() - started, 2),
@@ -146,7 +155,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--claude', required=True, type=Path, help='Existing Claude executable; no install or update')
     parser.add_argument('--model', default='HCP-LLM-Latest', help='Only a request label; response is always local and scripted')
-    parser.add_argument('--scenario', choices=['native-load', 'skip-list', 'skip-list-write'], default='native-load')
+    parser.add_argument('--scenario', choices=['native-load', 'skip-list', 'skip-list-write', 'list-before-skill'], default='native-load')
     options = parser.parse_args()
     report = run(options.claude.resolve(strict=True), options.model, options.scenario)
     print(json.dumps(report, ensure_ascii=True, indent=2))

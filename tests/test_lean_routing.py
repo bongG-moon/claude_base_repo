@@ -160,6 +160,34 @@ class ReadOnlyDiagnosticTests(unittest.TestCase):
         self.assertEqual(str(project_state), report['selectedStateRoot'])
         self.assertEqual(str(self.state), inspect(self.claude, self.local, self.root)['selectedStateRoot'])
 
+    def test_report_cli_reads_only_requested_usage_and_preserves_existing_files(self):
+        policy = self.root / '회사 기준.json'
+        atomic_write_json(policy, {'workStandards':{'revision':'qa', 'rules':[]}})
+        atomic_write_json(self.local / 'CompanyAgent/installations/user/company-agent-install.json',
+                          {**self.rec, 'managedConfigPath':str(policy)})
+        log = self.root / '선택 로그.jsonl'
+        log.write_text(json.dumps({'type':'assistant','message':{'id':'qa', 'usage':{'input_tokens':42},
+            'content':[{'type':'text','text':'PRIVATE 문서 본문'}]}}, ensure_ascii=False), encoding='utf-8')
+        output = self.root / '환경 확인.html'
+        before = self.snapshot()
+        command = [sys.executable, '-X', 'utf8', '-B', str(discovery.PLUGIN / 'scripts/diagnose_skill_routing.py'),
+            '--claude-root', str(self.claude), '--local-appdata', str(self.local), '--project-root', str(self.project),
+            '--usage-log', str(log), '--report', str(output), '--json']
+        result = subprocess.run(command, capture_output=True, encoding='utf-8')
+        self.assertEqual(0, result.returncode, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual('available', report['companyPolicy']['status'])
+        self.assertEqual(42, report['usage']['tokens']['input_tokens'])
+        self.assertIsNone(report['usage']['cost'])
+        self.assertNotIn('PRIVATE', result.stdout + output.read_text(encoding='utf-8'))
+        after = self.snapshot()
+        after.pop(str(output))
+        self.assertEqual(before, after)
+        saved = output.read_bytes()
+        rerun = subprocess.run(command, capture_output=True, encoding='utf-8')
+        self.assertNotEqual(0, rerun.returncode)
+        self.assertEqual(saved, output.read_bytes())
+
     def test_missing_or_malformed_records_do_not_initialize_state(self):
         before = self.snapshot()
         report = inspect(self.root / 'absent', self.root / 'missing', self.project)

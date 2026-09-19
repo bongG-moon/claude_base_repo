@@ -33,10 +33,34 @@ class HtmlReferenceTests(unittest.TestCase):
         preview = reference.inspect_template(self.template, self.root/'preview.html')
         self.assertTrue(preview['ok'], preview)
         spec['htmlTemplate'] = preview['htmlTemplate']
+        self.assertEqual('template_preview', artifacts.html_choices(spec)['stage'])
+        spec['templateReview'] = preview['templateReview']
+        self.assertEqual('template_confirm', artifacts.html_choices(spec)['stage'])
+        self.assertEqual('template_confirm', artifacts.create_html({**spec, 'sections':[{}]}, self.root/'final.html', require_choices=True)['stage'])
+        self.assertFalse((self.root/'final.html').exists())
+        spec['templateReview']['confirmed'] = True
         self.assertEqual('ready', artifacts.html_choices(spec)['stage'])
         self.assertEqual('detailed', artifacts.html_choices(spec)['selection']['length'])
         self.assertEqual(preview['htmlTemplate'], artifacts.html_choices(spec)['selection']['htmlTemplate'])
-        self.assertEqual('format', artifacts.html_choices({'htmlTemplate':spec['htmlTemplate']})['stage'])
+        self.assertEqual('format', artifacts.html_choices({k:spec[k] for k in ('htmlTemplate','templateReview')})['stage'])
+        self.assertTrue(artifacts.create_html({**spec, 'sections':[{}]}, self.root/'final.html', require_choices=True)['ok'])
+
+    def test_changed_preview_or_source_invalidates_confirmation(self):
+        preview = reference.inspect_template(self.template, self.root/'preview.html')
+        spec = {k:preview[k] for k in ('htmlTemplate','templateReview')}
+        spec.update(length='detailed', mode='scroll')
+        spec['templateReview']['confirmed'] = True
+        path = self.root/'preview.html'
+        original = path.read_bytes()
+        path.write_bytes(original+b'changed')
+        self.assertEqual('template_preview_changed', artifacts.html_choices(spec)['code'])
+        path.write_bytes(original)
+        self.template.write_text('<html><body>new</body></html>', encoding='utf-8')
+        self.assertEqual('template_changed', artifacts.html_choices(spec)['code'])
+
+    def test_nonexistent_template_does_not_become_ready(self):
+        spec = {'htmlTemplate':{'path':str(self.root/'missing.html'),'sha256':'a'*64}, 'length':'detailed','mode':'scroll'}
+        self.assertEqual('template_preview', artifacts.html_choices(spec)['stage'])
 
     def test_reference_tokens_reach_report_without_executing_or_copying_source(self):
         before = self.template.read_bytes()

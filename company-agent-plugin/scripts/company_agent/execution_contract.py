@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import shutil
+import shlex
 import sys
 from typing import Any
 
@@ -177,7 +178,56 @@ def _skill_lookup(arguments: list[str]) -> bool:
     return len(positionals) == (1 if operation in {"search", "resolve"} else 0)
 
 
-def classify_command(command: str) -> str:
+def discovery_command(command: str, *, tool: str = 'Bash') -> bool:
+    """Literal listings only; neither a permission grant nor proof of a load.
+
+    Reject substitutions, content readers, output files and mixed executable
+    chains. No filesystem scans/subprocesses. Reused by preparation and result
+    accounting so stderr-to-null does not cause a false mutation/Stop failure.
+    """
+    if not command or len(command) > 4096 or any(c in command for c in '\r\n\0$`(){}'):
+        return False
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|<>')
+        lexer.whitespace_split = True
+        lexer.commenters = ''
+        words = list(lexer)
+    except ValueError:
+        return False
+    segments: list[list[str]] = [[]]
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word in {';', '&&', '||'}:
+            if not segments[-1]:
+                return False
+            segments.append([])
+        elif words[index:index + 3] == ['2', '>', '/dev/null'] and tool.casefold() == 'bash':
+            index += 2  # In PowerShell this could be a real output file.
+        elif re.fullmatch(r'[;&|<>]+', word):
+            return False
+        else:
+            segments[-1].append(word)
+        index += 1
+    for args in segments:
+        if not args:
+            return False
+        name, flags = args[0].casefold(), args[1:]
+        if name in {'pwd', 'get-location'}:
+            if flags:
+                return False
+        elif name == 'ls':
+            if any(x.startswith('-') and not re.fullmatch(r'-[laAdhF]+|--', x) for x in flags):
+                return False
+        elif name == 'get-childitem':
+            if any(x.startswith('-') and x.casefold() not in {'-literalpath', '-path', '-name', '-file', '-directory', '-force'} for x in flags):
+                return False
+        elif args not in (['git', 'status'], ['git', 'status', '--short']):
+            return False
+    return True
+
+
+def classify_command(command: str, *, tool: str = 'Bash') -> str:
     """Return read_only/internal/mutation/unknown for exact known invocations.
 
     Internal review/verification requires the existing current-session/path
@@ -185,7 +235,7 @@ def classify_command(command: str) -> str:
     alone cannot grant a bookkeeping exemption for arbitrary personal writes.
     ``mail-read`` also remains unknown because body-access permission matters.
     """
-    if _literal_listing(command):
+    if discovery_command(command, tool=tool) or _literal_listing(command):
         return "read_only"
     args = _trusted_arguments(command)
     if not args:

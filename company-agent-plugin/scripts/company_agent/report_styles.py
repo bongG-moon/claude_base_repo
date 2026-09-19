@@ -106,13 +106,22 @@ def choices(spec):
     # Expose ONLY the current step. Length/view questions must not be bundled
     # with the initial design question or an unresolved additional-design menu.
     pending = {'ok': False, 'status': 'input_required', 'code': 'report_choices_required',
-               'preservedChoices': {key: spec[key] for key in ('style','length','mode','htmlTemplate') if key in spec}}
+               'preservedChoices': {key: spec[key] for key in ('style','length','mode','htmlTemplate','templateReview') if key in spec}}
     if spec.get('designMenu') == 'template' or 'htmlTemplate' in spec:
         template = spec.get('htmlTemplate')
         if not (isinstance(template, dict) and isinstance(template.get('path'), str) and template['path']
                 and isinstance(template.get('sha256'), str) and len(template['sha256']) == 64):
             pending.update(stage='template_attach', missing=['htmlTemplate'],
                            message='참고할 HTML 파일을 첨부하거나 파일 경로를 알려 주세요. 양식 확인 전에는 분량·보기 방식을 묻지 않습니다.',
+                           templateCommand='business html-template --template ABSOLUTE_PATH --output NEW_PREVIEW.html --open')
+            return pending
+        from .html_reference import review_stage
+        stage = review_stage(spec)
+        if stage:
+            pending.update(stage=stage, missing=['templateReview' if stage == 'template_preview' else 'templateReview.confirmed'],
+                           waitForUser=stage == 'template_confirm',
+                           message='첨부 양식의 실제 미리보기를 준비해 주세요.' if stage == 'template_preview' else
+                                   '이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부 중 선택해 주세요.',
                            templateCommand='business html-template --template ABSOLUTE_PATH --output NEW_PREVIEW.html --open')
             return pending
     elif 'style' not in spec:
@@ -170,7 +179,7 @@ PICKER_JS = r'''"use strict";
     if(length.value!=='keep')parts.push('분량: '+length.options[length.selectedIndex].text);
     if(mode.value!=='keep')parts.push('보기: '+mode.options[mode.selectedIndex].text);
     result.value='HTML 보고서를 만들어줘. '+parts.join(' / ')+'. 따로 지정하지 않은 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목만 물어봐줘. 원자료와 요청 내용은 앞서 전달한 것을 사용해줘.';
-    if(choice==='template')result.value='HTML 보고서에 내가 첨부할 HTML 양식을 참고해줘. 먼저 양식 파일을 받고 미리보기를 보여줘. 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목은 양식 확인 후에만 물어봐줘.';
+    if(choice==='template')result.value='HTML 보고서에 내가 첨부할 HTML 양식을 참고해줘. '+(parts.length>1?parts.slice(1).join(' / ')+'. ':'')+'먼저 양식 파일을 받고 미리보기를 보여줘. 따로 지정하지 않은 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목은 양식 확인 후에만 물어봐줘.';
     status.textContent='이 선택은 아직 Claude에 전달되지 않았습니다. 아래 문장을 복사해 채팅에 붙여 넣어 주세요.';
   }
   buttons.forEach(button=>button.addEventListener('click',()=>{choice=button.dataset.choice;label=button.dataset.label;update();}));

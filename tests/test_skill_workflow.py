@@ -92,6 +92,8 @@ class SkillWorkflowTests(unittest.TestCase):
     def test_real_preflight_reminds_once_without_red_denial_or_auto_allow(self):
         from company_agent.skill_workflow import preflight as real_preflight
         payload = {'session_id':self.sid, 'tool_name':'Bash', 'tool_input':{'command':'pwd && ls -la'}}
+        self.assertEqual({}, real_preflight(self.state, self.project, payload))
+        payload['tool_input']['command'] = 'python custom.py'
         first = real_preflight(self.state, self.project, payload)
         self.assertIn('additionalContext', first['hookSpecificOutput'])
         self.assertNotIn('permissionDecision', first['hookSpecificOutput'])

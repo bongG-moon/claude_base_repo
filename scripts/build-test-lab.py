@@ -185,12 +185,13 @@ def build(destination: Path, bundle: Path) -> dict:
     operator.mkdir()
     docs = {"VALIDATION_CHAT_SET.md": "ORIGINAL_CHAT_SET.md", "Company-Agent-운영-검증-채팅.html": "ORIGINAL_CHAT_SET.html",
             "VALIDATION_RESULTS_TEMPLATE.md": "BLANK_RESULTS.md", "Company-Agent-사용자-안내서.html": "USER_GUIDE.html",
-            "UPDATE_1.3.3.md": "UPDATE_GUIDE.md"}
+            f"UPDATE_{version}.md": "UPDATE_GUIDE.md"}
     for source_name, target_name in docs.items():
         shutil.copyfile(REPO / "docs" / source_name, operator / target_name)
     articles, nav = render_cases(cases, operator)
     dashboard = (TEMPLATES / "dashboard.html").read_text(encoding="utf-8")
     write(destination / "00_START_HERE.html", dashboard.replace("@@VERSION@@", html.escape(version)).replace("@@CASES@@", articles).replace("@@NAV@@", nav))
+    shutil.copyfile(REPO / 'company-agent-plugin/resources/first-work.html', destination / '00_FIRST_WORK.html')
     organize = destination / "workspace" / "01-folder-organize"
     inputs = {p.relative_to(destination / "workspace").as_posix(): digest(p)
               for p in sorted((destination / "workspace").rglob("*")) if p.is_file() and not p.is_relative_to(organize)}
@@ -211,6 +212,8 @@ def build(destination: Path, bundle: Path) -> dict:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", required=True, type=Path)
-    parser.add_argument("--bundle", type=Path, default=REPO / "dist" / "company-agent-1.3.3-2026.09.03.zip")
+    core_version = json.loads((REPO / 'company-agent-plugin/.claude-plugin/plugin.json').read_text(encoding='utf-8'))['version']
+    knowledge_version = json.loads((REPO / 'corporate-knowledge/pack.json').read_text(encoding='utf-8'))['version']
+    parser.add_argument("--bundle", type=Path, default=REPO / "dist" / f"company-agent-{core_version}-{knowledge_version}.zip")
     options = parser.parse_args()
     print(json.dumps(build(options.destination, options.bundle), ensure_ascii=True, indent=2))

@@ -261,6 +261,11 @@ try {
 
     foreach ($configName in @('session.settings.json', 'managed.json', 'managed-mcp.json')) {
         $configSource = Join-Path $SourceRoot (Join-Path 'config' $configName)
+        # Ship the company defaults when no administrator override was provided.
+        # Never activate example MCP servers or replace user model settings.
+        if ($configName -eq 'managed.json' -and -not (Test-Path -LiteralPath $configSource -PathType Leaf)) {
+            $configSource = Join-Path $SourceRoot 'config\managed.example.json'
+        }
         if (Test-Path -LiteralPath $configSource -PathType Leaf) {
             $configContent = Get-Content -LiteralPath $configSource -Raw -Encoding UTF8
             $null = $configContent | ConvertFrom-Json
@@ -283,9 +288,14 @@ try {
     foreach ($docName in @('UPDATE_1.4.9.md', 'UPDATE_1.4.10.md', 'UPDATE_1.4.11.md', 'UPDATE_1.4.12.md', 'UPDATE_1.4.13.md', 'UPDATE_1.4.14.md', 'OFFICE_READ_PROGRESS_2026-09-17.md', 'SKILL_LIST_REVIEW_2026-09-17.md', 'SKILL_FIRST_EXECUTION_2026-09-17.md', 'SKILL_SELECTION_ENCODING_VALIDATION_2026-09-16.md', 'SKILL_AUTO_SELECTION_FIX_2026-09-16.md', 'LEAN_SKILL_ROUTING_2026-09-16.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
+    foreach ($docName in @('UPDATE_1.4.15.md', 'LOCAL_WORKSPACE.md', 'BEGINNER_WORKFLOW_DESIGN_2026-09-19.md', 'LOCAL_DECISION_WORKFLOW_2026-09-19.md', 'VALIDATION_AUDIT_FIXES_2026-09-19.md', 'VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md', 'VALIDATION_COMPANY_PERSONAL_2026-09-18.md', 'VALIDATION_EXECUTION_RECOVERY_2026-09-19.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-18.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-19.md')) {
+        Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
+    }
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'Diagnose-CompanyAgent.cmd') -Destination (Join-Path $stagePath 'Diagnose-CompanyAgent.cmd') -Force
+    Copy-Item -LiteralPath (Join-Path $pluginSource 'resources\first-work.html') -Destination (Join-Path $stagePath 'First-Work.html') -Force
+    Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\COMPANY_PERSONAL_WORKFLOW.md') -Destination (Join-Path $stagePath 'docs\COMPANY_PERSONAL_WORKFLOW.md') -Force
 
     if (-not $IncludeBundledPython) {
         Assert-CompanyAgentExternalBundleFiles -Root $stagePath

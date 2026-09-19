@@ -6,7 +6,7 @@ import sys
 from company_agent.state import record_activity, load_session, _is_own_learning_command
 from company_agent.paths import user_state_root
 from company_agent.business_safety import protection_notice
-from company_agent.runtime_diagnostics import failure_hint
+from company_agent.runtime_diagnostics import failure_hint, recovery_hint_once
 
 
 def main() -> int:
@@ -16,7 +16,7 @@ def main() -> int:
             record_activity(payload)
         result = {}
         notice = protection_notice(payload)
-        failure = failure_hint(payload)
+        failure = recovery_hint_once(payload, failure_hint(payload)) if not notice else None
         if notice:
             event = str(payload.get("hook_event_name") or "PostToolUse")
             if event not in {"PostToolUse", "PostToolUseFailure"}:

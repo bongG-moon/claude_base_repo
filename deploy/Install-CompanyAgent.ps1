@@ -198,6 +198,7 @@ if (-not $SkipShortcut -and $shortcutExistedBefore) {
 $managedConfigSource = Join-Path $BundleRoot 'payload\config\managed.json'
 $knowledgePacks = @('corporate-base')
 $strictMcpConfig = $false
+$workStandards = $null
 $managedPolicy = [pscustomobject][ordered]@{
     database           = 'select-only'
     outlookSender      = 'initialized-user-only'
@@ -214,6 +215,9 @@ if (Test-Path -LiteralPath $managedConfigSource -PathType Leaf) {
     }
     if ($null -ne $managedTemplate.PSObject.Properties['strictMcpConfig']) {
         $strictMcpConfig = [bool]$managedTemplate.strictMcpConfig
+    }
+    if ($null -ne $managedTemplate.PSObject.Properties['workStandards']) {
+        $workStandards = $managedTemplate.workStandards
     }
 }
 
@@ -272,6 +276,9 @@ try {
         strictMcpConfig = $strictMcpConfig
         knowledgePacks = $knowledgePacks
         policy = $managedPolicy
+    }
+    if ($null -ne $workStandards) {
+        $managedConfig | Add-Member -NotePropertyName workStandards -NotePropertyValue $workStandards
     }
     Write-CompanyAgentJsonAtomic -Path (Join-Path $configStageRoot 'managed.json') -Value $managedConfig
     $installedConfig = Install-CompanyAgentImmutableDirectory -Source $configStageRoot -Destination $configDestinationRoot
