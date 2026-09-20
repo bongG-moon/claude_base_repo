@@ -13,7 +13,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'company-agent-plugin/scripts'))
 from company_agent import cli
 from company_agent.asset_factory import create_asset
-from company_agent.memory import search_scoped_memory, render_memory_context, MAX_MEMORY_RESULTS
+from company_agent.memory import search_scoped_memory, render_memory_context, MAX_MEMORY_RESULTS, upsert_memory, _load_safe_memory
 from company_agent.resource_scope import destinations, selected_root, search_knowledge
 from company_agent.skill_registry import inventory_skills
 from company_agent.workspace_api import WorkspaceService
@@ -71,6 +71,42 @@ class ResourceScopeTests(unittest.TestCase):
             self.service.plan({'kind':'memory','storageScope':'personal','itemId':item['id'],
                 'expectedSha256':item['sha256'],'title':'복사 금지','body':'잘못된 이동'})
         self.assertTrue(Path(saved['path']).exists())
+
+    def test_relevant_personal_memory_is_not_displaced_by_project_defaults(self):
+        for index in range(MAX_MEMORY_RESULTS):
+            self.save('project', f'표현 방식 {index}')
+        upsert_memory({'kind': 'work_context', 'title': '분기 재고 산식',
+                       'body': '재고 기준은 분기 말 확정 수량이다.'}, self.state)
+        with patch('company_agent.memory._load_safe_memory', wraps=_load_safe_memory) as read:
+            found = search_scoped_memory(self.state, self.a, '분기 재고 산식')
+        self.assertEqual('분기 재고 산식', found[0]['title'])
+        self.assertEqual('personal', found[0]['storageScope'])
+        self.assertEqual(MAX_MEMORY_RESULTS, len(found))
+        self.assertEqual(MAX_MEMORY_RESULTS + 1, read.call_count)
+        self.assertNotIn('score', found[0])
+
+    def test_scoped_memory_ranks_full_body_and_keeps_project_ties(self):
+        project_root = selected_root(self.state, self.a, 'project')
+        upsert_memory({'kind': 'work_context', 'title': '개인 계산 기준',
+                       'body': '가' * 1100 + ' 심층키워드'}, self.state)
+        self.save('project', '일반 표현')
+        found = search_scoped_memory(self.state, self.a, '심층키워드', limit=1)
+        self.assertEqual('개인 계산 기준', found[0]['title'])
+        for folder, title in ((self.state, '공유 계산 기준'), (project_root, '지역 계산 기준')):
+            upsert_memory({'kind': 'work_context', 'title': title, 'body': '동점키워드'}, folder)
+        found = search_scoped_memory(self.state, self.a, '동점키워드', limit=2)
+        self.assertEqual(['project', 'personal'], [item['storageScope'] for item in found])
+
+    def test_scoped_memory_deduplicates_and_bounds_invalid_limits(self):
+        self.save('project', '같은 기억')
+        self.save('personal', '같은 기억')
+        for limit in ('5', None, 'invalid', 999):
+            with self.subTest(limit=limit):
+                found = search_scoped_memory(self.state, self.a, '', limit=limit)
+                self.assertEqual(1, len(found))
+                self.assertEqual('project', found[0]['storageScope'])
+        for limit in (0, -3, '-1'):
+            self.assertEqual([], search_scoped_memory(self.state, self.a, '', limit=limit))
 
     def test_scope_read_does_not_create_directories(self):
         for view in ('personal-memory','project-memory','personal-harness','project-harness','shared-memory','shared-harness'):

@@ -101,6 +101,75 @@ _MUTATING_COMMAND_PATTERN = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 
+# Shell accounting is a conservative observation, not a permission boundary or
+# a parser for every shell dialect. Inline code has no .js/.py filename to match.
+_INLINE_RUNTIMES = {"node", "nodejs", "bun", "deno", "ruby", "perl"}
+_GIT_WRITES = {
+    "add", "apply", "checkout", "clean", "commit", "mv", "push", "reset",
+    "restore", "stash", "switch", "tag", "branch", "merge", "rebase",
+    "cherry-pick", "revert", "rm", "fetch", "pull", "init", "clone",
+}
+_EXTRA_EXECUTION_PATTERN = re.compile(
+    r'''(?:^|[;&|])\s*(?:&\s*)?["']?(?:[^\r\n"';&|]*[\\/])?'''
+    r'''(?:node|nodejs|bun|deno|ruby|perl)(?:\.exe)?(?=["'\s]|$)'''
+    r'''|\bgit(?:\.exe)?\s+(?:tag|branch|merge|rebase|cherry-pick|revert|rm|fetch|pull|init|clone)\b''',
+    re.IGNORECASE,
+)
+
+
+def _git_reference_query(operation: str, arguments: list[str]) -> bool:
+    """Recognize small literal tag/branch query forms; other forms may write."""
+    if not arguments:
+        return True
+    listing = False
+    flags = {"--no-color", "--color=never"}
+    if operation == 'branch':
+        flags |= {"-a", "--all", "-r", "--remotes", "-v", "-vv", "--verbose", "--show-current"}
+    for value in arguments:
+        if value in {'-l', '--list'}:
+            listing = True
+        elif value in flags or (operation == 'tag' and re.fullmatch(r'-n[0-9]*', value)):
+            continue
+        elif value.startswith('-') or not listing:
+            return False
+    return True
+
+
+def _known_shell_mutation(command: str) -> bool | None:
+    """Account for known inline runtimes and Git writes without executing them.
+
+    Only an entire literal version/listing command gets a query exemption. A
+    chain, redirection, expansion, or unrecognized form keeps conservative
+    handling. This never returns an execution permission or validates results.
+    """
+    words = _literal_command_words(command)
+    if not words:
+        return True if _EXTRA_EXECUTION_PATTERN.search(command) else None
+    name = words[0].replace('\\', '/').rsplit('/', 1)[-1].casefold()
+    if name.endswith('.exe'):
+        name = name[:-4]
+    if name in _INLINE_RUNTIMES:
+        return words[1:] not in (["--version"], ["-v"])
+    if name != 'git':
+        return None
+    index = 1
+    while index < len(words):
+        value = words[index]
+        if value in {'-C', '-c', '--git-dir', '--work-tree', '--namespace', '--config-env'}:
+            index += 2
+        elif value in {'--no-pager', '--paginate', '--literal-pathspecs', '--no-optional-locks'} or value.startswith(
+                ('--git-dir=', '--work-tree=', '--namespace=', '--config-env=')):
+            index += 1
+        else:
+            break
+    if index >= len(words):
+        return None
+    operation = words[index]
+    if operation in {'tag', 'branch'}:
+        return not _git_reference_query(operation, words[index + 1:])
+    return True if operation in _GIT_WRITES else None
+
+
 _THREAD_LOCKS: dict[str, threading.Lock] = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
 _LOCK_TIMEOUT_SECONDS = 10.0
@@ -761,6 +830,9 @@ def _tool_mutated(tool_name: str, tool_input: dict[str, Any]) -> bool:
         return True
     if short_name in {"bash", "powershell"}:
         command = str(tool_input.get("command") or tool_input.get("cmd") or "")
+        known = _known_shell_mutation(command)
+        if known is not None:
+            return known
         return bool(_MUTATING_COMMAND_PATTERN.search(command))
 
     mcp_match = _MCP_TOOL_RE.fullmatch(normalized)
@@ -779,7 +851,7 @@ def _native_action_not_performed(payload: dict[str, Any]) -> bool:
     Only metadata is retained, and existing unverified changes stay outstanding.
     """
     if (payload.get("hook_event_name") != "PostToolUseFailure"
-            or payload.get("tool_name") not in {"Bash", "Write", "Edit", "Read", "Glob", "Grep"}):
+            or payload.get("tool_name") not in {"Bash", "PowerShell", "Write", "Edit", "Read", "Glob", "Grep"}):
         return False
     error = payload.get("error")
     return (isinstance(error, str)

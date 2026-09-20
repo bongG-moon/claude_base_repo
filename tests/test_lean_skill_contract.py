@@ -98,6 +98,21 @@ class LeanSkillContractTests(unittest.TestCase):
                      "6f1f982d0a47c65899af3c5a7450b7098bc65325"):
             self.assertIn(text, notice)
 
+    def test_current_evidence_adaptation_does_not_add_another_workflow(self):
+        adapter = self.read('karpathy-guidelines/SKILL.md')
+        completion = self.read('company-agent/references/completion.md')
+        self.assertIn('check detects the original defect', adapter)
+        self.assertIn('Do not weaken the expected behavior', adapter)
+        self.assertIn('after the latest relevant change', completion)
+        self.assertIn('failures and skipped checks', completion)
+        self.assertIn('requirements it never tests', completion)
+        notice = (PLUGIN / 'THIRD_PARTY_NOTICES.md').read_text(encoding='utf-8')
+        self.assertIn('5bf4e78011075bcfc0dc295f0724994cd123ee71', notice)
+        self.assertIn('Copyright (c) 2025 Jesse Vincent', notice)
+        hooks = (PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8')
+        self.assertNotIn('superpowers', hooks)
+        self.assertNotIn('UditAkhourii', hooks)
+
 
 if __name__ == "__main__":
     unittest.main()

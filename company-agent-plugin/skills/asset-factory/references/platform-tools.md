@@ -22,6 +22,8 @@
 
 `expect`는 `text`, `json`, `json_schema` 중 하나입니다. 명시한 합성 사례만 호출하며 영수증에는 원문 입력·출력을 보관하지 않습니다. 표준 오류 응답 형식을 쓰는 도구는 그 형식도 정상 반환값 기대치로 시험합니다.
 
+`json_schema`는 `type`, `required`, `properties`, `items`, `minimum`, `maximum`, `enum`, `additionalProperties`(true/false), `title`, `description`만 지원합니다. 알 수 없는 조건은 무시하지 않고 오류로 알립니다. 복잡한 조건은 검증 가능한 작은 사례나 정확한 `json` 기대값으로 표현합니다. JSON의 `true`와 숫자 `1`은 다르게 비교하며 NaN/Infinity는 허용하지 않습니다. 이전 JSON 기반 업무시험 영수증에 현재 검증 버전이 없으면 재시험 후 활성화·연결해야 합니다. `text`만 사용하는 기존 영수증은 유지합니다.
+
 ## 스킬에서 재사용
 
 - 같은 선택 저장소에서 검증·활성화된 MCP를 연결할 때 스킬 AssetSpec에 `tool_dependencies: [{"server":"<등록 이름>","tools":["sum_values"]}]`를 추가합니다. 없는 이름·미검증 도구는 연결하지 않습니다. 본문은 목적·순서·입력 구성·결과 해석을 설명하고 실행 코드를 복제하지 않습니다.

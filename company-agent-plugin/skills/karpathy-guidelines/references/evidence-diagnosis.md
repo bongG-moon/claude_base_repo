@@ -17,6 +17,9 @@
 5. Rerun the original symptom path and relevant regression tests. Preserve evidence
    of remaining failures. Clean up only your own temporary instrumentation within
    scope; never remove another person's files or necessary validation for brevity.
+   Confirm a new regression check fails before the fix when feasible; otherwise
+   label the missing baseline. Use the latest relevant result, including its exit
+   status and skipped checks. A worker's success report is not independent proof.
 
 If the environment cannot reproduce the issue, report what is confirmed, the
 remaining uncertainty, and the smallest missing evidence. Do not fabricate a

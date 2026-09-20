@@ -15,11 +15,12 @@ $files = @(
     'Company-Workspace.vbs',
     'deploy\Start-CompanyWorkspace.ps1',
     'docs\LOCAL_WORKSPACE.md',
+    'docs\SKILL_PRIORITY.md', 'docs\AUDIT_HARNESS_2026-09-20.md',
     'docs\README.md', 'docs\CLAUDE_CODE_BASICS.md',
     'docs\COMPANY_AGENT_HANDBOOK.md', 'docs\ONBOARDING_COURSE.md',
     'docs\Company-Agent-Handbook.html', 'docs\Company-Agent-Onboarding.html',
     'docs\Company-Agent-Guide.html', 'docs\Company-Agent-사용자-안내서.html', 'docs\Claude-Code-필수-사용법.html',
-    'docs\USER_GUIDE.md', 'docs\CLAUDE_CODE_COMMANDS.md', 'docs\UPDATE_1.4.18.md', 'docs\VALIDATION_UNIFIED_GUIDE_2026-09-19.md',
+    'docs\USER_GUIDE.md', 'docs\CLAUDE_CODE_COMMANDS.md', 'docs\UPDATE_1.4.19.md', 'docs\VALIDATION_UNIFIED_GUIDE_2026-09-19.md',
     'docs\VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md',
     'docs\VALIDATION_AUDIT_FIXES_2026-09-19.md',
     'docs\UPDATE_1.4.16.md', 'docs\VALIDATION_RESOURCE_SCOPES_2026-09-19.md',
@@ -34,7 +35,7 @@ foreach ($relative in $files) {
     New-Item -ItemType Directory -Path (Split-Path (Join-Path $payload $relative) -Parent) -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repoRoot $relative) -Destination (Join-Path $payload $relative)
 }
-$zip = Join-Path $outputRoot ('company-workspace-preview-0.6-' + $stamp + '.zip')
+$zip = Join-Path $outputRoot ('company-workspace-preview-0.7-' + $stamp + '.zip')
 if (Test-Path -LiteralPath $zip) { throw 'Output already exists; refusing to overwrite.' }
 Compress-Archive -LiteralPath $payload -DestinationPath $zip -CompressionLevel Optimal
 Get-FileHash -LiteralPath $zip -Algorithm SHA256 | Select-Object Path, Hash

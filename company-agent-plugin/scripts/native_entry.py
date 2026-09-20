@@ -42,6 +42,15 @@ def main() -> int:
         payload = json.load(sys.stdin)
         if not isinstance(payload, dict):
             raise ValueError("Hook input is not an object")
+        if event == 'PreToolUse':
+            from company_agent.dangerous_commands import preflight as dangerous_preflight
+            danger = dangerous_preflight(payload)
+            if danger:
+                # Pure deny-only protection precedes optional skill preparation
+                # and does not depend on a healthy runtime registration. It is
+                # active only while Claude actually invokes this plugin hook.
+                print(json.dumps(danger, ensure_ascii=True))
+                return 0
         if event == "PreToolUse" and payload.get("tool_name") in {"Agent", "Task"}:
             inputs = payload.get("tool_input")
             if not isinstance(inputs, dict) or inputs.get("subagent_type") not in COMPANY_WORKERS:

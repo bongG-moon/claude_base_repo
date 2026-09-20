@@ -58,11 +58,17 @@ The user does not need to name this Skill when the task matches its description.
   when feasible, make the change, and check the actual result. For a refactor,
   verify the intended behavior before and after. Do not invent tests for a
   simple text-only change with no behavioral effect.
+- For a regression, first confirm the check detects the original defect, then
+  confirm it passes after the fix. Do not weaken the expected behavior merely
+  to make a test pass. If reproduction is unavailable, state that limitation.
 - On failure, use the evidence to make a scoped correction within the existing
   harness retry budget. Do not start an independent unbounded review loop.
 - Report what was verified and what remains unverified. A generated test file,
   a model's self-review, or a saved completion record is not evidence that the
   program ran successfully.
+- Use results from after the latest relevant change. Inspect the actual exit
+  status, failures and skipped checks; an old pass or a worker's claim is not
+  current evidence. Passing tests alone does not prove every user requirement.
 
 Source and adaptation details are in [SOURCE.md](SOURCE.md). The preserved
 upstream text under `references/` is provenance, not a second active workflow.

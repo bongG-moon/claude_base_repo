@@ -29,7 +29,10 @@ def main():
     text = re.sub(r'data:font/woff;base64,[A-Za-z0-9+/=]+', '', text)
     requested = {ord(c) for c in text if c.isprintable()} | set(range(32, 127))
     source = TTFont(args.font, recalcTimestamp=False)
-    if source['name'].getDebugName(1) != 'Noto Sans KR':
+    # Official variable releases can use "Noto Sans KR Thin" as the legacy
+    # family (ID 1); ID 16 holds the typographic family independent of weight.
+    source_family = source['name'].getDebugName(16) or source['name'].getDebugName(1)
+    if source_family != 'Noto Sans KR':
         raise ValueError('Supply the approved Noto Sans KR font, not a fallback.')
     missing = requested - set(source.getBestCmap())
     if missing:

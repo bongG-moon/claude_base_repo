@@ -1,6 +1,6 @@
-# Company Agent 설치와 배포 — Windows 1.4.14
+# Company Agent 설치와 배포 — Windows 1.4.19
 
-현재 배포 버전은 1.4.14입니다. 스킬 목록 1회 교정 문구를 줄이고 문서 읽기의 Python 준비·확인 창 시작·사용자 응답·Office 작업을 구분했습니다. Python 확인 10초, 확인 창 시작 30초, 표시 후 응답 300초와 기존 Office 보조 프로세스 60초 제한을 적용합니다. 승인 없이 문서를 열지 않습니다. 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 설정은 유지합니다. 기존 파일 정리·Outlook 조회·HTML·PPT·개인 학습 기능도 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다. 직원용 파일은 [1.4.14 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.14)의 설치 ZIP을 사용하세요.
+현재 배포 버전은 1.4.19입니다. 스킬 읽기 기록·변경 확인·위험 명령 보호·기억 검색·도구 검증·HTML→PPT 배치와 안내서를 보완했습니다. 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다. 직원용 파일은 [1.4.19 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.19)의 설치 ZIP을 사용하세요. [변경·설치 안내](UPDATE_1.4.19.md)에 이전 버전과의 차이와 검증 한계를 정리했습니다.
 
 직원 PC에는 Claude Code와 사내 SMALL/MEDIUM/LARGE 연결, 회사 승인 Python 3.11 이상이 이미 준비되어 있어야 합니다. 기본 ZIP에는 Python 실행 파일과 DLL을 넣지 않고 PC의 Python을 사용합니다. 설치 과정에서 Python/pip/Git를 설치하거나 다운로드하지 않으며 PC의 PATH 설정도 바꾸지 않습니다. 설치 조건은 Claude Code CLI 2.1.220 이상, Windows PowerShell 5.1 이상, Windows 10/11입니다. 대상 PC의 운영체제와 Python 아키텍처는 사내 담당자가 확인합니다.
 

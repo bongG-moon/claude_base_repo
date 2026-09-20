@@ -8,7 +8,7 @@ import test_skill_discovery as discovery
 from company_agent.native_runtime import task_prompt_context, worker_runtime_input
 from company_agent.skill_execution import MAX_REQUEST_CONTEXT_CHARS
 from company_agent.skill_registry import inventory_skills, set_skill_preference
-from company_agent.skill_workflow import preflight
+from company_agent.skill_workflow import observe, preflight
 from company_agent.paths import atomic_write_json, atomic_write_text
 from company_agent.state import load_session, stop_decision
 
@@ -215,6 +215,65 @@ class SkillExecutionTests(unittest.TestCase):
         self.assertIn('selectedSkill', text)
         self.assertNotIn('"skillIndex"', text)
         self.assertEqual(1, len(self.state()['skillWorkflow']['readSkills']))
+
+    def test_subagent_load_is_not_a_coordinator_body_receipt(self):
+        file = discovery.PLUGIN / 'skills/office-reader/SKILL.md'
+        for tool, inputs, response in [
+            ('Skill', {'skill': 'company-agent:office-reader'}, {'success': True}),
+            ('Read', {'file_path': str(file)},
+             {'file': {'content': file.read_text(encoding='utf-8-sig'), 'startLine': 1}}),
+        ]:
+            with self.subTest(tool=tool):
+                self.output()
+                before = self.state()['skillWorkflow']
+                observe(self.f.state, self.f.project, {
+                    'session_id': self.f.sid, 'hook_event_name': 'PostToolUse',
+                    'agent_id': 'worker-123', 'agent_type': 'company-agent:medium-worker',
+                    'tool_name': tool, 'tool_input': inputs, 'tool_response': response,
+                })
+                self.assertEqual(before, self.state()['skillWorkflow'])
+                later, _ = self.output()
+                self.assertEqual('load', later['skillExecution']['mode'])
+                self.assertNotIn('basis', later['skillExecution'])
+
+    def test_subagent_read_does_not_replace_coordinator_selection_or_index_receipt(self):
+        ctx, _ = self.output()
+        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+        before = self.state()['skillWorkflow']
+        for file in [discovery.PLUGIN / 'skills/html-report/SKILL.md',
+                     Path(ctx['skillSelection']['catalog']['path'])]:
+            with self.subTest(file=file.name):
+                observe(self.f.state, self.f.project, {
+                    'session_id': self.f.sid, 'hook_event_name': 'PostToolUse',
+                    'agent_id': 'other-worker', 'tool_name': 'Read',
+                    'tool_input': {'file_path': str(file)},
+                    'tool_response': {'file': {'content': file.read_text(encoding='utf-8-sig'), 'startLine': 1}},
+                })
+                self.assertEqual(before, self.state()['skillWorkflow'])
+        later, _ = self.output()
+        self.assertEqual('reuse', later['skillExecution']['mode'])
+        self.assertEqual('office-reader', later['skillExecution']['name'])
+
+    def test_subagent_preflight_does_not_use_or_spend_coordinator_correction(self):
+        self.output()
+        before = self.state()['skillWorkflow']
+        payload = {'session_id': self.f.sid, 'tool_name': 'Bash',
+                   'tool_input': {'command': 'python sample.py'}}
+        self.assertEqual({}, preflight(self.f.state, self.f.project,
+                                      {**payload, 'agent_id': 'worker-123'}))
+        self.assertEqual(before, self.state()['skillWorkflow'])
+        parent = preflight(self.f.state, self.f.project, payload)
+        self.assertEqual('deny', parent['hookSpecificOutput']['permissionDecision'])
+
+    def test_agent_type_without_agent_id_keeps_main_context_observation(self):
+        self.output()
+        observe(self.f.state, self.f.project, {
+            'session_id': self.f.sid, 'hook_event_name': 'PostToolUse',
+            'agent_type': 'company-agent:medium-worker',
+            'tool_name': 'Skill', 'tool_input': {'skill': 'company-agent:office-reader'},
+            'tool_response': {'success': True},
+        })
+        self.assertEqual('office-reader', self.state()['skillWorkflow']['selected']['name'])
 
     def test_legacy_delivery_is_not_reuse_and_is_removed(self):
         ctx = self.f.context()

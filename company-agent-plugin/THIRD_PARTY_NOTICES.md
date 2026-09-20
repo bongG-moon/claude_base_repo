@@ -9,6 +9,7 @@ must not fetch them or load this notice as an active workflow.
 | https://github.com/mattpocock/skills/tree/3cca18b368ae95cdbdebbff572ccafa662551015 | skills/productivity/writing-for-agents/SKILL.md; skills/engineering/domain-modeling/SKILL.md; skills/engineering/diagnosing-bugs/SKILL.md; skills/engineering/wizard/SKILL.md; skills/productivity/wait-what/SKILL.md; skills/productivity/handoff/SKILL.md | Conditional authoring, glossary and diagnosis references; Windows-only human setup guidance; plain-language re-explanation. Existing compact behavior retained, no new handoff engine. |
 | https://github.com/DietrichGebert/ponytail/tree/356918eba965ee1eac64bd3a7f0dd02108350de5 | skills/ponytail/SKILL.md; skills/ponytail-review/SKILL.md | Reuse/native-first supporting guidance in karpathy-guidelines. No ultra mode, code-golf objective, lifecycle hooks or MCP. |
 | https://github.com/ayghri/i-have-adhd/tree/6f1f982d0a47c65899af3c5a7450b7098bc65325 | skills/i-have-adhd/SKILL.md | Result-first, complete task-aware responses. No health assumptions, per-turn progress ritual, invented time estimates or always-on hook. |
+| https://github.com/obra/superpowers/tree/5bf4e78011075bcfc0dc295f0724994cd123ee71 | skills/verification-before-completion/SKILL.md; skills/systematic-debugging/SKILL.md | Reviewed 2026-09-20. Company-authored, conditional regression-baseline and current-evidence checks in existing diagnosis/completion guidance. No wholesale plugin import, extra planning/approval loop, mandatory worktree, automatic commits, or new model calls. |
 
 The original upstream licenses at each pinned revision are MIT. Their notices
 are preserved below; the identical MIT permission/warranty text applies to each
@@ -34,6 +35,8 @@ Copyright (c) 2026 Matt Pocock
 Copyright (c) 2026 DietrichGebert
 
 Copyright (c) 2026 Ayoub Ghriss
+
+Copyright (c) 2025 Jesse Vincent
 
 ## MIT License (applies separately to each notice above)
 

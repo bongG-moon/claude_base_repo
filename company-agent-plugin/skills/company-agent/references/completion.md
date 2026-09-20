@@ -35,6 +35,10 @@ guess a path or forge a receipt. State the actual missing capability briefly.
 - Code changes need relevant tests/static checks. Documents need actual content
   and source-constraint checks. File moves need receipts and actual paths.
   Seeing a filename is not proof of correct content.
+- Check evidence after the latest relevant change, including actual exit status,
+  failures and skipped checks. Do not reuse an old pass or accept a worker's
+  conclusion without checking the changed result. Match the requested outcome
+  separately: a passing test suite is not proof of requirements it never tests.
 - After an observed successful check, record:
   `company-agent session verify --session "<id>" --status pass --summary "<short evidence>"`.
 - Record a genuinely failed check with `--status fail`. Permission denial,

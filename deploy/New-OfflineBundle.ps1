@@ -308,9 +308,10 @@ try {
     foreach ($docName in @('UPDATE_1.4.15.md', 'LOCAL_WORKSPACE.md', 'BEGINNER_WORKFLOW_DESIGN_2026-09-19.md', 'LOCAL_DECISION_WORKFLOW_2026-09-19.md', 'VALIDATION_AUDIT_FIXES_2026-09-19.md', 'VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md', 'VALIDATION_COMPANY_PERSONAL_2026-09-18.md', 'VALIDATION_EXECUTION_RECOVERY_2026-09-19.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-18.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-19.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
-    foreach ($docName in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CLAUDE_CODE_COMMANDS.md', 'Company-Agent-Guide.html', 'Company-Agent-Handbook.html', 'Company-Agent-Onboarding.html', 'UPDATE_1.4.16.md', 'UPDATE_1.4.17.md', 'UPDATE_1.4.18.md', 'VALIDATION_RESOURCE_SCOPES_2026-09-19.md', 'VALIDATION_HARNESS_MAP_2026-09-19.md', 'VALIDATION_PPT_HTML_FIRST_2026-09-19.md', 'VALIDATION_PPT_NATIVE_HTML_2026-09-19.md', 'VALIDATION_SINGLE_DELIVERY_2026-09-19.md', 'VALIDATION_UNIFIED_GUIDE_2026-09-19.md')) {
+    foreach ($docName in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CLAUDE_CODE_COMMANDS.md', 'Company-Agent-Guide.html', 'Company-Agent-Handbook.html', 'Company-Agent-Onboarding.html', 'UPDATE_1.4.16.md', 'UPDATE_1.4.17.md', 'UPDATE_1.4.18.md', 'UPDATE_1.4.19.md', 'VALIDATION_RESOURCE_SCOPES_2026-09-19.md', 'VALIDATION_HARNESS_MAP_2026-09-19.md', 'VALIDATION_PPT_HTML_FIRST_2026-09-19.md', 'VALIDATION_PPT_NATIVE_HTML_2026-09-19.md', 'VALIDATION_SINGLE_DELIVERY_2026-09-19.md', 'VALIDATION_UNIFIED_GUIDE_2026-09-19.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
+    Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\AUDIT_HARNESS_2026-09-20.md') -Destination (Join-Path $stagePath 'docs\AUDIT_HARNESS_2026-09-20.md') -Force
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'Diagnose-CompanyAgent.cmd') -Destination (Join-Path $stagePath 'Diagnose-CompanyAgent.cmd') -Force

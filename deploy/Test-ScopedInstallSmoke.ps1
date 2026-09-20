@@ -560,6 +560,12 @@ finally {
         $resolved = ConvertTo-CompanyAgentFullPath -Path $testRoot
         $tempRoot = (ConvertTo-CompanyAgentFullPath -Path ([IO.Path]::GetTempPath())).TrimEnd('\')
         if (-not $resolved.StartsWith(($tempRoot + '\'), [StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notlike 'CompanyAgent-ScopedSmoke-*') { throw 'Unsafe smoke-test cleanup path.' }
-        Remove-Item -LiteralPath $resolved -Recurse -Force
+        if (((Get-Item -LiteralPath $resolved -Force).Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Smoke-test cleanup root is a reparse point.' }
+        # Native Claude can create hook result paths beyond MAX_PATH. Delete
+        # only this validated, owned fixture through the extended-path API;
+        # PowerShell 5.1's recursive provider can fail after reporting PASS.
+        $cleanupPath = if ($resolved.StartsWith('\\')) { '\\?\UNC\' + $resolved.Substring(2) } else { '\\?\' + $resolved }
+        [IO.Directory]::Delete($cleanupPath, $true)
+        if (Test-Path -LiteralPath $resolved) { throw 'Smoke-test fixture cleanup was not completed.' }
     }
 }

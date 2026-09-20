@@ -25,6 +25,13 @@ def _hash(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _subagent_context(payload: dict) -> bool:
+    # Native tool hooks share the parent's session_id. Only agent_id identifies
+    # a different conversation; agent_type alone may be a main --agent session.
+    agent_id = payload.get('agent_id')
+    return isinstance(agent_id, str) and bool(agent_id.strip())
+
+
 def _snapshot(root: Path, project: Path, route: dict) -> dict:
     directory = root / "skill-catalogs" / _hash(_canonical(project).encode("utf-8"))
     catalog = directory / "SKILL_CATALOG.md"
@@ -141,6 +148,10 @@ def _record_read(route: dict, key: str, response: Any, raw: bytes) -> bool:
 
 def observe(root: Path, project: Path, payload: dict) -> None:
     if payload.get("hook_event_name") != "PostToolUse":
+        return
+    if _subagent_context(payload):
+        # Worker reads do not expose a body to the coordinator. Do not replace
+        # its selection or authorize context-local reuse from another context.
         return
     if payload.get("tool_name") not in {"Read", "Skill"} or not payload.get("session_id"):
         return
@@ -441,6 +452,11 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
 
 def preflight(root: Path, project: Path, payload: dict) -> dict:
     """At most one list-review correction; never repeated blocks or tool allows."""
+    if _subagent_context(payload):
+        # The worker receives its own exact-path loading instructions. Parent
+        # receipts and its one correction budget cannot validate that context.
+        # Returning no preparation decision does not bypass native/MCP policy.
+        return {}
     session_id = str(payload.get('session_id') or '')
     if not session_id:
         return {}

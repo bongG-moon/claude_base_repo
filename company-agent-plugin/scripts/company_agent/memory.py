@@ -320,17 +320,19 @@ def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
     return path
 
 
-def search_memory(root: Path, query: str, limit: int = 10) -> list[dict[str, Any]]:
-    """Return compact active memories relevant to query without retaining it."""
-
-    layout = ensure_user_layout(root)
+def _memory_limit(limit: int) -> int:
     try:
-        bounded_limit = max(0, min(int(limit), MAX_MEMORY_RESULTS))
+        return max(0, min(int(limit), MAX_MEMORY_RESULTS))
     except (TypeError, ValueError):
-        bounded_limit = MAX_MEMORY_RESULTS
+        return MAX_MEMORY_RESULTS
+
+
+def _search_memory_scored(root: Path, query: str, limit: int) -> list[tuple[int, dict[str, Any]]]:
+    """Keep full-body relevance internal until all selected scopes are ranked."""
+    bounded_limit = _memory_limit(limit)
     if bounded_limit == 0:
         return []
-
+    layout = ensure_user_layout(root)
     query_text = str(query or "")[:MAX_MEMORY_QUERY_CHARS].casefold()
     tokens = _query_tokens(query_text)
     scored: list[tuple[int, dict[str, Any]]] = []
@@ -370,29 +372,44 @@ def search_memory(root: Path, query: str, limit: int = 10) -> list[dict[str, Any
         )
     selected = []
     seen: set[str] = set()
-    for _, item in sorted(scored, key=lambda pair: (-pair[0], str(pair[1]["id"]))):
+    for score, item in sorted(scored, key=lambda pair: (-pair[0], str(pair[1]["id"]))):
         fingerprint = item["content_hash"]
         if fingerprint in seen:
             continue
         seen.add(fingerprint)
-        selected.append(item)
+        selected.append((score, item))
         if len(selected) >= bounded_limit:
             break
     return selected
 
 
+def search_memory(root: Path, query: str, limit: int = 10) -> list[dict[str, Any]]:
+    """Return compact active memories relevant to query without retaining it."""
+    return [item for _, item in _search_memory_scored(root, query, limit)]
+
+
 def search_scoped_memory(root: Path, project: Path, query: str, limit: int = MAX_MEMORY_RESULTS) -> list[dict[str, Any]]:
     """Current project + personal, within the existing total context budget."""
     from .resource_scope import readable_roots
-    results, seen = [], set()
-    for scope, folder in readable_roots(root, project):
+    bounded_limit = _memory_limit(limit)
+    if not bounded_limit:
+        return []
+    candidates = []
+    for priority, (scope, folder) in enumerate(readable_roots(root, project)):
         if not (folder / 'memory/items').is_dir():
             continue
-        for item in search_memory(folder, query, limit):
-            if item['content_hash'] not in seen:
-                results.append({**item, 'storageScope': scope})
-                seen.add(item['content_hash'])
-    return results[:max(0, min(limit, MAX_MEMORY_RESULTS))]
+        for score, item in _search_memory_scored(folder, query, bounded_limit):
+            candidates.append((score, priority, {**item, 'storageScope': scope}))
+    results, seen = [], set()
+    # Relevant personal facts beat unrelated project defaults; equal matches
+    # retain project precedence. Scores never enter the prompt or saved memory.
+    for _, _, item in sorted(candidates, key=lambda row: (-row[0], row[1], str(row[2]['id']))):
+        if item['content_hash'] not in seen:
+            results.append(item)
+            seen.add(item['content_hash'])
+        if len(results) >= bounded_limit:
+            break
+    return results
 
 
 def render_memory_context(

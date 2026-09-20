@@ -65,6 +65,9 @@ def validate_cases(value: object) -> list[dict]:
             if "json_schema" in expected:
                 from .asset_factory import _validate_schema_definition
                 _validate_schema_definition(expected["json_schema"], "tool_tests json_schema")
+            if "json" in expected:
+                from .asset_factory import _validate_json_literal
+                _validate_json_literal(expected['json'], 'tool_tests json')
     return value
 
 
@@ -127,7 +130,7 @@ def platform_cases(root: Path, manifest: dict) -> list[dict] | None:
 
 async def test_business_tools(session, listed, cases: list[dict]) -> dict:
     """Only call explicitly specified synthetic cases; never probe arbitrary tools."""
-    from .asset_factory import _validate_json_value, MAX_JSON_OUTPUT_BYTES
+    from .asset_factory import _validate_json_value, _validate_json_literal, _json_equal, MAX_JSON_OUTPUT_BYTES
     tools = {str(item.name): item for item in listed.tools if item.name != "health"}
     if not tools or set(c["tool"] for c in cases) - tools.keys():
         raise ValueError("Business tests reference missing tools or no business tools were listed")
@@ -156,12 +159,13 @@ async def test_business_tools(session, listed, cases: list[dict]) -> dict:
                 raise ValueError(f"Business test {index + 1}: invalid JSON result") from None
             matches = True
             if "json" in expected:
-                matches = value == expected["json"]
+                _validate_json_literal(value, 'business result')
+                matches = _json_equal(value, expected["json"])
             else:
                 _validate_json_value(value, expected["json_schema"])
         if not matches:
             raise ValueError(f"Business test {index + 1}: result differs from expected value")
-    return {"businessTestCount": len(cases), "businessTools": sorted(tools)}
+    return {"businessTestCount": len(cases), "businessTools": sorted(tools), "schemaValidationVersion": 1}
 
 
 def verify_business_receipt(root: Path, manifest: dict, receipt: dict) -> None:
@@ -173,3 +177,5 @@ def verify_business_receipt(root: Path, manifest: dict, receipt: dict) -> None:
     if (details.get("businessTestCount") != len(cases) or details.get("businessTools") != expected
             or any(t not in details.get("toolSchemas", {}) for t in expected)):
         raise ValueError("Platform MCP needs current business test evidence, not only a health check")
+    if any(set(c.get('expect', {})) & {'json', 'json_schema'} for c in cases) and details.get('schemaValidationVersion') != 1:
+        raise ValueError("JSON business tests need a current validation receipt; re-test MCP")

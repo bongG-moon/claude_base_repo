@@ -93,6 +93,10 @@ class ClaudeSession:
         self.pending = {}
         self.tasks = set()
         self.closed = False
+        self._close_done = threading.Event()
+        self._close_owner = None
+        self._close_error = None
+        self._readers = []
         self.stopping = False
         self.busy = False
         self.initialization_error = None
@@ -125,8 +129,10 @@ class ClaudeSession:
             self.process = subprocess.Popen(cli_arguments(self.command, self.info, self.session_id),
                 cwd=self.cwd, env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE, creationflags=HIDDEN)
-            threading.Thread(target=self._read, daemon=True).start()
-            threading.Thread(target=self._read_stderr, daemon=True).start()
+            self._readers = [threading.Thread(target=self._read, daemon=True),
+                             threading.Thread(target=self._read_stderr, daemon=True)]
+            for reader in self._readers:
+                reader.start()
             self._write({"type": "control_request", "request_id": self.initialize_id,
                          "request": {"subtype": "initialize"}})
 
@@ -194,6 +200,7 @@ class ClaudeSession:
             if not self.closed and not self.stopping:
                 self.emit("error", {"message": "CLI 연결이 종료되었습니다. 로그인 또는 실행 환경을 확인해 주세요."})
             self.close()
+            self.process.stdout.close()
 
     def handle(self, data: dict):
         kind = data.get("type")
@@ -297,29 +304,73 @@ class ClaudeSession:
         self.emit("request_closed", {"id": rid})
 
     def close(self):
+        current = threading.current_thread()
         with self.lock:
             if self.closed:
-                return
-            self.closed, self.busy = True, False
-            self.pending.clear()
-            process = self.process
-        self.ready.set()
-        if process and process.poll() is None:
-            if os.name == "nt":
-                subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
-                               capture_output=True, creationflags=HIDDEN, timeout=10)
+                # Readers may be leaving a callback while another closer waits
+                # for the owned process. They must not wait on that closer.
+                reentrant = current is self._close_owner or current in self._readers
+                owner = False
             else:
-                process.terminate()
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                process.kill()
-        if process:
-            for stream in (process.stdin, process.stdout):
+                self.closed, self.busy = True, False
+                self.pending.clear()
+                self._close_owner = current
+                process = self.process
+                owner = True
+        if not owner:
+            if reentrant:
+                return self._close_done.is_set() and self._close_error is None
+            return self._close_done.wait(21) and self._close_error is None
+        self.ready.set()
+        try:
+            if process and process.poll() is None:
+                # EOF lets an owned terminal wrapper reap its CLI child before
+                # forced shutdown. This is bounded, not a business-request retry.
                 try:
-                    stream.close()
+                    process.stdin.close()
                 except (OSError, ValueError):
                     pass
+                try:
+                    process.wait(timeout=.3)
+                    needs_stop = False
+                except subprocess.TimeoutExpired:
+                    needs_stop = True
+            else:
+                needs_stop = False
+            if needs_stop:
+                if os.name == "nt":
+                    try:
+                        result = subprocess.run(["taskkill.exe", "/PID", str(process.pid), "/T", "/F"],
+                                                capture_output=True, creationflags=HIDDEN, timeout=10)
+                        tree_stopped = result.returncode == 0
+                    except (OSError, subprocess.TimeoutExpired):
+                        tree_stopped = False
+                    if not tree_stopped:
+                        # Use only the handle we created, never search/kill by
+                        # name. This fallback cannot prove descendant shutdown.
+                        process.kill()
+                else:
+                    process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
+            if process:
+                # Reader threads own their output streams. Closing a buffered
+                # stream from here could wait on their blocking readline lock.
+                streams = (process.stdin,) if self._readers else (process.stdin, process.stdout, process.stderr)
+                for stream in streams:
+                    try:
+                        stream.close()
+                    except (OSError, ValueError):
+                        pass
+        except (OSError, subprocess.TimeoutExpired):
+            self._close_error = "앱에서 시작한 CLI의 종료를 확인하지 못했습니다. 이미 실행된 작업이나 하위 프로그램의 상태를 확인해 주세요."
+            self.emit("error", {"message": self._close_error})
+        finally:
+            self._close_done.set()
+        return self._close_error is None
 
     def interrupt(self):
         # Stop only this app-owned process. Never kill arbitrary claude/Office processes.
@@ -327,8 +378,12 @@ class ClaudeSession:
             return
         self.stopping = True
         if self.process is None:
-            self.close()
-            self.emit("status", {"state": "stopped", "label": "시작 전에 중지했어요"})
+            if self.close():
+                # start() may have been inside Popen while we observed None.
+                # close() waits for that owner; report only its actual result.
+                label = ("시작 전에 중지했어요" if self.process is None else
+                         "앱의 CLI 연결을 중지했어요 · 이미 만들어진 파일은 유지됩니다")
+                self.emit("status", {"state": "stopped", "label": label})
             return
         try:
             self._write({"type": "control_request", "request_id": "stop-" + uuid.uuid4().hex,
@@ -340,5 +395,5 @@ class ClaudeSession:
 
     def _finish_stop(self):
         time.sleep(1)
-        self.close()
-        self.emit("status", {"state": "stopped", "label": "중지했어요 · 이미 만들어진 파일은 유지됩니다"})
+        if self.close():
+            self.emit("status", {"state": "stopped", "label": "앱의 CLI 연결을 중지했어요 · 이미 만들어진 파일은 유지됩니다"})

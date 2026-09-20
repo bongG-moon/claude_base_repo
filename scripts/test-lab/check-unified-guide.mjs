@@ -33,7 +33,7 @@ try{
   if(await page.locator('script,iframe,img,link').count())throw Error('External/runtime dependency in guide');
   const links=await page.locator('a[href^="#"]').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href')));
   for(const link of links)if(await page.locator(link).count()!==1)throw Error('Missing/duplicate anchor '+link);
-  const targets=['start','onboarding-section-2','onboarding-section-3','onboarding-section-7','onboarding-section-8','onboarding-section-9','basics','commands-section-1','commands-section-2'];
+  const targets=['start','onboarding-section-2','onboarding-section-3','onboarding-section-7','onboarding-section-8','onboarding-section-9','basics','handbook-section-4','handbook-section-7','commands-section-1','commands-section-2'];
   for(const width of [1440,768,390]){
     await page.setViewportSize({width,height:1000});
     for(const target of targets){

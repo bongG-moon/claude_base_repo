@@ -37,6 +37,24 @@ class HandbookTests(unittest.TestCase):
                 if 'disable-model-invocation: true' not in p.read_text(encoding='utf-8').split('---',2)[1]}
         self.assertEqual(actual,documented)
         self.assertEqual(12,len(actual))
+        self.assertIn(f'기본 스킬 {len(actual)}개와 이전 이름 1개',text)
+        compatibility=(PLUGIN/'skills/platform-mcp-builder/SKILL.md').read_text(encoding='utf-8')
+        self.assertIn('disable-model-invocation: true',compatibility.split('---',2)[1])
+        self.assertIn('호환용으로만 남아',text)
+
+    def test_audit_guidance_gives_next_steps_without_claiming_full_plugin_install(self):
+        handbook=(ROOT/'docs/COMPANY_AGENT_HANDBOOK.md').read_text(encoding='utf-8')
+        for name in ('Karpathy','Superpowers','Ponytail','i-have-adhd'):
+            self.assertIn(name,handbook)
+        self.assertIn('외부 플러그인 전체를 설치한 것이 아니며',handbook)
+        self.assertIn('별도 ADHD 병렬 추론 프로젝트는 도입하지 않았습니다',handbook)
+        for name in ('USER_GUIDE.md','ONBOARDING_COURSE.md','COMPANY_AGENT_HANDBOOK.md'):
+            text=(ROOT/'docs'/name).read_text(encoding='utf-8')
+            for phrase in ('정적','재시험','저장 범위'):
+                self.assertIn(phrase,text,name)
+        basics=(ROOT/'docs/CLAUDE_CODE_BASICS.md').read_text(encoding='utf-8')
+        self.assertIn('종료를 확인하지 못하면 중지 성공으로 표시하지 않습니다',basics)
+        self.assertIn('모든 하위 프로그램의 종료를 보장하지는 않습니다',basics)
 
     def test_hooks_commands_and_agents_match_source(self):
         text=(ROOT/'docs/COMPANY_AGENT_HANDBOOK.md').read_text(encoding='utf-8')
@@ -78,6 +96,8 @@ class HandbookTests(unittest.TestCase):
             text=(ROOT/'deploy'/builder).read_text(encoding='utf-8')
             for name in [*MARKDOWN,*HTMLS,GUIDE]:
                 self.assertIn(name,text)
+            self.assertIn('AUDIT_HARNESS_2026-09-20.md',text)
+            self.assertIn('SKILL_PRIORITY.md',text)
         # Windows PowerShell 5.1 otherwise misreads Korean filenames in source.
         builder=ROOT/'deploy/New-WorkspaceBundle.ps1'
         self.assertTrue(builder.read_bytes().startswith(b'\xef\xbb\xbf'))

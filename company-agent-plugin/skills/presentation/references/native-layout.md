@@ -22,6 +22,9 @@
 `htmlSource`에는 slides·referenceImages·다른 --template을 섞지 않는다.
 `.slide` 기본 선택자, 필요 시 `.ppt-slide` 또는 `main > section`. 동일한 고정 크기 장이
 1~60개 있어야 한다. 1920×1080은 960×540 포인트로 비율을 유지해 변환한다.
+변환할 모든 장이 표시된 정적 HTML을 준비한다. 숨김 또는 이동·회전·확대/축소된
+슬라이드는 자동으로 펼치거나 배치를 추측하지 않는다. 오류가 나면 같은 초안에서
+고정 크기로 표시되도록 수정하고 확인한다. 원래 flex/grid 배치는 유지한다.
 
 - 로컬 Edge/Chrome으로 실제 flex/grid 위치와 줄바꿈을 한 번 읽는다. 기본은 설치된
   Chrome 우선, 없으면 Edge. `browser:"edge"` 또는 `"chrome"`을 명시할 수도 있다.

@@ -16,10 +16,13 @@
     if (!slides.length || slides.length > 60) fail('슬라이드 선택자로 1~60장을 찾을 수 없습니다.');
     if (slides.some(s => slides.some(other => other !== s && other.contains(s)))) fail('슬라이드 선택자는 중첩되지 않아야 합니다.');
     for (const slide of slides) {
-      slide.hidden = false;
-      slide.style.setProperty('display', 'block', 'important');
-      slide.style.setProperty('visibility', 'visible', 'important');
-      slide.style.setProperty('transform', 'none', 'important');
+      const style = getComputedStyle(slide);
+      // Measure the authored layout. Forcing block destroys flex/grid geometry;
+      // guessing how to unhide or unscale slides would silently change it too.
+      if (slide.hidden || style.display === 'none' || style.visibility !== 'visible' || style.contentVisibility === 'hidden')
+        fail('숨겨진 HTML 슬라이드는 배치를 추측하지 않습니다. 변환할 모든 장을 표시한 정적 HTML로 준비해 주세요.');
+      if (['transform','translate','rotate','scale'].some(key => style[key] && style[key] !== 'none'))
+        fail('변형된 HTML 슬라이드는 배치를 임의로 바꾸지 않습니다. 회전·이동·크기 변형 없는 고정 크기 슬라이드로 준비해 주세요.');
     }
     const first = slides[0].getBoundingClientRect();
     if (first.width < 600 || first.height < 300) fail('고정 크기의 HTML 슬라이드가 필요합니다.');
@@ -79,7 +82,7 @@
         if (!rect.width || !rect.height) return;
         if (['SCRIPT','STYLE','META','LINK','HEAD','TITLE'].includes(node.tagName)) return;
         if (['SVG','CANVAS','VIDEO','IFRAME','OBJECT','EMBED'].includes(node.tagName)) fail(`${node.tagName} 요소는 네이티브 변환 대상이 아닙니다. 승인된 개별 그림 또는 native chart로 지정해 주세요.`);
-        if (style.transform !== 'none' || style.filter !== 'none' || style.clipPath !== 'none' || style.backgroundImage !== 'none') fail('변환하지 못하는 회전·필터·클립·배경 이미지/그라디언트가 있습니다. 단순화하거나 개별 그림 사용을 확인해 주세요.');
+        if (['transform','translate','rotate','scale'].some(key => style[key] && style[key] !== 'none') || style.filter !== 'none' || style.clipPath !== 'none' || style.backgroundImage !== 'none') fail('변환하지 못하는 회전·필터·클립·배경 이미지/그라디언트가 있습니다. 단순화하거나 개별 그림 사용을 확인해 주세요.');
         for (const pseudo of ['::before','::after']) {
           const content = getComputedStyle(node,pseudo).content;
           if (content && !['none','normal','""'].includes(content)) fail('CSS 가상 요소의 내용을 실제 HTML 요소로 바꿔 주세요.');

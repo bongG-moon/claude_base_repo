@@ -6,6 +6,7 @@ import hashlib
 import hmac
 import importlib.metadata
 import json
+import math
 import os
 import py_compile
 import re
@@ -326,10 +327,56 @@ def _create_skill(layout: dict[str, Path], name: str, description: str, spec: di
 
 
 def _validate_schema_definition(value: Any, field: str) -> dict[str, Any]:
-    if value is None:
-        return {}
-    if not isinstance(value, dict):
-        raise ValueError(f"{field} must be a JSON object")
+    """A small explicit subset, never a permissive pretend JSON Schema engine."""
+    supported = {'type', 'required', 'properties', 'items', 'minimum', 'maximum',
+                 'enum', 'additionalProperties', 'title', 'description'}
+    types = {'null', 'boolean', 'object', 'array', 'string', 'integer', 'number'}
+    count = 0
+
+    def check(schema, location, depth=0):
+        nonlocal count
+        count += 1
+        if not isinstance(schema, dict) or depth > 32 or count > 1024:
+            raise ValueError(f"{location} must be a bounded JSON schema object")
+        unknown = set(schema) - supported
+        if unknown:
+            raise ValueError(f"Unsupported JSON schema keywords at {location}: {', '.join(sorted(map(str, unknown)))}")
+        if 'type' in schema:
+            names = [schema['type']] if isinstance(schema['type'], str) else schema['type']
+            if (not isinstance(names, list) or not names or any(not isinstance(n, str) or n not in types for n in names)
+                    or len(set(names)) != len(names)):
+                raise ValueError(f"Invalid JSON schema type at {location}")
+        for key in ('title', 'description'):
+            if key in schema and not isinstance(schema[key], str):
+                raise ValueError(f"{location}.{key} must be text")
+        for key in ('minimum', 'maximum'):
+            if key in schema and (type(schema[key]) not in (int, float) or
+                                  isinstance(schema[key], float) and not math.isfinite(schema[key])):
+                raise ValueError(f"{location}.{key} must be a finite number")
+        if 'minimum' in schema and 'maximum' in schema and schema['minimum'] > schema['maximum']:
+            raise ValueError(f"minimum exceeds maximum at {location}")
+        required = schema.get('required', [])
+        if (not isinstance(required, list) or any(not isinstance(k, str) for k in required)
+                or len(set(required)) != len(required)):
+            raise ValueError(f"Invalid required keys at {location}")
+        props = schema.get('properties', {})
+        if not isinstance(props, dict) or any(not isinstance(k, str) for k in props):
+            raise ValueError(f"Invalid properties at {location}")
+        for key, child in props.items():
+            check(child, f'{location}.properties.{key}', depth + 1)
+        if 'items' in schema:
+            check(schema['items'], location + '.items', depth + 1)
+        if 'additionalProperties' in schema and type(schema['additionalProperties']) is not bool:
+            raise ValueError(f"{location}.additionalProperties supports only true/false")
+        if 'enum' in schema:
+            options = schema['enum']
+            if not isinstance(options, list) or not 1 <= len(options) <= 128:
+                raise ValueError(f"{location}.enum needs 1..128 JSON values")
+            _validate_json_literal(options, location + '.enum')
+            if any(_json_equal(v, prior) for i, v in enumerate(options) for prior in options[:i]):
+                raise ValueError(f"Duplicate enum values at {location}")
+
+    check(value, field)
     return value
 
 
@@ -675,6 +722,14 @@ def _verify_receipt(
             raise ValueError(f"validation receipt {key} does not match the asset")
     if receipt.get("assetHash") != _asset_content_hash(asset_root, manifest_name):
         raise ValueError("asset content changed after validation; run validation again")
+    if expected_type == 'script-runtime':
+        details = receipt.get('details', {})
+        version = details.get('schemaValidationVersion') if isinstance(details, dict) else None
+        if type(version) is not int or version != 1:
+            raise ValueError('Script schema checks need a current validation receipt; re-test script tool')
+    if asset_type == 'mcp':
+        from .platform_assets import verify_business_receipt
+        verify_business_receipt(asset_root, _load_manifest(asset_root, manifest_name), receipt)
     receipt["signature"] = signature
     return path, receipt
 
@@ -697,36 +752,70 @@ def _json_type(value: Any) -> str:
     return type(value).__name__
 
 
+def _validate_json_literal(value: Any, path: str, depth: int = 0) -> None:
+    if depth > 64:
+        raise ValueError(f"JSON nesting limit exceeded at {path}")
+    if isinstance(value, float) and not math.isfinite(value):
+        raise ValueError(f"JSON value at {path} must be finite")
+    if isinstance(value, dict):
+        if any(not isinstance(k, str) for k in value):
+            raise ValueError(f"JSON object keys at {path} must be strings")
+        for key, child in value.items():
+            _validate_json_literal(child, f'{path}.{key}', depth + 1)
+    elif isinstance(value, list):
+        for index, child in enumerate(value):
+            _validate_json_literal(child, f'{path}[{index}]', depth + 1)
+    elif value is not None and type(value) not in (str, int, float, bool):
+        raise ValueError(f"Unsupported JSON value at {path}")
+
+
+def _json_equal(left: Any, right: Any) -> bool:
+    # Python considers True == 1, including nested containers; JSON does not.
+    if isinstance(left, bool) or isinstance(right, bool):
+        return type(left) is type(right) and left == right
+    if isinstance(left, dict) and isinstance(right, dict):
+        return left.keys() == right.keys() and all(_json_equal(left[k], right[k]) for k in left)
+    if isinstance(left, list) and isinstance(right, list):
+        return len(left) == len(right) and all(_json_equal(a, b) for a, b in zip(left, right))
+    return left == right
+
+
 def _validate_json_value(value: Any, schema: dict[str, Any], path: str = "$") -> None:
+    _validate_schema_definition(schema, 'schema')
+    _validate_json_literal(value, path)
+    _check_json_value(value, schema, path)
+
+
+def _check_json_value(value: Any, schema: dict[str, Any], path: str) -> None:
     expected = schema.get("type")
     if expected:
         allowed = [expected] if isinstance(expected, str) else expected
-        if not isinstance(allowed, list) or any(not isinstance(item, str) for item in allowed):
-            raise ValueError(f"invalid JSON schema type at {path}")
         actual = _json_type(value)
-        if actual not in allowed and not (actual == "integer" and "number" in allowed):
+        integer_number = actual == 'number' and value.is_integer() and 'integer' in allowed
+        if actual not in allowed and not (actual == "integer" and "number" in allowed) and not integer_number:
             raise ValueError(f"JSON value at {path} must be {allowed}; got {actual}")
+    if 'enum' in schema and not any(_json_equal(value, option) for option in schema['enum']):
+        raise ValueError(f"JSON value at {path} is not an allowed enum value")
+    if type(value) in (int, float):
+        if 'minimum' in schema and value < schema['minimum']:
+            raise ValueError(f"JSON value at {path} is below minimum")
+        if 'maximum' in schema and value > schema['maximum']:
+            raise ValueError(f"JSON value at {path} exceeds maximum")
     if isinstance(value, dict):
         required = schema.get("required", [])
-        if not isinstance(required, list):
-            raise ValueError(f"invalid required list at {path}")
         missing = [key for key in required if key not in value]
         if missing:
             raise ValueError(f"JSON value at {path} is missing required keys: {', '.join(map(str, missing))}")
         properties = schema.get("properties", {})
-        if not isinstance(properties, dict):
-            raise ValueError(f"invalid properties map at {path}")
+        if schema.get('additionalProperties') is False and set(value) - properties.keys():
+            raise ValueError(f"JSON value at {path} contains additional properties")
         for key, child_schema in properties.items():
             if key in value:
-                if not isinstance(child_schema, dict):
-                    raise ValueError(f"invalid schema for {path}.{key}")
-                _validate_json_value(value[key], child_schema, f"{path}.{key}")
+                _check_json_value(value[key], child_schema, f"{path}.{key}")
     if isinstance(value, list) and "items" in schema:
         item_schema = schema["items"]
-        if not isinstance(item_schema, dict):
-            raise ValueError(f"invalid items schema at {path}")
         for index, item in enumerate(value):
-            _validate_json_value(item, item_schema, f"{path}[{index}]")
+            _check_json_value(item, item_schema, f"{path}[{index}]")
 
 
 def _bounded_timeout(timeout: int) -> int:
@@ -797,7 +886,8 @@ def validate_script_tool_runtime(state_root: Path, name: str, input_path: Path, 
         raise ValueError("script tool modified its own validated asset files")
     return _write_receipt(
         layout, tool_root, "script-runtime", "script-tool", name, asset_hash,
-        {"inputHash": input_hash, "outputType": _json_type(result), "timeoutSeconds": timeout},
+        {"inputHash": input_hash, "outputType": _json_type(result), "timeoutSeconds": timeout,
+         "schemaValidationVersion": 1},
     )
 
 
@@ -992,8 +1082,6 @@ def activate_mcp(state_root: Path, name: str, validation_receipt: str | Path) ->
     receipt_path, receipt = _verify_receipt(
         layout, server_root, validation_receipt, "mcp-protocol", "mcp", name, "asset.json"
     )
-    from .platform_assets import verify_business_receipt
-    verify_business_receipt(server_root, manifest, receipt)
 
     registry_path = layout["mcp"] / "registry.json"
     registry = load_json(registry_path, {"mcpServers": {}}) or {"mcpServers": {}}

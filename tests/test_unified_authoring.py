@@ -124,6 +124,28 @@ class UnifiedAuthoringTests(unittest.TestCase):
         self.assertEqual("candidate", load_json(path / "asset.json")["status"])
         self.assertNotIn("sample-tools", load_json(self.state / "mcp/registry.json", {}).get("mcpServers", {}))
 
+    def test_schema_bounds_need_real_business_success_and_current_evidence(self):
+        def cases(minimum):
+            return [{**CASES[0], 'expect': {'json_schema': {'type': 'object', 'required': ['total'],
+                'properties': {'total': {'type': 'integer', 'minimum': minimum}},
+                'additionalProperties': False}}}, CASES[1]]
+        path = assets.create_asset(self.spec(tool_tests=cases(4)), self.state)
+        with self.assertRaises(ValueError):
+            assets.validate_mcp_runtime(self.state, 'sample-tools', timeout=15)
+        self.assertEqual([], list(path.glob('.receipts/*.json')))
+        assets.create_asset(self.spec(tool_tests=cases(3)), self.state)
+        current = assets.validate_mcp_runtime(self.state, 'sample-tools', timeout=15)
+        details = load_json(current)['details']
+        self.assertEqual(1, details['schemaValidationVersion'])
+        legacy_details = {k: v for k, v in details.items() if k != 'schemaValidationVersion'}
+        legacy = assets._write_receipt(ensure_user_layout(self.state), path, 'mcp-protocol', 'mcp', 'sample-tools',
+            assets._asset_content_hash(path, 'asset.json'), legacy_details)
+        with self.assertRaisesRegex(ValueError, 're-test MCP'):
+            assets.activate_mcp(self.state, 'sample-tools', legacy)
+        self.assertEqual('candidate', load_json(path / 'asset.json')['status'])
+        assets.activate_mcp(self.state, 'sample-tools', current)
+        self.assertEqual('active', load_json(path / 'asset.json')['status'])
+
     def test_missing_invalid_input_or_unknown_business_case_cannot_pass(self):
         for cases in ([CASES[0]], [{**CASES[0], "tool": "absent"}, CASES[1]]):
             with self.subTest(cases=cases):
