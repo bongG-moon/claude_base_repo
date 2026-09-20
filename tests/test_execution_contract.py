@@ -54,6 +54,22 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertEqual(0,state['mutationCount'])
             self.assertEqual({},stop_decision({'session_id':'scope-choice'},self.root))
 
+    def test_bound_skill_check_is_read_only_without_auto_permission_or_clearing_old_work(self):
+        cmd = f'{self.cli} asset check-skill --name sample-report --state-root "{self.root}" --project-root "{self.root}"'
+        self.assertEqual('read_only', classify_command(cmd))
+        self.assertIsNone(self.permission(cmd))
+        for extra in (' --output out.json', '; echo changed', ' --name other', ' --storage-scope personal'):
+            self.assertEqual('unknown', classify_command(cmd + extra))
+        begin_turn('dependency-check', 'SMALL', False, [], self.root)
+        event = {'session_id': 'dependency-check', 'hook_event_name': 'PostToolUse', 'tool_name': 'Bash',
+                 'tool_input': {'command': cmd}, 'tool_response': {'stdout': '{"ok":true}'}}
+        self.assertEqual(0, record_activity(event, self.root)['mutationCount'])
+        self.assertEqual({}, stop_decision({'session_id': 'dependency-check'}, self.root))
+        record_activity({'session_id': 'dependency-check', 'tool_name': 'Write',
+                         'tool_input': {'file_path': str(self.root / 'existing-work.md')}}, self.root)
+        self.assertEqual(1, record_activity(event, self.root)['mutationCount'])
+        self.assertEqual('block', stop_decision({'session_id': 'dependency-check'}, self.root)['decision'])
+
     def test_exact_help_precedes_scope_question_without_granting_permission(self):
         cmd = f'{self.cli} memory upsert --help'
         self.assertEqual('read_only', classify_command(cmd))

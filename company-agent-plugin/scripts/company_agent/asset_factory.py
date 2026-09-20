@@ -305,10 +305,18 @@ def _create_skill(layout: dict[str, Path], name: str, description: str, spec: di
     instructions = str(spec.get("instructions", "")).strip()
     if not instructions:
         raise ValueError("instructions are required for a skill")
+    from .skill_tool_dependencies import prepare_dependencies, dependency_instructions
+    dependencies = prepare_dependencies(layout["root"], destination, spec)
     _snapshot_existing(layout, "skill", name, destination)
     destination.mkdir(parents=True, exist_ok=True)
     frontmatter = ["---", f"name: {name}", f"description: {json.dumps(description, ensure_ascii=False)}", "---", ""]
-    atomic_write_text(destination / "SKILL.md", "\n".join(frontmatter) + instructions + "\n")
+    body = dependency_instructions(layout["root"], name, dependencies) + instructions + "\n"
+    atomic_write_text(destination / "SKILL.md", "\n".join(frontmatter) + body)
+    dependency_path = destination / "tool-dependencies.json"
+    if dependencies:
+        atomic_write_json(dependency_path, {"schemaVersion": 1, "dependencies": dependencies})
+    elif dependency_path.exists() and spec.get("tool_dependencies") == []:
+        dependency_path.unlink()  # Explicit update of this skill's own dependency list.
     if spec.get("references"):
         references = destination / "references"
         references.mkdir(exist_ok=True)
@@ -367,6 +375,42 @@ def _create_script_tool(layout: dict[str, Path], name: str, description: str, sp
 def _create_mcp(layout: dict[str, Path], name: str, description: str, spec: dict[str, Any]) -> Path:
     destination = _confined_child(layout["mcp"] / "servers", name)
     reviewed = _normalize_capabilities(spec.get("reviewed_capabilities"))
+    from .platform_assets import FORMAT, REQUIREMENT, platform_files
+    requested_format = spec.get("format")
+    if requested_format not in (None, FORMAT):
+        raise ValueError("Unsupported MCP format")
+    previous = load_json(destination / "asset.json", {}) if destination.exists() else {}
+    if previous and previous.get("format") != requested_format:
+        raise ValueError("Existing MCP format is preserved; migrate explicitly to a new asset name")
+    if requested_format == FORMAT:
+        if "server_code" in spec:
+            raise ValueError("Platform MCP uses tools_code, not server_code")
+        files = platform_files(spec, name)
+        for filename, content in files.items():
+            if not (destination / filename).resolve(strict=False).is_relative_to(destination.resolve()):
+                raise ValueError("Platform asset path escapes its directory")
+            if filename.endswith(".py"):
+                warnings = _check_code(content, reviewed)
+                if warnings:
+                    raise ValueError("generated MCP requires security review: " + "; ".join(warnings))
+        _snapshot_existing(layout, "mcp", name, destination)
+        destination.mkdir(parents=True, exist_ok=True)
+        for filename, content in files.items():
+            target = destination / filename
+            atomic_write_text(target, content)
+        manifest = {
+            "schemaVersion": 1, "type": "mcp", "format": FORMAT,
+            "name": name, "description": description, "status": "candidate",
+            "command": str(Path(sys.executable).resolve()),
+            "args": [str((destination / "server.py").resolve())], "entrypoint": "server.py",
+            "mcpRequirement": REQUIREMENT, "reviewedCapabilities": reviewed,
+            "securityReview": {"staticScan": "passed", "protocolTest": "required",
+                               "businessTests": "required", "osSandbox": False},
+        }
+        atomic_write_json(destination / "asset.json", manifest)
+        return destination
+    if "tools_code" in spec or "tool_tests" in spec:
+        raise ValueError("tools_code/tool_tests require format=platform-tools-v1")
     server_code = str(spec.get("server_code", "")).strip()
     if not server_code:
         server_code = f'''from mcp.server.fastmcp import FastMCP\n\nmcp = FastMCP({name!r})\n\n@mcp.tool()\ndef health() -> dict[str, object]:\n    """Return local server health."""\n    return {{"ok": True, "server": {name!r}}}\n\nif __name__ == "__main__":\n    mcp.run(transport="stdio")\n'''
@@ -433,8 +477,13 @@ def _validate_mcp_definition(server_root: Path, expected_name: str, manifest: di
         raise ValueError("MCP args must contain only its server.py entrypoint")
     if str(Path(args[0]).resolve()) != str(entrypoint):
         raise ValueError("MCP args were changed or escape the managed server directory")
-    if manifest.get("mcpRequirement") != MCP_REQUIREMENT:
-        raise ValueError(f"MCP requirement must remain pinned to {MCP_REQUIREMENT}")
+    from .platform_assets import FORMAT, REQUIREMENT, platform_cases
+    if manifest.get("format") not in (None, FORMAT):
+        raise ValueError("Unsupported MCP format")
+    requirement = REQUIREMENT if manifest.get("format") == FORMAT else MCP_REQUIREMENT
+    if manifest.get("mcpRequirement") != requirement:
+        raise ValueError(f"MCP requirement must remain pinned to {requirement}")
+    platform_cases(server_root, manifest)
     _normalize_capabilities(manifest.get("reviewedCapabilities"))
     return entrypoint
 
@@ -779,7 +828,8 @@ def _health_response_ok(health: Any) -> bool:
     return False
 
 
-async def _probe_mcp(command: str, args: list[str], cwd: Path, timeout: int) -> dict[str, Any]:
+async def _probe_mcp(command: str, args: list[str], cwd: Path, timeout: int,
+                     business_cases: list[dict] | None = None) -> dict[str, Any]:
     try:
         from mcp import ClientSession, StdioServerParameters
         from mcp.client.stdio import stdio_client
@@ -808,7 +858,14 @@ async def _probe_mcp(command: str, args: list[str], cwd: Path, timeout: int) -> 
                         raise ValueError("MCP health tool returned an error")
                     if not _health_response_ok(health):
                         raise ValueError("MCP health tool must return JSON with ok=true")
-                    return {"toolCount": len(tools), "healthTool": "health"}
+                    schemas = {str(item.name): item.inputSchema for item in listed.tools}
+                    if len(json.dumps(schemas).encode("utf-8")) > 64 * 1024:
+                        raise ValueError("MCP tool schemas exceed the bounded catalog size")
+                    details = {"toolCount": len(tools), "healthTool": "health", "toolSchemas": schemas}
+                    if business_cases is not None:
+                        from .platform_assets import test_business_tools
+                        details.update(await test_business_tools(session, listed, business_cases))
+                    return details
 
     try:
         return await asyncio.wait_for(run_probe(), timeout=timeout)
@@ -844,13 +901,18 @@ def validate_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path
     if not validation["ok"]:
         raise ValueError("MCP validation failed: " + "; ".join(validation["errors"] + validation["warnings"]))
     installed_version = _approved_mcp_sdk_version()
+    from .platform_assets import platform_cases, FORMAT
+    cases = platform_cases(server_root, manifest)
+    if manifest.get("format") == FORMAT and _parse_version(installed_version) < (1, 28, 0):
+        raise ValueError("Platform MCP requires approved mcp>=1.28,<2; no packages were installed")
 
     asset_hash = _asset_content_hash(server_root, "asset.json")
     with tempfile.TemporaryDirectory(prefix=f"company-agent-mcp-{name}-", dir=str(layout["tmp"])) as run_dir:
-        details = asyncio.run(_probe_mcp(manifest["command"], list(manifest["args"]), Path(run_dir), timeout))
+        options = {"business_cases": cases} if cases is not None else {}
+        details = asyncio.run(_probe_mcp(manifest["command"], list(manifest["args"]), Path(run_dir), timeout, **options))
     if _asset_content_hash(server_root, "asset.json") != asset_hash:
         raise ValueError("MCP server modified its own validated asset files")
-    details.update({"mcpSdkVersion": installed_version, "requirement": MCP_REQUIREMENT, "timeoutSeconds": timeout})
+    details.update({"mcpSdkVersion": installed_version, "requirement": manifest["mcpRequirement"], "timeoutSeconds": timeout})
     return _write_receipt(layout, server_root, "mcp-protocol", "mcp", name, asset_hash, details)
 
 
@@ -887,9 +949,14 @@ def rebind_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path:
     if errors or warnings:
         raise ValueError("MCP validation failed: " + "; ".join(errors + warnings))
     installed_version = _approved_mcp_sdk_version()
+    from .platform_assets import platform_cases, FORMAT
+    cases = platform_cases(server_root, manifest)
+    if manifest.get("format") == FORMAT and _parse_version(installed_version) < (1, 28, 0):
+        raise ValueError("Platform MCP requires approved mcp>=1.28,<2; no packages were installed")
     original_hash = previous_receipt["assetHash"]
     with tempfile.TemporaryDirectory(prefix=f"company-agent-mcp-rebind-{name}-", dir=str(layout["tmp"])) as run_dir:
-        details = asyncio.run(_probe_mcp(current_command, [str(entrypoint)], Path(run_dir), timeout))
+        options = {"business_cases": cases} if cases is not None else {}
+        details = asyncio.run(_probe_mcp(current_command, [str(entrypoint)], Path(run_dir), timeout, **options))
 
     def require_unchanged() -> None:
         if manifest_path.read_bytes() != original_bytes or _asset_content_hash(server_root, "asset.json") != original_hash:
@@ -901,7 +968,7 @@ def rebind_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path:
     updated = {**manifest, "command": current_command, "status": "candidate", "runtimeRebind": transition}
     updated.pop("activatedAt", None)
     updated.pop("validationReceipt", None)
-    details.update({"mcpSdkVersion": installed_version, "requirement": MCP_REQUIREMENT,
+    details.update({"mcpSdkVersion": installed_version, "requirement": manifest["mcpRequirement"],
                     "timeoutSeconds": timeout, "runtimeRebind": transition})
     # Stage the signed receipt first. Until the one atomic manifest replacement,
     # it is inert (its hash does not match the old asset). A failed probe/receipt
@@ -922,9 +989,11 @@ def activate_mcp(state_root: Path, name: str, validation_receipt: str | Path) ->
     validation = validate_asset(server_root)
     if not validation["ok"]:
         raise ValueError("MCP validation failed: " + "; ".join(validation["errors"] + validation["warnings"]))
-    receipt_path, _ = _verify_receipt(
+    receipt_path, receipt = _verify_receipt(
         layout, server_root, validation_receipt, "mcp-protocol", "mcp", name, "asset.json"
     )
+    from .platform_assets import verify_business_receipt
+    verify_business_receipt(server_root, manifest, receipt)
 
     registry_path = layout["mcp"] / "registry.json"
     registry = load_json(registry_path, {"mcpServers": {}}) or {"mcpServers": {}}

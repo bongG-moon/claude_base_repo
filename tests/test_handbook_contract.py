@@ -9,9 +9,11 @@ ROOT=Path(__file__).resolve().parents[1]
 PLUGIN=ROOT/'company-agent-plugin'
 FILES={'COMPANY_AGENT_HANDBOOK.md':'Company-Agent-Handbook.html',
        'ONBOARDING_COURSE.md':'Company-Agent-Onboarding.html',
-       'CUA_DRIVER_PILOT.md':'Company-Agent-Cua-Pilot.html',
        'USER_GUIDE.md':'Company-Agent-사용자-안내서.html',
-       'CLAUDE_CODE_COMMANDS.md':'Claude-Code-필수-사용법.html'}
+       'CLAUDE_CODE_COMMANDS.md':'Claude-Code-필수-사용법.html',
+       'CLAUDE_CODE_BASICS.md':None}
+HTMLS=[name for name in FILES.values() if name]
+MARKDOWN=[*FILES, 'README.md']
 GUIDE='Company-Agent-Guide.html'
 
 
@@ -31,9 +33,10 @@ class HandbookTests(unittest.TestCase):
         text=(ROOT/'docs/COMPANY_AGENT_HANDBOOK.md').read_text(encoding='utf-8')
         section=text.split('## 4.',1)[1].split('## 5.',1)[0]
         documented=set(re.findall(r'^\| `company-agent:([\w-]+)` \|',section,re.M))
-        actual={p.parent.name for p in (PLUGIN/'skills').glob('*/SKILL.md')}
+        actual={p.parent.name for p in (PLUGIN/'skills').glob('*/SKILL.md')
+                if 'disable-model-invocation: true' not in p.read_text(encoding='utf-8').split('---',2)[1]}
         self.assertEqual(actual,documented)
-        self.assertEqual(13,len(actual))
+        self.assertEqual(12,len(actual))
 
     def test_hooks_commands_and_agents_match_source(self):
         text=(ROOT/'docs/COMPANY_AGENT_HANDBOOK.md').read_text(encoding='utf-8')
@@ -56,23 +59,24 @@ class HandbookTests(unittest.TestCase):
                 self.assertIn("connect-src 'none'",page)
                 self.assertNotRegex(page,r'<(?:script|iframe|object|img)\b')
                 self.assertNotIn('\ufffd',page)
-                legacy=(ROOT/'docs'/output).read_text(encoding='utf-8')
-                self.assertIn('href="'+GUIDE+'#',legacy)
-                self.assertNotIn('<pre>',legacy)
+                if output:
+                    legacy=(ROOT/'docs'/output).read_text(encoding='utf-8')
+                    self.assertIn('href="'+GUIDE+'#',legacy)
+                    self.assertNotIn('<pre>',legacy)
         ids=re.findall(r'\bid="([^"]+)"',page)
         self.assertEqual(len(ids),len(set(ids)))
         for link in re.findall(r'href="([^"]+)"',page):
             self.assertTrue(link.startswith(('#','https://')),link)
             if link.startswith('#'):
                 self.assertIn(link[1:],ids)
-        for part in ('onboarding','usage','handbook','commands','cua'):
+        for part in ('onboarding','basics','usage','handbook','commands'):
             self.assertIn(part,ids)
         self.assertIn('id="onboarding-section-9">8. 개인 스킬',page)
 
     def test_both_bundle_builders_include_every_manual(self):
         for builder in ['New-WorkspaceBundle.ps1','New-OfflineBundle.ps1']:
             text=(ROOT/'deploy'/builder).read_text(encoding='utf-8')
-            for name in [*FILES,*FILES.values(),GUIDE]:
+            for name in [*MARKDOWN,*HTMLS,GUIDE]:
                 self.assertIn(name,text)
         # Windows PowerShell 5.1 otherwise misreads Korean filenames in source.
         builder=ROOT/'deploy/New-WorkspaceBundle.ps1'
@@ -80,18 +84,58 @@ class HandbookTests(unittest.TestCase):
 
     def test_installed_manuals_match_source_and_local_links(self):
         installed=PLUGIN/'resources/manuals'
-        self.assertEqual({*FILES.values(),GUIDE},{p.name for p in installed.glob('*.html')})
-        for name in [*FILES.values(),GUIDE]:
+        self.assertEqual({*HTMLS,GUIDE},{p.name for p in installed.glob('*.html')})
+        for name in [*HTMLS,GUIDE]:
             page=(installed/name).read_text(encoding='utf-8')
             self.assertEqual((ROOT/'docs'/name).read_bytes(),(installed/name).read_bytes())
             for link in re.findall(r'href="([^"#]+\.html)(?:#[^"]*)?"',page):
                 self.assertTrue((installed/link).is_file(),link)
 
+    def test_markdown_survives_installation_without_drifting_or_broken_links(self):
+        installed=PLUGIN/'resources/manuals'
+        self.assertEqual(set(MARKDOWN),{p.name for p in installed.glob('*.md')})
+        for name in MARKDOWN:
+            with self.subTest(name=name):
+                source=(ROOT/'docs'/name).read_bytes()
+                self.assertEqual(source,(installed/name).read_bytes())
+                text=source.decode('utf-8')
+                self.assertTrue(text.startswith('# '))
+                self.assertNotIn('\ufffd',text)
+                for link in re.findall(r'\]\(([^)\s]+)\)',text):
+                    if not link.startswith(('https://','#')):
+                        filename=link.split('#',1)[0]
+                        self.assertIn(filename,[*MARKDOWN,GUIDE],name)
+                        self.assertTrue((installed/filename).is_file(),link)
+
+    def test_markdown_index_basics_and_shortcuts_are_beginner_facing(self):
+        index=(ROOT/'docs/README.md').read_text(encoding='utf-8')
+        for name in FILES:
+            self.assertIn(']('+name+')',index)
+        for phrase in ('회사 자료나 참고 PPT','안내서 전체를 `CLAUDE.md`나 기억에 복사'):
+            self.assertIn(phrase,index)
+        basics=(ROOT/'docs/CLAUDE_CODE_BASICS.md').read_text(encoding='utf-8')
+        for phrase in ('작업 폴더','승인·중단·되돌리기','대화·프로젝트 지침·기억','사용량','미확인'):
+            self.assertIn(phrase,basics)
+        commands=(ROOT/'docs/CLAUDE_CODE_COMMANDS.md').read_text(encoding='utf-8')
+        for entry in ('Ctrl+C','Ctrl+D','Ctrl+G','Shift+Tab','/usage','/permissions','/plan','/copy','/rewind'):
+            self.assertIn(entry,commands)
+        self.assertIn('일반 복사 키로 생각하지 마',commands)
+        self.assertIn('2026-09-20',commands)
+
+    def test_packaging_rejects_stale_installed_markdown(self):
+        builder=(ROOT/'deploy/New-OfflineBundle.ps1').read_text(encoding='utf-8-sig')
+        self.assertIn('Required Markdown manual is missing',builder)
+        self.assertIn('Packaged Markdown is out of date',builder)
+        self.assertLess(builder.index('Packaged Markdown is out of date'),
+                        builder.index('$stagePath ='))
+
     def test_onboarding_is_discoverable_without_an_always_on_hook(self):
         first=(PLUGIN/'resources/first-work.html').read_text(encoding='utf-8')
         self.assertIn('href="manuals/'+GUIDE+'"',first)
+        self.assertIn('href="manuals/README.md"',first)
         installer=(ROOT/'deploy/Install-ScopedCompanyAgent.ps1').read_text(encoding='utf-8-sig')
         self.assertIn("resources\\manuals\\"+GUIDE,installer)
+        self.assertIn('resources\\manuals\\README.md',installer)
         self.assertIn('처음이라면 이 파일을 열고',installer)
         self.assertNotIn('onboarding',(PLUGIN/'hooks/hooks.json').read_text(encoding='utf-8').lower())
         self.assertIn('통합 가이드',(ROOT/'INSTALL_WITH_CLAUDE.md').read_text(encoding='utf-8'))
@@ -100,7 +144,7 @@ class HandbookTests(unittest.TestCase):
         course=json.loads((PLUGIN/'resources/onboarding-course.json').read_text(encoding='utf-8'))
         self.assertEqual(len(course['steps']),5)
         first=course['steps'][0]
-        for phrase in ('온보딩_가상자료.md','회사 시스템','덮어쓰지','기억에 저장하지 마'):
+        for phrase in ('실습_가상자료.md','회사 시스템','덮어쓰지','기억에 저장하지 마'):
             self.assertIn(phrase,first['prompt'])
         self.assertIn('실제로 읽고',first['alternativePrompt'])
         ppt=course['steps'][1]['alternativePrompt']
@@ -111,18 +155,44 @@ class HandbookTests(unittest.TestCase):
             self.assertIn(phrase,text)
         self.assertIn(first['prompt'],(PLUGIN/'resources/first-work.html').read_text(encoding='utf-8'))
 
+    def test_beginner_copy_is_plain_and_excludes_internal_delivery_notes(self):
+        page=(ROOT/'docs'/GUIDE).read_text(encoding='utf-8')
+        self.assertIn('01 · 시작하기',page)
+        self.assertIn('Company Agent 시작하기',page)
+        for phrase in ('실습_가상자료.md','실습_가상실적.pptx','회사 공통','개인 전체','이 프로젝트'):
+            self.assertIn(phrase,page)
+        for file in [*(ROOT/'docs'/name for name in [*MARKDOWN,*HTMLS,GUIDE]),
+                     PLUGIN/'resources/first-work.html', PLUGIN/'resources/onboarding-course.json']:
+            text=file.read_text(encoding='utf-8')
+            for phrase in ('온보딩','내 하네스에서 여는 곳','수정용 원본:',
+                           '담당자용 소스 문서','이 원본은 업무 예문만 관리',
+                           '문서와 구현을 함께 관리하기','LOCAL · OFFLINE · KOREAN'):
+                self.assertNotIn(phrase,text,str(file))
+        # Keep existing file names and section URLs usable after the wording change.
+        for anchor in ('onboarding-section-2','onboarding-section-7','onboarding-section-8','onboarding-section-9'):
+            self.assertIn('id="'+anchor+'"',page)
+        course=json.loads((PLUGIN/'resources/onboarding-course.json').read_text(encoding='utf-8'))
+        for filename in ('실습_가상자료.md','실습_가상실적.pptx'):
+            self.assertIn(filename,json.dumps(course,ensure_ascii=False))
+
     def test_guide_is_not_injected_in_runtime_context(self):
         for folder in (PLUGIN/'hooks',PLUGIN/'scripts/company_agent'):
             for file in folder.glob('*'):
                 if file.suffix in ('.py','.json'):
                     self.assertNotIn(GUIDE,file.read_text(encoding='utf-8'),str(file))
 
-    def test_cua_remains_opt_in_not_new_skill_or_hook(self):
-        self.assertFalse((PLUGIN/'skills/cua-driver').exists())
-        self.assertNotIn('cua-driver',(PLUGIN/'hooks/hooks.json').read_text(encoding='utf-8'))
-        text=(ROOT/'docs/CUA_DRIVER_PILOT.md').read_text(encoding='utf-8')
-        for expected in ['실행 없는 준비 확인','실제 사내 HCP','CUA_DRIVER_RS_UPDATE_CHECK=false','강제 제한 장치가 아닙니다']:
-            self.assertIn(expected,text)
+    def test_removed_screen_control_is_not_shipped_or_advertised(self):
+        for name in ('local_app/computer_use.py', 'docs/CUA_DRIVER_PILOT.md',
+                     'docs/Company-Agent-Cua-Pilot.html',
+                     'company-agent-plugin/resources/manuals/CUA_DRIVER_PILOT.md',
+                     'company-agent-plugin/resources/manuals/Company-Agent-Cua-Pilot.html',
+                     'company-agent-plugin/skills/cua-driver'):
+            self.assertFalse((ROOT/name).exists(),name)
+        for folder in (ROOT/'local_app', PLUGIN/'hooks', PLUGIN/'resources/manuals'):
+            for file in folder.rglob('*'):
+                if file.suffix in ('.py','.js','.json','.md','.html'):
+                    self.assertNotRegex(file.read_text(encoding='utf-8'),
+                                        r'(?i)\bcua(?:\b|[가-힣])|trycua|cua[-_.]|computer_use|computer-check|화면 조작 시험',str(file))
 
 
 if __name__=='__main__':

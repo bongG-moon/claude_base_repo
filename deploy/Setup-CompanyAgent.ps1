@@ -243,6 +243,55 @@ function Get-SetupPythonForInstall {
     }
 }
 
+function ConvertTo-SetupBackupIOPath {
+    param([Parameter(Mandatory = $true)] [string] $Path)
+
+    # Keep normal absolute paths in manifests and containment checks. Only the
+    # final filesystem boundary uses extended paths; never accept device paths
+    # from a caller or require machine-wide long-path registry changes.
+    if ($Path -match '^[\\/]{2}[?.][\\/]|^[\\/]\?\?[\\/]' -or $Path.IndexOf([char]0) -ge 0) {
+        throw 'Backup paths must be normal filesystem paths, not device paths.'
+    }
+    $full = Get-SetupFullPath -Path $Path
+    if ($full.StartsWith('\\')) { return ('\\?\UNC\' + $full.Substring(2)) }
+    return ('\\?\' + $full)
+}
+
+function Get-SetupBackupAttributes {
+    param([Parameter(Mandatory = $true)] [string] $Path, [switch] $AllowMissing)
+    try { return [IO.File]::GetAttributes((ConvertTo-SetupBackupIOPath -Path $Path)) }
+    catch {
+        $cause = $_.Exception.GetBaseException()
+        if ($AllowMissing -and ($cause -is [IO.FileNotFoundException] -or $cause -is [IO.DirectoryNotFoundException])) { return $null }
+        throw
+    }
+}
+
+function Write-SetupBackupText {
+    param([string] $Path, [string] $Content)
+    Assert-SetupPathHasNoReparsePoint -Path $Path -Name 'Backup metadata destination'
+    $temporaryPath = $Path + '.partial-' + [guid]::NewGuid().ToString('N')
+    $temporaryIO = ConvertTo-SetupBackupIOPath -Path $temporaryPath
+    $stream = $null
+    $temporaryCreated = $false
+    try {
+        $stream = [IO.File]::Open($temporaryIO, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+        $temporaryCreated = $true
+        $bytes = (New-Object Text.UTF8Encoding($false)).GetBytes($Content)
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.Flush($true)
+        $stream.Dispose()
+        $stream = $null
+        # The manifest is a completion marker; never leave a partial marker or
+        # replace another backup's file if a destination unexpectedly exists.
+        [IO.File]::Move($temporaryIO, (ConvertTo-SetupBackupIOPath -Path $Path))
+    }
+    finally {
+        if ($null -ne $stream) { $stream.Dispose() }
+        if ($temporaryCreated -and [IO.File]::Exists($temporaryIO)) { [IO.File]::Delete($temporaryIO) }
+    }
+}
+
 function Assert-SetupPathHasNoReparsePoint {
     param(
         [Parameter(Mandatory = $true)]
@@ -253,11 +302,9 @@ function Assert-SetupPathHasNoReparsePoint {
 
     $current = Get-SetupFullPath -Path $Path
     while (-not [string]::IsNullOrWhiteSpace($current)) {
-        if (Test-Path -LiteralPath $current) {
-            $item = Get-Item -LiteralPath $current -Force
-            if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                throw "$Name cannot use a junction, symbolic link, or other reparse point: $($item.FullName)"
-            }
+        $attributes = Get-SetupBackupAttributes -Path $current -AllowMissing
+        if ($null -ne $attributes -and ($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+            throw "$Name cannot use a junction, symbolic link, or other reparse point: $current"
         }
         $parent = Split-Path -Parent $current
         if ([string]::IsNullOrWhiteSpace($parent) -or $parent -ieq $current) {
@@ -648,7 +695,7 @@ function Protect-SetupBackupDirectory {
     )
     $null = $security.AddAccessRule($userRule)
     $null = $security.AddAccessRule($systemRule)
-    [IO.Directory]::SetAccessControl($Path, $security)
+    [IO.Directory]::SetAccessControl((ConvertTo-SetupBackupIOPath -Path $Path), $security)
 }
 
 function Copy-SetupBackupFile {
@@ -663,7 +710,9 @@ function Copy-SetupBackupFile {
     Assert-SetupPathHasNoReparsePoint -Path $Destination -Name 'Backup destination file'
     # A read-only share prevents another writer from growing/replacing this file
     # while it is being copied. An already-open writer causes a safe failure.
-    $sourceStream = [IO.File]::Open($Source, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    $Budget.sourcePathLength = $Source.Length
+    $Budget.destinationPathLength = $Destination.Length
+    $sourceStream = [IO.File]::Open((ConvertTo-SetupBackupIOPath -Path $Source), [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
     try {
         $length = $sourceStream.Length
         if ($length -gt $Budget.maxFileBytes -or ($Budget.bytes + $length) -gt $Budget.maxTotalBytes -or $Budget.files -ge $Budget.maxFiles) {
@@ -672,6 +721,10 @@ function Copy-SetupBackupFile {
         if ($SanitizeJson) {
             $reader = New-Object IO.StreamReader($sourceStream, [Text.Encoding]::UTF8, $true, 4096, $true)
             try { $json = $reader.ReadToEnd() | ConvertFrom-Json -ErrorAction Stop }
+            catch {
+                $_.Exception.Data['CompanyAgentBackupCode'] = 'BACKUP_INVALID_JSON'
+                throw
+            }
             finally { $reader.Dispose() }
             $redacted = ConvertTo-SetupRedactedData -Value $json
             $jsonText = ($redacted | ConvertTo-Json -Depth 100) + [Environment]::NewLine
@@ -683,12 +736,12 @@ function Copy-SetupBackupFile {
             }
             # This is a new, protected, incomplete backup. Its final manifest is
             # the completion marker; no long .tmp filename is needed per JSON.
-            $destinationStream = [IO.File]::Open($Destination, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            $destinationStream = [IO.File]::Open((ConvertTo-SetupBackupIOPath -Path $Destination), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
             try { $destinationStream.Write($jsonBytes, 0, $jsonBytes.Length) }
             finally { $destinationStream.Dispose() }
         }
         else {
-            $destinationStream = [IO.File]::Open($Destination, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+            $destinationStream = [IO.File]::Open((ConvertTo-SetupBackupIOPath -Path $Destination), [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
             try { $sourceStream.CopyTo($destinationStream) }
             finally { $destinationStream.Dispose() }
         }
@@ -716,54 +769,59 @@ function Copy-SetupBackupItem {
     $excluded = New-Object Collections.ArrayList
     Assert-SetupPathHasNoReparsePoint -Path (Split-Path -Parent (Get-SetupFullPath -Path $Source)) -Name 'Backup source parent'
     Assert-SetupPathHasNoReparsePoint -Path $Destination -Name 'Backup destination'
-    $sourceItem = Get-Item -LiteralPath $Source -Force -ErrorAction Stop
-    if (($sourceItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-        $null = $skipped.Add($sourceItem.FullName)
+    $Source = Get-SetupFullPath -Path $Source
+    $sourceAttributes = Get-SetupBackupAttributes -Path $Source
+    if (($sourceAttributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        $null = $skipped.Add($Source)
         return [pscustomobject][ordered]@{ copied = $false; skippedReparsePoints = @($skipped.ToArray()); excludedPaths = @() }
     }
 
-    if (-not $sourceItem.PSIsContainer) {
+    if (($sourceAttributes -band [IO.FileAttributes]::Directory) -eq 0) {
         if ($Mode -eq 'learning-markdown') { throw "A learning source directory was replaced by a file: $Source" }
-        Copy-SetupBackupFile -Source $sourceItem.FullName -Destination $Destination -SanitizeJson ($Mode -eq 'sanitized-json' -or $sourceItem.Extension -ieq '.json') -Budget $Budget
+        Copy-SetupBackupFile -Source $Source -Destination $Destination -SanitizeJson ($Mode -eq 'sanitized-json' -or [IO.Path]::GetExtension($Source) -ieq '.json') -Budget $Budget
         return [pscustomobject][ordered]@{ copied = $true; skippedReparsePoints = @(); excludedPaths = @() }
     }
     if ($Mode -eq 'sanitized-json') { throw "A selected JSON file was replaced by a directory: $Source" }
 
-    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    $null = [IO.Directory]::CreateDirectory((ConvertTo-SetupBackupIOPath -Path $Destination))
     $queue = New-Object Collections.Queue
-    $queue.Enqueue([pscustomobject]@{ source = $sourceItem.FullName; destination = $Destination; depth = 0 })
+    $queue.Enqueue([pscustomobject]@{ source = $Source; destination = $Destination; depth = 0 })
     $excludedDirectoryNames = @('.git', '.venv', 'node_modules', '__pycache__', '.pytest_cache', 'cache', 'caches', 'sessions', 'transcripts', 'history', 'projects', 'debug', 'telemetry', 'tmp', 'temp', 'mcp', 'credentials', '.ssh', '.aws', '.azure')
     while ($queue.Count -gt 0) {
         $current = $queue.Dequeue()
         Assert-SetupPathHasNoReparsePoint -Path $current.source -Name 'Backup source directory'
         # Stream the enumeration so a giant source directory cannot allocate an
         # unbounded array before the traversal limit is checked.
-        Get-ChildItem -LiteralPath $current.source -Force -ErrorAction Stop | ForEach-Object {
-            $child = $_
+        [IO.Directory]::EnumerateFileSystemEntries((ConvertTo-SetupBackupIOPath -Path $current.source)) | ForEach-Object {
+            $childName = [IO.Path]::GetFileName($_)
+            $childPath = Join-Path $current.source $childName
             $Budget.visited += 1
             if ($Budget.visited -gt $Budget.maxVisited) { throw "Selective backup traversal limit exceeded at: $($current.source)" }
-            $target = Join-Path $current.destination $child.Name
-            if (($child.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-                $null = $skipped.Add($child.FullName)
+            $target = Join-Path $current.destination $childName
+            $childAttributes = Get-SetupBackupAttributes -Path $childPath
+            if (($childAttributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+                $null = $skipped.Add($childPath)
                 return
             }
-            if ($child.PSIsContainer) {
-                if ($excludedDirectoryNames -contains $child.Name -or $child.Name -match '(?i)^\.?(credential|secret|token|password)s?$') {
-                    $null = $excluded.Add($child.FullName)
+            if (($childAttributes -band [IO.FileAttributes]::Directory) -ne 0) {
+                if ($excludedDirectoryNames -contains $childName -or $childName -match '(?i)^\.?(credential|secret|token|password)s?$') {
+                    $null = $excluded.Add($childPath)
                     return
                 }
-                if ($current.depth -ge $Budget.maxDepth) { throw "Selective backup directory depth limit exceeded at: $($child.FullName)" }
-                New-Item -ItemType Directory -Path $target -Force | Out-Null
-                $queue.Enqueue([pscustomobject]@{ source = $child.FullName; destination = $target; depth = $current.depth + 1 })
+                if ($current.depth -ge $Budget.maxDepth) { throw "Selective backup directory depth limit exceeded at: $childPath" }
+                Assert-SetupPathHasNoReparsePoint -Path $target -Name 'Backup child destination'
+                $null = [IO.Directory]::CreateDirectory((ConvertTo-SetupBackupIOPath -Path $target))
+                $queue.Enqueue([pscustomobject]@{ source = $childPath; destination = $target; depth = $current.depth + 1 })
                 return
             }
-            if ($child.Name -match '(?i)(^\.env(?:\.|$)|credential|secret|token|password|private.?key|(^|[._-])pat([._-]|$)|^id_(rsa|dsa|ecdsa|ed25519)(\.|$)|^\.?mcp(?:\.|$)|^settings(?:\..*)?\.json$|^(conversation|transcript|session-history)([._-].*)?\.(md|txt|json)$)' -or
-                $child.Extension -match '(?i)^\.(pfx|p12|pem|key|kdbx|jsonl|ndjson|log)$' -or
-                ($Mode -eq 'learning-markdown' -and $child.Extension -ine '.md')) {
-                $null = $excluded.Add($child.FullName)
+            $childExtension = [IO.Path]::GetExtension($childName)
+            if ($childName -match '(?i)(^\.env(?:\.|$)|credential|secret|token|password|private.?key|(^|[._-])pat([._-]|$)|^id_(rsa|dsa|ecdsa|ed25519)(\.|$)|^\.?mcp(?:\.|$)|^settings(?:\..*)?\.json$|^(conversation|transcript|session-history)([._-].*)?\.(md|txt|json)$)' -or
+                $childExtension -match '(?i)^\.(pfx|p12|pem|key|kdbx|jsonl|ndjson|log)$' -or
+                ($Mode -eq 'learning-markdown' -and $childExtension -ine '.md')) {
+                $null = $excluded.Add($childPath)
                 return
             }
-            Copy-SetupBackupFile -Source $child.FullName -Destination $target -SanitizeJson ($child.Extension -ieq '.json') -Budget $Budget
+            Copy-SetupBackupFile -Source $childPath -Destination $target -SanitizeJson ($childExtension -ieq '.json') -Budget $Budget
         }
     }
     return [pscustomobject][ordered]@{
@@ -771,6 +829,24 @@ function Copy-SetupBackupItem {
         skippedReparsePoints = @($skipped.ToArray())
         excludedPaths = @($excluded.ToArray())
     }
+}
+
+function Get-SetupBackupFailureCode {
+    param([Parameter(Mandatory = $true)] [object] $Failure)
+    $errorException = $Failure.Exception
+    while ($null -ne $errorException) {
+        if ($errorException.Data['CompanyAgentBackupCode'] -eq 'BACKUP_INVALID_JSON') { return 'BACKUP_INVALID_JSON' }
+        $errorException = $errorException.InnerException
+    }
+    $cause = $Failure.Exception.GetBaseException()
+    if ($cause -is [IO.PathTooLongException]) { return 'BACKUP_PATH_TOO_LONG' }
+    if ($cause -is [UnauthorizedAccessException] -or $cause -is [Security.SecurityException]) { return 'BACKUP_ACCESS_DENIED' }
+    if (($cause.HResult -band 65535) -in @(32, 33)) { return 'BACKUP_FILE_IN_USE' }
+    if (($cause.HResult -band 65535) -in @(39, 112)) { return 'BACKUP_DISK_FULL' }
+    if ($cause -is [IO.FileNotFoundException] -or $cause -is [IO.DirectoryNotFoundException]) { return 'BACKUP_PATH_MISSING' }
+    if ($Failure.Exception.Message -match '^Selective backup .*limit exceeded') { return 'BACKUP_LIMIT_EXCEEDED' }
+    if ($Failure.Exception.Message -match 'reparse point|Required personal learning backup') { return 'BACKUP_LINK_UNSAFE' }
+    return 'BACKUP_IO_ERROR'
 }
 
 function New-SetupBackup {
@@ -821,8 +897,7 @@ function New-SetupBackup {
         }
     }
     foreach ($item in $Items) {
-        if ((Test-Path -LiteralPath $item.source -PathType Container) -and
-            (Test-SetupSameOrChildPath -Candidate $BackupBase -Parent $item.source)) {
+        if (Test-SetupSameOrChildPath -Candidate $BackupBase -Parent $item.source) {
             throw "BackupRoot cannot be inside a directory that is being backed up: $($item.source)"
         }
     }
@@ -830,13 +905,14 @@ function New-SetupBackup {
     $stamp = [DateTime]::Now.ToString('yyyyMMdd-HHmmss')
     $suffix = [guid]::NewGuid().ToString('N').Substring(0, 6)
     $backupPath = Join-Path $backupBaseFull ("pre-install-$stamp-$suffix")
-    New-Item -ItemType Directory -Path $backupPath -Force | Out-Null
+    $null = [IO.Directory]::CreateDirectory((ConvertTo-SetupBackupIOPath -Path $backupPath))
     Assert-SetupPathHasNoReparsePoint -Path $backupPath -Name 'Created backup directory'
     try {
         Protect-SetupBackupDirectory -Path $backupPath
     }
     catch {
-        Remove-Item -LiteralPath $backupPath -Recurse -Force -ErrorAction SilentlyContinue
+        # Only this new, still empty folder is eligible for cleanup.
+        try { [IO.Directory]::Delete((ConvertTo-SetupBackupIOPath -Path $backupPath), $false) } catch { }
         throw "The local backup folder could not be restricted to the current Windows user. Installation has not started. Details: $($_.Exception.Message)"
     }
 
@@ -844,7 +920,7 @@ function New-SetupBackup {
     $skippedReparsePoints = @()
     $excludedPaths = @()
     $budget = @{
-        files = 0; bytes = [long]0; visited = 0
+        files = 0; bytes = [long]0; visited = 0; sourcePathLength = 0; destinationPathLength = 0
         maxFiles = $MaxFiles; maxTotalBytes = $MaxTotalBytes; maxFileBytes = $MaxFileBytes; maxDepth = $MaxDepth; maxVisited = $MaxVisited
     }
     try {
@@ -856,9 +932,7 @@ function New-SetupBackup {
             }
             Assert-SetupPathHasNoReparsePoint -Path $destination -Name 'Backup item destination'
             $destinationParent = Split-Path -Parent $destination
-            if (-not (Test-Path -LiteralPath $destinationParent -PathType Container)) {
-                New-Item -ItemType Directory -Path $destinationParent -Force | Out-Null
-            }
+            $null = [IO.Directory]::CreateDirectory((ConvertTo-SetupBackupIOPath -Path $destinationParent))
             $copyResult = Copy-SetupBackupItem -Source $item.source -Destination $destination -Mode ([string]$item.mode) -Budget $budget
             $required = [bool](Get-SetupPropertyValue -Object $item -Name 'required')
             if ($required -and (-not $copyResult.copied -or @($copyResult.skippedReparsePoints).Count -gt 0)) {
@@ -873,7 +947,7 @@ function New-SetupBackup {
                 mode        = $item.mode
                 required    = $required
                 copied      = [bool]$copyResult.copied
-                itemType    = $(if (Test-Path -LiteralPath $item.source -PathType Container) { 'directory' } else { 'file' })
+                itemType    = $(if (((Get-SetupBackupAttributes -Path $item.source) -band [IO.FileAttributes]::Directory) -ne 0) { 'directory' } else { 'file' })
             }
         }
 
@@ -920,11 +994,29 @@ function New-SetupBackup {
             'Existing Company Agent versions are installed side by side. The prior',
             'selection can normally be restored with Rollback-CompanyAgent.ps1.'
         ) -join "`r`n"
-        Write-CompanyAgentUtf8File -Path (Join-Path $backupPath 'README.txt') -Content ($readme + "`r`n")
-        Write-CompanyAgentJsonAtomic -Path (Join-Path $backupPath 'backup-manifest.json') -Value $manifest
+        Write-SetupBackupText -Path (Join-Path $backupPath 'README.txt') -Content ($readme + "`r`n")
+        Write-SetupBackupText -Path (Join-Path $backupPath 'backup-manifest.json') -Content (($manifest | ConvertTo-Json -Depth 100) + "`r`n")
     }
     catch {
-        throw "The safety backup could not be completed. Installation has not started. Partial backup: $backupPath. Details: $($_.Exception.Message)"
+        $failure = $_
+        $code = Get-SetupBackupFailureCode -Failure $failure
+        $diagnosticPath = Join-Path $backupPath 'backup-diagnostic.json'
+        # Never put raw JSON, CLI output, credentials, or source filenames in
+        # the diagnostic. The incomplete backup stays private and untouched.
+        $diagnostic = [ordered]@{
+            schemaVersion = 1; stage = 'pre-install-backup'; status = 'failed'; code = $code
+            exceptionType = $failure.Exception.GetBaseException().GetType().FullName
+            hresult = $failure.Exception.GetBaseException().HResult
+            copiedFiles = $budget.files; accountedBytes = $budget.bytes
+            sourcePathLength = $budget.sourcePathLength; destinationPathLength = $budget.destinationPathLength
+        }
+        try { Write-SetupBackupText -Path $diagnosticPath -Content (($diagnostic | ConvertTo-Json) + "`r`n") }
+        catch { $diagnosticPath = '' } # A diagnostic write must not hide the original cause.
+        $backupFailure = New-Object IO.IOException("[$code] The safety backup could not be completed. Installation has not started. Partial backup: $backupPath. Details: $($failure.Exception.Message)", $failure.Exception)
+        $backupFailure.Data['CompanyAgentBackupPath'] = $backupPath
+        $backupFailure.Data['CompanyAgentBackupDiagnostic'] = $diagnosticPath
+        $backupFailure.Data['CompanyAgentBackupCode'] = $code
+        throw $backupFailure
     }
     return $backupPath
 }
@@ -994,6 +1086,20 @@ function Get-SetupFriendlyFailure {
     if ($Message -match 'Recovery needs attention|changed during rollback') {
         return '설치 중 문제가 생겼고 이전 상태 복원도 확인이 필요합니다. 위에 표시된 백업 폴더를 보관하고 담당자에게 복구 점검을 요청하세요.'
     }
+    $backupReasons = @{
+        BACKUP_PATH_TOO_LONG = '백업 파일 경로가 지원 가능한 길이를 넘었습니다. 긴 경로를 지원하는 최신 설치본으로 확인해 주세요.'
+        BACKUP_ACCESS_DENIED = '백업할 파일이나 저장 폴더에 접근할 수 없습니다. 파일 권한과 보안 프로그램 상태를 확인해 주세요.'
+        BACKUP_FILE_IN_USE = '백업할 파일을 다른 프로그램이 사용 중입니다. 관련 Claude 작업을 종료한 뒤 다시 실행해 주세요.'
+        BACKUP_DISK_FULL = '백업 저장 공간이 부족합니다. 저장 공간을 확보한 뒤 다시 실행해 주세요.'
+        BACKUP_PATH_MISSING = '백업할 파일이나 폴더를 찾지 못했습니다. 이동·동기화 중인 파일이 있는지 확인해 주세요.'
+        BACKUP_INVALID_JSON = '기존 설정 파일의 JSON 형식을 읽지 못했습니다. 설정을 지우지 말고 담당자에게 점검을 요청해 주세요.'
+        BACKUP_LIMIT_EXCEEDED = '백업 용량·파일 수·폴더 깊이의 안전 한도를 넘었습니다. 자료를 삭제하지 말고 담당자에게 확인해 주세요.'
+        BACKUP_LINK_UNSAFE = '백업 대상에 연결 폴더가 포함되어 안전하게 복사할 수 없습니다. 원본을 지우지 말고 담당자에게 확인해 주세요.'
+        BACKUP_IO_ERROR = '백업 파일을 읽거나 저장하지 못했습니다. 아래 진단 코드와 진단 파일로 확인해 주세요.'
+    }
+    if ($Message -match '^\[(BACKUP_[A-Z_]+)\]' -and $backupReasons.ContainsKey($Matches[1])) {
+        return ('기존 자료 백업 단계에서 중단했습니다. 새 버전 설치는 시작하지 않았습니다. ' + $backupReasons[$Matches[1]])
+    }
     if ($Message -match 'Core version already exists with different contents') {
         return '같은 버전 번호의 설치 파일이 기존 파일과 다릅니다. 기존 폴더를 지우지 말고, 담당자에게 버전 번호가 올라간 새 설치본을 받아 주세요.'
     }
@@ -1044,6 +1150,15 @@ trap {
     if (-not $FriendlyOutput) { throw $_ }
     Write-Host ''
     Write-Host (Get-SetupFriendlyFailure -Message $_.Exception.Message) -ForegroundColor Red
+    $backupError = $_.Exception
+    while ($null -ne $backupError -and -not $backupError.Data.Contains('CompanyAgentBackupCode')) { $backupError = $backupError.InnerException }
+    if ($null -ne $backupError) {
+        Write-Host ('진단 코드: ' + $backupError.Data['CompanyAgentBackupCode'])
+        Write-Host ('부분 백업 위치 (완료된 백업이 아님): ' + $backupError.Data['CompanyAgentBackupPath'])
+        if (-not [string]::IsNullOrWhiteSpace([string]$backupError.Data['CompanyAgentBackupDiagnostic'])) {
+            Write-Host ('담당자에게 전달할 진단 파일: ' + $backupError.Data['CompanyAgentBackupDiagnostic'])
+        }
+    }
     $errorFile = [IO.Path]::GetFileName([string]$_.InvocationInfo.ScriptName)
     if ($errorFile -match '^[A-Za-z0-9_.-]+\.ps1$') {
         Write-Host ("담당자 확인 위치: {0} / {1}번째 줄" -f $errorFile, $_.InvocationInfo.ScriptLineNumber)

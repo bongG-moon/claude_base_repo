@@ -24,7 +24,7 @@ ASSETS = Path(__file__).parent / "web"
 SAFE_FILES = {".md", ".txt", ".csv", ".tsv", ".html", ".htm", ".pdf", ".pptx", ".docx", ".xlsx", ".png", ".jpg", ".jpeg", ".webp"}
 MAX_BODY = 256 * 1024
 MAX_PREVIEW = 1024 * 1024
-WORKSPACE_VERSION = "0.5"
+WORKSPACE_VERSION = "0.6"
 
 
 def folder(value):
@@ -344,7 +344,6 @@ class Handler(BaseHTTPRequestHandler):
             manuals = {'/manual/guide': 'Company-Agent-Guide.html',
                        '/manual/handbook': 'Company-Agent-Handbook.html',
                        '/manual/onboarding': 'Company-Agent-Onboarding.html',
-                       '/manual/cua': 'Company-Agent-Cua-Pilot.html',
                        '/manual/usage': 'Company-Agent-사용자-안내서.html',
                        '/manual/commands': 'Claude-Code-필수-사용법.html'}
             manuals.update({'/manual/' + name: name for name in list(manuals.values())})

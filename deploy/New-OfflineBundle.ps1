@@ -121,6 +121,23 @@ foreach ($deployName in $productionDeployFiles) {
     }
 }
 
+# Markdown is a user-facing installed resource as well as a ZIP document.
+# Fail before packaging if source edits were not copied by build-manuals.mjs.
+$markdownManuals = @('README.md', 'CLAUDE_CODE_BASICS.md', 'ONBOARDING_COURSE.md',
+    'USER_GUIDE.md', 'COMPANY_AGENT_HANDBOOK.md', 'CLAUDE_CODE_COMMANDS.md')
+foreach ($manualName in $markdownManuals) {
+    $manualSource = Join-Path $SourceRoot ('docs\' + $manualName)
+    $installedManual = Join-Path $pluginSource ('resources\manuals\' + $manualName)
+    if (-not (Test-Path -LiteralPath $manualSource -PathType Leaf) -or
+        -not (Test-Path -LiteralPath $installedManual -PathType Leaf)) {
+        throw "Required Markdown manual is missing: $manualName. Run scripts/build-manuals.mjs before packaging."
+    }
+    if ((Get-FileHash -LiteralPath $manualSource -Algorithm SHA256).Hash -cne
+        (Get-FileHash -LiteralPath $installedManual -Algorithm SHA256).Hash) {
+        throw "Packaged Markdown is out of date: $manualName. Run scripts/build-manuals.mjs before packaging."
+    }
+}
+
 $pluginManifestPath = Join-Path $pluginSource '.claude-plugin\plugin.json'
 $knowledgeManifestPath = Join-Path $knowledgeSource 'pack.json'
 $pluginManifest = Read-CompanyAgentJson -Path $pluginManifestPath
@@ -291,16 +308,19 @@ try {
     foreach ($docName in @('UPDATE_1.4.15.md', 'LOCAL_WORKSPACE.md', 'BEGINNER_WORKFLOW_DESIGN_2026-09-19.md', 'LOCAL_DECISION_WORKFLOW_2026-09-19.md', 'VALIDATION_AUDIT_FIXES_2026-09-19.md', 'VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md', 'VALIDATION_COMPANY_PERSONAL_2026-09-18.md', 'VALIDATION_EXECUTION_RECOVERY_2026-09-19.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-18.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-19.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
-    foreach ($docName in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CUA_DRIVER_PILOT.md', 'CLAUDE_CODE_COMMANDS.md', 'Company-Agent-Guide.html', 'Company-Agent-Handbook.html', 'Company-Agent-Onboarding.html', 'Company-Agent-Cua-Pilot.html', 'VALIDATION_CUA_MANUALS_2026-09-19.md', 'UPDATE_1.4.16.md', 'UPDATE_1.4.17.md', 'VALIDATION_RESOURCE_SCOPES_2026-09-19.md', 'VALIDATION_HARNESS_MAP_2026-09-19.md', 'VALIDATION_PPT_HTML_FIRST_2026-09-19.md', 'VALIDATION_PPT_NATIVE_HTML_2026-09-19.md', 'VALIDATION_SINGLE_DELIVERY_2026-09-19.md', 'VALIDATION_UNIFIED_GUIDE_2026-09-19.md')) {
+    foreach ($docName in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CLAUDE_CODE_COMMANDS.md', 'Company-Agent-Guide.html', 'Company-Agent-Handbook.html', 'Company-Agent-Onboarding.html', 'UPDATE_1.4.16.md', 'UPDATE_1.4.17.md', 'UPDATE_1.4.18.md', 'VALIDATION_RESOURCE_SCOPES_2026-09-19.md', 'VALIDATION_HARNESS_MAP_2026-09-19.md', 'VALIDATION_PPT_HTML_FIRST_2026-09-19.md', 'VALIDATION_PPT_NATIVE_HTML_2026-09-19.md', 'VALIDATION_SINGLE_DELIVERY_2026-09-19.md', 'VALIDATION_UNIFIED_GUIDE_2026-09-19.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'Diagnose-CompanyAgent.cmd') -Destination (Join-Path $stagePath 'Diagnose-CompanyAgent.cmd') -Force
+    foreach ($manualName in $markdownManuals) {
+        Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $manualName)) -Destination (Join-Path $stagePath ('docs\' + $manualName)) -Force
+    }
     # The installed guide uses sibling resources/manuals; the ZIP entry guide
     # links to the existing docs directory instead of duplicating those books.
     $firstWorkHtml = Get-Content -LiteralPath (Join-Path $pluginSource 'resources\first-work.html') -Raw -Encoding UTF8
-    Write-CompanyAgentUtf8File -Path (Join-Path $stagePath 'First-Work.html') -Content ($firstWorkHtml.Replace('href="manuals/Company-Agent-', 'href="docs/Company-Agent-'))
+    Write-CompanyAgentUtf8File -Path (Join-Path $stagePath 'First-Work.html') -Content ($firstWorkHtml.Replace('href="manuals/', 'href="docs/'))
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\COMPANY_PERSONAL_WORKFLOW.md') -Destination (Join-Path $stagePath 'docs\COMPANY_PERSONAL_WORKFLOW.md') -Force
 
     if (-not $IncludeBundledPython) {

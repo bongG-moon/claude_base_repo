@@ -15,6 +15,18 @@ are preserved below; the identical MIT permission/warranty text applies to each
 listed upstream contribution, not to otherwise proprietary Company Agent code.
 The existing Karpathy attribution remains in skills/karpathy-guidelines/SOURCE.md.
 
+## Offline guide typography
+
+The HTML user guides embed a character subset of **Noto Sans KR** (weights
+400–700), licensed under SIL Open Font License 1.1. Copyright 2014–2021 Adobe,
+with Reserved Font Name "Source". The full license is included in each HTML
+header and the embedded font's name table. No Google Fonts request, Windows
+font installation, or employee-side font dependency is added.
+
+Build source, subset hash and character coverage are recorded in
+`scripts/assets/manual-font/manifest.json` in the source repository. The upstream
+license is https://github.com/google/fonts/blob/main/ofl/notosanskr/OFL.txt.
+
 ## Upstream copyright notices
 
 Copyright (c) 2026 Matt Pocock

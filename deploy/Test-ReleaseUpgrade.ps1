@@ -65,6 +65,12 @@ try {
     }
     $installed = & (Join-Path $baseline 'deploy\Setup-CompanyAgent.ps1') @common -BundleRoot $baseline -ExistingHarnessAction Replace
     Assert-ReleaseUpgrade ($installed.status -eq 'installed') 'Original release did not install'
+    # Real-world synced Office Skills gain another long prefix during backup.
+    # Add this after the baseline install so the update exercises that boundary.
+    $longSkillRelative = 'skills\synced\aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb\docx\scripts\office\schemas\ISO-IEC29500-4_2016\dml-spreadsheetDrawing.xsd'
+    $longSkillPath = Join-Path $config $longSkillRelative
+    $null = [IO.Directory]::CreateDirectory(('\\?\' + (Split-Path -Parent $longSkillPath)))
+    [IO.File]::WriteAllText(('\\?\' + $longSkillPath), 'Preserve long-path schema fixture.', (New-Object Text.UTF8Encoding($false)))
     $instruction = Join-Path $config 'CLAUDE.md'
     Write-CompanyAgentUtf8File -Path $instruction -Content 'Preserve personal instructions added after installation.'
     foreach ($relative in @('memory\notes\release.md', 'knowledge\personal-release.md', 'skills\personal-release\SKILL.md')) {
@@ -75,6 +81,10 @@ try {
     foreach ($path in @($personalSkill, $instruction, $mcp)) { $personalHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
     $updated = & (Join-Path $update 'deploy\Setup-CompanyAgent.ps1') @common -BundleRoot $update -ExistingHarnessAction Update
     Assert-ReleaseUpgrade ($updated.status -eq 'updated' -and $updated.previousCoreVersion -eq $oldVersion) 'Update did not report the real old version'
+    $longSkillBackup = Join-Path $updated.safetyBackup (Join-Path 'claude-config' $longSkillRelative)
+    Assert-ReleaseUpgrade ($longSkillBackup.Length -gt 260) 'Upgrade did not exercise a long backup path'
+    Assert-ReleaseUpgrade ([IO.File]::ReadAllText(('\\?\' + $longSkillBackup)) -ceq 'Preserve long-path schema fixture.') 'Long-path Skill file was not backed up intact'
+    Assert-ReleaseUpgrade ([IO.File]::ReadAllText(('\\?\' + $longSkillPath)) -ceq 'Preserve long-path schema fixture.') 'Long-path source Skill was changed'
     Assert-ReleaseUpgrade (-not $updated.previousHarnessDeactivated) 'Update deactivated personal instructions'
     Assert-ReleaseUpgrade ((Get-ReleaseTreeSnapshot $state) -ceq $stateBefore) 'Update changed personal state contents'
     foreach ($path in $personalHashes.Keys) {
@@ -100,7 +110,6 @@ try {
         'skills\office-reader\SKILL.md', 'skills\html-report\SKILL.md',
         'resources\first-work.html', 'resources\onboarding-course.json',
         'resources\manuals\Company-Agent-Handbook.html', 'resources\manuals\Company-Agent-Onboarding.html',
-        'resources\manuals\Company-Agent-Cua-Pilot.html',
         'resources\manuals\Company-Agent-Guide.html',
         'scripts\company_agent\office_consent.py', 'scripts\company_agent\project_bootstrap.py',
         'scripts\company_agent\artifact_delivery.py', 'scripts\company_agent\ppt_html.py',
@@ -128,6 +137,7 @@ try {
         status = 'pass'; previousVersion = $oldVersion; updatedVersion = $newVersion
         nativeClaudeRegistration = $true; nativeSessionStart = $true
         personalStatePreserved = $true; originalArchivesPreserved = $true
+        longPathSkillBackupPreserved = $true
         artifactsKept = [bool]$KeepArtifacts; testRoot = $testRoot
     }
 }
@@ -137,6 +147,9 @@ finally {
         $resolved = ConvertTo-CompanyAgentFullPath -Path $testRoot
         $tempRoot = (ConvertTo-CompanyAgentFullPath -Path ([IO.Path]::GetTempPath())).TrimEnd('\')
         if (-not $resolved.StartsWith(($tempRoot + '\'), [StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notlike 'CompanyAgent-ReleaseUpgrade-*') { throw 'Unsafe release upgrade cleanup path.' }
-        Remove-Item -LiteralPath $resolved -Recurse -Force
+        $cleanupIO = '\\?\' + $resolved
+        if (([IO.File]::GetAttributes($cleanupIO) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Unsafe release upgrade cleanup link.' }
+        # The fixture now deliberately contains paths beyond MAX_PATH too.
+        [IO.Directory]::Delete($cleanupIO, $true)
     }
 }

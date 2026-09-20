@@ -246,6 +246,9 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         return "read_only" if fields is not None and re.fullmatch(r"[a-f0-9]{32}", fields["--id"]) else "unknown"
     if len(args) >= 2 and args[0] == "skill":
         return "read_only" if _skill_lookup(args[1:]) else "unknown"
+    if head == ("asset", "check-skill"):
+        fields = _fields(args[2:], {"--name", "--state-root", "--project-root"}, {"--name"})
+        return "read_only" if fields is not None and re.fullmatch(r"[a-z][a-z0-9-]{1,62}", fields["--name"]) else "unknown"
     # Exact help calls must be handled before missing-storage-scope questions.
     # Neither form performs a save or creates a completion obligation.
     if args[-1:] == ["--help"] and head in {

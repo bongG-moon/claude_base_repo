@@ -26,8 +26,10 @@ class LeanSkillContractTests(unittest.TestCase):
 
     def test_conditional_reference_links_exist_inside_plugin(self):
         links = {
-            "asset-factory/SKILL.md": ["references/authoring.md", "references/windows-setup.md"],
-            "platform-mcp-builder/SKILL.md": ["references/platform-contract.md"],
+            "asset-factory/SKILL.md": ["references/authoring.md", "references/windows-setup.md",
+                                       "references/platform-tools.md", "references/legacy-assets.md",
+                                       "../platform-mcp-builder/references/platform-contract.md"],
+            "platform-mcp-builder/SKILL.md": ["../asset-factory/SKILL.md", "references/platform-contract.md"],
             "project-harness/SKILL.md": ["../asset-factory/references/authoring.md"],
             "personal-knowledge/SKILL.md": ["references/term-quality.md"],
             "karpathy-guidelines/SKILL.md": ["references/evidence-diagnosis.md"],

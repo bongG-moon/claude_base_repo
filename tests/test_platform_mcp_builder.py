@@ -58,11 +58,13 @@ class PlatformMcpBuilderTests(unittest.TestCase):
         self.assertEqual(len(items), 1)
         self.assertEqual(items[0]["source"], "company")
         self.assertEqual(items[0]["invocation"], "company-agent:platform-mcp-builder")
-        self.assertFalse(items[0]["explicitOnly"])
+        self.assertTrue(items[0]["explicitOnly"])
+        self.assertNotIn("user-invocable: false", (SKILL / "SKILL.md").read_text(encoding="utf-8"))
         for prompt in ("전사 표준 MCP tools.py register_tools 형식으로 개발해줘",
                        "로컬에서 만든 MCP 도구를 회사 플랫폼에 제출하고 싶어"):
             groups = task_candidates(inventory, prompt)["groups"]
-            self.assertIn("platform-mcp-builder", [g["name"] for g in groups])
+            self.assertIn("asset-factory", [g["name"] for g in groups])
+            self.assertNotIn("platform-mcp-builder", [g["name"] for g in groups])
         for prompt in ("기존 PPT 내용 읽고 요약해줘", "이 폴더에 온도 변환 코드를 작성해줘",
                        "개인 스킬 만들어줘"):
             groups = task_candidates(inventory, prompt)["groups"]

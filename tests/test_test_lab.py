@@ -7,6 +7,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -181,9 +182,12 @@ class TestLab(unittest.TestCase):
         source = (REPO / 'company-agent-plugin/resources/first-work.html').read_text(encoding='utf-8')
         self.assertEqual(7, source.count('data-copy='))
         self.assertIn("connect-src 'none'", source)
+        # Embedded font license comments contain attribution URLs, not requests.
+        runtime_source = re.sub(r'<!--.*?-->', '', source, flags=re.S)
         for forbidden in ('https://', 'fetch(', 'localStorage', 'XMLHttpRequest'):
-            self.assertNotIn(forbidden, source)
-        self.assertIn('복사 버튼은 업무를 실행하거나 개인 정보를 저장하지 않습니다', source)
+            self.assertNotIn(forbidden, runtime_source)
+        self.assertIn('복사한 예문을 대화창에 붙여 넣고 직접 보내야 업무가 시작됩니다.', source)
+        self.assertIn('아직 실행한 것은 아닙니다.', source)
         self.assertIn('동의할 때만', source)
         self.assertIn('00_FIRST_WORK.html', (builder.TEMPLATES / 'dashboard.html').read_text(encoding='utf-8'))
 

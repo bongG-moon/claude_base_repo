@@ -22,7 +22,7 @@ try{
   if(await page.locator('.companion-domains .companion-card').count()!==3)throw new Error('three-scope guide missing');
   await page.getByRole('button',{name:'입력창에 넣기',exact:true}).first().click();
   const starterPrompt=await page.locator('#prompt').inputValue();
-  if(!starterPrompt.includes('온보딩_가상자료.md')||!starterPrompt.includes('덮어쓰지'))throw new Error('no-materials starter compose failed');
+  if(!starterPrompt.includes('실습_가상자료.md')||!starterPrompt.includes('덮어쓰지'))throw new Error('no-materials starter compose failed');
   if(await page.locator('.message').count())throw new Error('guide sent without user action');
   await page.locator('#prompt').fill('');
   await page.locator('#choose-folder').click();

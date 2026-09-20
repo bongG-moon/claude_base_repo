@@ -65,19 +65,18 @@ class OnboardingPracticeTests(unittest.TestCase):
                              claude_root=self.claude, plugin_root=self.plugin)
 
     def _tool_spec(self):
-        return {
-            "type": "script-tool", "name": "onboarding-achievement",
-            "description": "가상 월간 실적의 합계와 달성률 계산 연습",
-            "code": example("tool-code"),
-            "input_schema": {"type": "object", "required": ["targets", "actuals"],
-                             "properties": {name: {"type": "array", "items": {"type": "integer"}}
-                                            for name in ["targets", "actuals"]}},
-            "output_schema": {"type": "object",
-                              "required": ["targetTotal", "actualTotal", "achievementRate"],
-                              "properties": {"targetTotal": {"type": "integer"},
-                                             "actualTotal": {"type": "integer"},
-                                             "achievementRate": {"type": ["number", "null"]}}},
-        }
+        cases = json.loads(example("tool-cases"))
+        cases += [
+            {"input": {"targets": [1] * 13, "actuals": [1] * 13}, "error": True},
+            {"input": {"targets": [1000001], "actuals": [1]}, "error": True},
+            {"input": {"targets": [1.5], "actuals": [1]}, "error": True},
+        ]
+        return {"type": "mcp", "format": "platform-tools-v1", "name": "onboarding-achievement",
+                "description": "가상 월간 실적의 합계와 달성률 계산 연습",
+                "tools_code": example("tool-code"), "reviewed_capabilities": ["third-party-import"],
+                "tool_tests": [{"tool": "achievement", "arguments": c["input"],
+                                **({"is_error": True} if c.get("error") else {"expect": {"json": c["expected"]}})}
+                               for c in cases]}
 
     def _input(self, payload):
         file = self.root / "practice-input.json"
@@ -150,44 +149,32 @@ class OnboardingPracticeTests(unittest.TestCase):
         self.assertFalse((self.state / "personal-root/.claude/skills" / spec["name"]).exists())
 
     def test_tool_examples_require_receipt_then_pass_normal_boundary_and_error_cases(self):
+        from company_agent.skill_tool_dependencies import check_skill_dependencies
         spec = self._tool_spec()
         path = assets.create_asset(spec, self.state)
-        self.assertEqual("candidate", json.loads((path / "tool.json").read_text(encoding="utf-8"))["status"])
+        self.assertEqual("candidate", json.loads((path / "asset.json").read_text(encoding="utf-8"))["status"])
         self.assertTrue(assets.validate_asset(path)["ok"])
-        cases = json.loads(example("tool-cases"))
         with self.assertRaises(ValueError):
-            assets.run_script_tool(self.state, spec["name"], self._input(cases[0]["input"]))
-        cases += [
-            {"input": {"targets": [1] * 13, "actuals": [1] * 13}, "error": True},
-            {"input": {"targets": [1000001], "actuals": [1]}, "error": True},
-            {"input": {"targets": [1.5], "actuals": [1]}, "error": True},
-        ]
-        receipts = []
-        for index, case in enumerate(cases):
-            with self.subTest(candidate_case=index):
-                if case.get("error"):
-                    with self.assertRaises(ValueError):
-                        assets.validate_script_tool_runtime(self.state, spec["name"], self._input(case["input"]), timeout=5)
-                else:
-                    receipts.append(assets.validate_script_tool_runtime(
-                        self.state, spec["name"], self._input(case["input"]), timeout=5))
-        self.assertEqual("candidate", json.loads((path / "tool.json").read_text(encoding="utf-8"))["status"])
-        wrapper = assets.activate_script_tool(self.state, spec["name"], receipts[0])
-        self.assertTrue((wrapper / "SKILL.md").is_file())
-        self.assertEqual("available", self._resolve(spec["name"])["resolution"]["status"])
-        for index, case in enumerate(cases):
-            with self.subTest(case=index):
-                if case.get("error"):
-                    with self.assertRaises(ValueError):
-                        assets.run_script_tool(self.state, spec["name"], self._input(case["input"]), timeout=5)
-                else:
-                    result = assets.run_script_tool(self.state, spec["name"], self._input(case["input"]), timeout=5)
-                    self.assertEqual(case["expected"], result["result"])
-        # A receipt does not authorize later code changes.
-        source = path / "main.py"
+            assets.activate_mcp(self.state, spec["name"], "no-receipt")
+        receipt = assets.validate_mcp_runtime(self.state, spec["name"], timeout=20)
+        details = json.loads(receipt.read_text(encoding="utf-8"))["details"]
+        self.assertEqual(12, details["businessTestCount"])
+        self.assertEqual(["achievement"], details["businessTools"])
+        assets.activate_mcp(self.state, spec["name"], receipt)
+        report = {"type": "skill", "name": "practice-achievement-report", "description": "가상 합계 설명",
+                  "instructions": "계산 도구를 호출하고 결과를 설명한다.",
+                  "tool_dependencies": [{"server": spec["name"], "tools": ["achievement"]}]}
+        skill = assets.create_asset(report, self.state)
+        self.assertEqual("available", self._resolve(report["name"])["resolution"]["status"])
+        self.assertTrue(check_skill_dependencies(self.state, report["name"])["ok"])
+        self.assertIn("asset check-skill", (skill / "SKILL.md").read_text(encoding="utf-8"))
+        # Configuration registration and the live Claude session were not exercised here.
+        self.assertFalse(check_skill_dependencies(self.state, report["name"], self.project)["ok"])
+        source = path / "src/mcp/tools.py"
         source.write_text(source.read_text(encoding="utf-8") + "\n# changed\n", encoding="utf-8")
+        self.assertFalse(check_skill_dependencies(self.state, report["name"])["ok"])
         with self.assertRaisesRegex(ValueError, "changed after validation"):
-            assets.run_script_tool(self.state, spec["name"], self._input(cases[0]["input"]), timeout=5)
+            assets.activate_mcp(self.state, spec["name"], receipt)
 
     def test_project_harness_plan_and_apply_preserve_claude_and_other_project(self):
         team = self.project / "CLAUDE.md"

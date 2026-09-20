@@ -137,6 +137,28 @@ def _claude_argv() -> list[str]:
     raise ValueError("Native Claude executable is unavailable. Repair the existing Claude installation and retry MCP registration.")
 
 
+def registration_status(name: str, desired: dict, project: Path) -> str:
+    """Read settings only; this does not establish a live MCP connection."""
+    _validate_name(name)
+    project = project.resolve()
+    config = _read_object(_config_file())
+    actual = _server_map(config).get(name)
+    # Shared project definitions override user definitions; local settings override both.
+    for parent in reversed([project, *project.parents]):
+        shared = _server_map(_read_object(parent / ".mcp.json"))
+        if name in shared:
+            actual = shared[name]
+    projects = config.get("projects", {})
+    if not isinstance(projects, dict):
+        raise ValueError("Native Claude projects configuration must be a JSON object.")
+    for key, item in projects.items():
+        if _same_project(key, project) and isinstance(item, dict) and name in _server_map(item):
+            actual = _server_map(item)[name]
+    if actual is None:
+        return "not-registered"
+    return "registered" if actual == desired else "conflict"
+
+
 def sync_native_mcp(state_root: Path, name: str, *, storage_scope: str | None = None,
                     project_root: Path | None = None) -> dict[str, Any]:
     _validate_name(name)

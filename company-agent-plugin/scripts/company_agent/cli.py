@@ -180,6 +180,16 @@ def cmd_asset_validate(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_asset_check_skill(args: argparse.Namespace) -> int:
+    from .skill_tool_dependencies import check_skill_dependencies
+    project = Path(args.project_root or os.environ.get("COMPANY_AGENT_CWD") or Path.cwd())
+    if not project.is_absolute() or not project.is_dir():
+        raise ValueError("현재 프로젝트의 존재하는 절대경로가 필요합니다.")
+    result = check_skill_dependencies(_state_root(args), args.name, project)
+    _print_json(result)
+    return 0 if result["ok"] else 1
+
+
 def cmd_asset_activate_mcp(args: argparse.Namespace) -> int:
     registry = activate_mcp(_state_root(args), args.name, args.receipt)
     native = None
@@ -690,6 +700,11 @@ def build_parser() -> argparse.ArgumentParser:
     validate_asset_parser = asset_sub.add_parser("validate")
     validate_asset_parser.add_argument("path")
     validate_asset_parser.set_defaults(func=cmd_asset_validate)
+    check_skill = asset_sub.add_parser("check-skill", help="Check bound MCP tool contracts and native settings without starting servers.")
+    _add_state_argument(check_skill)
+    check_skill.add_argument("--project-root")
+    check_skill.add_argument("--name", required=True)
+    check_skill.set_defaults(func=cmd_asset_check_skill)
     test_tool = asset_sub.add_parser("test-tool")
     _add_state_argument(test_tool)
     test_tool.add_argument("--name", required=True)

@@ -7,7 +7,7 @@ Company Agent ZIP을 로컬 PC의 폴더에 완전히 압축 해제한 뒤 이 �
 이 안내는 **Claude Code와 회사 승인 Python 3.11 이상이 이미 설치된 PC**를 기준으로 한다.
 직원용 기본 ZIP에는 Python 실행 파일이나 DLL을 포함하지 않는다. 실제 버전은 동봉된 `bundle-manifest.json`을 기준으로 확인한다. 기존 사내 모델 설정을 그대로 사용한다. 이전 1.x 버전을 설치한 PC도 동일 범위로 업데이트할 수 있으며 개인 자료와 자동 학습 설정은 유지한다. 이전 `0.3.x`는 배포 전 개발 버전이다.
 
-설치 후 Claude를 다시 열고 필요하면 `/company-agent:business-check`로 기본 조건을 확인한다. 폴더별 자동 스킬 목록은 시작/다음 요청 때 준비되므로 별도 생성 명령이 필요 없다. 메일 본문이나 운영 문서를 설치 점검 중 자동 조회하지 않는다. DRM 정책을 바꾸거나 인터넷에서 패키지를 설치하지 않는다. 실제 메일 발송·PST 이동은 별도 연결된 `corp-outlook-self` 기능이 있을 때만 사용한다. 로컬 Outlook 점검기는 읽기 전용이다. 처음 사용하는 사람은 [온보딩 코스](docs/Company-Agent-Onboarding.html), 운영 시험은 `docs/BUSINESS_PILOT_GUIDE.md`를 참고한다.
+설치 후 Claude를 다시 열고 필요하면 `/company-agent:business-check`로 기본 조건을 확인한다. 폴더별 자동 스킬 목록은 시작/다음 요청 때 준비되므로 별도 생성 명령이 필요 없다. 메일 본문이나 운영 문서를 설치 점검 중 자동 조회하지 않는다. DRM 정책을 바꾸거나 인터넷에서 패키지를 설치하지 않는다. 실제 메일 발송·PST 이동은 별도 연결된 `corp-outlook-self` 기능이 있을 때만 사용한다. 로컬 Outlook 점검기는 읽기 전용이다. 처음 사용하는 사람은 [시작하기](docs/Company-Agent-Guide.html), 글로 읽을 때는 [Markdown 안내서 목차](docs/README.md), 운영 시험은 `docs/BUSINESS_PILOT_GUIDE.md`를 참고한다.
 
 이전 설치 시 `cp949 codec can't encode character` 오류가 있었다면 수정된 ZIP을 새 폴더에 완전히 풀어 사용한다. 기존 Skill 내용을 삭제하거나 Windows 전역 인코딩/Python을 재설정하지 않는다. 압축 해제한 설치기 일부만 바꾸면 무결성 검증에 실패하므로 수정 ZIP 전체를 사용한다.
 

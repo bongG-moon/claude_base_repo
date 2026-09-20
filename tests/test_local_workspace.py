@@ -245,28 +245,33 @@ class ServerTests(unittest.TestCase):
             self.request("/../server.py", token=False)
 
     def test_manual_routes_are_fixed_public_static_documents(self):
-        for route in ('guide','handbook','onboarding','cua','usage','commands','Company-Agent-Guide.html','Company-Agent-Handbook.html','Company-Agent-Onboarding.html','Company-Agent-Cua-Pilot.html','Company-Agent-사용자-안내서.html','Claude-Code-필수-사용법.html'):
+        for route in ('guide','handbook','onboarding','usage','commands','Company-Agent-Guide.html','Company-Agent-Handbook.html','Company-Agent-Onboarding.html','Company-Agent-사용자-안내서.html','Claude-Code-필수-사용법.html'):
             with self.request('/manual/'+quote(route),token=False) as response:
                 body=response.read().decode('utf-8')
                 self.assertIn('<html lang="ko">',body)
                 self.assertIn("script-src 'none'",body)
                 self.assertNotIn(self.app.token,body)
-        for route in ('../server.py','COMPANY_AGENT_HANDBOOK.md','../../.claude.json','%2e%2e%2fserver.py'):
+        for route in ('../server.py','COMPANY_AGENT_HANDBOOK.md','../../.claude.json','%2e%2e%2fserver.py','cua','Company-Agent-Cua-Pilot.html'):
             with self.assertRaises(HTTPError) as caught:
                 self.request('/manual/'+route,token=False)
             self.assertEqual(404,caught.exception.code)
 
-    def test_computer_check_uses_existing_auth_and_folder_trust_without_cli(self):
+    def test_removed_screen_control_routes_cannot_execute(self):
         body={'id':self.id,'action':'computer-check'}
         with self.assertRaises(HTTPError) as caught:
             self.request('/api/companion',body,token=False)
         self.assertEqual(403,caught.exception.code)
-        with patch('local_app.computer_use.find_driver',return_value={'status':'not-found'}), patch('local_app.server.ClaudeSession') as cli:
-            with self.request('/api/companion',body) as response:
-                result=json.load(response)
-            self.assertFalse(result['canPrepareReadTrial'])
-            self.assertEqual('not-observed',result['connection']['status'])
+        with patch('local_app.server.ClaudeSession') as cli, patch.object(self.app.companion.client,'call') as harness:
+            before=self.app.companion.records(str(self.workspace))
+            for path,data in (('/api/companion',body),
+                              ('/api/companion?id='+self.id+'&view=computer',None)):
+                with self.assertRaises(HTTPError) as caught:
+                    self.request(path,data)
+                self.assertEqual(400,caught.exception.code)
+                caught.exception.close()
             cli.assert_not_called()
+            harness.assert_not_called()
+            self.assertEqual(before,self.app.companion.records(str(self.workspace)))
         self.app.get(self.id)['trusted']=False
         with self.assertRaises(HTTPError) as caught:
             self.request('/api/companion',body)
@@ -275,7 +280,7 @@ class ServerTests(unittest.TestCase):
     def test_bootstrap_identifies_shared_cli_without_claiming_login_success(self):
         with self.request("/api/bootstrap") as response:
             value = json.load(response)
-        self.assertEqual(value["workspaceVersion"], "0.5")
+        self.assertEqual(value["workspaceVersion"], "0.6")
         self.assertEqual(value["appRoot"], str(ROOT))
         self.assertEqual(value["runtime"]["authentication"], "shared-with-cli")
         self.assertNotIn("loggedIn", value["runtime"])

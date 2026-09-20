@@ -1,65 +1,36 @@
 ---
 name: asset-factory
-description: 자연어 요청으로 개인 스킬·스크립트 도구·MCP를 만들고 수정·검증합니다. 반복 업무를 재사용 가능한 기능으로 구성하며 LARGE 작업자를 활용합니다.
+description: 개인 스킬·스크립트·도구(tool)·MCP를 만들고 수정·검증하는 통합 제작 스킬입니다. 새 재사용 업무 도구는 전사 표준 tools.py로 만들며, 로컬 연결과 스킬의 도구 재사용을 함께 확인합니다.
 ---
 
-# Personal Asset Factory
+# 스킬·도구 만들기
 
-Turn a user's natural-language automation request into the smallest reusable asset that solves it.
+제작 진입점은 이 스킬 하나입니다. **스킬은 업무 순서, 도구는 실행 코드**를 담당합니다. 새 재사용 업무 도구는 회사 표준 `src/mcp/tools.py`의 `register_tools(mcp: FastMCP)`로 작성합니다. 설명·검토만 요청하면 생성·실행·등록하지 않습니다.
 
-전사 표준 `tools.py` / `register_tools(FastMCP)` 형식이나 회사 플랫폼 제출용 MCP를 요청하면 `company-agent:platform-mcp-builder`를 먼저 적용합니다. 아래의 일반 개인용 stdio MCP 생성·활성화 절차와 다른 용도입니다. 표준이 지정되지 않은 일반 개인 자산은 이 스킬을 유지합니다.
+## 시작과 범위
 
-For Skill creation or repair, read `references/authoring.md` before drafting. For a requested interactive setup helper, also read `references/windows-setup.md`. These are supporting references, not additional Skills or workflows; other tasks do not load them.
+- 관련 기존 스킬·도구부터 확인하고 맞는 기능은 재사용합니다. 다른 이름이라는 이유만으로 중복 제작하지 않습니다. 용어·업무 규칙은 유효 지식을 참고합니다.
+- 글쓰기·체크리스트처럼 기존 도구로 가능한 작업에는 스킬만 만듭니다. 일회성 작업을 무조건 MCP로 만들지 않습니다. 기존 Script Tool/stdio MCP는 원래 형식으로 유지합니다.
+- 저장 범위가 없으면 **개인 전체 / 이 프로젝트** 중 한 번만 묻고 기다립니다. 회사 공통은 개인의 직접 저장 선택지가 아닙니다. 기존 자산은 경로·범위를 유지합니다.
+- 명령은 정확한 `company_agent_runtime.cliCommand`, `stateRoot`, 프로젝트 절대경로를 사용합니다. create/test/activate/sync에 동일한 `--storage-scope personal|project --project-root "<프로젝트>"`를 붙입니다. 생성 결과 경로를 확인하며 플러그인 캐시나 회사 원본에 개인 자산을 쓰지 않습니다.
+- 이름·경로는 사용하는 셸에 맞는 리터럴 인수로 전달합니다. `tools_code`는 UTF-8 AssetSpec 파일에 저장하고 긴 코드를 중첩 셸 문자열로 실행하지 않습니다.
+- 개인 스킬·기존 Script Tool wrapper를 만들기 전 `skill resolve "<이름>" --project-root "<프로젝트>"`로 충돌을 확인합니다. 실제 역할이 겹치고 우선 선택도 없을 때만 질문합니다. 충돌 회피를 위해 임의로 기존 자산을 덮어쓰거나 이름을 바꾸지 않습니다.
 
-For each `company-agent` example, use the exact `company_agent_runtime.cliCommand` prefix from the current session and safely quote names and paths as arguments. Use its `stateRoot` and clearly identified absolute project path; do not assume Python or the CLI is on PATH. A request only to inspect, explain, or review permits read-only discovery, not asset creation, activation, or preference writes.
+## 필요한 절차만 읽기
 
-## Select the asset type
+- 스킬 작성·수정: `references/authoring.md`.
+- 새 도구/MCP 제작·연결 또는 스킬에서 MCP 재사용: `references/platform-tools.md`.
+- 전사 제출·HTTP 호환성 확인: `../platform-mcp-builder/references/platform-contract.md`.
+- 기존 Script Tool/일반 stdio MCP 유지보수 또는 그 형식을 명시 요청: `references/legacy-assets.md`.
+- 사용자가 설치 도우미를 요청한 경우만: `references/windows-setup.md`.
 
-- **Knowledge**: a fact, term, table definition, join, metric, or business rule. Use Personal Knowledge, not this factory.
-- **Skill**: instructions, a checklist, a prompt workflow, or a procedure Claude can perform with existing tools. Prefer this by default; personal Skills become active immediately.
-- **Script Tool**: deterministic local computation or file transformation requiring code. It is created as `candidate` until its tests pass.
-- **MCP**: a durable typed interface to another system or capability. Use only when a Skill or script cannot provide the needed boundary. It is created as `candidate` and requires protocol/security validation before activation.
+These are conditional references; other tasks do not load them. 현재 대화에서 읽은 변경 없는 내용은 재사용합니다.
 
-## Build contract
+## 공통 검증
 
-저장 범위가 미지정이면 제작 전에 AskUserQuestion으로 **개인 전체(여러 프로젝트)** / **이 프로젝트(현재 작업에서만)** 중 하나를 물어 답변을 기다립니다. 질문 도구가 없으면 한국어 질문 후 멈춥니다. 회사 공통은 직접 저장 선택지가 아닙니다. 사용자가 명시했다면 다시 묻지 않습니다. 기존 자산 수정은 원래 범위를 유지하고 다른 저장소로 이동·복사하지 않습니다.
-
-아래 asset create/test/activate/sync/run 명령에 `--storage-scope personal|project --project-root "<company_agent_runtime.project>"`를 동일하게 붙입니다. runtime.stateRoot는 설치/세션 경로 그대로 유지합니다. 생성 결과의 실제 경로를 검증하며 대상 저장소를 추측하지 않습니다. 범위 누락 시 `needs_scope_choice`는 생성 전 질문 대기입니다. 회사 원본이나 `~/.claude`를 직접 덮어써 이 선택을 우회하지 않습니다. 별도 Project 설치 없이도 User 설치의 프로젝트 전용 개인 저장소를 사용할 수 있습니다.
-
-1. Consult Effective Knowledge before defining inputs, table meanings, or business rules.
-   Search relevant existing Skills and tools for the same capability before creating another asset; a different name does not prove a different purpose. Reuse a compatible selected candidate when it satisfies the request. If the user explicitly requests a separate asset, honor that scope without overwriting the existing one.
-2. Ask only for missing material choices, using at most three simple options.
-3. Before creating a personal Skill or Script Tool wrapper, run `company-agent skill resolve "<proposed-name>" --project-root "<absolute project>"`. Show any same-name candidates by name and origin, plus the current selection. If discovery is incomplete, explain its warnings rather than claiming no overlaps. The create/activate command's existing asset-name and personal/user Skill collision guards still apply: never overwrite, disable, or rename an existing asset to bypass them. If a requested new name is rejected, clearly propose an alternative such as `company-personal-<name>` and obtain the naming choice before retrying; do not silently rename it. Other same-name sources may coexist. Preserve any explicit priority choice and apply it after creation, when the new candidate ID exists.
-4. Define success cases, invalid-input cases, JSON input/output schemas, permission boundaries, and offline dependencies before writing code.
-5. List every required risky capability in `reviewed_capabilities`. Supported reviewable capabilities are `filesystem-read`, `filesystem-write`, `network`, `process`, and `third-party-import`. Explain the need in plain language before adding one. Dynamic code, shell execution, native code, and destructive filesystem operations are rejected because this Harness does not provide an OS sandbox.
-6. Create a JSON AssetSpec and run:
-
-   `company-agent asset create --spec "<asset-spec.json>"`
-
-7. Validate its structure and static security scan:
-
-   `company-agent asset validate "<asset-path>"`
-
-8. Skills need no manual activation. For a Script Tool, save one representative JSON input under `%COMPANY_AGENT_USER_STATE%\tmp`, then let the Harness execute it with a bounded timeout and validate JSON output against the manifest schema:
-
-   `company-agent asset test-tool --name "<name>" --input "<input.json>" --timeout 30`
-
-   This returns a signed receipt bound to the current manifest and source hash. Resolve the wrapper name again with the same absolute project before activation and show any changed overlaps. Activate using that exact receipt; activation creates a Skill wrapper discoverable by Company Agent. A valid requested creation/activation can proceed without another activation confirmation; an unresolved priority is a separate selection:
-
-   `company-agent asset activate-tool --name "<name>" --receipt "<receipt.json>"`
-
-9. For an MCP, use only the administrator-approved Python environment containing the pinned `mcp>=1.20,<2` SDK. If it is absent, stop and tell the user that the approved offline wheel is required. Never run `pip` against the internet. Run the real stdio initialize, tools/list, and `health` test:
-
-   `company-agent asset test-mcp --name "<name>" --timeout 30`
-
-   Activate only with the receipt returned by that command:
-
-   `company-agent asset activate-mcp --name "<name>" --receipt "<receipt.json>"`
-
-10. Any source, manifest, command, argument, or entrypoint change invalidates the receipt. Re-run the relevant test command rather than editing a receipt.
-11. In native User/Project installations, activation also registers the receipt-validated server through Claude's native `mcp add-json` for that scope. Restart Claude afterwards. If registration fails, report that native activation is pending and resolve the stated cause; retry with `company-agent asset sync-mcp --name "<name>"`. Existing/unowned MCP names are never overwritten. In the machine launcher, restart Company Agent to reload its MCP registry. Script Tool and personal Skill changes are available through live contextual retrieval.
-12. After Skill creation or Script Tool activation, resolve its name again in the same project. If the user explicitly chose a preferred candidate and scope, use the returned exact candidate ID with `company-agent skill prefer --name "<name>" --candidate "<ID>" --scope project --project-root "<absolute project>"`, or `--scope default` for that choice. Verify project choices with the same project resolve. For defaults, first verify the candidate in `company-agent skill inventory --no-project`, then verify the saved choice with `company-agent skill resolve "<name>" --no-project`; project-only candidates cannot be default choices. Otherwise preserve the existing selection and use `/company-agent:skills` to choose project/default scope only if an overlap needs a missing or stale priority choice. Never edit preference JSON by hand. Read the selected full `SKILL.md` before using it; this preference does not change Claude's native `/name` precedence or intercept third-party installers.
-
-Never write personal assets into the plugin installation directory. That directory is replaced on Core update. Store generated assets under the selected private resource root resolved by the harness. Project-private assets are not shared repository files; sharing requires a separate explicit request and review.
-
-Script Tools and personal MCP servers run with the current Windows user's privileges. Hash receipts, static analysis, schemas, and time/output limits reduce mistakes but are not an OS sandbox. Do not activate code that needs broader access than the user explicitly reviewed.
+1. 입력·출력·완료 기준과 정상/잘못된 입력 시험을 먼저 정합니다. 시험에는 합성 자료를 사용하며 외부 쓰기는 승인된 시험 대상에 한정합니다.
+2. 필요한 위험 기능을 설명하고 `reviewed_capabilities`에 명시합니다: `filesystem-read`, `filesystem-write`, `network`, `process`, `third-party-import`. 동적 코드·셸 실행·네이티브 코드·파괴적 파일 작업은 기존 제한을 유지합니다. 승인된 오프라인 의존성만 사용하고 인터넷 설치를 자동 실행하지 않습니다.
+3. AssetSpec으로 `asset create --spec "<파일>"` → `asset validate "<생성 경로>"`를 수행합니다. 스킬은 즉시 사용 가능하고 실행 도구는 후보 상태입니다.
+4. 도구의 실제 시험을 통과한 소스에만 검증 영수증으로 활성화합니다. 소스·스키마·명령이 바뀌면 재시험합니다. 정적 검사와 영수증은 OS 격리가 아닙니다.
+5. **생성 / 시험 / 연결 등록 / 현재 세션 호출 / 전사 배포**를 구분해 보고합니다. 연결되지 않은 도구를 성공했다고 하거나 임의 코드로 대체하지 않습니다. 실제 권한 거절은 그대로 유지합니다.
+6. 최종 안내는 결과 위치·사용법·실제 검증 범위·남은 제한만 한국어로 간단히 전달합니다. 전사 공유·배포는 별도 요청과 검토 사항입니다.

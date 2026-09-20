@@ -15,7 +15,6 @@ import threading
 import time
 
 from .harness_client import HarnessClient, safe, read_object
-from .computer_use import readiness
 
 METRICS = ('input_tokens', 'output_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens')
 STEPS = {'read', 'report', 'revise', 'remember', 'reuse'}
@@ -112,14 +111,14 @@ class Companion:
         tmp.replace(path)
 
     def snapshot(self, item, view='checks'):
-        if view not in {'guide','memory','knowledge','brief','usage','checks','computer','map',
+        if view not in {'guide','memory','knowledge','brief','usage','checks','map',
                         'shared-memory','my-memory','shared-harness','my-harness',
                         'personal-memory','project-memory','personal-harness','project-harness'}:
             raise ValueError('지원하지 않는 관리 화면입니다.')
         result = {'course': course(), 'records': self.records(item['workspace']), 'telemetry': telemetry(item), 'demo': self.demo}
         if self.demo:
             result['unavailable'] = '화면 체험 모드입니다. 실제 기억·설정·로그는 읽거나 변경하지 않습니다.'
-        elif view not in {'guide', 'usage', 'computer'}:
+        elif view not in {'guide', 'usage'}:
             try:
                 request = {'operation': 'snapshot', 'view':view}
                 if view == 'map' and item.get('sessionId'):
@@ -148,12 +147,6 @@ class Companion:
         with self.lock:
             action = request.get('action')
             workspace = item['workspace']
-            if action == 'computer-check':
-                # Explicit click only; no executable/version probe or new CLI.
-                bridge = item.get('bridge')
-                return readiness(item.get('connection'), demo=self.demo,
-                    live=bool(bridge and not bridge.closed), driver_path=request.get('driverPath'),
-                    server_name=request.get('serverName') or None)
             if action == 'budget':
                 value = request.get('tokenAlert')
                 if value is not None and (type(value) is not int or not 1 <= value <= 10**9):
@@ -199,7 +192,7 @@ class Companion:
                     'checks': sorted(set(checks)), 'userReportedRepairs': repairs, 'time': time.time(),
                     'model': str(connection.get('model') or 'unavailable')[:160], 'demo': self.demo,
                     'source': 'user-confirmed', 'artifactPreviewObserved': bool(obs['previewed']),
-                    'reviewScope': item.get('reviewScope'), 'uiVersion': '0.5',
+                    'reviewScope': item.get('reviewScope'), 'uiVersion': '0.6',
                     'observedState': obs['terminal'], 'skillsObserved': sorted(obs['skills'])}
                 records = self.records(workspace)
                 records['outcomes'] = [x for x in records['outcomes'] if x['id'] != record['id']][-99:] + [record]

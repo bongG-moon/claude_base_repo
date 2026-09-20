@@ -39,7 +39,7 @@ try {
     await page.screenshot({path:path.join(args.output,`first-work-${width}.png`)});
   }
   await page.getByRole('link',{name:'통합 가이드 · 준비물 없이 시작하기',exact:true}).click();
-  await page.getByRole('heading',{name:'Company Agent 처음부터 따라 하기',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'Company Agent 시작하기',exact:true}).waitFor();
   if(await page.locator('script').count())throw new Error('Onboarding manual is not static');
   const manuals=await page.locator('a[href$=".html"]').evaluateAll(nodes=>[...new Set(nodes.map(n=>n.href))]);
   for(const link of manuals){const response=await page.goto(link);if(response&&!response.ok())throw new Error('Broken installed manual link');}

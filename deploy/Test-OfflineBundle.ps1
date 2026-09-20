@@ -34,7 +34,6 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/resources/onboarding-course.json',
         'payload/core/plugin/resources/manuals/Company-Agent-Onboarding.html',
         'payload/core/plugin/resources/manuals/Company-Agent-Handbook.html',
-        'payload/core/plugin/resources/manuals/Company-Agent-Cua-Pilot.html',
         'payload/core/plugin/scripts/company_agent/workspace_api.py',
         'payload/core/plugin/scripts/company_agent/resource_scope.py',
         'payload/core/plugin/scripts/company_agent/harness_map.py',
@@ -46,11 +45,8 @@ function Assert-EmployeeBundle {
         'docs/COMPANY_PERSONAL_WORKFLOW.md',
         'docs/COMPANY_AGENT_HANDBOOK.md',
         'docs/ONBOARDING_COURSE.md',
-        'docs/CUA_DRIVER_PILOT.md',
         'docs/Company-Agent-Handbook.html',
         'docs/Company-Agent-Onboarding.html',
-        'docs/Company-Agent-Cua-Pilot.html',
-        'docs/VALIDATION_CUA_MANUALS_2026-09-19.md',
         'payload/core/plugin/scripts/company_agent/skill_catalog.py',
         'payload/core/plugin/scripts/company_agent/skill_discovery.py',
         'docs/UPDATE_1.4.7.md',
@@ -154,6 +150,10 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.3.4.md',
         'docs/UPDATE_1.3.5.md',
         'payload/core/plugin/skills/asset-factory/references/authoring.md',
+        'payload/core/plugin/skills/asset-factory/references/platform-tools.md',
+        'payload/core/plugin/skills/asset-factory/references/legacy-assets.md',
+        'payload/core/plugin/scripts/company_agent/platform_assets.py',
+        'payload/core/plugin/scripts/company_agent/skill_tool_dependencies.py',
         'payload/core/plugin/skills/asset-factory/references/windows-setup.md',
         'payload/core/plugin/skills/platform-mcp-builder/SKILL.md',
         'payload/core/plugin/skills/platform-mcp-builder/references/platform-contract.md',
@@ -201,8 +201,9 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -PathType Leaf) 'First-work guide is missing.'
     $firstWork = Get-Content -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -Raw -Encoding UTF8
     Assert-OfflineBundle ($firstWork.Contains('href="docs/Company-Agent-Guide.html"')) 'ZIP start guide does not link to its unified course.'
+    Assert-OfflineBundle ($firstWork.Contains('href="docs/README.md"')) 'ZIP start guide does not link to Markdown contents.'
     Assert-OfflineBundle (-not $firstWork.Contains('href="manuals/')) 'ZIP guide uses the installed-only manual path.'
-    foreach ($book in @('Company-Agent-Guide.html', 'Company-Agent-Onboarding.html', 'Company-Agent-Handbook.html', 'Company-Agent-Cua-Pilot.html', 'Company-Agent-사용자-안내서.html', 'Claude-Code-필수-사용법.html')) {
+    foreach ($book in @('Company-Agent-Guide.html', 'Company-Agent-Onboarding.html', 'Company-Agent-Handbook.html', 'Company-Agent-사용자-안내서.html', 'Claude-Code-필수-사용법.html')) {
         $installedBook = Join-Path $ExpandedPath ('payload\core\plugin\resources\manuals\' + $book)
         Assert-OfflineBundle ((Get-FileHash -LiteralPath $installedBook -Algorithm SHA256).Hash -ceq
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $book)) -Algorithm SHA256).Hash) 'Installed manual differs from source.'
@@ -232,14 +233,23 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
     }
     $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter 'Company-Agent-*.html' -File)
-    Assert-OfflineBundle ($htmlGuides.Count -eq 6) 'Expected unified guide, four compatibility pages and the operator validation reader.'
+    Assert-OfflineBundle ($htmlGuides.Count -eq 5) 'Expected unified guide, three Company-Agent compatibility pages and the operator validation reader.'
+    foreach ($removed in @('docs/CUA_DRIVER_PILOT.md', 'docs/Company-Agent-Cua-Pilot.html',
+        'docs/VALIDATION_CUA_MANUALS_2026-09-19.md',
+        'payload/core/plugin/resources/manuals/CUA_DRIVER_PILOT.md',
+        'payload/core/plugin/resources/manuals/Company-Agent-Cua-Pilot.html')) {
+        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath $removed))) "Removed screen-control content is still bundled: $removed"
+    }
     foreach ($htmlGuide in $htmlGuides) {
         Assert-OfflineBundle ((Get-FileHash -LiteralPath $htmlGuide.FullName -Algorithm SHA256).Hash -ceq
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $htmlGuide.Name)) -Algorithm SHA256).Hash) 'HTML guide content changed during packaging.'
     }
-    foreach ($manual in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CUA_DRIVER_PILOT.md')) {
+    foreach ($manual in @('README.md', 'CLAUDE_CODE_BASICS.md', 'COMPANY_AGENT_HANDBOOK.md',
+        'ONBOARDING_COURSE.md', 'USER_GUIDE.md', 'CLAUDE_CODE_COMMANDS.md')) {
         Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('docs\' + $manual)) -Algorithm SHA256).Hash -ceq
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $manual)) -Algorithm SHA256).Hash) 'Manual source changed during packaging.'
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('payload\core\plugin\resources\manuals\' + $manual)) -Algorithm SHA256).Hash -ceq
+            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $manual)) -Algorithm SHA256).Hash) 'Installed Markdown differs from source.'
     }
     return $manifest
 }
@@ -309,6 +319,19 @@ try {
     $sentinelZip = Join-Path $testRoot 'preserve-existing.zip'
     Write-CompanyAgentUtf8File -Path $sentinelZip -Content 'Existing output must survive rejected builds.'
     $sentinelHash = (Get-FileHash -LiteralPath $sentinelZip -Algorithm SHA256).Hash
+    $installedGuide = Join-Path $pluginRoot 'resources\manuals\CLAUDE_CODE_COMMANDS.md'
+    $guideBytes = [IO.File]::ReadAllBytes($installedGuide)
+    try {
+        Write-CompanyAgentUtf8File -Path $installedGuide -Content '# Stale manual fixture'
+        $invalid = $common.Clone()
+        $invalid.OutputPath = $sentinelZip
+        $invalid.Force = $true
+        Assert-BundleBuildRejected $invalid 'Packaged Markdown is out of date'
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath $sentinelZip -Algorithm SHA256).Hash -ceq $sentinelHash) 'Stale manual rejection overwrote the existing ZIP.'
+        Remove-Item -LiteralPath $installedGuide -Force
+        Assert-BundleBuildRejected $invalid 'Required Markdown manual is missing'
+    }
+    finally { [IO.File]::WriteAllBytes($installedGuide, $guideBytes) }
     $invalid = $common.Clone()
     $invalid.OutputPath = $sentinelZip
     $invalid.Force = $true

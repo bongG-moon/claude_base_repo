@@ -14,9 +14,9 @@
 - 명령어 정적 시험 통과: 주요 명령·키·한계 문구와 스크립트/외부 리소스 없는 구조 확인.
 - 독립 HTML 브라우저 시험 통과: 통합 파일 하나만 다른 폴더에 복사하고 1440/768/390px에서 7개 주요 위치 확인, 페이지 가로 넘침 없음, 내부 링크 70개 유효, 기존 링크 5개 및 설치 안내 진입 성공, 예문 전체 선택과 인쇄 PDF 생성 확인. 외부 요청·페이지 오류 0.
 - 첫 화면·가상 자료 생성 실습·모바일 명령어 화면을 직접 시각 확인했습니다. 45개 절 전체의 모든 문장을 시각 검수한 것은 아닙니다. 작은 화면의 넓은 표는 표 영역 안에서 가로 스크롤합니다.
-- 격리 Workspace 서버/브라우저 시험 통과: 통합 가이드와 기존 경로 3개, 390/1440px, Cua 준비 패널 390/768/1440px 확인. 안내 열기·준비 확인의 모델 전송 0, 외부 요청·페이지 오류 0. Cua 상태는 합성 자료이며 실제 Driver 조작이 아닙니다.
+- 격리 Workspace 서버/브라우저 시험 통과: 통합 가이드와 기존 안내 경로, 390/1440px 확인. 안내 열기의 모델 전송 0, 외부 요청·페이지 오류 0.
 
-검사 원본: `tests/test_handbook_contract.py`, `scripts/test-shortcuts-guide.mjs`, `scripts/test-lab/check-unified-guide.mjs`, `scripts/test-lab/check-manuals-cua.mjs`. 화면·로그는 Git 제외된 `.smoke`에만 보관합니다.
+검사 원본: `tests/test_handbook_contract.py`, `scripts/test-shortcuts-guide.mjs`, `scripts/test-lab/check-unified-guide.mjs`, `scripts/test-lab/check-workspace-manuals.mjs`. 화면·로그는 Git 제외된 `.smoke`에만 보관합니다.
 
 ## 검증 경계
 
