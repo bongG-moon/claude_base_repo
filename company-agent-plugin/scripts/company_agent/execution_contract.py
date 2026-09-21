@@ -106,8 +106,14 @@ def _trusted_arguments(command: str, *, office_paths: bool = False) -> list[str]
     return None if office_paths and (not args or args[:2] != ['business', 'office-read']) else args
 
 
+def office_file_name(value: str) -> bool:
+    """An exact filename in the caller's cwd, never a search or path repair."""
+    return (isinstance(value, str) and 0 < len(value) < 2049 and value not in {'.', '..'}
+            and value[-1] not in ' .' and not any(c in value for c in '\\/:\0\r\n'))
+
+
 def _fields(arguments: list[str], allowed: set[str], required: set[str] | None = None, *,
-            template_suffixes: tuple[str, ...] = ('.pptx',)) -> dict[str, str] | None:
+            template_suffixes: tuple[str, ...] = ('.pptx',), allow_file_name: bool = False) -> dict[str, str] | None:
     if len(arguments) % 2:
         return None
     fields: dict[str, str] = {}
@@ -120,6 +126,8 @@ def _fields(arguments: list[str], allowed: set[str], required: set[str] | None =
         return None
     for name in ("--state-root", "--spec", "--project", "--project-root", "--base", "--index", "--file", "--template"):
         if name in fields and not _absolute(fields[name]):
+            if name == '--file' and allow_file_name and office_file_name(fields[name]):
+                continue
             return None
     if "--spec" in fields and Path(fields["--spec"]).suffix.casefold() != ".json":
         return None
@@ -326,7 +334,8 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     else:
         return "unknown"
     suffixes = ('.html', '.htm') if head == ('business', 'html-template') else ('.pptx', '.html', '.htm') if head in {('business','ppt-choices'),('business','ppt-analyze')} else ('.pptx',)
-    return "read_only" if _fields(args[2:], allowed, required, template_suffixes=suffixes) is not None else "unknown"
+    return "read_only" if _fields(args[2:], allowed, required, template_suffixes=suffixes,
+                                 allow_file_name=head == ('business', 'office-read')) is not None else "unknown"
 
 
 def internal_plan_command(command: str, root: Path) -> bool:
@@ -433,7 +442,7 @@ def office_load_context(plugin: Path, root: Path, payload: dict[str, Any], loade
     command = office_read_command(cli_command(plugin), root, native_session_id(payload.get('session_id')))
     if not command:
         return ''
-    return ('Office 읽기: 아래 officeReadCommand의 실제 문자열 뒤에 --file "확인한 절대경로"와 요청한 범위만 붙여 실행하세요. '
+    return ('Office 읽기: 아래 officeReadCommand의 실제 문자열 뒤에 --file "현재 폴더의 정확한 파일명 또는 확인한 절대경로"와 요청한 범위만 붙이세요. '
             '항목 이름을 실행하거나 세션·설치 경로를 다시 찾지 마세요. 반환된 승인 질문은 그대로 받습니다.\n' +
             json.dumps({'officeReadCommand': command}, ensure_ascii=False, separators=(',', ':')))
 

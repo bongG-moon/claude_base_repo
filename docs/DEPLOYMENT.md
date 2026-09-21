@@ -225,10 +225,10 @@ powershell.exe -NoProfile -File .\deploy\Restore-PreviousHarness.ps1 -BackupPath
 다음 명령은 **소스 저장소 루트**에서 실행합니다. 빌드 PC에도 승인 Python 3.11 이상과 Claude Code CLI 2.1.220 이상이 준비되어 있어야 합니다. 기본 빌드는 외부에서 Python을 내려받지 않습니다.
 
 ```powershell
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.14 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.22 -KnowledgeVersion 2026.09.03
 ```
 
-결과는 로컬의 `dist\company-agent-1.4.14-2026.09.03.zip`입니다. 마지막 날짜는 공통 지식 묶음의 버전이며 파일 생성일이 아닙니다. ZIP 생성은 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 설치된 배포본을 덮어쓰지 않고 새 버전으로 전달합니다. ZIP에는 쉬운 사용자 안내서 HTML/Markdown, 한국어 진단 실행 파일, 자동 학습 설명서와 업무 시범 운영 안내서도 포함됩니다.
+결과는 로컬의 `dist\company-agent-1.4.22-2026.09.03.zip`입니다. 마지막 날짜는 공통 지식 묶음의 버전이며 파일 생성일이 아닙니다. ZIP 생성은 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 설치된 배포본을 덮어쓰지 않고 새 버전으로 전달합니다. ZIP에는 쉬운 사용자 안내서 HTML/Markdown, 한국어 진단 실행 파일, 자동 학습 설명서와 업무 시범 운영 안내서도 포함됩니다.
 
 `-WithoutBundledPython`은 기존 빌드 명령과의 호환을 위해 유지하며 현재 기본값과 같은 결과를 냅니다. 직원 ZIP에는 설치·실행·제거·복구에 필요한 파일을 넣고, `New-OfflineBundle.ps1`, `Get-EmbeddedPython.ps1`, `Test-*.ps1` 같은 빌드·테스트 도구는 제외합니다. 해당 도구와 테스트 소스는 저장소에 남아 있으며 개발 검증은 저장소에서 수행합니다.
 
@@ -241,7 +241,7 @@ Python을 함께 전달해야 하는 별도 운영 환경에서만 관리자가 
 powershell.exe -NoProfile -File .\deploy\Get-EmbeddedPython.ps1
 
 # Python 동봉을 명시적으로 선택
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.14 -KnowledgeVersion 2026.09.03 -IncludeBundledPython -OutputPath .\dist\company-agent-1.4.14-2026.09.03-with-python.zip
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.22 -KnowledgeVersion 2026.09.03 -IncludeBundledPython -OutputPath .\dist\company-agent-1.4.22-2026.09.03-with-python.zip
 ```
 
 폐쇄망 빌드 PC에는 검증된 Python ZIP을 반입할 수 있습니다. 별도 경로의 런타임은 `-IncludeBundledPython`, `-PythonRuntimeZip`, 정확한 `-PythonRuntimeSha256`을 함께 지정합니다. 동봉 패키지는 Python 라이선스와 실행 바이너리를 포함하며, 직원 설치 과정에서 다운로드하지 않습니다. 기본 패키지와 같은 CoreVersion의 다른 내용을 이미 설치한 PC에는 덮어쓸 수 없으므로, 같은 배포 대상에 전달할 구성은 릴리스 전에 확정합니다.

@@ -90,6 +90,19 @@ class OfficePythonTests(unittest.TestCase):
         self.assertTrue(result['truncated'])
         self.assertEqual('한글', result['items'][0]['text'])
 
+    def test_explicit_sharing_violation_reports_close_file_without_closing_user_apps(self):
+        request,doc,books,app,client,com=self.setup_reader('word')
+        failure=PermissionError('private file details')
+        failure.winerror=32
+        books.Open.side_effect=failure
+        result=reader._read(request,client,com)
+        self.assertEqual('file_in_use',result['code'])
+        self.assertEqual('open',result['stage'])
+        self.assertNotIn('private',str(result))
+        books.Open.assert_called_once()
+        doc.Close.assert_not_called()
+        app.Quit.assert_not_called()
+
     def test_missing_dependency_does_not_launch_office(self):
         with patch('company_agent.office_reader.normalize', return_value={'kind':'word'}), \
                 patch.object(reader.importlib, 'import_module', side_effect=ImportError), \
@@ -97,6 +110,16 @@ class OfficePythonTests(unittest.TestCase):
             result = reader.read_document({'file': 'fixture'})
         self.assertEqual('office_dependencies_missing', result['code'])
         read.assert_not_called()
+
+    def test_application_start_lock_is_not_the_source_document(self):
+        request,doc,books,app,client,com=self.setup_reader('word')
+        failure=PermissionError('private application error')
+        failure.winerror=32
+        client.DispatchEx.side_effect=failure
+        result=reader._read(request,client,com)
+        self.assertEqual('office_read_failed',result['code'])
+        self.assertEqual('application',result['stage'])
+        books.Open.assert_not_called()
 
     def test_explicit_protection_blocks_before_import(self):
         with patch.object(reader.importlib, 'import_module') as imports:

@@ -312,7 +312,7 @@ try {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\UPDATE_1.4.20.md') -Destination (Join-Path $stagePath 'docs\UPDATE_1.4.20.md') -Force
-    foreach ($docName in @('UPDATE_1.4.21.md', 'VALIDATION_EXECUTION_FLOW_2026-09-21.md')) {
+    foreach ($docName in @('UPDATE_1.4.21.md', 'VALIDATION_EXECUTION_FLOW_2026-09-21.md', 'UPDATE_1.4.22.md', 'VALIDATION_OFFICE_PATH_ERRORS_2026-09-21.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\AUDIT_HARNESS_2026-09-20.md') -Destination (Join-Path $stagePath 'docs\AUDIT_HARNESS_2026-09-20.md') -Force

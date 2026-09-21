@@ -59,8 +59,10 @@ Excel/CSV는 현재 하네스의 Python에 설치된 xlwings·pandas와 데스�
 
 ## 간단 실행과 범위 확인
 
-일반 읽기는 후크의 `officeReadCommand` 뒤에 `--file "절대경로"`와 필요한 범위만 붙입니다.
-없으면 `cliCommand` 뒤에 `business office-read --file "절대경로"`를 붙이고 대화에 실제로 전달된 세션·상태 값만 추가합니다.
+일반 읽기는 후크의 `officeReadCommand` 뒤에 `--file "파일명 또는 확인한 절대경로"`와 필요한 범위만 붙입니다.
+현재 폴더의 파일명은 실행 도구가 실제 작업 폴더에 연결하며 다른 폴더를 검색하지 않습니다.
+`--spec`의 file 값은 계속 절대 경로를 사용합니다. 명시한 절대 경로는 자동으로 바꾸지 않습니다.
+없으면 `cliCommand` 뒤에 `business office-read --file "파일명 또는 확인한 절대경로"`를 붙이고 대화에 실제로 전달된 세션·상태 값만 추가합니다.
 `company_agent_session_id`·`stateRoot`·`cliCommand`는 환경변수가 아닌 JSON 값입니다. env·echo로 확인하지 않습니다.
 JSON 파일이나 doctor 선행 실행은 필요 없습니다. `--start 1 --end 4 --expected-count 4`
 처럼 요청 범위와 알고 있는 개수를 지정할 수 있습니다. spec과 직접 인자는 혼용하지 않습니다.
@@ -77,6 +79,10 @@ coverage.end는 실제 방문한 마지막 단위이며 completeThrough는 완�
 전체 읽기일 때 nextStart로 이어 읽되 limitReached면 같은 범위를 반복하지 않습니다.
 개수 불일치는 partial이며 원인 미확인입니다. diagnostics의 원본 SHA256·실제 경로·
 Python·소요 시간을 독립 시험과 비교합니다. 다른 사본의 내용으로 대신 결론내리지 않습니다.
+
+`source_not_found`는 경로 확인 실패이며 Excel 실행·DRM·파일 사용 중의 증거가 아닙니다.
+`file_in_use`는 실제 공유/잠금 오류를 확인한 경우입니다. 해당 파일을 저장하고 닫은 뒤 다시 요청하도록 안내합니다.
+원인을 모르는 Office 오류는 그대로 알리고 다른 파서·반복 실행·프로그램 강제 종료로 바꾸지 않습니다.
 
 ## 공식 참고
 

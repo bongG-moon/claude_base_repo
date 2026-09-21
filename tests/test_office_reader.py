@@ -80,6 +80,92 @@ class OfficeReaderTests(unittest.TestCase):
         self.assertFalse(result['sourceOpened'])
         invoke.assert_not_called(); confirm.assert_not_called()
 
+    def test_explicit_metadata_lock_asks_to_close_file_without_opening(self):
+        failure=PermissionError('private file details')
+        failure.winerror=32
+        with patch.object(reader,'safe_path',side_effect=failure),patch.object(reader,'_invoke') as invoke,patch.object(reader,'authorize') as confirm:
+            result=reader.read_office(self.spec)
+        self.assertEqual('file_in_use',result['code'])
+        self.assertIn('저장하고 닫은 뒤',result['message'])
+        self.assertFalse(result['sourceOpened'])
+        self.assertFalse(result['retryAllowed'])
+        self.assertNotIn('private file details',json.dumps(result))
+        invoke.assert_not_called(); confirm.assert_not_called()
+
+    def test_fingerprint_lock_is_typed_and_does_not_launch_office(self):
+        failure=PermissionError('private file details')
+        failure.winerror=32
+        with patch.object(reader,'authorize',return_value=None),patch.object(Path,'read_bytes',side_effect=failure),patch.object(reader,'_invoke') as invoke:
+            result=reader.read_office(self.spec)
+        self.assertEqual('file_in_use',result['code'])
+        self.assertEqual('source_check',result['stage'])
+        self.assertFalse(result['retryAllowed'])
+        invoke.assert_not_called()
+
+    def test_accessible_source_is_not_called_locked_from_permission_error_alone(self):
+        with patch.object(reader,'authorize',return_value=None),patch.object(Path,'read_bytes',side_effect=PermissionError('private denied reason')),patch.object(reader,'_invoke') as invoke:
+            result=reader.read_office(self.spec)
+        self.assertEqual('office_read_failed',result['code'])
+        self.assertNotIn('저장하고 닫은 뒤',result['message'])
+        invoke.assert_not_called()
+
+    def test_success_does_not_probe_file_handles_or_add_a_lock_check(self):
+        with patch.object(reader,'authorize',return_value=None),patch.object(reader,'_invoke',return_value=self.response()),patch.object(reader,'_source_in_use') as probe:
+            result=reader.read_office(self.spec)
+        self.assertTrue(result['ok'])
+        probe.assert_not_called()
+
+    def test_helper_launch_permission_failure_is_not_source_lock(self):
+        failure=PermissionError('private helper startup detail')
+        failure.winerror=32
+        with patch.object(reader,'authorize',return_value=None),patch.object(reader,'_invoke',side_effect=failure),patch.object(reader,'_source_in_use',return_value=True) as probe:
+            result=reader.read_office(self.spec)
+        self.assertEqual('office_read_failed',result['code'])
+        self.assertNotIn('private helper startup detail',json.dumps(result))
+        probe.assert_not_called()
+
+    @unittest.skipUnless(os.name=='nt','Windows sharing flags are required')
+    def test_native_lock_probe_failure_keeps_original_read_failure(self):
+        import ctypes
+        with patch.object(reader,'authorize',return_value=None),patch.object(Path,'read_bytes',side_effect=PermissionError('private source detail')),patch.object(ctypes,'WinDLL',side_effect=OSError('private probe detail')),patch.object(reader,'_invoke') as invoke:
+            result=reader.read_office(self.spec)
+        self.assertEqual('office_read_failed',result['code'])
+        self.assertNotIn('private',json.dumps(result))
+        invoke.assert_not_called()
+
+    def test_helper_lock_asks_to_close_file_and_does_not_retry_or_keep_content(self):
+        failure={'ok':False,'code':'file_in_use','stage':'open','items':[{'text':'private text'}]}
+        with patch.object(reader,'authorize',return_value=None),patch.object(reader,'_invoke',return_value=failure) as invoke:
+            result=reader.read_office(self.spec)
+        self.assertEqual('file_in_use',result['code'])
+        self.assertEqual('unavailable',result['status'])
+        self.assertIn('저장하고 닫은 뒤',result['message'])
+        self.assertFalse(result['retryAllowed'])
+        self.assertNotIn('private text',json.dumps(result))
+        invoke.assert_called_once()
+
+    @unittest.skipUnless(os.name=='nt','Windows sharing flags are required')
+    def test_real_windows_exclusive_handle_reports_lock_before_office(self):
+        import ctypes
+        from ctypes import wintypes
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,
+                                    wintypes.LPVOID,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+        kernel.CreateFileW.restype=wintypes.HANDLE
+        kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+        kernel.CloseHandle.restype=wintypes.BOOL
+        handle=kernel.CreateFileW(str(self.file),0x80000000,0,None,3,0,None)
+        self.assertNotEqual(ctypes.c_void_p(-1).value,handle)
+        try:
+            with patch.object(reader,'authorize',return_value=None),patch.object(reader,'_invoke') as invoke:
+                result=reader.read_office(self.spec)
+            self.assertEqual('file_in_use',result['code'])
+            self.assertIn('저장하고 닫은 뒤',result['message'])
+            self.assertFalse(result['retryAllowed'])
+            invoke.assert_not_called()
+        finally:
+            kernel.CloseHandle(handle)
+
     def test_source_disappearing_before_consent_is_a_typed_failure(self):
         safe=reader.safe_path
         calls=0

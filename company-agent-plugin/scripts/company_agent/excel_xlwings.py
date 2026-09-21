@@ -8,6 +8,15 @@ import sys
 from .office_progress import helper_stage
 
 
+def file_in_use(exc):
+    """Recognize explicit Windows sharing/lock violations, not generic Office errors."""
+    values=[getattr(exc,'hresult',None),getattr(exc,'winerror',None)]
+    info=getattr(exc,'excepinfo',None)
+    if isinstance(info,tuple) and len(info)>5: values.append(info[5])
+    return any(type(value) is int and (value & 0xffffffff) in
+               (32,33,0x80070020,0x80070021) for value in values)
+
+
 def denied(exc):
     values=[getattr(exc,'hresult',None),getattr(exc,'winerror',None)]
     info=getattr(exc,'excepinfo',None)
@@ -29,6 +38,7 @@ reported Office restriction binding; never change the permissions object.
         if enabled is None: return 'unavailable'
         return 'restricted' if enabled else 'not_restricted_by_office_irm'
     except Exception as exc:
+        if file_in_use(exc): raise
         if denied(exc): return 'denied'
         codes=[getattr(exc,'hresult',None)]
         info=getattr(exc,'excepinfo',None)
@@ -99,7 +109,8 @@ def _read(request,xw,pd):
                             'excluded':['merged-cell-spans','charts','images','formatting'],
                             'officePermissionApi':permission,'thirdPartyDrmAuthorization':'not_determined'}}
     except Exception as exc:
-        result={'ok':False,'code':'permission_denied' if denied(exc) else 'office_read_failed','stage':stage}
+        code=('file_in_use' if stage in {'open','permission','read'} else 'office_read_failed') if file_in_use(exc) else 'permission_denied' if denied(exc) else 'office_read_failed'
+        result={'ok':False,'code':code,'stage':stage}
     finally:
         helper_stage('close')
         # Close only books we opened; do not save, kill Excel, or close user books.
@@ -122,8 +133,8 @@ def read_excel(request):
     try:
         request=normalize({k:v for k,v in request.items() if k!='kind'})
         if request['kind']!='excel': raise ValueError('not Excel')
-    except (ValueError,TypeError,OSError):
-        return {'ok':False,'code':'invalid_request'}
+    except (ValueError,TypeError,OSError) as error:
+        return {'ok':False,'code':'file_in_use' if getattr(error,'code',None)=='file_in_use' else 'invalid_request'}
     try:
         helper_stage('dependencies')
         xw=importlib.import_module('xlwings')

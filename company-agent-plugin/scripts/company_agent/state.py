@@ -554,11 +554,14 @@ def _own_cli_arguments(command: str) -> list[str] | None:
             arguments = arguments[2:]
         if len(arguments) < 4 or arguments[0].casefold() != "-file":
             return None
-        if not _same_absolute_path(arguments[1], scripts / "Invoke-CompanyAgent.ps1"):
+        office_entry = _same_absolute_path(arguments[1], scripts.parent / "skills/office-reader/scripts/Invoke-CompanyAgent.ps1")
+        if not office_entry and not _same_absolute_path(arguments[1], scripts / "Invoke-CompanyAgent.ps1"):
             return None
         if arguments[2].casefold() != "-mode" or arguments[3].casefold() != "cli":
             return None
         arguments = arguments[4:]
+        if office_entry and arguments[:2] != ['business', 'office-read']:
+            return None  # The skill-local entrypoint exposes only this reader.
     elif _known_runtime(program, {"python", "python.exe", "python3", "python3.exe", "py", "py.exe"}):
         if arguments and arguments[0] in {"-3", "-3.11", "-3.12", "-3.13", "-3.14"}:
             arguments.pop(0)

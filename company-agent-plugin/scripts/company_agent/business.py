@@ -86,7 +86,11 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
         from .business_artifacts import preview_template
         return preview_template(safe_path(args.template, exists=True), safe_path(args.output))
     if action == 'office-read' and getattr(args, 'file', None):
-        spec = {'file': args.file}
+        from .execution_contract import office_file_name
+        # Join only a bare filename to the actual invocation cwd. No guessing,
+        # recursion, fallback to Desktop, or repair of an explicit wrong path.
+        source = str(Path.cwd() / args.file) if office_file_name(args.file) else args.file
+        spec = {'file': source}
         for flag, field in (('start','start'),('end','end'),('sheet','sheet'),('range','range'),
                             ('max_chars','maxChars'),('expected_count','expectedCount')):
             value = getattr(args, flag, None)

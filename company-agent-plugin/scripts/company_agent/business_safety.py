@@ -4,9 +4,20 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+import re
 import stat
 import subprocess
 from typing import Any
+
+
+def _protection_denial(message: str) -> bool:
+    """A DRM label, path or troubleshooting advice is not an access decision."""
+    return bool(re.search(
+        r'\b(?:protection_blocked|drm_blocked)\b|'
+        r'\b(?:drm|irm|rights management)(?:[: ]+(?:access|protection|is|was|has been)){0,4}[: ]+(?:blocked|denied|restricted)\b|'
+        r'\b(?:blocked|denied|restricted) (?:by|due to) (?:drm|irm|rights management)\b|'
+        r'(?:DRM|IRM|보호 설정|권한 관리)[^\r\n]{0,40}(?:차단|거부|제한)(?:되었|됐|됨)',
+        message, re.I))
 
 
 def windows_powershell() -> Path:
@@ -43,7 +54,7 @@ def safe_path(value: str | Path, *, exists: bool = False) -> Path:
 def failure_result(exc: BaseException, *, item: str = "선택한 항목") -> dict[str, Any]:
     # Inspect error text locally; never return Office error text/body/addresses.
     message = str(exc).lower()
-    protected = any(word in message for word in ("drm", "rights management", "irm protected", "보호 설정", "권한 관리"))
+    protected = _protection_denial(message)
     denied = isinstance(exc, PermissionError) or getattr(exc, "winerror", None) == 5 or any(
         word in message for word in ("access denied", "access is denied", "permission denied", "접근이 거부", "액세스가 거부"))
     code = "protection_blocked" if protected else "permission_denied" if denied else "operation_failed"
@@ -58,26 +69,77 @@ def protection_notice(payload: Any) -> str:
     if not isinstance(payload, dict):
         return ""
     codes = {"protection_blocked", "permission_denied", "drm_blocked", "protected_or_unsupported", "protection_unknown", "protected_input"}
+    def decode_result(value: str):
+        # Bash errors can contain exit/progress lines before the CLI's final
+        # JSON. Parse only a complete terminal object, never arbitrary document
+        # fragments. Typed results take precedence over words in their message.
+        text = value.strip()
+        try:
+            return json.loads(text)
+        except (ValueError, TypeError, RecursionError):
+            start = text.rfind('\n{')
+            if start < 0:
+                return None
+            try:
+                result = json.loads(text[start + 1:])
+            except (ValueError, TypeError, RecursionError):
+                return None
+            if (isinstance(result, dict) and type(result.get('ok')) is bool
+                    and isinstance(result.get('code'), str)):
+                return result
+        return None
+
     def restricted(value: Any, depth: int = 0) -> bool:
         if depth > 8:
             return False
         if isinstance(value, dict):
             if isinstance(value.get("code"), str) and value["code"] in codes:
                 return True
+            # MCP error blocks are operational errors, unlike ordinary result
+            # content. Read text only when the envelope explicitly says error.
+            content = value.get('content')
+            if value.get('isError') is True and isinstance(content, list):
+                if any(restricted_error(block.get('text'), depth + 1)
+                       for block in content[:100] if isinstance(block, dict) and block.get('type') == 'text'):
+                    return True
             return any(restricted(v, depth + 1) for k, v in list(value.items())[:100]
-                       if k not in {"body", "subject", "contentHtml", "tool_input"})
+                       if k not in {"body", "subject", "contentHtml", "text", "content", "structure",
+                                    "tool_input", "message", "instruction"})
         if isinstance(value, list):
             return any(restricted(v, depth + 1) for v in value[:500])
         if isinstance(value, str) and len(value) <= 2 * 1024 * 1024:
-            try:
-                return restricted(json.loads(value), depth + 1)
-            except (ValueError, TypeError):
-                pass
+            parsed = decode_result(value)
+            if parsed is not None:
+                return restricted(parsed, depth + 1)
         return False
-    error = str(payload.get("error") or payload.get("tool_error") or "")[:10000].lower()
-    if restricted(payload.get("tool_response")) or any(token in error for token in (
-            "rights management", "access is denied", "access denied", "permission denied", "drm",
-            "protection_blocked", "permission_denied", "액세스가 거부", "접근이 거부")):
+    def restricted_error(value: Any, depth: int = 0) -> bool:
+        if depth > 8:
+            return False
+        if isinstance(value, dict):
+            if restricted(value, depth):
+                return True
+            # Only typed business results own the meaning of their code.
+            # Their recovery advice is not an access decision. Generic JSON
+            # errors may carry the actual denial in an error/message field.
+            if type(value.get('ok')) is bool and isinstance(value.get('code'), str):
+                return False
+            return any(restricted_error(v, depth + 1) for k, v in list(value.items())[:100]
+                       if k in {'error', 'tool_error', 'message', 'stderr', 'exception', 'cause', 'detail'})
+        if isinstance(value, list):
+            return any(restricted_error(v, depth + 1) for v in value[:500])
+        if isinstance(value, str) and len(value) <= 2 * 1024 * 1024:
+            parsed = decode_result(value)
+            if parsed is not None:
+                return restricted_error(parsed, depth + 1)
+            error = value[:10000].lower()
+            return _protection_denial(error) or any(token in error for token in (
+                'access is denied', 'access denied', 'permission denied',
+                'permission_denied', '액세스가 거부', '접근이 거부'))
+        return False
+
+    raw_error = payload.get("error") or payload.get("tool_error") or ""
+    error_restricted = restricted_error(raw_error)
+    if restricted(payload.get("tool_response")) or error_restricted:
         return ("보호 설정 또는 접근 제한 신호가 있습니다. 실패한 항목만 중단하고, 허용된 항목은 계속 처리하세요. "
                 "본문 조회 성공은 첨부 조회 성공이 아닙니다. 첨부가 차단되면 '메일 본문은 확인했지만 첨부파일은 보호 설정 때문에 "
                 "분석하지 못했습니다. 첨부 내용은 제외하고 요약했습니다.'처럼 실제 확인 범위에 맞게 설명하세요. "

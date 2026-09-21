@@ -18,6 +18,7 @@ expected = {"Company-Workspace.vbs", "deploy/Start-CompanyWorkspace.ps1", "docs/
             "docs/Company-Agent-Handbook.html", "docs/Company-Agent-Onboarding.html",
             "docs/Company-Agent-Guide.html", "docs/Company-Agent-사용자-안내서.html", "docs/Claude-Code-필수-사용법.html",
             "docs/USER_GUIDE.md", "docs/CLAUDE_CODE_COMMANDS.md", f"docs/UPDATE_{version}.md", "docs/VALIDATION_UNIFIED_GUIDE_2026-09-19.md",
+            "docs/VALIDATION_OFFICE_PATH_ERRORS_2026-09-21.md",
             "docs/VALIDATION_EXECUTION_FLOW_2026-09-21.md",
             "docs/VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md",
             "docs/VALIDATION_AUDIT_FIXES_2026-09-19.md",

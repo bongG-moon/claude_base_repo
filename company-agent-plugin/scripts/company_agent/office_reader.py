@@ -13,8 +13,37 @@ from .business_safety import safe_path, blocked_input
 from .office_consent import authorize
 from .paths import user_state_root
 from .office_progress import Progress, run_helper
+from .excel_xlwings import file_in_use
 
 TYPES={'.xlsx':'excel','.csv':'excel','.pptx':'powerpoint','.docx':'word'}
+FILE_IN_USE_MESSAGE='다른 프로그램이 이 파일을 사용 중이라 읽을 수 없습니다. 해당 파일의 작업을 저장하고 닫은 뒤 다시 요청해 주세요. 프로그램은 자동 종료하지 않았습니다.'
+
+
+def _source_in_use(error, path):
+    if file_in_use(error):
+        return True
+    if os.name!='nt' or not isinstance(error,PermissionError):
+        return False
+    # Python's CRT file open can lose WinError 32/33 and report only errno 13.
+    # Only after that failure, ask Windows for the same read-only handle once.
+    # No document bytes, directory search, Office launch, or broader permissions.
+    import ctypes
+    from ctypes import wintypes
+    try:
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.CreateFileW.argtypes=[wintypes.LPCWSTR,wintypes.DWORD,wintypes.DWORD,
+                                    wintypes.LPVOID,wintypes.DWORD,wintypes.DWORD,wintypes.HANDLE]
+        kernel.CreateFileW.restype=wintypes.HANDLE
+        kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+        kernel.CloseHandle.restype=wintypes.BOOL
+        handle=kernel.CreateFileW(str(path),0x80000000,7,None,3,0,None)
+        if handle==ctypes.c_void_p(-1).value:
+            return ctypes.get_last_error() in (32,33)
+        kernel.CloseHandle(handle)
+    except (OSError,AttributeError,TypeError):
+        # A failed diagnostic must not replace the original source-read error.
+        return False
+    return False
 
 
 class OfficeRequestError(ValueError):
@@ -45,7 +74,9 @@ def normalize(spec):
         raise OfficeRequestError('source_not_found', 'file') from None
     except ValueError:
         raise OfficeRequestError('invalid_office_path', 'file') from None
-    except OSError:
+    except OSError as error:
+        if file_in_use(error):
+            raise OfficeRequestError('file_in_use', 'file') from None
         raise OfficeRequestError('source_metadata_unavailable', 'file') from None
     if not stat.S_ISREG(info.st_mode):
         raise OfficeRequestError('invalid_office_source', 'file')
@@ -97,6 +128,7 @@ def failed(code, message, status='blocked'):
 def _request_failure(spec, error):
     messages={
         'source_not_found':'지정한 경로에 파일이 없습니다. 요청에 첨부된 정확한 경로와 비교하세요. 경로를 추측해 바꾸거나 인코딩·DRM 문제로 단정하지 마세요.',
+        'file_in_use':FILE_IN_USE_MESSAGE,
         'invalid_office_path':'지원하지 않는 파일 경로입니다. 링크·네트워크 경로가 아닌 원본의 정확한 로컬 절대 경로를 지정하세요.',
         'unsupported_office_format':'지원하지 않는 확장자입니다. xlsx/csv/pptx/docx만 지원합니다.',
         'invalid_office_source':'지정한 경로가 일반 파일이 아닙니다. 원본 파일의 정확한 경로를 확인하세요.',
@@ -108,8 +140,8 @@ def _request_failure(spec, error):
         'invalid_office_request':'읽기 요청 형식이 잘못되었습니다. 파일·범위 값과 허용된 항목을 확인하세요.',
     }
     code=error.code if isinstance(error,OfficeRequestError) else 'invalid_office_request'
-    result={**failed(code,messages[code],'failed'), 'sourceOpened':False,
-            'documentAccess':'not_checked', 'failureKind':'request_validation'}
+    result={**failed(code,messages[code],'unavailable' if code=='file_in_use' else 'failed'), 'sourceOpened':False,
+            'documentAccess':'not_checked', 'failureKind':'source_access' if code=='file_in_use' else 'request_validation'}
     if isinstance(error,OfficeRequestError):
         result['diagnostics']={'field':error.field}
         # Echo only the caller's source identity, never another discovered path
@@ -163,7 +195,9 @@ def _read_office(spec, progress, *, state_root=None, session_id='', cwd=None):
         return _request_failure(spec,OfficeRequestError('source_not_found','file'))
     except ValueError:
         return _request_failure(spec,OfficeRequestError('invalid_office_path','file'))
-    except OSError:
+    except OSError as error:
+        if file_in_use(error):
+            return _request_failure(spec,OfficeRequestError('file_in_use','file'))
         return _request_failure(spec,OfficeRequestError('source_metadata_unavailable','file'))
     consent = authorize(request, root=state_root or user_state_root(), session_id=session_id, cwd=cwd)
     if consent is not None:
@@ -195,13 +229,15 @@ def _read_office(spec, progress, *, state_root=None, session_id='', cwd=None):
                 'excel_dependencies_missing':'현재 Company Agent가 사용하는 Python에 xlwings와 pandas가 필요합니다. 다른 방식으로 바꾸거나 인터넷에서 자동 설치하지 않았습니다.',
                 'office_dependencies_missing':'현재 Company Agent가 사용하는 Python에 pywin32가 필요합니다. 다른 방식으로 바꾸거나 인터넷에서 자동 설치하지 않았습니다.',
                 'permission_denied':'Office에서 파일 열기 또는 읽기를 거절했습니다.',
+                'file_in_use':FILE_IN_USE_MESSAGE,
                 'office_busy':'연결된 Excel에 다른 문서가 있어 작업을 중단했습니다. 사용 중인 문서는 변경하지 않았습니다.',
                 'document_open':'이 Office 실행 환경에서 이미 열린 문서는 자동으로 닫거나 다시 열지 않습니다. 문서를 저장·닫은 뒤 요청해 주세요.',
                 'office_read_failed':'Office에서 문서를 읽지 못했습니다. 보호·형식·인증 중 어느 원인인지는 확인되지 않았습니다.',
                 'invalid_request':'Office 읽기 요청의 형식이나 범위를 확인해 주세요.',
                 'source_mismatch':'Office가 요청한 경로와 다른 문서를 열어 결과를 사용하지 않았습니다.',
             }
-            response=failed(code if code in messages else 'office_read_failed',messages.get(code,messages['office_read_failed']))
+            response=failed(code if code in messages else 'office_read_failed',messages.get(code,messages['office_read_failed']),
+                            'unavailable' if code=='file_in_use' else 'blocked')
             if result.get('stage') in {'request','application','open','permission','read','dependencies'}:
                 response['stage']=result['stage']
             return response
@@ -231,5 +267,9 @@ def _read_office(spec, progress, *, state_root=None, session_id='', cwd=None):
                            '선택 범위의 내용과 구조를 읽었습니다. coverage의 범위·제외 개체를 확인하세요. 전체 파일 읽기나 DRM 차단/허용의 증거는 아닙니다.')}
     except subprocess.TimeoutExpired:
         return {**failed('office_timeout','Office 읽기 제한 60초를 넘어 중단했습니다. diagnostics.progress.lastStage에서 지연 구간을 확인하세요. 보안·인증 창을 확인하고 반복 실행하지 마세요. Office는 강제 종료하지 않았습니다.','unavailable'), 'stage': progress.stage}
-    except (OSError,ValueError,TypeError):
+    except OSError as error:
+        if progress.stage in {'source_check','source_verify'} and _source_in_use(error,request['file']):
+            return {**failed('file_in_use',FILE_IN_USE_MESSAGE,'unavailable'), 'stage':progress.stage}
+        return failed('office_read_failed','Office 읽기를 완료하지 못했습니다. 원본은 저장하지 않았습니다.','failed')
+    except (ValueError,TypeError):
         return failed('office_read_failed','Office 읽기를 완료하지 못했습니다. 원본은 저장하지 않았습니다.','failed')

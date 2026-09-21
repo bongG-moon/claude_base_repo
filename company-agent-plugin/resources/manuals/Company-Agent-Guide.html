@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-sha256" data-file="ONBOARDING_COURSE.md" content="a98e471e0a1bb5c626702d782b619e6de5bec048e0402d9da50c755bae36a2ef"><meta name="source-sha256" data-file="CLAUDE_CODE_BASICS.md" content="60a51c22a78830ac79c7e6f2143a4d442b897fe4e2815734558abd9bb03cfd39"><meta name="source-sha256" data-file="USER_GUIDE.md" content="29a511731141969f5f3707562a756857b8fee6dd5a089b000c40cd9f7c01cdda"><meta name="source-sha256" data-file="COMPANY_AGENT_HANDBOOK.md" content="0d27719f97439f22d5ea6e7debca42281d9b990621144685f027688ffe818dd4"><meta name="source-sha256" data-file="CLAUDE_CODE_COMMANDS.md" content="5146f57dcd316845fb053d8517260d804f906b2e1c8fddd61e77753418a91e6f"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src 'none'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>Company Agent 통합 가이드</title><!-- Embedded Noto Sans KR subset.
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="source-sha256" data-file="ONBOARDING_COURSE.md" content="a98e471e0a1bb5c626702d782b619e6de5bec048e0402d9da50c755bae36a2ef"><meta name="source-sha256" data-file="CLAUDE_CODE_BASICS.md" content="60a51c22a78830ac79c7e6f2143a4d442b897fe4e2815734558abd9bb03cfd39"><meta name="source-sha256" data-file="USER_GUIDE.md" content="d3c4ea01f87200852ffa7b183b09ed271a8254fa2203219776693e09c6d7d8f5"><meta name="source-sha256" data-file="COMPANY_AGENT_HANDBOOK.md" content="0d27719f97439f22d5ea6e7debca42281d9b990621144685f027688ffe818dd4"><meta name="source-sha256" data-file="CLAUDE_CODE_COMMANDS.md" content="5146f57dcd316845fb053d8517260d804f906b2e1c8fddd61e77753418a91e6f"><meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src data:; img-src 'none'; script-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"><title>Company Agent 통합 가이드</title><!-- Embedded Noto Sans KR subset.
 Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
 
 This Font Software is licensed under the SIL Open Font License, Version 1.1.
@@ -987,6 +987,7 @@ MCP 연결 등록, 인터넷 패키지 설치, 회사 플랫폼 업로드는 하
 <p>Office 읽기는 <strong>읽기 준비 → 파일·범위 승인 → 실제 읽기 → 요약</strong> 순서입니다. 연결 정보는 현재 대화의 후크가 전달하며 사용자가 세션 번호를 찾을 필요는 없습니다. 세션 정보가 없다는 안내가 계속 나오면 폴더를 뒤지거나 같은 명령을 반복하지 말고 새 Claude 대화에서 다시 요청하세요. 승인 전에는 Office 문서를 열지 않습니다.
 세션 번호는 승인한 파일·범위를 현재 대화와 연결하는 내부 정보이며 별도 로그인이나 환경변수 설정이 아닙니다. 환경변수 확인에서 <code>NOT SET</code>이 나와도 문서 접근 거부를 뜻하지 않습니다. 연결 정보 오류와 실제 Office의 접근 거부를 구분하고, 연결 오류 때문에 ZIP 해제나 다른 읽기 방식으로 바꾸지 않습니다.</p>
 <p>파일이 없다는 안내에는 요청한 경로가 함께 나옵니다. 첨부한 실제 경로와 비교하고, 한글이 들어 있다는 이유만으로 인코딩 문제라고 단정하지 않습니다. Excel의 앞부분이 제목·빈 행이어도 읽기 실패가 아닙니다. 반환된 표의 행·열 번호와 내용을 먼저 확인하며 같은 파일을 반복해서 열지 않습니다.</p>
+<p>현재 작업 폴더의 파일은 정확한 파일명으로 읽을 수 있으므로 긴 경로를 다시 만들 필요가 없습니다. 파일 없음은 보호 오류나 파일이 열려 있다는 뜻이 아닙니다. 실제로 다른 프로그램이 파일 읽기를 막고 있으면 해당 파일의 작업을 저장하고 닫은 뒤 다시 요청하도록 안내합니다. 열린 Excel 전체를 자동 종료하지 않습니다.</p>
 <p>Workspace 사용 현황에서는 실제 CLI 토큰 보고와 실행·질문·승인 대기를 구분합니다. 미제공 값은 0이 아니며 누적값을 요청별 값처럼 합산하지 않습니다. 사내 가격을 모르면 금액이나 절감률을 단정하지 않습니다. 대화가 길 때는 원본 CLI의 <code>/context</code>·<code>/compact</code>를 사용할 수 있지만 업무마다 강제 압축하지 않습니다. 압축은 영구 기억 저장이나 결과 검증의 대체가 아닙니다.</p>
 <h3 id="usage-section-9">9. 오류가 났을 때</h3>
 <div class="table-wrap" tabindex="0" role="region" aria-label="안내 표"><table role="table">
@@ -1019,6 +1020,14 @@ MCP 연결 등록, 인터넷 패키지 설치, 회사 플랫폼 업로드는 하
 <tr role="row">
 <td role="cell" data-label="상황"><span class="cell-content">환경변수에 <code>NOT SET</code>이 표시됨</span></td>
 <td role="cell" data-label="먼저 할 일"><span class="cell-content">세션은 후크가 전달하는 대화 정보. 별도 환경변수를 만들지 않고 준비된 읽기 명령 사용. 문서가 보호돼 읽을 수 없다는 근거가 아님</span></td>
+</tr>
+<tr role="row">
+<td role="cell" data-label="상황"><span class="cell-content"><code>source_not_found</code></span></td>
+<td role="cell" data-label="먼저 할 일"><span class="cell-content">요청한 파일명·현재 폴더를 확인. 다른 폴더까지 자동 검색하거나 보호 오류로 단정하지 않음</span></td>
+</tr>
+<tr role="row">
+<td role="cell" data-label="상황"><span class="cell-content"><code>file_in_use</code></span></td>
+<td role="cell" data-label="먼저 할 일"><span class="cell-content">해당 파일의 작업을 저장하고 닫은 뒤 다시 요청. 다른 앱 전체 종료·자동 재시도는 하지 않음</span></td>
 </tr>
 <tr role="row">
 <td role="cell" data-label="상황"><span class="cell-content">위험 명령이 차단됨</span></td>

@@ -89,6 +89,35 @@ class ExcelRecipeTests(unittest.TestCase):
         self.assertNotIn('items', result)
         self.assertNotIn('secret', json.dumps(result))
 
+    def test_explicit_file_lock_is_not_a_permission_or_drm_denial(self):
+        for code in (32,33,0x80070020,0x80070021,-2147024864,-2147024863):
+            with self.subTest(code=code):
+                failure=PermissionError('private file details')
+                failure.winerror=code
+                self.books.open.side_effect=failure
+                result=excel._read(self.request,self.xw,pd)
+                self.assertEqual({'ok':False,'code':'file_in_use','stage':'open'},result)
+                self.selected.options.assert_not_called()
+                self.xw.Book.assert_not_called()
+                self.app.kill.assert_not_called()
+
+    def test_com_file_lock_is_typed_but_ambiguous_excel_error_is_not(self):
+        failure=RuntimeError('private COM detail')
+        failure.hresult=-2147352567
+        failure.excepinfo=(0,'Excel','private COM detail',None,0,-2147024864)
+        self.books.open.side_effect=failure
+        self.assertEqual('file_in_use',excel._read(self.request,self.xw,pd)['code'])
+        failure.excepinfo=(0,'Excel','private COM detail',None,0,-2146827284)
+        self.assertEqual('office_read_failed',excel._read(self.request,self.xw,pd)['code'])
+        self.assertFalse(excel.file_in_use(PermissionError('access denied')))
+        self.assertFalse(excel.file_in_use(RuntimeError('file is locked')))
+
+    def test_lock_during_helper_validation_does_not_launch_office(self):
+        with patch.object(reader,'normalize',side_effect=reader.OfficeRequestError('file_in_use','file')),patch.object(excel,'_read') as read:
+            result=excel.read_excel(self.request)
+        self.assertEqual('file_in_use',result['code'])
+        read.assert_not_called()
+
     def test_optional_api_failure_is_distinct_from_access_denial(self):
         class Api:
             @property
@@ -150,6 +179,15 @@ class ExcelRecipeTests(unittest.TestCase):
             result = excel.read_excel(self.request)
         self.assertEqual('excel_dependencies_missing', result['code'])
         read.assert_not_called()
+
+    def test_application_start_lock_is_not_the_source_workbook(self):
+        failure=PermissionError('private application error')
+        failure.winerror=32
+        self.xw.App.side_effect=failure
+        result=excel._read(self.request,self.xw,pd)
+        self.assertEqual('office_read_failed',result['code'])
+        self.assertEqual('application',result['stage'])
+        self.books.open.assert_not_called()
 
     def test_actual_isolated_entrypoint_rejects_extra_commands(self):
         proc = subprocess.run([sys.executable, '-E', '-P', str(ROOT / 'company-agent-plugin/scripts/Read-CompanyExcel.py')],

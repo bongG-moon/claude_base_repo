@@ -6,7 +6,7 @@ import sys
 import time
 from types import SimpleNamespace
 
-from .excel_xlwings import denied, permission_status
+from .excel_xlwings import denied, file_in_use, permission_status
 
 
 from .office_structure import TextCollector, extract_document as _extract
@@ -63,7 +63,8 @@ def _read(request, client, com):
                                      'timingMs': {**timings, 'throughRead': round((time.perf_counter()-clock)*1000)}}
         return result
     except Exception as exc:
-        return {'ok': False, 'code': 'permission_denied' if denied(exc) else 'office_read_failed',
+        code = ('file_in_use' if stage in {'open','permission','read'} else 'office_read_failed') if file_in_use(exc) else 'permission_denied' if denied(exc) else 'office_read_failed'
+        return {'ok': False, 'code': code,
                 'stage': stage, 'errorType': type(exc).__name__}
     finally:
         helper_stage('close')
@@ -97,8 +98,8 @@ def read_document(request):
     try:
         request = normalize({k: v for k, v in request.items() if k != 'kind'})
         if request['kind'] not in ('word', 'powerpoint'): raise ValueError('not Word/PPT')
-    except (ValueError, TypeError, OSError):
-        return {'ok': False, 'code': 'invalid_request'}
+    except (ValueError, TypeError, OSError) as error:
+        return {'ok': False, 'code': 'file_in_use' if getattr(error, 'code', None)=='file_in_use' else 'invalid_request'}
     try:
         helper_stage('dependencies')
         client = importlib.import_module('win32com.client')
