@@ -14,11 +14,11 @@ try{
   const page=await browser.newPage({viewport:{width:1440,height:1000},permissions:['clipboard-read','clipboard-write']});
   page.on('pageerror',e=>errors.push(e.message));
   page.on('request',r=>{if(/^https?:/.test(r.url()))external.push(r.url());});
-  // Copy only the canonical reader: prove it does not depend on sibling files.
+  // Copy only the release attachment: prove it does not need sibling files.
   const single=path.join(args.output,'standalone-guide.html');
-  await fs.copyFile('docs/Company-Agent-Guide.html',single);
+  await fs.copyFile('docs/Company-Agent-사용자-안내서.html',single);
   await page.goto(pathToFileURL(path.resolve(single)).href);
-  await page.getByRole('heading',{name:'Company Agent 통합 가이드',exact:true}).waitFor();
+  await page.getByRole('heading',{name:'Company Agent 사용자 안내서',exact:true}).waitFor();
   await page.getByRole('heading',{name:'Company Agent 시작하기',exact:true}).waitFor();
   await page.evaluate(()=>document.fonts.ready);
   const fontState=await page.evaluate(()=>({family:getComputedStyle(document.body).fontFamily,
@@ -52,11 +52,14 @@ try{
   await page.pdf({path:path.join(args.output,'guide-print.pdf'),format:'A4',printBackground:true});
   await page.emulateMedia({media:'screen'});
   const installed=path.resolve('company-agent-plugin/resources/manuals');
-  for(const filename of ['Company-Agent-Onboarding.html','Company-Agent-Handbook.html','Company-Agent-사용자-안내서.html','Claude-Code-필수-사용법.html']){
+  for(const filename of ['Company-Agent-Onboarding.html','Company-Agent-Handbook.html','Claude-Code-필수-사용법.html']){
     await page.goto(pathToFileURL(path.join(installed,filename)).href);
     await page.locator('a').first().click();
     await page.getByRole('heading',{name:'Company Agent 통합 가이드',exact:true}).waitFor();
   }
+  await page.goto(pathToFileURL(path.join(installed,'Company-Agent-사용자-안내서.html')).href+'#section-6');
+  await page.getByRole('heading',{name:'Company Agent 사용자 안내서',exact:true}).waitFor();
+  if(await page.locator('#usage-section-6 #section-6').count()!==1)throw Error('Missing old user-guide bookmark');
   await page.goto(pathToFileURL(path.resolve('company-agent-plugin/resources/first-work.html')).href);
   const markdownLink=page.getByRole('link',{name:'Markdown 안내서 · 목차',exact:true});
   const markdownTarget=await markdownLink.getAttribute('href');
@@ -77,5 +80,5 @@ try{
   await page.getByRole('link',{name:'통합 가이드 · 준비물 없이 시작하기',exact:true}).click();
   await page.getByRole('heading',{name:'Company Agent 통합 가이드',exact:true}).waitFor();
   if(errors.length||external.length)throw Error(JSON.stringify({errors,external}));
-  console.log(JSON.stringify({standalone:true,parts:5,markdownIndex:true,embeddedFont:'Noto Sans KR',brokenProse:0,viewports:[1440,768,390],screenshots:targets.length*3,anchors:links.length,legacyLinks:4,promptSelection:true,copiedPrompts:7,copyFallback:true,print:true,external,errors}));
+  console.log(JSON.stringify({standalone:true,parts:5,markdownIndex:true,embeddedFont:'Noto Sans KR',brokenProse:0,viewports:[1440,768,390],screenshots:targets.length*3,anchors:links.length,legacyLinks:3,userGuideBookmarks:true,promptSelection:true,copiedPrompts:7,copyFallback:true,print:true,external,errors}));
 }finally{await browser.close();}

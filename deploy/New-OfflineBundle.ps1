@@ -314,6 +314,7 @@ try {
     }
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\AUDIT_HARNESS_2026-09-20.md') -Destination (Join-Path $stagePath 'docs\AUDIT_HARNESS_2026-09-20.md') -Force
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\UPDATE_1.4.23.md') -Destination (Join-Path $stagePath 'docs\UPDATE_1.4.23.md') -Force
+    Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\UPDATE_1.4.24.md') -Destination (Join-Path $stagePath 'docs\UPDATE_1.4.24.md') -Force
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'Diagnose-CompanyAgent.cmd') -Destination (Join-Path $stagePath 'Diagnose-CompanyAgent.cmd') -Force

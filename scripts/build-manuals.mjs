@@ -12,6 +12,7 @@ if(i<0||!process.argv[i+1])throw Error('Provide approved --modules; no dependenc
 const req=createRequire(path.join(path.resolve(process.argv[i+1]),'_manual_builder.cjs'));
 const {marked}=await import(pathToFileURL(req.resolve('marked')).href);
 const output='Company-Agent-Guide.html';
+const standaloneOutput='Company-Agent-사용자-안내서.html';
 const books=[
   {id:'onboarding',label:'01 · 시작하기',source:'ONBOARDING_COURSE.md',legacy:'Company-Agent-Onboarding.html'},
   {id:'basics',label:'02 · Claude Code 기본 사용법',source:'CLAUDE_CODE_BASICS.md'},
@@ -128,14 +129,23 @@ const html=head('Company Agent 통합 가이드',metadata)+`<body>
   </main>
 </div></body></html>\n`;
 emit(output,html);
-// Small navigation-only compatibility pages. Old bookmarks stay useful; no
-// automatic redirects, scripts, duplicated instructions or additional manuals.
-const legacyBooks=books.filter(b=>b.legacy);
+// The release attachment must work alone, with all five books and its old
+// usage bookmarks. Both full readers come from the same Markdown, not copies
+// maintained by hand. Keep the canonical filename for existing app links.
+const standaloneHtml=html
+  .replace('<title>Company Agent 통합 가이드</title>','<title>Company Agent 사용자 안내서</title>')
+  .replace('<h1><span>Company Agent</span> 통합 가이드</h1>','<h1><span>Company Agent</span> 사용자 안내서</h1>')
+  .replace(/(<h3 id="usage-section-(\d+)">)/g,'$1<span id="section-$2" aria-hidden="true"></span>');
+emit(standaloneOutput,standaloneHtml);
+// The remaining old pages are small navigation-only compatibility pages.
+const legacyBooks=books.filter(b=>b.legacy&&b.legacy!==standaloneOutput);
 for(const b of legacyBooks){
   const legacy=head(b.title+' — 사용 가이드')+`<body><main class="book standalone"><h1>${esc(b.title)}</h1><p><a href="${output}#${b.id}">사용 가이드 열기</a></p><nav aria-label="목차">${b.headings.map((h,i)=>`<a id="section-${i+1}" href="${output}#${b.id}-section-${i+1}">${esc(h)}</a>`).join('')}</nav></main></body></html>\n`;
   emit(b.legacy,legacy);
 }
-const ids=[...html.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
-if(new Set(ids).size!==ids.length)throw Error('Duplicate guide anchors');
-for(const [,id]of html.matchAll(/href="#([^"]+)"/g))if(!ids.includes(id))throw Error('Missing guide anchor '+id);
-console.log(`${output}: ${books.length} parts, ${books.reduce((n,b)=>n+b.headings.length,0)} chapters, ${Buffer.byteLength(html)} bytes; ${legacyBooks.length} compatibility links; ${books.length+1} installed Markdown guides`);
+for(const reader of [html,standaloneHtml]){
+  const ids=[...reader.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
+  if(new Set(ids).size!==ids.length)throw Error('Duplicate guide anchors');
+  for(const [,id]of reader.matchAll(/href="#([^"]+)"/g))if(!ids.includes(id))throw Error('Missing guide anchor '+id);
+}
+console.log(`${output}: ${books.length} parts, ${books.reduce((n,b)=>n+b.headings.length,0)} chapters, ${Buffer.byteLength(html)} bytes; ${standaloneOutput}: ${Buffer.byteLength(standaloneHtml)} bytes; ${legacyBooks.length} compatibility links; ${books.length+1} installed Markdown guides`);

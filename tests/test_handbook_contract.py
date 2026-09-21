@@ -15,6 +15,7 @@ FILES={'COMPANY_AGENT_HANDBOOK.md':'Company-Agent-Handbook.html',
 HTMLS=[name for name in FILES.values() if name]
 MARKDOWN=[*FILES, 'README.md']
 GUIDE='Company-Agent-Guide.html'
+STANDALONE='Company-Agent-사용자-안내서.html'
 
 
 class HandbookTests(unittest.TestCase):
@@ -66,12 +67,18 @@ class HandbookTests(unittest.TestCase):
 
     def test_current_install_entry_points_do_not_send_staff_to_old_releases(self):
         # Historical UPDATE/VALIDATION records retain their original versions.
-        # Only the currently linked install instructions must agree with README.
+        # Version metadata, not an assumption of public release, is authoritative.
         readme=(ROOT/'README.md').read_text(encoding='utf-8')
-        version=re.search(r'현재 공개 배포 버전은 \*\*([\d.]+)\*\*',readme).group(1)
+        version=json.loads((PLUGIN/'.claude-plugin/plugin.json').read_text(encoding='utf-8'))['version']
+        self.assertRegex(readme,rf'현재 (?:공개 배포|소스·배포 준비) 버전은 \*\*{re.escape(version)}\*\*')
+        draft='현재 소스·배포 준비 버전은' in readme
+        if draft:
+            self.assertIn('Release는 **초안**',readme)
         for name in ('DEPLOYMENT.md','BUSINESS_PILOT_GUIDE.md','LOCAL_WORKSPACE.md'):
             intro='\n'.join((ROOT/'docs'/name).read_text(encoding='utf-8').splitlines()[:40])
             self.assertIn(version,intro,name)
+            if draft:
+                self.assertIn('초안',intro,name)
             linked=re.findall(r'/releases/(?:tag|download)/v([\d.]+)',intro)
             self.assertTrue(all(v==version for v in linked),(name,linked))
 
@@ -110,7 +117,7 @@ class HandbookTests(unittest.TestCase):
                 self.assertIn("connect-src 'none'",page)
                 self.assertNotRegex(page,r'<(?:script|iframe|object|img)\b')
                 self.assertNotIn('\ufffd',page)
-                if output:
+                if output and output!=STANDALONE:
                     legacy=(ROOT/'docs'/output).read_text(encoding='utf-8')
                     self.assertIn('href="'+GUIDE+'#',legacy)
                     self.assertNotIn('<pre>',legacy)
@@ -123,6 +130,35 @@ class HandbookTests(unittest.TestCase):
         for part in ('onboarding','basics','usage','handbook','commands'):
             self.assertIn(part,ids)
         self.assertIn('id="onboarding-section-9">8. 개인 스킬',page)
+
+    def test_user_guide_is_a_complete_standalone_reader(self):
+        canonical=(ROOT/'docs'/GUIDE).read_text(encoding='utf-8')
+        page=(ROOT/'docs'/STANDALONE).read_text(encoding='utf-8')
+        # Entire source sections must survive; titles/bookmarks are the only changes.
+        expected=canonical.replace('<title>Company Agent 통합 가이드</title>',
+                                   '<title>Company Agent 사용자 안내서</title>')
+        expected=expected.replace('<h1><span>Company Agent</span> 통합 가이드</h1>',
+                                  '<h1><span>Company Agent</span> 사용자 안내서</h1>')
+        expected=re.sub(r'(<h3 id="usage-section-(\d+)">)',
+                        r'\1<span id="section-\2" aria-hidden="true"></span>',expected)
+        self.assertEqual(expected,page)
+        self.assertEqual(5,len(re.findall(r'<section class="book"',page)))
+        self.assertEqual(43,len(re.findall(r'<h3 id="[\w-]+-section-\d+"',page)))
+        ids=re.findall(r'\bid="([^"]+)"',page)
+        self.assertEqual(len(ids),len(set(ids)))
+        for link in re.findall(r'href="([^"]+)"',page):
+            self.assertTrue(link.startswith(('#','https://')),link)
+            if link.startswith('#'):
+                self.assertIn(link[1:],ids)
+        self.assertNotIn('href="'+GUIDE,page)
+        self.assertNotRegex(page,r'<(?:script|iframe|object|img|link)\b|\son\w+=')
+        self.assertIn("script-src 'none'",page)
+        self.assertIn("connect-src 'none'",page)
+        self.assertIn('data:font/woff;base64,',page)
+        self.assertNotIn('\ufffd',page)
+        chapter_count=len(re.findall(r'^## ',(ROOT/'docs/USER_GUIDE.md').read_text(encoding='utf-8'),re.M))
+        for number in range(1,chapter_count+1):
+            self.assertIn(f'<h3 id="usage-section-{number}"><span id="section-{number}"',page)
 
     def test_both_bundle_builders_include_every_manual(self):
         for builder in ['New-WorkspaceBundle.ps1','New-OfflineBundle.ps1']:

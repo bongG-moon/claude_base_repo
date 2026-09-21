@@ -152,7 +152,7 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/skills/platform-mcp-builder/assets/template/requirements-local.txt',
         'payload/core/plugin/skills/personal-knowledge/references/term-quality.md',
         'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md',
-        'docs/LEAN_SKILL_INTEGRATION.md', 'docs/UPDATE_1.4.23.md'
+        'docs/LEAN_SKILL_INTEGRATION.md', 'docs/UPDATE_1.4.23.md', 'docs/UPDATE_1.4.24.md'
     )) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Lean guidance/provenance is absent: $relative"
     }
@@ -237,7 +237,7 @@ function Assert-EmployeeBundle {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
     }
     $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter 'Company-Agent-*.html' -File)
-    Assert-OfflineBundle ($htmlGuides.Count -eq 5) 'Expected unified guide, three Company-Agent compatibility pages and the operator validation reader.'
+    Assert-OfflineBundle ($htmlGuides.Count -eq 5) 'Expected two full guides, two Company-Agent compatibility pages and the operator validation reader.'
     foreach ($removed in @('docs/CUA_DRIVER_PILOT.md', 'docs/Company-Agent-Cua-Pilot.html',
         'docs/VALIDATION_CUA_MANUALS_2026-09-19.md',
         'payload/core/plugin/resources/manuals/CUA_DRIVER_PILOT.md',

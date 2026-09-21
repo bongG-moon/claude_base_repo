@@ -16,6 +16,7 @@ $files = @(
     'deploy\Start-CompanyWorkspace.ps1',
     'docs\LOCAL_WORKSPACE.md',
     'docs\SKILL_PRIORITY.md', 'docs\AUDIT_HARNESS_2026-09-20.md', 'docs\UPDATE_1.4.23.md',
+    'docs\UPDATE_1.4.24.md',
     'docs\README.md', 'docs\CLAUDE_CODE_BASICS.md',
     'docs\COMPANY_AGENT_HANDBOOK.md', 'docs\ONBOARDING_COURSE.md',
     'docs\Company-Agent-Handbook.html', 'docs\Company-Agent-Onboarding.html',

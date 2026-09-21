@@ -1,6 +1,6 @@
 # Company Agent 설치와 배포 — Windows
 
-현재 공개 배포 버전은 **1.4.23**입니다. 직원은 회사가 승인한 [1.4.23 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.23)의 설치 ZIP 또는 별도로 승인된 후속 배포본을 사용합니다. **1.4.23에는 기본 Office 읽기 스킬과 전용 실행·승인 연결 제거, 학습·스킬 선택 보완, 안내서 갱신을 포함합니다.** 기존 Release·ZIP·설치된 PC는 자동 갱신되지 않습니다. [1.4.23 변경 내용](UPDATE_1.4.23.md)과 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.23/docs/VALIDATION_RELEASE_1.4.23.md)를 확인하세요. 과거 버전의 변경·검증 기록은 당시 배포 내용이며 현재 기능 목록으로 사용하지 않습니다.
+현재 배포 준비 버전은 **1.4.24**이며 Release는 초안입니다. 직원은 담당자가 검토·승인하여 제공한 설치 ZIP을 사용합니다. **1.4.24는 전체 사용자 안내서를 단독 HTML로 만들고 설치 ZIP에도 포함합니다.** 기본 Office Reader 제거와 학습·스킬 선택 보완은 1.4.23에서 유지합니다. 기존 Release·ZIP·설치된 PC는 자동 갱신되지 않습니다. [1.4.24 변경 내용](UPDATE_1.4.24.md)과 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.24.md)를 확인하세요. 과거 버전의 변경·검증 기록은 당시 배포 내용이며 현재 기능 목록으로 사용하지 않습니다.
 
 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다.
 
