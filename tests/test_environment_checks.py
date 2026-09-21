@@ -13,7 +13,9 @@ class EnvironmentChecksTests(unittest.TestCase):
             report = inspect_environment()
         states = {item['name']: item['status'] for item in report['features']}
         self.assertIn('준비 항목 있음', states['HTML 보고서'])
-        self.assertEqual('추가 준비 필요', states['Excel·CSV 읽기'])
+        self.assertNotIn('Excel·CSV 읽기', states)
+        self.assertNotIn('xlwings', report['packages'])
+        self.assertNotIn('pandas', report['packages'])
         self.assertEqual('추가 준비 필요', states['PPT 제작'])
         self.assertTrue(report['readOnly'])
 
@@ -27,8 +29,10 @@ class EnvironmentChecksTests(unittest.TestCase):
     def test_only_installed_office_program_is_ready(self):
         with patch('company_agent.environment_checks._module', return_value=True), patch('company_agent.environment_checks._office', side_effect=lambda name: name == 'PowerPoint.Application'):
             states = {item['name']: item['status'] for item in inspect_environment()['features']}
-        self.assertIn('실제 파일 실행은 미확인', states['PPT 읽기'])
-        self.assertEqual('추가 준비 필요', states['Word 읽기'])
+        self.assertIn('실제 파일 실행은 미확인', states['PPT 제작'])
+        self.assertNotIn('PPT 읽기', states)
+        self.assertNotIn('Word 읽기', states)
+        self.assertEqual('추가 준비 필요', states['Outlook 조회'])
 
 
 if __name__ == '__main__':

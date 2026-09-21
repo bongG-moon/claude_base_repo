@@ -1,6 +1,8 @@
-# Company Agent 설치와 배포 — Windows 1.4.19
+# Company Agent 설치와 배포 — Windows
 
-현재 배포 버전은 1.4.19입니다. 스킬 읽기 기록·변경 확인·위험 명령 보호·기억 검색·도구 검증·HTML→PPT 배치와 안내서를 보완했습니다. 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다. 직원용 파일은 [1.4.19 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.19)의 설치 ZIP을 사용하세요. [변경·설치 안내](UPDATE_1.4.19.md)에 이전 버전과의 차이와 검증 한계를 정리했습니다.
+현재 공개 배포 버전은 **1.4.23**입니다. 직원은 회사가 승인한 [1.4.23 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.23)의 설치 ZIP 또는 별도로 승인된 후속 배포본을 사용합니다. **1.4.23에는 기본 Office 읽기 스킬과 전용 실행·승인 연결 제거, 학습·스킬 선택 보완, 안내서 갱신을 포함합니다.** 기존 Release·ZIP·설치된 PC는 자동 갱신되지 않습니다. [1.4.23 변경 내용](UPDATE_1.4.23.md)과 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.23/docs/VALIDATION_RELEASE_1.4.23.md)를 확인하세요. 과거 버전의 변경·검증 기록은 당시 배포 내용이며 현재 기능 목록으로 사용하지 않습니다.
+
+관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다.
 
 직원 PC에는 Claude Code와 사내 SMALL/MEDIUM/LARGE 연결, 회사 승인 Python 3.11 이상이 이미 준비되어 있어야 합니다. 기본 ZIP에는 Python 실행 파일과 DLL을 넣지 않고 PC의 Python을 사용합니다. 설치 과정에서 Python/pip/Git를 설치하거나 다운로드하지 않으며 PC의 PATH 설정도 바꾸지 않습니다. 설치 조건은 Claude Code CLI 2.1.220 이상, Windows PowerShell 5.1 이상, Windows 10/11입니다. 대상 PC의 운영체제와 Python 아키텍처는 사내 담당자가 확인합니다.
 
@@ -192,11 +194,15 @@ Core, Knowledge, 설정이 바뀌면 관리자에게 새 CoreVersion의 ZIP을 �
 
 설치 전 `state check`는 개인 State의 형식 표시와 사용자 설정 형식을 읽기 전용으로 확인합니다. 지원하지 않는 미래 버전/손상된 표시가 있으면 초기화하지 않고 중단합니다. 기존 형식 표시가 없는 State는 호환 대상으로 읽습니다. 이는 호환성 보호 장치이지 일반 마이그레이션 엔진은 아닙니다.
 
-개인 Knowledge는 Corporate Base와 분리된 Markdown overlay입니다. 충돌 없는 추가 지식은 새 Base에 맞춰 갱신하고 충돌한 수정은 별도로 기록합니다. 개인 Skill은 현재 scope의 상태 디렉터리에 저장됩니다. 매 요청에 관련 Skill 정보를 찾고 Claude가 SKILL.md를 읽어 사용합니다. 모든 개인 Skill이 슬래시 메뉴에 표시된다는 의미는 아닙니다. Factory가 프로젝트 .claude/skills와 .claude/agents에 생성한 파일은 Claude가 직접 발견합니다.
+개인 Knowledge는 Corporate Base와 분리된 Markdown overlay입니다. `extend`는 이전 Base의 계약 해시가 새 Base의 계약 해시와 같을 때만 안전한 자동 갱신 대상입니다. 계약이 바뀌거나 비교할 기존 해시가 없으면 충돌로 남기며, `fork`의 Base 변경도 사용자가 검토합니다. 회사 원본에서 대상이 없어져도 개인 자료는 삭제하지 않습니다. 현재 설치의 상태 갱신과 모든 별도 프로젝트 저장소의 색인 갱신을 같은 것으로 간주하지 말고, 업데이트 후 실제 사용하는 범위의 지식 출처·충돌 상태를 확인합니다. 자세한 기준은 [관리자 지식 안내](ADMIN_KNOWLEDGE_GUIDE.md)를 참고하세요.
+
+개인 Skill은 선택한 개인 저장 범위에 저장됩니다. 매 요청에 관련 Skill 정보를 찾고 Claude가 SKILL.md를 읽어 사용합니다. 모든 개인 Skill이 슬래시 메뉴에 표시된다는 의미는 아닙니다. Factory가 프로젝트 .claude/skills와 .claude/agents에 생성한 파일은 Claude가 직접 발견합니다.
 
 Skill 선호 설정은 현재 경로에 가장 가까운 프로젝트 설정을 같은 State의 기본값보다 우선합니다. User 설치 하나로 여러 프로젝트를 쓰는 경우에는 기본값과 프로젝트별 예외를 같은 State에 기록합니다. 별도 Project 설치는 자기 State를 사용하므로 User 설치나 다른 Project 설치의 선호를 자동 공유하지 않습니다. 선택한 후보가 사라지면 오래된 선택으로 알리고 다시 고르도록 하며 다른 후보로 조용히 대체하지 않습니다.
 
 ## 제거와 재설치
+
+설치 도중 실패했을 때의 자동 복구, 개인 자료 선택 복원, 교체 전 하네스 복구는 서로 다릅니다. **성공한 User/Project 업데이트를 한 명령으로 이전 공통 버전으로 되돌리는 기능은 현재 제공하지 않습니다.** 일반 설치기의 숫자 버전 하향 차단을 우회하지 마세요. `Rollback-CompanyAgent.ps1`는 별도 관리자용 Machine 설치 경로의 도구이며 이 User/Project 절차에 쓰지 않습니다. [보존과 복구 안내](STATE_PRESERVATION.md)를 기준으로 담당자와 복구 대상을 먼저 확인합니다.
 
 같은 배포본의 제거 스크립트에 범위를 지정합니다.
 
@@ -222,13 +228,13 @@ powershell.exe -NoProfile -File .\deploy\Restore-PreviousHarness.ps1 -BackupPath
 
 ## 빌드 PC에서 배포 ZIP 만들기
 
-다음 명령은 **소스 저장소 루트**에서 실행합니다. 빌드 PC에도 승인 Python 3.11 이상과 Claude Code CLI 2.1.220 이상이 준비되어 있어야 합니다. 기본 빌드는 외부에서 Python을 내려받지 않습니다.
+다음 명령은 **소스 저장소 루트**에서 실행합니다. 빌드 PC에도 승인 Python 3.11 이상과 Claude Code CLI 2.1.220 이상이 준비되어 있어야 합니다. 기본 빌드는 외부에서 Python을 내려받지 않습니다. 아래 꺾쇠 항목은 담당자가 확정한 버전으로 바꾸는 자리입니다. 현재 소스가 공개 1.4.23의 내용과 다르면 1.4.23을 재사용하지 말고 새 CoreVersion을 발급하고 플러그인 manifest의 버전도 맞춥니다. 회사 Knowledge/config만 바뀌어도 같은 조건입니다. 지식팩 버전은 `corporate-knowledge/pack.json`과 일치해야 합니다.
 
 ```powershell
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.22 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion "<새 CoreVersion>" -KnowledgeVersion "<지식팩 버전>"
 ```
 
-결과는 로컬의 `dist\company-agent-1.4.22-2026.09.03.zip`입니다. 마지막 날짜는 공통 지식 묶음의 버전이며 파일 생성일이 아닙니다. ZIP 생성은 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 설치된 배포본을 덮어쓰지 않고 새 버전으로 전달합니다. ZIP에는 쉬운 사용자 안내서 HTML/Markdown, 한국어 진단 실행 파일, 자동 학습 설명서와 업무 시범 운영 안내서도 포함됩니다.
+결과는 로컬의 `dist\company-agent-<CoreVersion>-<KnowledgeVersion>.zip`입니다. 날짜 형식의 KnowledgeVersion은 공통 지식 묶음의 버전이며 파일 생성일이 아닙니다. 같은 CoreVersion에 다른 내용을 덮어쓰는 것은 `-Force`로도 허용하지 않습니다. ZIP 생성은 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 설치된 배포본을 덮어쓰지 않고 새 버전으로 전달합니다. ZIP에는 쉬운 사용자 안내서 HTML/Markdown, 한국어 진단 실행 파일, 자동 학습 설명서와 업무 시범 운영 안내서도 포함됩니다. 직원의 첫 업무 안내와 설치된 `resources/manuals`는 해당 배포에 동봉한 사본이므로, 저장소 문서만 고쳐서는 기존 설치 안내서가 바뀌지 않습니다. 별도 Workspace ZIP의 안내서도 그 ZIP을 따로 갱신해야 합니다.
 
 `-WithoutBundledPython`은 기존 빌드 명령과의 호환을 위해 유지하며 현재 기본값과 같은 결과를 냅니다. 직원 ZIP에는 설치·실행·제거·복구에 필요한 파일을 넣고, `New-OfflineBundle.ps1`, `Get-EmbeddedPython.ps1`, `Test-*.ps1` 같은 빌드·테스트 도구는 제외합니다. 해당 도구와 테스트 소스는 저장소에 남아 있으며 개발 검증은 저장소에서 수행합니다.
 
@@ -241,7 +247,7 @@ Python을 함께 전달해야 하는 별도 운영 환경에서만 관리자가 
 powershell.exe -NoProfile -File .\deploy\Get-EmbeddedPython.ps1
 
 # Python 동봉을 명시적으로 선택
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.22 -KnowledgeVersion 2026.09.03 -IncludeBundledPython -OutputPath .\dist\company-agent-1.4.22-2026.09.03-with-python.zip
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion "<새 CoreVersion>" -KnowledgeVersion "<지식팩 버전>" -IncludeBundledPython -OutputPath ".\dist\company-agent-<CoreVersion>-<KnowledgeVersion>-with-python.zip"
 ```
 
 폐쇄망 빌드 PC에는 검증된 Python ZIP을 반입할 수 있습니다. 별도 경로의 런타임은 `-IncludeBundledPython`, `-PythonRuntimeZip`, 정확한 `-PythonRuntimeSha256`을 함께 지정합니다. 동봉 패키지는 Python 라이선스와 실행 바이너리를 포함하며, 직원 설치 과정에서 다운로드하지 않습니다. 기본 패키지와 같은 CoreVersion의 다른 내용을 이미 설치한 PC에는 덮어쓸 수 없으므로, 같은 배포 대상에 전달할 구성은 릴리스 전에 확정합니다.

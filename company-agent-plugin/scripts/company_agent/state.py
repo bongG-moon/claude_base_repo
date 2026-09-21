@@ -18,6 +18,17 @@ from .paths import atomic_write_json, ensure_user_layout, load_json, user_state_
 from .policy import db_operation, is_outlook_send_like_tool, outlook_operation
 
 
+def native_session_id(value):
+    """Normalize a supplied native conversation ID; never invent a missing ID."""
+    if not isinstance(value, str) or not value.strip():
+        return ''
+    normalized = safe_session_id(value)
+    placeholders = {'unknown-session', 'company_agent_session_id', 'session_id',
+                    'session', 'none', 'null', 'undefined'}
+    return normalized if (re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,99}', normalized)
+                          and normalized.casefold() not in placeholders) else ''
+
+
 MUTATING_TOOLS = {"edit", "multiedit", "notebookedit", "write"}
 MAX_CORRECTIVE_CONTINUATIONS = 2
 MAX_LEARNING_CONTINUATIONS = 2
@@ -364,6 +375,7 @@ def begin_turn(
                 "learningDeferredReason": None,
                 "learningAttempts": 0,
                 "usedSkills": [],
+                "learningReadReceipts": {},
                 "taskToolCount": 0,
                 "approvalUnavailable": False,
                 "lastStopActivityCount": None,
@@ -554,14 +566,11 @@ def _own_cli_arguments(command: str) -> list[str] | None:
             arguments = arguments[2:]
         if len(arguments) < 4 or arguments[0].casefold() != "-file":
             return None
-        office_entry = _same_absolute_path(arguments[1], scripts.parent / "skills/office-reader/scripts/Invoke-CompanyAgent.ps1")
-        if not office_entry and not _same_absolute_path(arguments[1], scripts / "Invoke-CompanyAgent.ps1"):
+        if not _same_absolute_path(arguments[1], scripts / "Invoke-CompanyAgent.ps1"):
             return None
         if arguments[2].casefold() != "-mode" or arguments[3].casefold() != "cli":
             return None
         arguments = arguments[4:]
-        if office_entry and arguments[:2] != ['business', 'office-read']:
-            return None  # The skill-local entrypoint exposes only this reader.
     elif _known_runtime(program, {"python", "python.exe", "python3", "python3.exe", "py", "py.exe"}):
         if arguments and arguments[0] in {"-3", "-3.11", "-3.12", "-3.13", "-3.14"}:
             arguments.pop(0)
@@ -701,26 +710,6 @@ def _is_mail_search_spec_write(tool_name: str, tool_input: dict, root: Path) -> 
         return False
 
 
-def _is_office_read_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
-    """Only the bounded source-selection request, never arbitrary tmp content."""
-    import json
-    if tool_name.casefold() != 'write':
-        return False
-    value, content = tool_input.get('file_path'), tool_input.get('content')
-    if not isinstance(value,str) or not isinstance(content,str) or len(content.encode('utf-8'))>32768:
-        return False
-    path=Path(value)
-    if (path.parent != root.absolute()/'tmp' or not re.fullmatch(r'office-read-[a-zA-Z0-9_-]{1,80}\.json',path.name)
-            or not _safe_local_path(path,root,allow_missing_leaf=True)):
-        return False
-    try:
-        from .office_reader import normalize
-        normalize(json.loads(content))
-        return True
-    except (ValueError,TypeError,OSError):
-        return False
-
-
 def _is_ppt_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
     """Only bounded temporary choice metadata, never jobs or output slides."""
     import json
@@ -812,28 +801,70 @@ def _is_own_learning_command(command: str, session_id: str, state: dict[str, Any
     return path == _learning_spec_path(root, turn_id) and _safe_local_path(path, root, allow_missing_leaf=True)
 
 
-def _observed_personal_skill(tool_name: str, tool_input: dict[str, Any], root: Path) -> dict[str, str] | None:
-    if tool_name.casefold().strip() != "read":
-        return None
-    value = tool_input.get("file_path")
+def _personal_skill_identity(value: Any, root: Path) -> tuple[str, Path] | None:
+    """Only directly owned personal Skill files can be automatic learning targets."""
     if not isinstance(value, str) or len(value) > 2_048:
         return None
     path = Path(value)
+    try:
+        relative = path.relative_to(root.absolute() / "personal-root" / ".claude" / "skills")
+    except ValueError:
+        return None
+    if len(relative.parts) != 2 or relative.name != "SKILL.md":
+        return None
+    name = relative.parts[0]
+    return (name, path) if re.fullmatch(r"[a-z0-9][a-z0-9-]{0,79}", name) else None
+
+
+def _remember_personal_skill_load(state: dict[str, Any], item: dict, root: Path) -> None:
+    """Record an already validated full load, not proof of applying the workflow.
+
+    Called inside the existing state/Skill observation transaction. No source
+    body, new file scan, model call or separate session write is needed.
+    """
+    identity = _personal_skill_identity(item.get("path"), root)
+    digest = item.get("sha256")
+    if (not identity or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
+            or state.get("protectionRestricted") or not _collect_learning_observations(state, root)):
+        return
+    name, path = identity
+    observed = {"name": name, "path": str(path), "sha256": digest}
+    skills = [s for s in state.get("usedSkills", []) if isinstance(s, dict) and s.get("name") != name]
+    state["usedSkills"] = (skills + [observed])[-MAX_OBSERVED_SKILLS:]
+    work = state.get("work")
+    if isinstance(work, dict):
+        skills = [s for s in work.get("usedSkills", []) if isinstance(s, dict) and s.get("name") != name]
+        work["usedSkills"] = (skills + [observed])[-MAX_OBSERVED_SKILLS:]
+
+
+def _observed_personal_skill(tool_name: str, tool_input: dict[str, Any], root: Path,
+                             response: Any, state: dict[str, Any]) -> dict[str, str] | None:
+    if tool_name.casefold().strip() != "read":
+        return None
+    if (not isinstance(response, dict) or not isinstance(response.get("file"), dict)
+            or not isinstance(response["file"].get("content"), str)):
+        return None
+    identity = _personal_skill_identity(tool_input.get("file_path"), root)
+    if not identity:
+        return None
+    name, path = identity
     skills_root = root.absolute() / "personal-root" / ".claude" / "skills"
     try:
-        relative = path.relative_to(skills_root)
-        if len(relative.parts) != 2 or relative.name != "SKILL.md":
-            return None
-        name = relative.parts[0]
-        if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,79}", name):
-            return None
         if not _safe_local_path(path, skills_root) or path.stat().st_size > MAX_OBSERVED_SKILL_BYTES:
             return None
         with path.open("rb") as stream:
             data = stream.read(MAX_OBSERVED_SKILL_BYTES + 1)
         if len(data) > MAX_OBSERVED_SKILL_BYTES:
             return None
-        # Hash only. The read body, other paths and search query never persist.
+        # Use the same exact-response/range validator as workflow preparation.
+        # Disk existence/hash alone is not evidence that the model saw a body.
+        from .skill_workflow import _record_read
+        receipts = state.get("learningReadReceipts")
+        if not isinstance(receipts, dict):
+            receipts = state["learningReadReceipts"] = {}
+        if not _record_read(receipts, name, response, data):
+            return None
+        # Hash and ranges only. No body, response, other paths or search query.
         return {"name": name, "path": str(path), "sha256": hashlib.sha256(data).hexdigest()}
     except (OSError, ValueError):
         return None
@@ -940,7 +971,6 @@ def record_activity(
             )
         bookkeeping = bookkeeping or _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
         bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
-        bookkeeping = bookkeeping or _is_office_read_spec_write(tool_name, tool_input, root or user_state_root())
         bookkeeping = bookkeeping or (not failed and _is_html_choices_spec_write(tool_name, tool_input, root or user_state_root()))
         bookkeeping = bookkeeping or _is_ppt_choices_spec_write(tool_name, tool_input, root or user_state_root())
         if tool_name.casefold().strip() in {"bash", "powershell"}:
@@ -966,11 +996,10 @@ def record_activity(
             if state.get("learningStatus") == "complete":
                 state["learningStatus"] = "deferred"
                 state["learningDeferredReason"] = "late-business-activity"
-            if not failed:
-                observed = _observed_personal_skill(tool_name, tool_input, root or user_state_root())
+            if not failed and not payload.get("agent_id"):
+                observed = _observed_personal_skill(tool_name, tool_input, root or user_state_root(), response, state)
                 if observed:
-                    skills = [item for item in state.get("usedSkills", []) if isinstance(item, dict) and item.get("name") != observed["name"]]
-                    state["usedSkills"] = (skills + [observed])[-MAX_OBSERVED_SKILLS:]
+                    _remember_personal_skill_load(state, observed, root or user_state_root())
             work = state.get("work")
             if isinstance(work, dict):
                 work["toolCount"] = min(1_000_000, work.get("toolCount", 0) + 1)

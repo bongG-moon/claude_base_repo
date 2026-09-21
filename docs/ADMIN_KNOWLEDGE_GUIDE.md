@@ -1,10 +1,12 @@
-# Corporate Knowledge administrator guide
+# 회사 공통 지식 관리자 안내
 
-## Authoring
+회사 공통 지식은 관리자가 작성·검토하여 배포하는 자료입니다. 직원의 개인 전체/프로젝트 기억·지식을 수집하거나 실시간으로 공유하는 서버가 아닙니다. Workspace의 회사 공통 화면은 조회용이며, 이 화면의 읽기 전용 표시는 운영체제의 접근 권한이나 조직의 배포 승인을 대신하지 않습니다.
 
-Open Claude Code from the writable authoring repository, not from the deployed ProgramData directory. The `corporate-knowledge-author` Skill accepts natural language, DDL, a SELECT query, a column list, or an existing Markdown document.
+## 어디에서 작성하나요
 
-Recommended prompts:
+쓰기 가능한 **작성용 소스 저장소**에서 작업합니다. 설치된 버전 폴더나 기존 Machine 설치의 ProgramData 배포본을 직접 고치지 않습니다. 작성 지원 스킬은 저장소의 `admin-authoring/.claude/skills/corporate-knowledge-author/SKILL.md`에 있으며, 해당 관리자 작성 환경에서 사용합니다. 직원용 플러그인에 기본 제공되는 스킬은 아닙니다. 자연어, DDL, SELECT 쿼리, 컬럼 목록, 기존 Markdown 문서를 입력으로 받을 수 있습니다.
+
+예시 요청:
 
 ```text
 MES의 WIP_HISTORY 테이블을 등록해줘. 이 DDL에서 기술 정보를 읽고
@@ -16,31 +18,46 @@ LOT_MASTER와 WIP_HISTORY 조인 방법을 추가해줘.
 조인 후 행이 늘어날 수 있는지도 반드시 확인해줘.
 ```
 
-The Agent copies a template, asks for missing grain/key/filter/cardinality/owner information, and runs validation. Administrators should review the Markdown diff before publishing.
+스킬은 템플릿을 바탕으로 행의 의미, 키, 필수 필터, 조인 관계와 담당자 등 빠진 정보를 확인하고 검증합니다. AI가 초안을 만들거나 검증을 통과했다고 승인된 회사 지식이 되는 것은 아닙니다. 담당 관리자가 변경 내용과 업무 의미를 검토한 뒤 배포를 승인합니다.
 
-## Validate
+## 검증
+
+다음 명령은 `company-agent-plugin`과 `corporate-knowledge`가 있는 **소스 저장소 루트**에서 실행합니다.
 
 ```powershell
 python .\company-agent-plugin\scripts\harness_cli.py knowledge validate `
   --base .\corporate-knowledge
 ```
 
-Validation checks required metadata, unique IDs, references, alias conflicts, credential-like strings, and non-SELECT SQL examples.
+필수 메타데이터, ID 중복, 참조, 별칭 충돌, 자격 증명처럼 보이는 문자열, SELECT 이외 SQL 예제를 검사합니다. 실제 회사 DB의 결과 정확성·접근 권한·업무 승인까지 자동 검증하는 것은 아닙니다.
 
-## Content release
+## 새 지식 배포
 
-Increment `corporate-knowledge\pack.json` version, validate, build the offline bundle, then install the new Knowledge version side-by-side. The installer changes the current pointer only after hash and structure checks pass. Existing user overlays remain in LocalAppData.
+1. `corporate-knowledge/pack.json`의 지식팩 버전을 올리고 변경 내용과 담당자를 확인합니다.
+2. **현재 User/Project 배포 방식은 Knowledge 또는 공통 config만 바꿔도 새 CoreVersion이 필요합니다.** 플러그인 manifest 버전과 빌드의 CoreVersion도 일치시킵니다. 이미 사용한 CoreVersion을 재사용하거나 배포된 파일을 직접 덮어쓰지 않습니다.
+3. 위 지식 검증과 해당 변경의 테스트를 통과시킨 뒤 [설치·배포 안내](DEPLOYMENT.md)의 절차로 새 오프라인 ZIP을 만듭니다. 해시는 내용 확인 수단이며 회사 서명·승인을 대신하지 않습니다.
+4. 승인된 시범 PC에서 기존과 같은 User/Project 범위로 업데이트합니다. 설치기는 해시·구조·상태 형식을 확인하고 새 버전 경로와 등록을 적용합니다. 여러 범위를 사용하는 직원은 각 범위를 확인합니다.
+5. 개인 자료가 원래 저장소에 남는지와 함께, 실제 사용하는 범위의 검색 출처·개인 overlay 충돌 상태도 확인한 후 조직의 배포 절차로 전달합니다.
 
-When an updated Corporate document changes the base hash of a personal overlay:
+현재 배포 버전은 1.4.23이며, 기존 Release나 설치된 PC에 자동 반영되지 않습니다. ZIP 생성은 게시·직원 PC 갱신·문서 사본 갱신을 수행하지 않습니다. 관리자용 이전 Machine 설치와 현재 User/Project 설치의 배포·복구 명령을 섞어 쓰지 않습니다.
 
-- `extend` can be safely rebased and remains active;
-- `fork` becomes a conflict and the user chooses combine, corporate, or personal when the distinction matters;
-- missing targets become detached but are not deleted.
+## 회사 지식이 바뀌면 개인 지식은 어떻게 되나요
 
-## Content rules
+개인 지식은 회사 원본과 별도 저장소에 남습니다. 파일 보존과 자동 병합 성공은 같은 뜻이 아닙니다.
 
-- Use stable IDs such as `table.mes.wip_history`; do not encode a release version in the ID.
-- Record the table grain, key, mandatory filters, join cardinality, and row multiplication risk.
-- Store a managed database profile name, never a password or connection string.
-- Use synthetic or masked examples, never production personal data.
-- Keep executable instructions out of knowledge documents. They are facts and references, not prompts.
+- 회사 원본의 내용 해시가 같으면 기존 연결을 유지합니다.
+- `extend`는 이전에 기록한 Base의 **계약 해시가 새 계약 해시와 같을 때만** 이력을 보존한 뒤 안전하게 새 Base로 연결할 수 있습니다. 계약이 바뀌었거나 비교할 기존 해시가 없으면 충돌로 남깁니다.
+- `fork`는 회사 Base가 바뀌면 충돌로 기록합니다. 사용자는 차이를 검토하여 결합·회사 기준·개인 기준 중 필요한 처리를 선택합니다.
+- 회사 원본에서 대상이 사라지면 연결이 끊긴 상태로 표시하지만 개인 자료를 삭제하지 않습니다.
+
+세션 시작의 갱신 대상은 현재 설치의 상태입니다. 모든 별도 `project-scopes` 저장소의 색인까지 자동 갱신되었다고 가정하지 않습니다. 회사 지식 교체 후 프로젝트에서 이전 출처나 이전 내용이 계속 검색되면 원본을 지우거나 개인 저장소를 초기화하지 말고 담당자가 해당 범위의 등록·색인·충돌 상태를 확인합니다. 개인 자료의 선택 백업 범위와 복구 한계는 [상태 보존 안내](STATE_PRESERVATION.md)를 따릅니다.
+
+## 작성 규칙
+
+- `table.mes.wip_history`처럼 안정적인 ID를 사용하고 ID에 릴리스 버전을 넣지 않습니다.
+- 테이블 한 행의 의미, 키, 필수 필터, 조인 관계와 행 증가 위험을 기록합니다.
+- 관리되는 DB 연결 프로필 이름만 기록하고 비밀번호나 연결 문자열을 넣지 않습니다.
+- 합성·마스킹된 예제를 사용하고 운영 개인정보를 넣지 않습니다.
+- 지식 문서는 사실과 참고 자료입니다. 도구 실행 지시나 권한 우회 지침을 넣지 않습니다.
+
+개인 지식을 검토용 ZIP으로 내보내는 기능은 로컬 검토 자료를 만드는 기능입니다. 관리자에게 자동 전송되거나 회사 지식으로 자동 승격되지 않습니다. 회사 반영은 별도 검토·수정·검증·배포 절차를 거칩니다.

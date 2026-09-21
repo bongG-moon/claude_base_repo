@@ -34,7 +34,7 @@ for raw in sys.stdin.buffer:
     elif value["type"] == "user":
         turn += 1
         emit({"type": "system", "subtype": "init", "session_id": session, "model": "fake-only",
-              "skills": ["company-agent:office-reader"], "plugins": [{"name": "company-agent"}], "mcp_servers": []})
+              "skills": ["company-agent:html-report"], "plugins": [{"name": "company-agent"}], "mcp_servers": []})
         text = value["message"]["content"]
         if text == "AUTH_PARITY_CHECK" and os.environ.get("WORKSPACE_FAKE_AUTH") == "1":
             valid = (Path(os.environ["CLAUDE_CONFIG_DIR"]) / "fake-auth.txt").read_text(encoding="utf-8") == "valid"

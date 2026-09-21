@@ -21,14 +21,83 @@ from .skill_catalog import MAX_CATALOG_BYTES
 from .skill_registry import MAX_SKILL_BYTES, _canonical, _no_reparse, _read, _resolution, _frontmatter_field
 from .state import _locked_session, _stale_native_prompt, load_session, safe_session_id
 
+_PLAIN_FIELDS = {'name', 'description', 'status', 'metadata', 'license', 'compatibility', 'company-agent-role'}
+
 
 def _hash(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
+def _native_semantics(raw: bytes) -> bool:
+    """These features require the host, never an equivalent-looking file read."""
+    from .frontmatter import parse_frontmatter_text
+    try:
+        meta, body = parse_frontmatter_text(raw.decode('utf-8-sig'))
+        return bool(set(meta) - _PLAIN_FIELDS or '!`' in body or re.search(r'\$\{|\$ARGUMENTS|\$\d', body))
+    except (ValueError, UnicodeError):
+        return True
+
+
+def _load_plan(item: dict, data: dict, raw: bytes) -> dict:
+    from .skill_task_context import load_target
+    plan = {'mode': 'load', 'reason': 'native-body-load',
+            **{key: item.get(key, '') for key in ('id', 'name', 'source', 'path', 'invocation', 'sha256')},
+            'load': load_target(item, data['skills'])}
+    if _native_semantics(raw):
+        plan['nativeRequired'] = True
+        if plan['load'].get('tool') != 'Skill':
+            plan.update(load=None, reason='native-invocation-unavailable', limitation='native-invocation-unavailable')
+    return plan
+
+
+def _choice_continuation(prompt: str, names: list[str], *, pending: bool) -> bool:
+    """Carry IDs across a short answer, never infer which numbered option won."""
+    text = prompt.strip().casefold()
+    if (not text or len(text) > 140 or _preparation_caution(text)
+            or re.search(r'말고|대신|취소|아니|안\s*쓸|쓰지|하지\s*마|\b(?:not|cancel|instead|never)\b', text)):
+        return False
+    from .skill_task_context import _features
+    named = False
+    for name in names:
+        pattern = r'(?<![a-z0-9:_-])' + re.escape(name.casefold()) + r'(?![a-z0-9:_-])'
+        if name and re.search(pattern, text):
+            named = True
+            text = re.sub(pattern, '', text)
+    if any(_features(text)):
+        return False  # A new output or action is a new workflow.
+    suffix = r'(?:로|으로|을|를)?\s*(?:계속\s*)?(?:(?:선택|사용|진행)(?:해줘|해주세요|할게요|합니다)?|해줘|해주세요)?[.!]?'
+    return bool((pending and re.fullmatch(r'(?:[1-8](?:번|번째)?|첫\s*번째|두\s*번째|세\s*번째)\s*' + suffix, text))
+                or (named and re.fullmatch(r'\s*(?:(?:개인|회사|공통|프로젝트|사용자)\s*)?(?:스킬\s*)?' + suffix, text))
+                or re.fullmatch(r'(?:그|해당|방금|같은)\s*스킬\s*' + suffix, text))
+
+
+def _answer_candidate(text: str, candidates: list[dict]) -> str | None:
+    """Match a real answer to catalogue identities, never semantic guesses."""
+    if not isinstance(text, str) or len(text) > 1000:
+        return None
+    if re.search(r'말고|대신|취소|아니|쓰지|하지\s*마|\b(?:not|cancel|instead|never|none)\b', text, re.I):
+        return None
+    def contains(value):
+        return bool(value and re.search(r'(?<![A-Za-z0-9:_-])' + re.escape(value) + r'(?![A-Za-z0-9:_-])', text, re.I))
+    exact = [x for x in candidates if contains(x['id']) or x.get('path') and x['path'] in text]
+    if len(exact) == 1:
+        return exact[0]['id']
+    named = [x for x in candidates if contains(x.get('invocation', '')) or contains(x['name'])]
+    if len(named) == 1:
+        return named[0]['id']
+    source_words = {'company': r'회사|공통|\bcompany\b', 'user': r'개인|사용자|\buser\b',
+                    'personal': r'개인|\bpersonal\b', 'project': r'프로젝트|\bproject\b',
+                    'plugin': r'플러그인|\bplugin\b', 'corporate': r'공유|\bcorporate\b'}
+    scoped = [x for x in named if re.search(source_words.get(x.get('source'), r'(?!)'), text, re.I)]
+    return scoped[0]['id'] if len(scoped) == 1 else None
+
+
 def _preparation_caution(prompt: str) -> str:
     """Keyword retrieval is not a mandate for negated or diagnostic references."""
     text = prompt[:2000].casefold()
+    if (re.search(r'스킬.{0,30}(?:쓰지|사용하지|적용하지|호출하지|하지\s*마|필요\s*없|말고)|스킬\s*없이', text)
+            or re.search(r"\b(?:do\s+not|don't|never)\s+(?:use|invoke|run)\b.{0,100}\bskill\b|\bwithout\s+(?:any\s+)?skills?\b", text)):
+        return 'excluded-skill-use'
     from .skill_task_context import _DOMAINS, _features
     domain = '(?:' + '|'.join(_DOMAINS.values()) + ')'
     for clause in re.split(r'[.!?;\n]', text):
@@ -93,8 +162,30 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
         route.pop('providedSkills', None)  # Old hook output is not an observed load.
         turn = state.get("turnId", "")
         if route.get("turn") != turn or compact:
+            pending = route.get('pendingChoice', {}) if same else {}
+            chosen = route.get('requestChoice', {}) if same else {}
+            carry_pending = bool(pending and _choice_continuation(prompt, pending.get('names', []), pending=True))
+            carry_chosen = bool(chosen and _choice_continuation(prompt, [chosen.get('name', '')], pending=False))
             route.update(turn=turn, selected=None, fallback=None, turnChoices={}, taskCandidates=[], executionPlan={},
-                         preparationCaution='', namedSkillChoices=[], turnLoads={})
+                         preparationCaution='', namedSkillChoices=[], turnLoads={}, nativeLoads={})
+            route.pop('choiceAnswer', None)
+            route.pop('requiredChoiceIds', None)
+            route.pop('pendingChoice', None)
+            route.pop('requestChoice', None)
+            if carry_pending:
+                route['pendingChoice'] = pending
+                route['requiredChoiceIds'] = pending.get('ids', [])
+                try:
+                    snapshot = _snapshot(root, project, route)
+                    options = [x for x in snapshot['skills'] if x['id'] in pending.get('ids', [])]
+                    answer = _answer_candidate(prompt, options)
+                    if answer:
+                        route['choiceAnswer'] = {'id': answer, 'turn': turn, 'revision': route['revision']}
+                except (OSError, ValueError, KeyError):
+                    pass  # An unavailable choice must not become a fake answer.
+            if carry_chosen:
+                route['requestChoice'] = chosen
+                route['turnChoices'] = {chosen['name'].casefold(): chosen['id']}
             route['loadObservation'] = {'status': 'not-observed', 'turn': turn}
             route.pop('reviewCheckpoint', None)
             route.pop('businessObservation', None)
@@ -104,8 +195,8 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
             route['preparationCaution'] = _preparation_caution(prompt)
             # An explicitly named host-only Skill can be respected after its
             # native success. This is not slash invocation of manual-only files.
-            route['namedSkillChoices'] = re.findall(
-                r'(?<![A-Za-z0-9:_-])([A-Za-z][A-Za-z0-9:_-]{0,159})\s+(?:스킬|skill\b)', prompt[:2000], re.I)[:8]
+            from .skill_task_context import named_choices
+            route['namedSkillChoices'] = named_choices(prompt)
         state["skillWorkflow"] = route
         atomic_write_json(path, state)
         return {"status": "ready", "indexRead": route.get("indexRead", False),
@@ -126,6 +217,11 @@ def _allowed(item: dict, data: dict, route: dict) -> bool:
     matches = [x for x in data["skills"] if str(x.get("invocation", "")).lstrip("/") == invocation]
     if invocation and invocation in explicit and len(matches) == 1:
         return True
+    named = route.get('namedSkillChoices', [])
+    if not item.get('explicitOnly') and (invocation in named or item['name'] in named):
+        named_matches = [x for x in data['skills'] if x.get('invocation') in named or x['name'] in named]
+        if len(named_matches) == 1:
+            return True
     candidates = [x for x in data["skills"] if x["name"].casefold() == item["name"].casefold()]
     return _resolution(item["name"].casefold(), candidates, data["preferences"]).get("selectedId") == item["id"]
 
@@ -175,6 +271,63 @@ def _record_read(route: dict, key: str, response: Any, raw: bytes) -> bool:
     return merged == [[1, len(lines)]]
 
 
+def _apply_choice(route: dict, item: dict, data: dict, raw: bytes) -> dict:
+    candidate = item['id']
+    route.setdefault('turnChoices', {})[item['name'].casefold()] = candidate
+    route['requestChoice'] = {'id': candidate, 'name': item['name']}
+    route.pop('pendingChoice', None)
+    plan = _load_plan(item, data, raw)
+    route['executionPlan'] = plan
+    route['reviewProtocol'] = 1
+    loaded = (route.get('readSkills', {}).get(candidate) == item['sha256']
+              and (not plan.get('nativeRequired') or route.get('nativeLoads', {}).get(candidate) == item['sha256']))
+    route.update(selected=None, fallback=None)
+    if loaded and _frontmatter_field(raw, 'company-agent-role') != 'support':
+        route['selected'] = {key: item[key] for key in ('id', 'name', 'path', 'sha256')}
+    return {'ok': True, 'scope': 'current-request', 'readPath': item['path'],
+            'load': plan['load'], 'nativeRequired': bool(plan.get('nativeRequired')),
+            **({'limitation': plan['limitation']} if plan.get('limitation') else {}),
+            'bodyAlreadyRead': loaded, 'preferencesChanged': False}
+
+
+def _observe_choice(route: dict, data: dict, inputs: dict, response: Any) -> None:
+    """Only the tool's returned user answers count; authored input.answers do not."""
+    ids = route.get('requiredChoiceIds', [])
+    if (not ids or not route.get('executionPlan', {}).get('choiceIds') or inputs.get('answers')
+            or not isinstance(response, dict) or response.get('success') is False
+            or response.get('isError') or response.get('is_error')):
+        return
+    answers, questions = response.get('answers'), inputs.get('questions')
+    if not isinstance(answers, dict) or not isinstance(questions, list):
+        return
+    candidates = [x for x in data['skills'] if x['id'] in ids]
+    selected = set()
+    for question in questions[:4]:
+        if not isinstance(question, dict) or question.get('multiSelect'):
+            continue
+        answer = answers.get(question.get('question'))
+        options = question.get('options')
+        if not isinstance(answer, str) or not isinstance(options, list):
+            continue
+        mapping = {}
+        for option in options[:4]:
+            if isinstance(option, dict) and isinstance(option.get('label'), str):
+                candidate = _answer_candidate(option['label'] + ' ' + str(option.get('description', '')), candidates)
+                if candidate:
+                    mapping[option['label']] = candidate
+        if len(set(mapping.values())) >= 2:
+            candidate = mapping.get(answer) or _answer_candidate(answer, candidates)
+            if candidate:
+                selected.add(candidate)
+    if len(selected) != 1:
+        return
+    candidate = selected.pop()
+    item = next(x for x in candidates if x['id'] == candidate)
+    raw = _current(item, route)
+    route['choiceAnswer'] = {'id': candidate, 'turn': route['turn'], 'revision': route['revision']}
+    _apply_choice(route, item, data, raw)
+
+
 def observe(root: Path, project: Path, payload: dict) -> dict | None:
     if payload.get("hook_event_name") != "PostToolUse":
         return
@@ -182,7 +335,7 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
         # Worker reads do not expose a body to the coordinator. Do not replace
         # its selection or authorize context-local reuse from another context.
         return
-    if payload.get("tool_name") not in {"Read", "Skill"} or not payload.get("session_id"):
+    if payload.get("tool_name") not in {"Read", "Skill", "AskUserQuestion"} or not payload.get("session_id"):
         return
     with _locked_session(str(payload["session_id"]), root) as (state, path):
         route = state.get("skillWorkflow")
@@ -208,6 +361,10 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
             raise
         inputs = payload.get("tool_input") or {}
         response = payload.get("tool_response")
+        if payload['tool_name'] == 'AskUserQuestion':
+            _observe_choice(route, data, inputs, response)
+            atomic_write_json(path, state)
+            return  # Answer receipt is not a Skill load or learning evidence.
         if payload["tool_name"] == "Read":
             value = inputs.get("file_path")
             if not isinstance(value, str) or not Path(value).is_absolute():
@@ -268,13 +425,23 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
         route['lastBodyLoad'] = {'id': item['id'], 'name': item['name'], 'sha256': item['sha256'],
                                  'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
         route['loadObservation'] = {'status': 'loaded', 'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
+        if payload['tool_name'] == 'Skill':
+            native = route.setdefault('nativeLoads', {})
+            native[item['id']] = item['sha256']
+            while len(native) > 32:
+                del native[next(iter(native))]
+        native_ready = not _native_semantics(raw) or route.get('nativeLoads', {}).get(item['id']) == item['sha256']
+        if not native_ready:
+            route['loadObservation']['status'] = 'native-load-required'
         while len(cache) > 32:
             del cache[next(iter(cache))]
         # Reading orchestration/coding advice must not replace a business
         # workflow or satisfy selection before a real task Skill is chosen.
-        if _frontmatter_field(raw, 'company-agent-role') != 'support':
+        if native_ready and _frontmatter_field(raw, 'company-agent-role') != 'support':
             route.update(selected={key: item[key] for key in ("id", "name", "path", "sha256")}, fallback=None)
             _review_observed(route, 'skill-loaded')
+        from .state import _remember_personal_skill_load
+        _remember_personal_skill_load(state, item, root)
         atomic_write_json(path, state)
         return item  # Only a validated complete body load, never hook delivery.
 
@@ -305,16 +472,13 @@ def choose(root: Path, project: Path, session_id: str, turn: str, candidate: str
         item = next((x for x in data['skills'] if x['id'] == candidate), None)
         if item is None:
             raise ValueError('선택한 스킬을 현재 목록에서 찾지 못했습니다.')
-        _current(item, route)
-        route.setdefault('turnChoices', {})[item['name'].casefold()] = candidate
-        # Existing read receipts remain factual; choosing alone never creates one.
-        loaded = route.get('readSkills', {}).get(candidate) == item['sha256']
-        route.update(selected=None, fallback=None)
-        if loaded and _frontmatter_field(_current(item, route), 'company-agent-role') != 'support':
-            route['selected'] = {key: item[key] for key in ('id', 'name', 'path', 'sha256')}
+        raw = _current(item, route)
+        answer = route.get('choiceAnswer', {})
+        if route.get('requiredChoiceIds') and answer != {'id': candidate, 'turn': turn, 'revision': route['revision']}:
+            raise ValueError('실제 사용자 선택이 아직 확인되지 않았습니다. 후보의 정확한 이름·출처로 질문하고 답변을 기다리세요. 번호 순서는 추측하지 마세요.')
+        result = _apply_choice(route, item, data, raw)
         atomic_write_json(path, state)
-        return {'ok': True, 'scope': 'current-request', 'readPath': item['path'],
-                'bodyAlreadyRead': loaded, 'preferencesChanged': False}
+        return result
 
 
 def select(root: Path, project: Path, session_id: str, turn: str, *, name: str | None = None,
@@ -333,9 +497,11 @@ def select(root: Path, project: Path, session_id: str, turn: str, *, name: str |
             if len(candidates) != 1:
                 raise ValueError("사용할 스킬의 출처 또는 우선 설정을 확인해 주세요.")
             item = candidates[0]
-            _current(item, route)
+            raw = _current(item, route)
             if route.get("readSkills", {}).get(item["id"]) != item["sha256"]:
                 raise ValueError("선택한 SKILL.md를 먼저 끝까지 읽어 주세요.")
+            if _native_semantics(raw) and route.get('nativeLoads', {}).get(item['id']) != item['sha256']:
+                raise ValueError('이 스킬의 native 실행 조건은 정확한 Skill 호출 성공이 필요합니다. Read로 대체할 수 없습니다.')
             route.update(selected={key: item[key] for key in ("id", "name", "path", "sha256")}, fallback=None)
         else:
             raise ValueError("스킬 이름 또는 관련 스킬 없음 중 하나를 선택하세요.")
@@ -376,14 +542,31 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
     if route.get('fallback') == 'no-relevant-skill':
         return {}
     plan = route.get('executionPlan', {})
+    choices = plan.get('choiceIds', [])
+    if choices:
+        candidates = [x for x in data['skills'] if x['id'] in choices]
+        if len(candidates) != len(choices):
+            return {}  # Changed discovery is not a mandate for missing choices.
+        try:
+            for candidate in candidates:
+                _current(candidate, route)
+        except (OSError, ValueError):
+            return {}
+        return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
+                'permissionDecisionReason': '[스킬 선택] 같은 업무의 경쟁 후보가 있습니다. 한국어로 출처·차이를 물은 뒤 '
+                '현재 요청의 skill choose로 답변을 기록하고 반환된 load를 따르세요. 목록·본문 읽기나 재시도는 선택을 대신하지 않습니다. '
+                '후보가 모두 무관하다면 목록 비교 후 skill route --fallback no-relevant-skill로 제외하세요.'}}
     target = None
     support_target = False
+    native_required = False
     if plan.get('mode') in {'load', 'reuse'}:
         target = next((x for x in data['skills'] if x['id'] == plan.get('id')), None)
         if not target or not _allowed(target, data, route):
             return {}  # A vanished/ambiguous target must not become a forced load.
         try:
-            support_target = _frontmatter_field(_current(target, route), 'company-agent-role') == 'support'
+            raw = _current(target, route)
+            support_target = _frontmatter_field(raw, 'company-agent-role') == 'support'
+            native_required = _native_semantics(raw)
         except (OSError, ValueError):
             return {}
     elif route.get('indexRead'):
@@ -401,10 +584,11 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
                            or str(item.get('invocation', '')).lstrip('/') in route.get('explicit', []))
         if not target or item['id'] == target['id'] or explicit_choice:
             if not target or item['id'] != target['id']:
-                _current(item, route)
+                native_required = _native_semantics(_current(item, route))
             fresh_required = (target and item['id'] == target['id'] and plan.get('mode') == 'load'
                               and plan.get('reason') in {'host-loading-rules', 'native-skill-semantics', 'native-frontmatter-parser'})
-            if not fresh_required or route.get('turnLoads', {}).get(item['id']) == item['sha256']:
+            native_ready = not native_required or route.get('nativeLoads', {}).get(item['id']) == item['sha256']
+            if native_ready and (not fresh_required or route.get('turnLoads', {}).get(item['id']) == item['sha256']):
                 return {}
     if not any(not x.get('explicitOnly') or x.get('invocation') in route.get('explicit', []) for x in data['skills']):
         return {}
@@ -417,8 +601,15 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
             '목록이 보이지 않을 때만 skillSelection.catalog.path를 Read합니다. 이 안내는 실행 차단이나 권한 오류가 아닙니다.'}}
     reason = '[스킬 확인] 아직 실행하지 않았습니다. 권한 오류가 아닙니다. '
     from .skill_task_context import load_target
-    action = json.dumps(load_target(target, data['skills']), ensure_ascii=False, separators=(',', ':'))
-    reason += f'{action}로 이번 작업의 본문을 먼저 불러오세요. '
+    load = load_target(target, data['skills'])
+    if native_required and load.get('tool') != 'Skill':
+        reason += ('native 실행 조건이 있지만 정확한 Skill 호출을 구분할 수 없습니다. Read는 대체가 아닙니다. '
+                   '호출명 충돌 해소나 다른 스킬 선택이 필요하다고 알리고 반복 실행하지 마세요. ')
+    else:
+        action = json.dumps(load, ensure_ascii=False, separators=(',', ':'))
+        reason += f'{action}로 이번 작업의 본문을 먼저 불러오세요. '
+        if native_required:
+            reason += 'native 실행 조건은 정확한 Skill 호출 성공만 인정하며 Read로 대체할 수 없습니다. '
     reason += ('무관한 후보라면 목록 비교 후 현재 요청의 skill route --fallback no-relevant-skill로 제외하세요. '
                '로드 실패는 같은 실행을 재시도하지 말고 알려주세요.')
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
@@ -516,7 +707,8 @@ def preflight(root: Path, project: Path, payload: dict) -> dict:
     existing = load_session(session_id, root)
     route = existing.get('skillWorkflow', {})
     reminded = route.get('reminded') == [existing.get('turnId', ''), route.get('revision', '')]
-    definite = route.get('reviewProtocol') == 1 and route.get('executionPlan', {}).get('mode') in {'load', 'reuse'}
+    plan = route.get('executionPlan', {})
+    definite = route.get('reviewProtocol') == 1 and (plan.get('mode') in {'load', 'reuse'} or bool(plan.get('choiceIds')))
     if reminded and not definite:
         return {}  # No repeated discovery advice for an unmatched/general task.
     advice = _preparation_advice(root, project, payload)

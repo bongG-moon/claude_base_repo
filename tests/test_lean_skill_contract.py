@@ -20,7 +20,7 @@ class LeanSkillContractTests(unittest.TestCase):
         self.assertEqual(set(names), {
             "company-agent", "asset-factory", "file-organizer", "html-report",
             "karpathy-guidelines", "outlook-assistant", "personal-knowledge",
-            "personal-memory", "presentation", "project-harness", "self-learning", "office-reader",
+            "personal-memory", "presentation", "project-harness", "self-learning",
             "platform-mcp-builder",
         })
 

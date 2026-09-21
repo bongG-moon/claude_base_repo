@@ -57,13 +57,8 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.4.11.md',
         'docs/UPDATE_1.4.12.md',
         'docs/UPDATE_1.4.13.md',
-        'docs/UPDATE_1.4.14.md',
         'docs/UPDATE_1.4.15.md',
         'docs/UPDATE_1.4.16.md',
-        'docs/UPDATE_1.4.21.md',
-        'docs/UPDATE_1.4.22.md',
-        'docs/VALIDATION_OFFICE_PATH_ERRORS_2026-09-21.md',
-        'docs/VALIDATION_EXECUTION_FLOW_2026-09-21.md',
         'docs/VALIDATION_RESOURCE_SCOPES_2026-09-19.md',
         'docs/VALIDATION_HARNESS_MAP_2026-09-19.md',
         'docs/LOCAL_WORKSPACE.md',
@@ -72,8 +67,6 @@ function Assert-EmployeeBundle {
         'docs/VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md',
         'payload/core/plugin/scripts/company_agent/skill_decision.py',
         'payload/core/plugin/scripts/company_agent/workflow_evidence.py',
-        'docs/OFFICE_READ_PROGRESS_2026-09-17.md',
-        'payload/core/plugin/scripts/company_agent/office_progress.py',
         'docs/SKILL_LIST_REVIEW_2026-09-17.md',
         'docs/SKILL_FIRST_EXECUTION_2026-09-17.md',
         'payload/core/plugin/scripts/company_agent/skill_execution.py',
@@ -103,20 +96,6 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/skills/presentation/references/sources.md',
         'docs/UPDATE_1.4.0.md',
         'docs/VALIDATION_1.4.0.md',
-        'payload/core/plugin/scripts/company_agent/office_reader.py',
-        'payload/core/plugin/scripts/Read-CompanyOffice.py',
-        'payload/core/plugin/scripts/company_agent/office_pywin32.py',
-        'payload/core/plugin/scripts/company_agent/office_structure.py',
-        'payload/core/plugin/scripts/Read-CompanyExcel.py',
-        'payload/core/plugin/scripts/company_agent/excel_xlwings.py',
-        'payload/core/plugin/skills/office-reader/SKILL.md',
-        'payload/core/plugin/skills/office-reader/scripts/Invoke-CompanyAgent.ps1',
-        'payload/core/plugin/skills/office-reader/references/reading.md',
-        'payload/core/plugin/skills/office-reader/references/excel-fixed-recipe.md',
-        'payload/core/plugin/skills/office-reader/references/office-fixed-recipe.md',
-        'docs/UPDATE_1.4.1.md',
-        'docs/VALIDATION_1.4.1.md',
-        'docs/UPDATE_1.4.2.md',
         'docs/UPDATE_1.4.3.md',
         'docs/UPDATE_1.4.4.md',
         'docs/UPDATE_1.4.5.md',
@@ -138,7 +117,6 @@ function Assert-EmployeeBundle {
         'docs/HTML_THEME_REVIEW_2026-09-15.md',
         'payload/core/plugin/scripts/company_agent/html_reference.py',
         'docs/SKILL_ROUTING_VALIDATION_2026-09-15.md',
-        'docs/OFFICE_READ_TROUBLESHOOTING.md',
         'payload/core/plugin/skills/presentation/references/design-and-quality.md',
         'payload/core/plugin/skills/html-report/references/design-and-numbers.md',
         'docs/UPDATE_1.3.6.md',
@@ -174,11 +152,30 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/skills/platform-mcp-builder/assets/template/requirements-local.txt',
         'payload/core/plugin/skills/personal-knowledge/references/term-quality.md',
         'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md',
-        'docs/LEAN_SKILL_INTEGRATION.md'
+        'docs/LEAN_SKILL_INTEGRATION.md', 'docs/UPDATE_1.4.23.md'
     )) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Lean guidance/provenance is absent: $relative"
     }
     Assert-OfflineBundle ($manifest.runtime.description -match 'existing Python') 'External runtime requirement is not explained.'
+    foreach ($removed in @(
+        'payload/core/plugin/skills/office-reader',
+        'payload/core/plugin/scripts/Read-CompanyOffice.py',
+        'payload/core/plugin/scripts/Read-CompanyExcel.py',
+        'payload/core/plugin/scripts/company_agent/office_reader.py',
+        'payload/core/plugin/scripts/company_agent/office_consent.py',
+        'payload/core/plugin/scripts/company_agent/office_progress.py',
+        'payload/core/plugin/scripts/company_agent/office_pywin32.py',
+        'payload/core/plugin/scripts/company_agent/office_structure.py',
+        'payload/core/plugin/scripts/company_agent/excel_xlwings.py',
+        'docs/UPDATE_1.4.1.md', 'docs/VALIDATION_1.4.1.md', 'docs/UPDATE_1.4.2.md',
+        'docs/UPDATE_1.4.14.md', 'docs/UPDATE_1.4.20.md', 'docs/UPDATE_1.4.21.md',
+        'docs/UPDATE_1.4.22.md', 'docs/OFFICE_READ_TROUBLESHOOTING.md',
+        'docs/OFFICE_READ_PROGRESS_2026-09-17.md',
+        'docs/VALIDATION_EXECUTION_FLOW_2026-09-21.md',
+        'docs/VALIDATION_OFFICE_PATH_ERRORS_2026-09-21.md'
+    )) {
+        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath $removed))) "Removed reader material leaked into the bundle: $removed"
+    }
     Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath 'payload\core\plugin\runtime'))) 'Source runtime directory leaked into the bundle.'
     $nativeFiles = @(Get-ChildItem -LiteralPath $ExpandedPath -Recurse -Force | Where-Object {
         -not $_.PSIsContainer -and $_.Extension -iin @('.exe', '.dll', '.pyd', '.so', '.dylib')

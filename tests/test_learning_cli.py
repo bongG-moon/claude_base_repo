@@ -182,6 +182,9 @@ class LearningCliTests(unittest.TestCase):
             payload = {"session_id": self.session, "tool_name": tool, "tool_input": inputs,
                        "hook_event_name": "PostToolUseFailure" if failed else "PostToolUse",
                        "tool_response": "RAW-TOOL-OUTPUT-MUST-NOT-PERSIST"}
+            if tool == "Read" and not failed:
+                payload["tool_response"] = {"file": {
+                    "content": Path(inputs["file_path"]).read_text(encoding="utf-8"), "startLine": 1}}
             result = subprocess.run([sys.executable, "-B", str(SCRIPTS / "activity_hook.py")],
                                     input=json.dumps(payload).encode("ascii"), env=self.env,
                                     capture_output=True, timeout=30, cwd=ROOT)

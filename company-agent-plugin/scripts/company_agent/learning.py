@@ -242,6 +242,14 @@ def _load(root: Path) -> dict[str, Any]:
                         or change["beforeBlock"] is not None and (not isinstance(change["beforeBlock"], str)
                             or len(change["beforeBlock"]) > MAX_LEARNED_BLOCK_CHARS)):
                     raise ValueError("invalid learned section backup")
+                if "skillEntryKeys" in change:
+                    keys = change["skillEntryKeys"]
+                    if (not isinstance(keys, list) or len(keys) > 8
+                            or len(keys) != len(_checklist_lines(change["afterBlock"]))):
+                        raise ValueError("invalid learned checklist identities")
+                    for key in keys:
+                        if key is not None:
+                            _slug(key, "stored checklist key")
             elif any(not isinstance(change[field], str) or len(change[field].encode("utf-8")) > MAX_FILE_BYTES
                      for field in ("beforeContent", "afterContent")):
                 raise ValueError("invalid learned preference backup")
@@ -421,6 +429,56 @@ def _target(root: Path, change: dict[str, Any]) -> Path:
     return _safe(root / "memory" / "items" / (change["memoryId"] + ".md"), root)
 
 
+def _checklist_lines(block: str | None) -> list[str]:
+    return [line for line in (block or "").splitlines() if line.startswith("- ")]
+
+
+def _skill_entry_keys(data: dict[str, Any], name: str, block: str | None) -> list[str | None]:
+    """Recover legacy identities only from owned history, never from prose similarity."""
+    lines = _checklist_lines(block)
+    history = [c for c in data["changes"] if c["kind"] == "skill" and c["skillName"] == name]
+    for change in reversed(history):
+        if (_checklist_lines(change["afterBlock"]) == lines and "skillEntryKeys" in change):
+            return list(change["skillEntryKeys"])
+    identities: dict[str, set[str]] = {}
+    for change in history:
+        after = _checklist_lines(change["afterBlock"])
+        if "skillEntryKeys" in change:
+            pairs = zip(after, change["skillEntryKeys"])
+        else:
+            # Legacy versions appended one entry per change, with the same
+            # bounded eight-entry window. Removed history cannot be invented.
+            before = _checklist_lines(change["beforeBlock"])
+            pairs = ((line, change["key"]) for line in after if line not in before)
+        for line, key in pairs:
+            if key is not None:
+                identities.setdefault(line, set()).add(_slug(key, "stored checklist key"))
+    return [next(iter(identities[line])) if len(identities.get(line, ())) == 1 else None for line in lines]
+
+
+def _candidate_is_current(root: Path, data: dict[str, Any], observation: dict[str, Any], candidate_id: str) -> bool:
+    """A retained candidate receipt is not proof that its lesson is still active."""
+    try:
+        if observation["kind"] == "preference":
+            change = next((c for c in reversed(data["changes"]) if c["status"] == "active"
+                           and c["candidateId"] == candidate_id), None)
+            return change is not None and _hash(_read(_target(root, change), root)) == change["afterSha256"]
+        name = observation["skillName"]
+        owner = next((c for c in reversed(data["changes"]) if c["kind"] == "skill"
+                      and c["status"] == "active" and c["skillName"] == name), None)
+        if owner is None:
+            return False
+        block = _block(_read(_target(root, owner), root))
+        if block is None or block.replace("\r\n", "\n") != owner["afterBlock"].replace("\r\n", "\n"):
+            return False
+        matching = [line for line, key in zip(_checklist_lines(block), _skill_entry_keys(data, name, block))
+                    if key == observation["key"]]
+        entry = f"- {observation['title']}: {' '.join(observation['body'].split())}"
+        return matching == [entry]
+    except (OSError, UnicodeError, ValueError):
+        return False
+
+
 def _human_conflict(root: Path, observation: dict[str, Any]) -> bool:
     folder = _safe(root / "memory" / "items", root)
     if not folder.exists():
@@ -487,18 +545,23 @@ def _commit_change(root: Path, data: dict[str, Any], review: dict[str, Any], obs
                                                for c in data["changes"]):
             raise ValueError("learned section was manually edited or has no owned revision")
         entry = f"- {observation['title']}: {' '.join(observation['body'].split())}"
-        if prior_block and entry in prior_block:
-            raise ValueError("identical skill checklist already active")
-        lines = [] if prior_block is None else [line for line in prior_block.splitlines() if line.startswith("- ")]
-        lines.append(entry)
-        lines = lines[-8:]
+        keys = _skill_entry_keys(data, observation["skillName"], prior_block)
+        if any(key is None for key in keys):
+            raise ValueError("legacy checklist identity is unavailable; existing lessons preserved for review")
+        entries = list(zip(_checklist_lines(prior_block), keys))
+        position = next((i for i, (_, key) in enumerate(entries) if key == observation["key"]), len(entries))
+        entries = [(line, key) for line, key in entries if key != observation["key"]]
+        entries.insert(min(position, len(entries)), (entry, observation["key"]))
+        entries = entries[-8:]
+        lines = [line for line, _ in entries]
         new_block = BEGIN + "\n\n### Personal learned checklist\n\n" + "\n".join(lines) + "\n\n" + END
         if len(new_block) > MAX_LEARNED_BLOCK_CHARS:
             raise ValueError("learned checklist is full; consolidate existing lessons first")
         rendered = before.replace(prior_block, new_block, 1) if prior_block else before + "\n\n" + new_block + "\n"
         if len(rendered.encode("utf-8")) > MAX_FILE_BYTES:
             raise ValueError("skill exceeds bounded size after learning")
-        change.update({"beforeBlock": prior_block, "afterBlock": new_block})
+        change.update({"beforeBlock": prior_block, "afterBlock": new_block,
+                       "skillEntryKeys": [key for _, key in entries]})
     change.update({"beforeSha256": _hash(before), "afterSha256": _hash(rendered)})
     active = [c for c in data["changes"] if c["status"] in {"active", "prepared"}]
     if len(active) >= MAX_CHANGES and not any(_target(root, old) == path for old in active):
@@ -725,6 +788,11 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
                 candidate["reviews"] = (candidate["reviews"] + [review_id])[-8:]
             candidate["lastSeen"] = _now()
             candidate["signal"] = observation["signal"]
+            if candidate["status"] == "active" and not _candidate_is_current(root, data, observation, candidate_id):
+                candidate["status"] = "observing"
+                # Votes collected before a newer correction cannot outweigh
+                # that correction on the first later inferred choice.
+                candidate["choiceReviews"] = []
             # Several corrections/retries in one business task are one sample,
             # even if the model submits them in different user turns.
             choice_id = _hash(session_id + "\0work\0" + session["work"]["id"]) if isinstance(session.get("work"), dict) else review_id

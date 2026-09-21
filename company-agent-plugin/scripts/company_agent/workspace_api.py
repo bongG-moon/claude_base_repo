@@ -534,16 +534,11 @@ class WorkspaceService:
             export_knowledge(self.root, ids, path)
             return {'path': str(path), 'status': 'review-candidate', 'notice': '로컬 공유 후보입니다. 외부 전송/회사 반영은 하지 않았습니다. 공유 전 민감 내용을 직접 검토하세요.'}
         if operation == 'usage':
-            from .usage_diagnostics import analyze_usage, inspect_office_timing
+            from .usage_diagnostics import analyze_usage
             paths = request.get('paths', [])
             if not isinstance(paths, list) or any(not isinstance(p, str) or not Path(p).is_absolute() for p in paths):
                 raise ValueError('사용자가 선택한 로그의 절대 경로가 필요합니다.')
             result = analyze_usage([Path(p) for p in paths])
-            office = request.get('officeResult')
-            if office:
-                if not isinstance(office, str) or not Path(office).is_absolute():
-                    raise ValueError('Office 결과의 절대 경로를 입력해 주세요.')
-                result['officeTiming'] = inspect_office_timing(Path(office))
             return result
         raise ValueError('지원하지 않는 업무 관리 요청입니다.')
 

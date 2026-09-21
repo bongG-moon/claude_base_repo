@@ -34,7 +34,7 @@ MAX_ROUTE_CONTEXT_CHARS = 6_000
 MAX_HOOK_CONTEXT_CHARS = MAX_RUNTIME_CONTEXT_CHARS + MAX_ROUTE_CONTEXT_CHARS + MAX_SKILL_BRIEF_CHARS + 2
 COMPANY_WORKERS = frozenset(f"company-agent:{tier}-worker" for tier in ("small", "medium", "large"))
 OUTPUT_WORK_RULE = ('HTML/PPT는 스킬의 output-delivery 절차로 한 작업의 workFile을 유지하며 보정하고 최종 파일만 전달합니다. 작업자도 같은 workFile을 사용합니다. 명시적 복수 결과·다음 요청은 구분하고 기존 파일은 보존합니다. ')
-RUNTIME_FIELDS_RULE = ('company_agent_session_id·stateRoot·cliCommand는 후크 JSON 값이며 환경변수가 아닙니다. env·echo로 찾지 말고 전달된 값을 사용하세요. 값 누락은 문서 권한·DRM·읽기 불가의 증거가 아닙니다. ')
+RUNTIME_FIELDS_RULE = ('company_agent_session_id·stateRoot·cliCommand는 후크 JSON 값이며 환경변수가 아닙니다. env·echo로 찾지 말고 전달된 값을 사용하세요. 값 누락만으로 실행 권한을 판단하지 마세요. ')
 
 
 def _short(value: object, limit: int) -> str:
@@ -220,7 +220,7 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
                     'skillWorkflow는 준비 관찰이며 권한이 아닙니다. skill route는 선택 사항입니다. 관련 스킬이 없으면 일반 실행합니다. '
                     '폴더 조회·일반 목록 비교는 차단하지 않습니다. [스킬 확인]은 실제 후보 본문을 건너뛴 도구가 아직 미실행이라는 뜻입니다. 본문 확인 후 계속하고 파일·샌드박스 권한 오류로 오해하지 마세요. 실제 권한 거절은 해당 동작의 미완료로 유지하세요. '
                     '사용자 범위·출처 선택을 지키고 실제 읽은 범위와 누락만 보고합니다. 조회·요청 메타데이터는 변경 검증 대상이 아닙니다. 변경한 업무만 completionGuide를 읽고 기존 미검증 의무를 지우지 마세요. '
-                    '준비·검증 기록과 학습은 조용히 처리하며 학습은 업무 이정표에서만 합니다. DB SELECT 전용, Outlook 인증된 본인 계정만 허용합니다. Office 개수 차이·시간 초과만으로 DRM 원인을 단정하거나 다른 사본으로 바꾸지 마세요.'
+                    '준비·검증 기록과 학습은 조용히 처리하며 학습은 업무 이정표에서만 합니다. DB SELECT 전용, Outlook 인증된 본인 계정만 허용합니다. 실제 접근 거절을 다른 경로·사본으로 우회하지 마세요.'
                 )
                 value = encode()
                 continue
@@ -368,15 +368,6 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
     )
     if runtime.get('companyPolicy'):
         runtime['instructions'] += ' ' + POLICY_RULE
-    # Deliver a copy-ready prefix only for the existing company reader. This
-    # removes ID reconstruction without adding a command to unrelated requests.
-    if (execution.get('name') == 'office-reader' and execution.get('source') == 'company'
-            and execution.get('mode') in {'load', 'reuse'}):
-        from .execution_contract import office_read_command
-        command = office_read_command(runtime['cliCommand'], Path(runtime['stateRoot']),
-                                      runtime.get('company_agent_session_id', ''))
-        if command:
-            runtime['officeReadCommand'] = command
     if 'company_agent_instruction' in route:
         direct = route.get('company_agent_route', {}).get('execution') == 'coordinator'
         route['company_agent_instruction'] = (
@@ -436,7 +427,7 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
     prompt = inputs.get("prompt")
     if not isinstance(prompt, str):
         return {}
-    from .office_consent import native_session_id
+    from .state import native_session_id
     root = user_state_root()
     cards, selection = _skill_routing(root, plugin, cwd, prompt)
     selection_index = selection.pop('_selectionIndex', None)
@@ -465,17 +456,10 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
     names.extend(str(group.get('name', '')) for group in selection.get('_taskSkills', {}).get('groups', []))
     if metadata.get('selectedSkill'):
         names.append(metadata['selectedSkill']['name'])
-    if metadata.get('selectedSkill', {}).get('path') == str(plugin / 'skills/office-reader/SKILL.md'):
-        from .execution_contract import office_read_command
-        command = office_read_command(metadata['cliCommand'], root, metadata['sessionId'])
-        if command:
-            metadata['officeReadCommand'] = command
     standards = policy_context(names)
     if standards['status'] != 'not-configured':
         metadata['companyPolicy'] = standards
     encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
-    if len(encoded) > 4000 and metadata.pop('officeReadCommand', None):
-        encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
     while len(encoded) > 4000 and metadata["preferredSkills"]:
         metadata["preferredSkills"].pop()
         encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
@@ -563,7 +547,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
                 "Corporate DB access is SELECT-only and Outlook uses only the authenticated user's mailbox. "
                 "Claude login/Windows identity is NOT Outlook identity; name an account only after Outlook capabilities confirms it. "
                 "Conversation approval cannot waive DB-write/other-account restrictions. "
-                "Business workflows include office-reader (existing Office content), presentation (create/edit PPT), file-organizer, outlook-assistant, html-report. The catalogue across ALL sources decides relevance, not this example list. Load the selected Skill BEFORE delegation/execution; no silent generic-code substitute. "
+                "Business workflows include presentation (create/edit PPT), file-organizer, outlook-assistant, html-report. The catalogue across ALL sources decides relevance, not this example list. Load the selected Skill BEFORE delegation/execution; no silent generic-code substitute. "
                 "For document reading, report actual reader results and incomplete ranges; do not infer a DRM cause from a generic failure. "
                 "For local EML use business eml-read --file ABSOLUTE_PATH; this is not an Outlook connection. "
                 "Report exactly which bodies/attachments/sources were excluded; never infer unread content or store protected source text as learning."
@@ -574,7 +558,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
         runtime['instructions'] += ' ' + POLICY_RULE
     if session_id:
         from .skill_workflow import prepare
-        from .office_consent import native_session_id
+        from .state import native_session_id
         canonical_session = native_session_id(session_id)
         if canonical_session:
             runtime['company_agent_session_id'] = canonical_session

@@ -40,7 +40,10 @@ def task_type(work: dict, incoming: str | None = None) -> str | None:
 def merge_observations(first: list, second: list, processed: list = ()) -> list:
     merged = {}
     for item in first + second:
-        if observation_id(item) in processed:
+        # Repeated observations in one work are not independent evidence. A
+        # fresh explicit correction can, however, restore a previous value
+        # (A -> B -> A); the learning ledger compares it with the current file.
+        if observation_id(item) in processed and item["signal"] != "explicit_correction":
             continue
         identity = (item["kind"], item.get("skillName") if item["kind"] == "skill" else item["key"])
         previous = merged.get(identity)

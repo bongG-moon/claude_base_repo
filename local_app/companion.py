@@ -192,7 +192,7 @@ class Companion:
                     'checks': sorted(set(checks)), 'userReportedRepairs': repairs, 'time': time.time(),
                     'model': str(connection.get('model') or 'unavailable')[:160], 'demo': self.demo,
                     'source': 'user-confirmed', 'artifactPreviewObserved': bool(obs['previewed']),
-                    'reviewScope': item.get('reviewScope'), 'uiVersion': '0.7',
+                    'reviewScope': item.get('reviewScope'), 'uiVersion': '0.8',
                     'observedState': obs['terminal'], 'skillsObserved': sorted(obs['skills'])}
                 records = self.records(workspace)
                 records['outcomes'] = [x for x in records['outcomes'] if x['id'] != record['id']][-99:] + [record]
@@ -220,7 +220,7 @@ class Companion:
                 # Exact typed fields only; callers cannot inject a command or root.
                 allowed = {'versions': ('itemId',), 'learning': ('enabled', 'confirmed'),
                     'rollback': ('changeId', 'confirmed'), 'share': ('itemIds', 'confirmed'),
-                    'usage': ('paths', 'officeResult'), 'list':('category','cursor'),
+                    'usage': ('paths',), 'list':('category','cursor'),
                     'detail':('category','entryKey')}[action]
                 return self.client.call(workspace, {'operation': action,
                     **({'storageScope':request['storageScope']} if 'storageScope' in request else {}),

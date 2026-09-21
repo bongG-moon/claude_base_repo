@@ -140,16 +140,3 @@ def analyze_usage(paths: list[Path]) -> dict:
     if times:
         result['observedSpanMs'] = round((max(times) - min(times)) * 1000)
     return result
-
-
-def inspect_office_timing(path: Path) -> dict:
-    from .routing_diagnostics import read_object, mapping
-    from .office_progress import LABELS
-    data = read_object(path)
-    progress = mapping(mapping(data.get('diagnostics')).get('progress'))
-    timings = mapping(progress.get('stageMs'))
-    stages = {name: value for name, value in timings.items()
-              if name in {*LABELS, 'bootstrap'} and _count(value) is not None}
-    return {'status': 'observed' if stages else 'unavailable', 'stageMs': stages,
-            'nativeApprovalWaitMs': None,
-            'notice': '선택한 Office 결과에 기록된 실행 시간입니다. 현재 문서 읽기는 Claude 대화에서 승인받으며 사용자 응답 대기는 이 결과에 포함되지 않습니다. 이전 버전 결과의 확인 창 준비·응답 대기는 별도로 표시합니다.'}

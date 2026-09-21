@@ -11,7 +11,7 @@ from company_agent.memory import MAX_MEMORY_RESULTS, render_memory_context, sear
 from company_agent.model_router import MEDIUM, RouteDecision, hook_output, classify_prompt
 from company_agent.paths import user_state_root
 from company_agent.state import begin_turn, learning_context
-from company_agent.office_consent import native_session_id
+from company_agent.state import native_session_id
 
 
 def _safe_default(reason: str) -> RouteDecision:

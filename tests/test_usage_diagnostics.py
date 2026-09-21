@@ -6,7 +6,7 @@ import unittest
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'company-agent-plugin/scripts'))
-from company_agent.usage_diagnostics import analyze_usage, inspect_office_timing
+from company_agent.usage_diagnostics import analyze_usage
 from company_agent.diagnostic_report import render_report, write_report
 
 
@@ -64,16 +64,6 @@ class UsageDiagnosticsTests(unittest.TestCase):
             with path.open('a', encoding='utf-8') as stream:
                 stream.write('\n' + json.dumps(row))
             self.assertEqual('observed', analyze_usage([path])['status'])
-
-    def test_office_startup_wait_and_read_stay_separate(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            path = Path(tmp) / 'result.json'
-            path.write_text(json.dumps({'items':[{'text':'SECRET'}], 'diagnostics':{'progress':{
-                'stageMs':{'confirmation_start':3000,'confirmation_wait':10000,'read':50,'arbitrary':'SECRET'}}}}), encoding='utf-8')
-            result = inspect_office_timing(path)
-            self.assertEqual({'confirmation_start':3000,'confirmation_wait':10000,'read':50}, result['stageMs'])
-            self.assertIsNone(result['nativeApprovalWaitMs'])
-            self.assertNotIn('SECRET', json.dumps(result))
 
     def test_report_escapes_data_is_offline_and_never_overwrites(self):
         data = {'projectRoot':'<script>alert(1)</script>', 'warnings':['<img src=x>'], 'sessions':[]}

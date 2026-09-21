@@ -64,7 +64,7 @@ def main():
         'characters': ''.join(map(chr, sorted(font.getBestCmap()))),
     }
     (ASSETS / 'manifest.json').write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8', newline='\n')
     print(f'Noto Sans KR: {len(manifest["characters"])} characters, {len(data)} bytes, weights 400-700')
 
 

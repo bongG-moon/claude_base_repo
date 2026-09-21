@@ -6,8 +6,8 @@ description: 부서장 보고·실적 발표·제안 PPT를 만듭니다. 초안
 # Editable presentation
 
 Use this Skill to create/edit a deck. For reading or summarizing an existing
-corporate Office document without creating slides, use the selected office-reader
-workflow instead; do not ask presentation design/slide-count questions for a read.
+document without creating slides, check the currently available capabilities;
+do not ask presentation design/slide-count questions for a read.
 Template geometry inspection below is a separate authoring operation,
 not a replacement for corporate document reading.
 

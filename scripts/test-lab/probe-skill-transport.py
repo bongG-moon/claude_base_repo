@@ -48,10 +48,10 @@ def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
             if tools:
                 observations.append({'tools': tools, 'hasTaskCandidates': '"taskSkills"' in text,
                                      'briefBeforeRoute': 0 <= text.find('[업무 시작: 관련 스킬 우선]') < text.find('"company_agent_route"'),
-                                     'hasOfficeCandidate': 'company-agent:office-reader' in text,
-                                     'hasProvidedBody': '[선택된 스킬 본문 — 먼저 이 절차를 적용]' in text and 'Presentations.Open' in text,
+                                     'hasHtmlCandidate': 'company-agent:html-report' in text,
+                                     'hasProvidedBody': '[선택된 스킬 본문 — 먼저 이 절차를 적용]' in text and 'business html' in text,
                                      'hasReviewRedirect': redirected,
-                                     'hasLoadedBody': 'Base directory for this skill:' in text and 'business office-read' in text})
+                                     'hasLoadedBody': 'Base directory for this skill:' in text and 'business html' in text})
             skip_scenario = scenario.startswith('skip-list')
             discovery = scenario == 'list-before-skill'
             skip_first = bool(tools) and (skip_scenario or discovery) and not results
@@ -60,7 +60,7 @@ def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
             tool_input = ({'file_path': str(root / 'workspace/probe.txt'), 'content': 'unexpected write'} if tool_name == 'Write'
                           else {'command': 'ls -la "claude-code-starter-main/" 2>/dev/null || ls -la claude-code-starter-main/ 2>/dev/null; pwd'} if tool_name == 'Bash' and discovery
                           else {'command': "printf 'probe_unexpected_execution'"} if tool_name == 'Bash'
-                          else {'skill': 'company-agent:office-reader'})
+                          else {'skill': 'company-agent:html-report'})
             content = ({'type': 'tool_use', 'id': 'toolu_probe_' + tool_name, 'name': tool_name, 'input': {}}
                        if invoke else {'type': 'text', 'text': ''})
             delta = ({'type': 'input_json_delta', 'partial_json': json.dumps(tool_input)}
@@ -108,7 +108,7 @@ def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
                     '--no-session-persistence', '--tools', 'Bash,Write,Read,Skill' if scenario != 'native-load' else 'Read,Skill',
                     '--allowedTools', 'Skill,Bash,Write' if scenario != 'native-load' else 'Skill']
             started = time.monotonic()
-            result = subprocess.run(args, input='@PPT_검증전용_없는파일.pptx 내용을 파악해줘.',
+            result = subprocess.run(args, input='가상 수치로 HTML 보고서를 만들어줘.',
                                     cwd=root / 'workspace', env=env, capture_output=True, encoding='utf-8', timeout=55)
             events = []
             for line in result.stdout.splitlines():
@@ -123,12 +123,12 @@ def run(claude: Path, model: str, scenario: str = 'native-load') -> dict:
             state = json.loads((root / 'state/sessions' / f'{sid}.json').read_text(encoding='utf-8'))
             receipt = state.get('skillWorkflow', {}).get('lastBodyLoad', {})
             diagnostics = state.get('hookDiagnostics', {})
-            checks = {'nativeRegistered': 'company-agent:office-reader' in init.get('skills', []),
+            checks = {'nativeRegistered': 'company-agent:html-report' in init.get('skills', []),
                       'briefBeforeRouting': bool(observations) and observations[0]['briefBeforeRoute'],
                       'candidateDelivered': bool(observations) and observations[0]['hasTaskCandidates'],
                       'noUnobservedBodyInjection': bool(observations) and not observations[0]['hasProvidedBody'],
                       'nativeBodyReachedNextRequest': any(o['hasLoadedBody'] for o in observations),
-                      'observedSkillLoad': receipt.get('tool') == 'Skill' and receipt.get('name') == 'office-reader',
+                      'observedSkillLoad': receipt.get('tool') == 'Skill' and receipt.get('name') == 'html-report',
                       'hooksProduced': all(diagnostics.get(e, {}).get('status') == 'output-produced' for e in ('SessionStart', 'UserPromptSubmit')),
                       'noBusinessMutation': state.get('mutationCount') == 0,
                       'boundedToolSet': all(set(o['tools']) <= {'Bash', 'Write', 'Read', 'Skill'} for o in observations)}

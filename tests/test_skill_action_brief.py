@@ -21,12 +21,12 @@ class SkillActionBriefTests(unittest.TestCase):
 
     def test_native_load_action_precedes_route_and_contains_no_body(self):
         context = self.f.context()
-        candidate = next(c for g in context['taskSkills']['groups'] if g['name'] == 'office-reader' for c in g['candidates'])
-        self.assertEqual({'tool': 'Skill', 'skill': 'company-agent:office-reader'}, candidate['load'])
+        candidate = next(c for g in context['taskSkills']['groups'] if g['name'] == 'html-report' for c in g['candidates'])
+        self.assertEqual({'tool': 'Skill', 'skill': 'company-agent:html-report'}, candidate['load'])
         result = task_prompt_context('{"company_agent_route":{"tier":"MEDIUM"}}', json.dumps({'company_agent_runtime': context}, ensure_ascii=False, separators=(',', ':')))
-        self.assertLess(result.index('company-agent:office-reader'), result.index('company_agent_route'))
+        self.assertLess(result.index('company-agent:html-report'), result.index('company_agent_route'))
         self.assertLessEqual(len(result), MAX_HOOK_CONTEXT_CHARS)
-        self.assertNotIn('Presentations.Open', result)
+        self.assertNotIn('This overrides the helper-first preparation below.', result)
         self.assertEqual({}, load_session(self.f.sid, self.f.state)['skillWorkflow']['readSkills'])
 
     def test_native_precedence_cannot_override_selected_project_file(self):
@@ -67,19 +67,19 @@ class SkillActionBriefTests(unittest.TestCase):
     def test_successful_load_not_hint_or_failed_tool_records_body(self):
         self.f.context()
         payload = {'hook_event_name': 'PostToolUse', 'session_id': self.f.sid, 'tool_name': 'Skill',
-                   'tool_input': {'skill': 'company-agent:office-reader'}}
+                   'tool_input': {'skill': 'company-agent:html-report'}}
         observe(self.f.state, self.f.project, {**payload, 'tool_response': {'success': False}})
         self.assertNotIn('lastBodyLoad', load_session(self.f.sid, self.f.state)['skillWorkflow'])
         observe(self.f.state, self.f.project, {**payload, 'tool_response': {'success': True}})
         receipt = load_session(self.f.sid, self.f.state)['skillWorkflow']['lastBodyLoad']
         self.assertEqual('Skill', receipt['tool'])
-        self.assertEqual('office-reader', receipt['name'])
+        self.assertEqual('html-report', receipt['name'])
         self.assertEqual(64, len(receipt['sha256']))
         worker = worker_runtime_input(discovery.PLUGIN, self.f.project, {'session_id': self.f.sid,
-                     'tool_input': {'subagent_type': 'company-agent:medium-worker', 'prompt': 'PPT 읽기'}})
+                     'tool_input': {'subagent_type': 'company-agent:medium-worker', 'prompt': 'HTML 보고서 만들어줘'}})
         worker_text = worker['hookSpecificOutput']['updatedInput']['prompt']
         self.assertTrue(worker_text.startswith('먼저 부모가 선택한'))
-        self.assertIn('office-reader', worker_text)
+        self.assertIn('html-report', worker_text)
         self.assertNotIn('"skillIndex"', worker_text)
 
     def test_diagnostics_are_bounded_private_and_never_host_acknowledgement(self):

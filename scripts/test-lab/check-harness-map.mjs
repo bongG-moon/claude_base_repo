@@ -31,8 +31,8 @@ try{
   for(const label of ['회사 공통','개인 전체','이 프로젝트'])await frame.getByRole('heading',{name:label,exact:true}).waitFor();
   const company=frame.locator('#company');
   await company.locator('.category>summary').filter({hasText:'스킬'}).click();
-  await company.getByText('company-agent:office-reader',{exact:true}).waitFor();
-  await company.getByText('company-agent:office-reader',{exact:true}).locator('..').locator('..').getByText('위치 보기',{exact:true}).click();
+  await company.getByText('company-agent:html-report',{exact:true}).waitFor();
+  await company.getByText('company-agent:html-report',{exact:true}).locator('..').locator('..').getByText('위치 보기',{exact:true}).click();
   if(!(await company.innerText()).includes('SKILL.md'))throw new Error('source path missing');
   const snapshot=await page.locator('.harness-map-frame').getAttribute('srcdoc');
   if(snapshot.includes('fixture-key')||snapshot.includes('NEVER_EXPORT'))throw new Error('secret included in map');

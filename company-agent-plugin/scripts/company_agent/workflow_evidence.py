@@ -14,7 +14,7 @@ from .skill_decision import NEXT_ACTIONS
 
 # Observe known business invocations, not metadata/help/choice preparation.
 # This is NOT a skill-name -> command dispatcher and never invokes anything.
-OPERATIONS = frozenset({'office-read', 'html', 'ppt', 'ppt-preview', 'ppt-design-preview', 'ppt-template', 'ppt-fit-images',
+OPERATIONS = frozenset({'html', 'ppt', 'ppt-preview', 'ppt-design-preview', 'ppt-template', 'ppt-fit-images',
                        'ppt-inspect', 'ppt-analyze', 'html-template', 'eml-read', 'artifact-publish',
                        'mail-read', 'mail-search', 'files-execute', 'files-undo'})
 MAX_RESULT_CHARS = 65_536

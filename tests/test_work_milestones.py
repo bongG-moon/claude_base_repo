@@ -108,6 +108,28 @@ class WorkMilestoneTests(unittest.TestCase):
         submit_review(self.root, self.session, third, self.spec("repeated_choice"))
         self.assertTrue(search_memory(self.root, "Report"))
 
+    def test_latest_explicit_correction_can_restore_previous_value_in_same_work(self):
+        work_ids = set()
+        for body in ("Start reports with conclusions.", "Start reports with background.",
+                     "Start reports with conclusions."):
+            turn = self.begin()
+            spec = self.spec()
+            spec["observations"][0]["body"] = body
+            work_ids.add(self.mark(turn, "complete", spec=spec)["workId"])
+            result = submit_review(self.root, self.session, turn, self.spec(observations=False))
+            self.assertEqual("active", result["changes"][0]["status"])
+            self.assertEqual(body, search_memory(self.root, "Report")[0]["body"])
+        self.assertEqual(1, len(work_ids))
+
+    def test_repeated_identical_explicit_correction_does_not_create_new_change(self):
+        for _ in range(2):
+            turn = self.begin()
+            self.mark(turn, "complete", spec=self.spec())
+            result = submit_review(self.root, self.session, turn, self.spec(observations=False))
+            self.assertEqual("active", result["changes"][0]["status"])
+        self.assertEqual(1, learning_status(self.root)["activeChanges"])
+        self.assertEqual(1, len(learning_status(self.root)["recentChanges"]))
+
     def test_stale_checkpoint_and_new_work_cannot_discard_pending(self):
         first = self.begin()
         self.mark(first, "active", spec=self.spec())

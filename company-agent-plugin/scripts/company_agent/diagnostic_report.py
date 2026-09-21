@@ -54,12 +54,6 @@ def render_report(report: dict) -> str:
     body += '</table><p>누락·부분 로그는 전체 사용량이 아닙니다. 필요한 재확인도 재읽기에 포함될 수 있습니다.</p>'
     if usage.get('toolCalls'):
         body += '<h3>관찰된 도구 요청</h3><table>' + rows(usage['toolCalls'].items()) + '</table><p>요청 횟수이며 실제 실행·성공 횟수는 아닙니다.</p>'
-    timing = report.get('officeTiming', {})
-    if timing:
-        from .office_progress import LABELS
-        body += '<h3>선택한 Office 결과의 처리 시간</h3><table>'
-        body += rows((LABELS.get(key, '실행기 준비') + ' (ms)', val) for key, val in timing.get('stageMs', {}).items())
-        body += '</table><p>' + value(timing.get('notice')) + '</p>'
     body += '</section><section><h2>다음 확인</h2><ul>'
     for warning in report.get('warnings', []):
         body += '<li>' + value(warning) + '</li>'

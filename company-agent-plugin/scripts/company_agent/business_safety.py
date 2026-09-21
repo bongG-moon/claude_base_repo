@@ -148,31 +148,13 @@ def protection_notice(payload: Any) -> str:
     return ""
 
 
-def confirm_action(title: str, details: str, *, progress=None) -> bool:
+def confirm_action(title: str, details: str) -> bool:
     """A real local user click, never an LLM-supplied approved:true flag."""
     if os.name != "nt" or len(details) > 512 * 1024:
         return False
     helper = Path(__file__).resolve().parents[1] / "Confirm-BusinessAction.ps1"
     # Never approve operations omitted from a silently truncated preview.
     request = json.dumps({"title": title[:160], "details": details}, ensure_ascii=True)
-    if progress is not None:
-        from .office_progress import HelperTimeout, run_helper
-        try:
-            result = run_helper([str(windows_powershell()), '-NoLogo', '-NoProfile', '-STA', '-File', str(helper)],
-                                request.encode('ascii'), timeout=300, startup_timeout=30, progress=progress)
-            # An approved JSON without an actual Shown receipt is not approval.
-            if not result.ready or result.returncode != 0:
-                progress.failure_code = 'confirmation_unavailable'
-                return False
-            answer = json.loads(result.stdout.decode('utf-8-sig'))
-            if not isinstance(answer, dict):
-                raise ValueError('invalid confirmation response')
-            return answer.get('approved') is True
-        except HelperTimeout as exc:
-            progress.failure_code = 'confirmation_wait_timeout' if exc.ready else 'confirmation_start_timeout'
-        except (OSError, ValueError):
-            progress.failure_code = 'confirmation_unavailable'
-        return False
     try:
         result = subprocess.run([str(windows_powershell()), "-NoLogo", "-NoProfile", "-STA", "-File", str(helper)],
                                 input=request, encoding="utf-8", capture_output=True, timeout=300,

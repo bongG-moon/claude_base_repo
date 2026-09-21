@@ -20,16 +20,15 @@ import activity_hook
 
 class BusinessFailureClassificationTests(unittest.TestCase):
     def result(self, code='source_not_found'):
-        return {'ok': False, 'status': 'failed', 'code': code, 'sourceOpened': False,
-                'documentAccess': 'not_checked',
+        return {'ok': False, 'status': 'failed', 'code': code, 'operationPerformed': False,
                 'message': '파일 경로를 확인하세요. 인코딩·DRM 문제로 단정하지 마세요.'}
 
     def error(self, result, ascii=True):
-        return 'Exit code 1\n[문서 읽기] 읽기 요청 확인 중\n' + json.dumps(result, ensure_ascii=ascii, indent=2)
+        return 'Exit code 1\n[업무 처리] 입력 확인 중\n' + json.dumps(result, ensure_ascii=ascii, indent=2)
 
     def test_typed_failure_error_never_classifies_recovery_advice_as_drm(self):
-        for code in ('source_not_found', 'invalid_office_request', 'conversation_session_required',
-                     'source_metadata_unavailable', 'office_open_failed', 'unknown_failure'):
+        for code in ('source_not_found', 'invalid_request', 'configuration_required',
+                     'source_metadata_unavailable', 'artifact_failed', 'unknown_failure'):
             for ascii in (True, False):
                 with self.subTest(code=code, ascii=ascii):
                     self.assertEqual('', protection_notice({'error': self.error(self.result(code), ascii)}))
@@ -47,7 +46,7 @@ class BusinessFailureClassificationTests(unittest.TestCase):
                      'DRM 보호가 차단되지 않았습니다.',
                      'DRM 파일을 읽을 수 있는지 아직 확인하지 않았습니다.',
                      self.error(self.result())[:-40],
-                     "FileNotFoundError: 'C:/DRM/source.xlsx' does not exist"):
+                     "FileNotFoundError: 'C:/DRM/source.txt' does not exist"):
             with self.subTest(text=text):
                 self.assertEqual('', protection_notice({'error': text}))
 
@@ -69,8 +68,8 @@ class BusinessFailureClassificationTests(unittest.TestCase):
 
     def test_document_content_is_not_an_operational_result(self):
         for key in ('text', 'content', 'body', 'subject', 'contentHtml', 'structure'):
-            result = {'ok': True, 'kind': 'excel', 'items': [
-                {'location': 'A1', key: json.dumps({'code': 'permission_denied'})}]}
+            result = {'ok': True, 'kind': 'mail', 'items': [
+                {'messageId': 'fixture', key: json.dumps({'code': 'permission_denied'})}]}
             self.assertEqual('', protection_notice({'tool_response': {'stdout': json.dumps(result)}}))
             self.assertEqual('', protection_notice({'error': result}))
         # A separate actual attachment denial still counts, even when body
@@ -104,10 +103,10 @@ class BusinessFailureClassificationTests(unittest.TestCase):
             'items': [{'body': 'PRIVATE'}, {'code': 'permission_denied'}]})}))
 
     def test_missing_drm_named_file_is_an_ordinary_exception(self):
-        result = failure_result(FileNotFoundError('C:/DRM/source.xlsx is missing'))
+        result = failure_result(FileNotFoundError('C:/DRM/source.txt is missing'))
         self.assertEqual('operation_failed', result['code'])
-        self.assertNotIn('source.xlsx', json.dumps(result))
-        self.assertEqual('permission_denied', failure_result(PermissionError('C:/DRM/source.xlsx'))['code'])
+        self.assertNotIn('source.txt', json.dumps(result))
+        self.assertEqual('permission_denied', failure_result(PermissionError('C:/DRM/source.txt'))['code'])
         self.assertEqual('protection_blocked', failure_result(RuntimeError('DRM protection blocked'))['code'])
 
     def test_activity_hook_does_not_emit_protected_notice_or_poison_session(self):

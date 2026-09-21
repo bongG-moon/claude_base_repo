@@ -420,40 +420,11 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         self.assertEqual("connection_not_tested", doctor["outlook"]["status"])
         self.assertFalse((self.root / "wrong-state").exists())
 
-    def test_office_progress_before_confirmation_keeps_stdout_json(self):
-        # The old popup must never launch. This isolated sentinel fails loudly
-        # if invoked; no user click or real Office application is involved.
-        atomic_write_text(self.plugin / 'scripts/Confirm-BusinessAction.ps1',
-                          "throw 'Legacy Office popup must not run'\n")
-        source = self.project / '한글 fixture.pptx'
-        source.write_bytes(b'not a real document; must not open')
-        result = self.run_wrapper(['-Mode', 'Cli', 'business', 'office-read', '--file', str(source), '--session', 'conversation-read'])
-        self.assertTrue(result.stdout, result.stderr)
-        payload = json.loads(result.stdout)
+    def test_removed_reader_is_not_registered_in_native_cli(self):
+        result = self.run_wrapper(['-Mode', 'Cli', 'business', '--help'])
         self.assertEqual(0, result.returncode, result.stderr)
-        self.assertEqual('input_required', payload['status'], result.stderr)
-        self.assertIn('Python 준비 완료', result.stderr)
-        self.assertIn('Claude 대화의 읽기 승인 확인', result.stderr)
-        self.assertNotIn('확인 창', result.stderr)
-        self.assertNotIn(str(source), result.stderr)
-        self.assertEqual('conversation_consent', payload['diagnostics']['progress']['lastStage'])
-        self.assertIn('bootstrap', payload['diagnostics']['progress']['stageMs'])
-        self.assertEqual(b'not a real document; must not open', source.read_bytes())
-
-    def test_office_python_probe_has_bounded_owned_process_wait(self):
-        wrapper = (self.plugin / 'scripts/Invoke-CompanyAgent.ps1').read_text(encoding='utf-8-sig')
-        function = wrapper[wrapper.index('function Invoke-OfficePythonProbe'):wrapper.index('$recordedPython = $null')]
-        self.assertIn('WaitForExit(10000)', function)
-        # Test the same bounded probe with a short deadline, against an owned
-        # sleeping fixture shell; never kill a user Python/Office process.
-        function = function.replace('WaitForExit(10000)', 'WaitForExit(100)')
-        script = self.root / 'probe-fixture.ps1'
-        atomic_write_text(script, function + "\nInvoke-OfficePythonProbe -Executable $PSHOME\\powershell.exe "
-                          "-Prefix @('-NoProfile', '-Command', 'Start-Sleep -Seconds 10 #') | ConvertTo-Json -Compress")
-        result = subprocess.run([shutil.which('powershell.exe'), '-NoProfile', '-File', str(script)],
-                                capture_output=True, encoding='utf-8', timeout=8)
-        self.assertEqual(0, result.returncode, result.stderr)
-        self.assertTrue(json.loads(result.stdout)['timedOut'])
+        self.assertNotIn('office-read', result.stdout)
+        self.assertIn('ppt', result.stdout)
 
     def test_native_hooks_refresh_catalog_without_business_verification_obligation(self) -> None:
         session = "catalog-only-session"

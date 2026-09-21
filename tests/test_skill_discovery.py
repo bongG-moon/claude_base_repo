@@ -32,7 +32,7 @@ class SkillDiscoveryTests(unittest.TestCase):
         self.addCleanup(env.stop)
         self.sid = 'discovery-test'
 
-    def context(self, prompt='@테스트자료.pptx 이 자료 내용 확인해서 정리해줄 수 있을까?', source=''):
+    def context(self, prompt='HTML 보고서 만들어줘', source=''):
         if not source:
             begin_turn(self.sid, 'MEDIUM', False, [], self.state)
         text = runtime_context(PLUGIN, self.project, prompt, session_id=self.sid, source=source)
@@ -59,18 +59,18 @@ class SkillDiscoveryTests(unittest.TestCase):
         self.assertFalse(ctx['skillWorkflow']['indexRead'])
         self.assertEqual('choose-skill', ctx['skillWorkflow']['nextAction'])
         rows = {row[0]: row for row in index['skills']}
-        self.assertIn('office-reader', rows)
+        self.assertIn('html-report', rows)
         self.assertIn('presentation', rows)
-        self.assertIn('기존 PPT', rows['office-reader'][2])
+        self.assertIn('HTML', rows['html-report'][2])
         self.assertIn('skillIndex', ctx['instructions'])  # retained in condensed guidance too
         self.assertNotIn('Presentations.Open', json.dumps(index))  # body was not injected
         before = load_session(self.sid, self.state)['skillWorkflow']
         self.assertEqual({}, before['readSkills'])
         self.assertIsNone(before['selected'])
-        row = rows['office-reader']
+        row = rows['html-report']
         self.read(Path(index['roots'][row[4]]) / row[5])
         state = load_session(self.sid, self.state)
-        self.assertEqual('office-reader', state['skillWorkflow']['selected']['name'])
+        self.assertEqual('html-report', state['skillWorkflow']['selected']['name'])
         self.assertFalse(state['skillWorkflow']['indexRead'])
         self.assertEqual(0, state['mutationCount'])
         self.assertEqual({}, preflight(self.state, self.project, {'session_id': self.sid,
@@ -88,13 +88,13 @@ class SkillDiscoveryTests(unittest.TestCase):
 
     def test_install_delete_and_edit_refresh_without_forgetting_unchanged_body(self):
         self.context()
-        self.read(PLUGIN / 'skills/office-reader/SKILL.md')
+        self.read(PLUGIN / 'skills/html-report/SKILL.md')
         old_reads = load_session(self.sid, self.state)['skillWorkflow']['readSkills']
         file = self.skill('custom-reader')
         added = self.context()
         self.assertEqual('inline', added['skillIndex']['mode'])
         self.assertEqual(old_reads, load_session(self.sid, self.state)['skillWorkflow']['readSkills'])
-        self.assertTrue(select(self.state, self.project, self.sid, added['skillWorkflow']['turn'], name='office-reader')['ok'])
+        self.assertTrue(select(self.state, self.project, self.sid, added['skillWorkflow']['turn'], name='html-report')['ok'])
         self.read(file)
         atomic_write_text(file, file.read_text(encoding='utf-8') + 'Updated\n')
         changed = self.context()
@@ -108,7 +108,7 @@ class SkillDiscoveryTests(unittest.TestCase):
     def test_compact_resume_reset_body_receipts_not_work_obligations(self):
         for source in ('compact', 'resume'):
             self.context()
-            self.read(PLUGIN / 'skills/office-reader/SKILL.md')
+            self.read(PLUGIN / 'skills/html-report/SKILL.md')
             record_activity({'session_id': self.sid, 'tool_name': 'Write',
                              'tool_input': {'file_path': str(self.project / 'result.txt')}}, self.state)
             before = load_session(self.sid, self.state)
@@ -136,6 +136,9 @@ class SkillDiscoveryTests(unittest.TestCase):
             self.read(file)
         self.context('/manual-only')
         self.read(file)
+        self.assertIsNone(load_session(self.sid, self.state)['skillWorkflow']['selected'])
+        observe(self.state, self.project, {'session_id': self.sid, 'hook_event_name': 'PostToolUse',
+                'tool_name': 'Skill', 'tool_input': {'skill': 'manual-only'}, 'tool_response': {'success': True}})
         self.assertEqual('manual-only', load_session(self.sid, self.state)['skillWorkflow']['selected']['name'])
         self.assertNotIn('SECRET-BODY', json.dumps(ctx))
 
@@ -186,7 +189,7 @@ class SkillDiscoveryTests(unittest.TestCase):
             self.skill(f'long-{i}', '설명과 조건을 모두 보존합니다. ' * 25)
         context = self.context()
         self.assertEqual('pages', context['skillIndex']['mode'])
-        self.read(PLUGIN / 'skills/office-reader/SKILL.md')
+        self.read(PLUGIN / 'skills/html-report/SKILL.md')
         self.assertEqual({}, preflight(self.state, self.project, {'session_id': self.sid,
                          'tool_name': 'Bash', 'tool_input': {'command': 'python sample.py'}}))
         self.assertFalse(load_session(self.sid, self.state)['skillWorkflow']['indexRead'])
@@ -216,8 +219,8 @@ class SkillDiscoveryTests(unittest.TestCase):
         result = worker_runtime_input(PLUGIN, self.project, payload)
         worker_prompt = result['hookSpecificOutput']['updatedInput']['prompt']
         self.assertIn('"skillIndex"', worker_prompt)
-        self.assertIn('office-reader', worker_prompt)
-        self.read(PLUGIN / 'skills/office-reader/SKILL.md')
+        self.assertIn('html-report', worker_prompt)
+        self.read(PLUGIN / 'skills/html-report/SKILL.md')
         selected = worker_runtime_input(PLUGIN, self.project, payload)['hookSpecificOutput']['updatedInput']['prompt']
         self.assertIn('"selectedSkill"', selected)
         self.assertNotIn('"skillIndex"', selected)

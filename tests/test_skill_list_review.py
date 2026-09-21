@@ -29,23 +29,23 @@ class ListReviewTests(unittest.TestCase):
         first = self.pre()['hookSpecificOutput']
         self.assertEqual('deny', first['permissionDecision'])
         self.assertIn('아직 실행하지 않았습니다', first['permissionDecisionReason'])
-        self.assertIn('company-agent:office-reader', first['permissionDecisionReason'])
+        self.assertIn('company-agent:html-report', first['permissionDecisionReason'])
         self.assertLess(len(first['permissionDecisionReason']), 250)
         self.assertNotIn(str(self.state()['skillWorkflow']['catalog']), first['permissionDecisionReason'])
-        self.assertNotIn('permissionDecision', self.pre('Skill', skill='company-agent:office-reader'))
-        self.native_skill('company-agent:office-reader')
+        self.assertNotIn('permissionDecision', self.pre('Skill', skill='company-agent:html-report'))
+        self.native_skill('company-agent:html-report')
         self.assertEqual({}, self.pre())
         self.assertEqual('skill-loaded', self.state()['skillWorkflow']['reviewCheckpoint']['status'])
         self.assertEqual({}, stop_decision({'session_id': self.f.sid}, self.f.state))
 
     def test_happy_path_loads_only_skill_not_entire_catalogue(self):
         self.output()
-        self.native_skill('company-agent:office-reader')
+        self.native_skill('company-agent:html-report')
         self.assertEqual({}, self.pre())
         route = self.state()['skillWorkflow']
         self.assertFalse(route['indexRead'])
         self.assertNotIn('reviewCheckpoint', route)
-        self.assertEqual('office-reader', route['selected']['name'])
+        self.assertEqual('html-report', route['selected']['name'])
 
     def test_unrelated_keyword_miss_can_find_other_skill_from_full_list(self):
         file = self.f.skill('thermal-helper', 'Convert temperatures between Celsius and Fahrenheit')
@@ -53,7 +53,7 @@ class ListReviewTests(unittest.TestCase):
         self.assertEqual('review', ctx['skillExecution']['mode'])
         first = self.pre('Write', file_path=str(self.f.project / 'temperature.txt'))
         self.assertNotIn('permissionDecision', first['hookSpecificOutput'])
-        self.assertNotIn('office-reader', first['hookSpecificOutput']['additionalContext'])
+        self.assertNotIn('html-report', first['hookSpecificOutput']['additionalContext'])
         self.assertEqual('advised', self.state()['skillWorkflow']['reviewCheckpoint']['status'])
         self.f.read(Path(ctx['skillSelection']['catalog']['path']))
         self.f.read(file)
@@ -103,7 +103,7 @@ class ListReviewTests(unittest.TestCase):
             ctx, text = self.output()
         self.assertEqual('general', ctx['skillExecution']['mode'])
         self.assertEqual(0, ctx['skillSelection']['catalog']['count'])
-        self.assertNotIn('company-agent:office-reader', text)
+        self.assertNotIn('company-agent:html-report', text)
         self.assertEqual({}, self.pre())
 
     def test_manual_only_catalogue_not_automatically_executed(self):
@@ -122,7 +122,7 @@ class ListReviewTests(unittest.TestCase):
         self.assertEqual('tool-failed', self.state()['skillWorkflow']['loadObservation']['status'])
         first = self.pre()['hookSpecificOutput']
         self.assertEqual('deny', first['permissionDecision'])
-        self.assertIn('company-agent:office-reader', first['permissionDecisionReason'])
+        self.assertIn('company-agent:html-report', first['permissionDecisionReason'])
         self.assertNotIn('"skill":"company"', first['permissionDecisionReason'])
 
     def test_host_native_skill_outside_local_catalogue_is_respected(self):
@@ -133,7 +133,7 @@ class ListReviewTests(unittest.TestCase):
         self.assertEqual('native-skill-outside-catalog', route['loadObservation']['status'])
         self.assertIsNone(route['selected'])
         self.assertEqual({}, route['readSkills'])
-        ctx, _ = self.output('이제 PPT 내용 읽기')
+        ctx, _ = self.output('이제 HTML 보고서 만들기')
         self.assertEqual('load', ctx['skillExecution']['mode'])
 
     def test_partial_or_failed_read_is_not_full_list_review(self):
@@ -157,7 +157,7 @@ class ListReviewTests(unittest.TestCase):
 
     def test_reported_initial_listing_never_blocks_or_consumes_skill_correction(self):
         command = 'ls -la "claude-code-starter-main/" 2>/dev/null || ls -la claude-code-starter-main/ 2>/dev/null; pwd'
-        for prompt in ('이 폴더를 확인해줘', 'PPT 읽어줘'):
+        for prompt in ('이 폴더를 확인해줘', 'HTML 보고서 만들어줘'):
             self.output(prompt)
             self.assertEqual({}, self.pre(command=command))
             self.assertNotIn('reviewCheckpoint', self.state()['skillWorkflow'])
@@ -188,7 +188,7 @@ class ListReviewTests(unittest.TestCase):
             self.assertFalse(_discovery_command(command), command)
 
     def test_definite_ppt_html_and_custom_workflows_need_their_real_body(self):
-        for prompt in ('PPT 읽기', 'HTML 보고서 만들기', '유일한새작업'):
+        for prompt in ('PPT 만들기', 'HTML 보고서 만들기', '유일한새작업'):
             if prompt == '유일한새작업':
                 self.f.skill('new-helper', '유일한새작업')
             self.output(prompt)
@@ -196,9 +196,10 @@ class ListReviewTests(unittest.TestCase):
             self.assertEqual('deny', self.pre('Bash')['hookSpecificOutput']['permissionDecision'])
 
     def test_exact_html_followup_needs_html_body_despite_earlier_catalogue_and_office_load(self):
+        self.f.skill('custom-reader', 'XLSX Excel 내용 읽기 및 요약')
         ctx, _ = self.output('@AI_CAMP_지원현황.xlsx 여기 파일 내용읽고 어떤 정보들 있는지 확인해줘')
         self.f.read(Path(ctx['skillSelection']['catalog']['path']))
-        self.native_skill('company-agent:office-reader')
+        self.native_skill('custom-reader')
         self.assertEqual({}, self.pre())
         ctx, _ = self.output('위 내용을 바탕으로 신청자 현황과 강사 현황을 볼 수 있는 html을 만들고싶어')
         self.assertEqual('load', ctx['skillExecution']['mode'])
@@ -209,7 +210,7 @@ class ListReviewTests(unittest.TestCase):
             self.assertEqual('deny', result['permissionDecision'])
             self.assertIn('company-agent:html-report', result['permissionDecisionReason'])
         # Reloading the previous workflow (or just the index) is not HTML preparation.
-        self.native_skill('company-agent:office-reader')
+        self.native_skill('custom-reader')
         self.f.read(Path(ctx['skillSelection']['catalog']['path']))
         self.assertEqual('deny', self.pre('Write')['hookSpecificOutput']['permissionDecision'])
         self.native_skill('company-agent:html-report')
@@ -232,7 +233,7 @@ class ListReviewTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 self.output(prompt)
                 self.native_skill('native-report-builder', success=False)
-                self.assertEqual('deny', self.pre('Write')['hookSpecificOutput']['permissionDecision'])
+                self.assertNotIn('permissionDecision', self.pre('Write').get('hookSpecificOutput', {}))
                 self.native_skill('native-report-builder')
                 self.assertEqual({}, self.pre('Write'))
                 self.output('새 HTML 보고서를 만들어줘')
@@ -242,8 +243,7 @@ class ListReviewTests(unittest.TestCase):
         for prompt in ('HTML 보고서는 필요 없고 이 폴더에 온도 변환 코드를 작성해줘',
                        'PPT 읽는 코드에서 AttributeError가 나는데 버그를 고쳐줘',
                        'Do not create an HTML report; write a temperature converter instead',
-                       'Fix the AttributeError in the PPT reading code',
-                       '엑셀 오류 확인 후 html 만들어줘'):
+                       'Fix the AttributeError in the PPT reading code'):
             with self.subTest(prompt=prompt):
                 self.output(prompt)
                 for _ in range(2):
@@ -253,8 +253,9 @@ class ListReviewTests(unittest.TestCase):
                 self.assertNotIn(prompt, serialized)
 
     def test_preservation_and_no_external_api_constraints_keep_real_workflow(self):
-        for prompt, name in (('@자료.xlsx 원본은 수정하지 말고 내용 읽어줘', 'office-reader'),
-                             ('Read the XLSX file without changing the original', 'office-reader'),
+        self.f.skill('custom-reader', 'Read XLSX Excel files 내용 읽기')
+        for prompt, name in (('@자료.xlsx 원본은 수정하지 말고 내용 읽어줘', 'custom-reader'),
+                             ('Read the XLSX file without changing the original', 'custom-reader'),
                              ('HTML 보고서를 외부 API 없이 만들어줘', 'html-report'),
                              ('Create an HTML report without external APIs', 'html-report')):
             with self.subTest(prompt=prompt):

@@ -26,11 +26,11 @@ def measure(old=False, observed=False):
     f = fixtures.SkillDiscoveryTests()
     f.setUp()
     try:
-        prompt = '@테스트자료.pptx 이 파일 내용 읽어줄래?'
+        prompt = 'HTML 보고서 만들어줘'
         f.context(source='startup')
         if observed:
             f.context(prompt)
-            f.read(fixtures.PLUGIN / 'skills/office-reader/SKILL.md')
+            f.read(fixtures.PLUGIN / 'skills/html-report/SKILL.md')
         context = f.context(prompt)
         wire = json.dumps({'company_agent_runtime': context}, ensure_ascii=False)
         route = '{"company_agent_instruction":"old","company_agent_route":{"tier":"MEDIUM"}}'

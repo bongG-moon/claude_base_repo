@@ -9,15 +9,13 @@ import os
 import re
 from pathlib import Path
 
-from .frontmatter import parse_frontmatter_text
 from .paths import atomic_write_json
 from .skill_task_context import _features
-from .skill_decision import decide_preparation
-from .skill_workflow import _allowed, _current, _snapshot
+from .skill_decision import SkillDecision, decide_preparation
+from .skill_workflow import _allowed, _current, _snapshot, _load_plan
 from .state import _locked_session, load_session
 
 MAX_REQUEST_CONTEXT_CHARS = 9_800
-_PLAIN_FIELDS = {'name', 'description', 'status', 'metadata', 'license', 'compatibility', 'company-agent-role'}
 _DOMAIN_WORDS = {'slides': 'PPT', 'sheet': 'Excel', 'word': 'Word', 'html': 'HTML', 'mail': 'Outlook'}
 _ACTION_WORDS = {'read': '읽기', 'make': '만들기', 'organize': '폴더 정리'}
 _FOLLOWUP = re.compile(r'(?:그|해당|방금|아까|이전|같은|company|회사|공통).*(?:스킬|skill|읽|진행)|(?:스킬|skill).*(?:읽어|진행해)', re.I)
@@ -106,13 +104,38 @@ def prepare_execution(runtime: dict) -> tuple[dict, str]:
         data = _snapshot(root, project, route)
     except (OSError, ValueError, TypeError, KeyError):
         return {'mode': 'inspect', 'reason': 'catalog-unavailable'}, ''
+    requested = route.get('explicit', []) + route.get('namedSkillChoices', [])
+    if any(not any(x.get('invocation') == name or x.get('name') == name for x in data['skills']) for name in requested):
+        # A user-named host Skill may exist outside the local catalogue. Never
+        # substitute a keyword hit as a mandatory workflow in its place.
+        return {'mode': 'inspect', 'reason': 'explicit-skill-outside-catalog'}, ''
     decision = decide_preparation(hints, data['skills'], route.get('explicit', []))
+    chosen = route.get('requestChoice', {})
+    selected_item = next((x for x in data['skills'] if x['id'] == chosen.get('id')), None)
+    if selected_item and _allowed(selected_item, data, route):
+        decision = SkillDecision('load', 'answered-choice', selected_item['id'])
+    pending = route.get('pendingChoice', {})
+    if pending and decision.mode != 'load':
+        ids = pending.get('ids', [])
+        items = [x for x in data['skills'] if x['id'] in ids]
+        if 1 < len(items) == len(ids) <= 8:
+            from .skill_task_context import load_target
+            groups = {}
+            for item in items:
+                group = groups.setdefault(item['name'], {'name': item['name'], 'resolution': 'unresolved', 'candidates': []})
+                group['candidates'].append({key: item.get(key, '') for key in ('id', 'name', 'source', 'path', 'invocation', 'description')}
+                                           | {'load': load_target(item, data['skills'])})
+            runtime['taskSkills'] = {'status': 'needs-choice', 'groups': list(groups.values()), 'competingIds': ids}
+            decision = SkillDecision('choose', 'competing-workflows', choice_ids=tuple(ids))
     result = decision.plan()
-    if decision.mode == 'load' and route.get('preparationCaution') and not route.get('explicit'):
+    if ((decision.mode == 'load' or decision.choice_ids) and route.get('preparationCaution')
+            and not (route.get('explicit') or route.get('namedSkillChoices'))):
         # Keep real catalogue hints visible, but do not turn a negated workflow
         # or a code diagnosis mentioning it into an execution prerequisite.
         return {'mode': 'select', 'reason': 'contextual-reference-needs-review'}, ''
     if decision.mode != 'load':
+        if decision.choice_ids:
+            result['choiceNames'] = list(dict.fromkeys(x['name'] for x in data['skills'] if x['id'] in decision.choice_ids))
         if decision.mode == 'review':
             result['catalogReviewed'] = bool(route.get('indexRead'))
         return result, ''
@@ -121,12 +144,9 @@ def prepare_execution(runtime: dict) -> tuple[dict, str]:
         if not _allowed(item, data, route):
             return {'mode': 'choose', 'reason': 'preference-changed'}, ''
         raw = _current(item, route)
-        from .skill_task_context import load_target
-        result.update({key: item.get(key, '') for key in ('id', 'name', 'source', 'path', 'invocation')})
-        result['load'] = load_target(item, data['skills'])
-        result['sha256'] = item['sha256']
-        result['path'] = item['path']
-        result['reason'] = 'native-body-load'
+        result = _load_plan(item, data, raw)
+        if result.get('limitation'):
+            return result, ''
         reads = route.get('readSkills', {})
         if not isinstance(reads, dict) or reads.get(item['id']) != item['sha256']:
             return result, ''
@@ -135,15 +155,10 @@ def prepare_execution(runtime: dict) -> tuple[dict, str]:
         if native_load_required(project):
             result['reason'] = 'host-loading-rules'
             return result, ''
-        try:
-            meta, body = parse_frontmatter_text(raw.decode('utf-8-sig'))
-        except ValueError:
-            result['reason'] = 'native-frontmatter-parser'
-            return result, ''
         # Native-only semantics must be applied by Claude, not imitated by a
         # text injection (forks/models/tool restrictions/dynamic commands/etc).
-        if (set(meta) - _PLAIN_FIELDS or '!`' in body or re.search(r'\$\{|\$ARGUMENTS|\$\d', body)
-                or meta.get('company-agent-role') == 'support'):
+        from .skill_registry import _frontmatter_field
+        if result.get('nativeRequired') or _frontmatter_field(raw, 'company-agent-role') == 'support':
             result['reason'] = 'native-skill-semantics'
             return result, ''
         result.update(mode='reuse', basis='observed-body-load')
@@ -165,6 +180,11 @@ def record_execution(runtime: dict, execution: dict) -> None:
                     or route.get('turn') != state.get('turnId')):
                 return
             route['executionPlan'] = execution
+            if execution.get('choiceIds'):
+                route['pendingChoice'] = {'ids': execution['choiceIds'], 'names': execution.get('choiceNames', [])}
+                route['requiredChoiceIds'] = execution['choiceIds']
+            else:
+                route.pop('pendingChoice', None)
             route['reviewProtocol'] = 1
             route.pop('providedSkills', None)  # Old delivery is not load evidence.
             if execution.get('mode') == 'reuse' and execution.get('basis') == 'observed-body-load':

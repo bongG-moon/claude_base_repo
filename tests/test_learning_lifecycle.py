@@ -40,9 +40,14 @@ class LearningLifecycleTests(unittest.TestCase):
         return load_session(self.session, self.root)
 
     def activity(self, tool: str, arguments: dict | None = None, *, failed: bool = False) -> dict:
+        response = None
+        path = Path((arguments or {}).get("file_path", ""))
+        if tool == "Read" and not failed and path.is_file():
+            response = {"file": {"content": path.read_text(encoding="utf-8"), "startLine": 1}}
         return record_activity({
             "session_id": self.session, "tool_name": tool, "tool_input": arguments or {},
             "hook_event_name": "PostToolUseFailure" if failed else "PostToolUse",
+            "tool_response": response,
         }, self.root)
 
     def stop(self) -> dict:

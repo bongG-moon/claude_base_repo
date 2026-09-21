@@ -68,7 +68,7 @@ class HarnessMapTests(unittest.TestCase):
         self.assertFalse(self.state.exists())
         self.assertEqual(['company', 'personal', 'project'], [g['id'] for g in report['groups']])
         self.assertEqual('enabled', self.rows(report, 'company', '설치')[0]['status'])
-        self.assertIn('company-agent:office-reader', [r['name'] for r in self.rows(report, 'company', '스킬')])
+        self.assertIn('company-agent:html-report', [r['name'] for r in self.rows(report, 'company', '스킬')])
         self.assertEqual(0, report['modelCalls'])
         content = json.dumps(report) + render_map(report)
         self.assertNotIn('NEVER_EXPORT_INSTRUCTION_BODY', content)
@@ -130,14 +130,14 @@ class HarnessMapTests(unittest.TestCase):
         self.assertEqual('manual', next(r['status'] for r in self.rows(report) if r['name'] == 'manual'))
 
     def test_saved_choice_and_stale_choice_are_not_silent_auto_selection(self):
-        write(self.config/'skills/office-reader/SKILL.md', '---\nname: office-reader\n---\nbody')
+        write(self.config/'skills/html-report/SKILL.md', '---\nname: html-report\n---\nbody')
         inv = inventory_skills(self.state, project_root=self.project, claude_root=self.config,
                                plugin_root=self.plugin, resource_record=self.record)
-        chosen = next(s for s in inv['skills'] if s['name']=='office-reader' and s['source']=='user')
-        pref = {'schemaVersion':1, 'defaults':{'sourceOrder':[], 'skills':{'office-reader':chosen['id']}}, 'projects':{}}
+        chosen = next(s for s in inv['skills'] if s['name']=='html-report' and s['source']=='user')
+        pref = {'schemaVersion':1, 'defaults':{'sourceOrder':[], 'skills':{'html-report':chosen['id']}}, 'projects':{}}
         write(self.state/'config/skill-preferences.json', pref)
-        self.assertEqual(['office-reader'], [r['name'] for r in self.rows(self.report()) if r.get('preferred')])
-        pref['defaults']['skills']['office-reader'] = 'user:' + '0'*24
+        self.assertEqual(['html-report'], [r['name'] for r in self.rows(self.report()) if r.get('preferred')])
+        pref['defaults']['skills']['html-report'] = 'user:' + '0'*24
         write(self.state/'config/skill-preferences.json', pref)
         report = self.report()
         self.assertEqual(2, sum(r['status']=='choice' for r in self.rows(report, category='스킬')))
@@ -146,7 +146,7 @@ class HarnessMapTests(unittest.TestCase):
     def test_load_evidence_requires_exact_session_project_id_and_hash(self):
         inv = inventory_skills(self.state, project_root=self.project, claude_root=self.config,
                                plugin_root=self.plugin, resource_record=self.record)
-        skill = next(s for s in inv['skills'] if s['name'] == 'office-reader')
+        skill = next(s for s in inv['skills'] if s['name'] == 'html-report')
         route = {'project': os.path.normcase(str(self.project)), 'readSkills': {skill['id']: skill['sha256']}}
         write(self.state/'sessions/session-a.json', {'skillWorkflow': route})
         write(self.state/'sessions/unrelated.json', {'skillWorkflow': route})
@@ -164,7 +164,7 @@ class HarnessMapTests(unittest.TestCase):
     def test_native_only_no_registration_does_not_invent_installation(self):
         report = build_map(self.project, config=self.config, registrations=self.base/'not-registered')
         self.assertEqual('unknown', self.rows(report, 'company', '설치')[0]['status'])
-        self.assertIn('company-agent:office-reader', [r['name'] for r in self.rows(report, 'company', '스킬')])
+        self.assertIn('company-agent:html-report', [r['name'] for r in self.rows(report, 'company', '스킬')])
         self.assertFalse(self.rows(report, category='자동 학습'))
         self.assertFalse((self.base/'not-registered').exists())
         self.assertFalse(self.state.exists())

@@ -12,7 +12,7 @@ from company_agent.business_safety import protection_notice
 class DocumentReadingGuidanceTests(unittest.TestCase):
     def test_document_skills_do_not_include_blanket_bypass_prohibitions(self):
         files = [PLUGIN / 'skills/company-agent/references/business-protection.md']
-        for name in ('office-reader', 'html-report', 'presentation'):
+        for name in ('html-report', 'presentation'):
             files.extend((PLUGIN / 'skills' / name).rglob('*.md'))
         for file in files:
             text = file.read_text(encoding='utf-8').lower()
@@ -34,8 +34,6 @@ class DocumentReadingGuidanceTests(unittest.TestCase):
         self.assertNotIn('우회', text)
         self.assertNotIn('보호 해제된 사본', text)
         self.assertIn('첨부 내용은 제외하고 요약했습니다', text)
-        reader = (PLUGIN / 'scripts/company_agent/office_reader.py').read_text(encoding='utf-8')
-        self.assertNotIn('대체 추출에 사용하지 마세요', reader)
 
 
 if __name__ == '__main__':

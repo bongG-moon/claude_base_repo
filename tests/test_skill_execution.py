@@ -20,7 +20,7 @@ class SkillExecutionTests(unittest.TestCase):
         self.addCleanup(self.f.doCleanups)
         self.f.context(source='startup')
 
-    def output(self, prompt='@테스트자료.pptx 이 파일 내용 읽어줄래?', context=None):
+    def output(self, prompt='HTML 보고서 만들어줘', context=None):
         ctx = context or self.f.context(prompt)
         text = task_prompt_context('{"company_agent_instruction":"old","company_agent_route":{"tier":"MEDIUM"}}',
                                    json.dumps({'company_agent_runtime': ctx}, ensure_ascii=False))
@@ -42,21 +42,17 @@ class SkillExecutionTests(unittest.TestCase):
         self.assertIn('직접 처리', delivery['company_agent_instruction'])
         self.assertEqual(self.f.sid, runtime['company_agent_session_id'])
         self.assertNotIn('substantive work는', delivery['company_agent_instruction'])
-        self.assertEqual('load', runtime['skillExecution']['mode'])
-        from company_agent.execution_contract import _trusted_arguments
-        args = _trusted_arguments(runtime['officeReadCommand'])
-        self.assertEqual(self.f.sid, args[args.index('--session') + 1])
-        self.assertEqual(str(self.f.state.resolve().as_posix()), args[args.index('--state-root') + 1])
-        self.assertNotIn('--file', args)  # User still chooses the actual document.
+        self.assertEqual('review', runtime['skillExecution']['mode'])
+        self.assertNotIn('officeReadCommand', runtime)
 
-    def test_unmentioned_ppt_gets_existing_load_target_not_fake_selection(self):
+    def test_unmentioned_html_gets_existing_load_target_not_fake_selection(self):
         ctx, text = self.output()
         self.assertEqual('load', ctx['skillExecution']['mode'])
-        self.assertEqual('office-reader', ctx['skillExecution']['name'])
-        body = (discovery.PLUGIN / 'skills/office-reader/SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
+        self.assertEqual('html-report', ctx['skillExecution']['name'])
+        body = (discovery.PLUGIN / 'skills/html-report/SKILL.md').read_text(encoding='utf-8').split('---', 2)[2].strip()
         self.assertNotIn(body, text)
         self.assertEqual('load-relevant-skill', ctx['skillWorkflow']['nextAction'])
-        self.assertLess(text.index('company-agent:office-reader'), text.index('company_agent_route'))
+        self.assertLess(text.index('company-agent:html-report'), text.index('company_agent_route'))
         self.assertLessEqual(len(text), MAX_REQUEST_CONTEXT_CHARS)
         self.assertEqual({}, self.state()['skillWorkflow']['readSkills'])
         self.assertNotIn('lastBodyLoad', self.state()['skillWorkflow'])
@@ -69,8 +65,8 @@ class SkillExecutionTests(unittest.TestCase):
 
     def test_followup_keeps_workflow_without_saving_original_prompt(self):
         self.output()
-        ctx, text = self.output('company스킬 사용해서 읽어줘')
-        self.assertEqual('office-reader', ctx['skillExecution']['name'])
+        ctx, text = self.output('company스킬 사용해서 진행해줘')
+        self.assertEqual('html-report', ctx['skillExecution']['name'])
         self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertNotIn('basis', ctx['skillExecution'])
         self.assertNotIn('Presentations.Open', text)
@@ -78,13 +74,12 @@ class SkillExecutionTests(unittest.TestCase):
 
     def test_new_work_does_not_keep_previous_workflow(self):
         self.output()
-        ctx, _ = self.output('HTML 보고서를 만들어줘')
-        self.assertNotEqual('office-reader', ctx['skillExecution'].get('name'))
+        ctx, _ = self.output('PPT 발표자료 만들어줘')
+        self.assertNotEqual('html-report', ctx['skillExecution'].get('name'))
         self.assertNotIn('officeReadCommand', ctx)
 
     def test_html_first_ppt_description_does_not_capture_reading_or_html_reports(self):
-        for prompt,name in [('PPT 내용 읽어줘','office-reader'),
-                            ('부서장 보고 PPT 만들어줘','presentation'),
+        for prompt,name in [('부서장 보고 PPT 만들어줘','presentation'),
                             ('HTML 보고서 만들어줘','html-report')]:
             with self.subTest(prompt=prompt):
                 ctx, _ = self.output(prompt)
@@ -101,7 +96,7 @@ class SkillExecutionTests(unittest.TestCase):
         self.assertEqual({}, stop_decision({'session_id':self.f.sid}, self.f.state))
 
     def test_same_name_conflict_requires_choice_and_never_injects_either_body(self):
-        self.f.skill('office-reader', '기존 PPT 내용 분석 및 읽기')
+        self.f.skill('html-report', 'HTML 보고서 작성')
         ctx, text = self.output()
         self.assertEqual('choose', ctx['skillExecution']['mode'])
         self.assertNotIn('Presentations.Open', text)
@@ -109,23 +104,24 @@ class SkillExecutionTests(unittest.TestCase):
         self.assertIn('한국어로 물', text)
 
     def test_different_named_alternative_is_not_silently_discarded(self):
-        self.f.skill('team-reader', 'PPT 내용 읽기 및 요약')
+        self.f.skill('team-reader', 'HTML 보고서 작성 및 대시보드')
         ctx, text = self.output()
-        self.assertEqual('select', ctx['skillExecution']['mode'])
+        self.assertEqual('choose', ctx['skillExecution']['mode'])
+        self.assertEqual('competing-workflows', ctx['skillExecution']['reason'])
         self.assertIn('team-reader', text)
-        self.assertIn('office-reader', text)
+        self.assertIn('html-report', text)
         self.assertNotIn('Presentations.Open', text)
 
     def test_saved_preference_uses_exact_personal_file_not_company(self):
-        file = self.f.skill('office-reader', '기존 PPT 내용 읽기')
+        file = self.f.skill('html-report', 'HTML 보고서 작성')
         inv = inventory_skills(self.f.state, project_root=self.f.project, plugin_root=discovery.PLUGIN, claude_root=self.f.claude)
         item = next(x for x in inv['skills'] if x['path'] == str(file))
-        set_skill_preference(self.f.state, 'office-reader', item['id'], project_root=self.f.project, plugin_root=discovery.PLUGIN, claude_root=self.f.claude)
+        set_skill_preference(self.f.state, 'html-report', item['id'], project_root=self.f.project, plugin_root=discovery.PLUGIN, claude_root=self.f.claude)
         self.f.context(source='startup')
         ctx, text = self.output()
         self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertEqual(str(file), ctx['skillExecution']['path'])
-        self.assertNotIn('SECRET-BODY-office-reader', text)
+        self.assertNotIn('SECRET-BODY-html-report', text)
         self.assertNotIn('Presentations.Open', text)
 
     def test_explicit_native_options_remain_native(self):
@@ -155,8 +151,8 @@ class SkillExecutionTests(unittest.TestCase):
 
     def test_read_or_skill_permission_rules_keep_native_permission_check(self):
         self.output()
-        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
-        for mode, rule in [('deny', 'Skill(company-agent:office-reader)'), ('deny', 'Read(**/SKILL.md)'),
+        self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
+        for mode, rule in [('deny', 'Skill(company-agent:html-report)'), ('deny', 'Read(**/SKILL.md)'),
                            ('ask', 'Read')]:
             with self.subTest(rule=rule, mode=mode):
                 atomic_write_json(self.f.claude / 'settings.json', {'permissions': {mode:[rule]}})
@@ -169,7 +165,7 @@ class SkillExecutionTests(unittest.TestCase):
         for source in ('compact', 'resume', 'startup'):
             with self.subTest(source=source):
                 self.output()
-                self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+                self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
                 self.f.context(source=source)
                 ctx, text = self.output()
                 self.assertEqual('load', ctx['skillExecution']['mode'])
@@ -216,7 +212,7 @@ class SkillExecutionTests(unittest.TestCase):
 
     def test_native_read_receipt_remains_distinct(self):
         self.output()
-        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+        self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
         ctx, _ = self.output()
         self.assertEqual('reuse', ctx['skillExecution']['mode'])
         self.assertEqual('observed-body-load', ctx['skillExecution']['basis'])
@@ -228,19 +224,19 @@ class SkillExecutionTests(unittest.TestCase):
                  'tool_input': {'subagent_type':'company-agent:medium-worker', 'prompt':'요약해줘'}}
         result = worker_runtime_input(discovery.PLUGIN, self.f.project, inputs)
         self.assertNotIn('"selectedSkill":', result['hookSpecificOutput']['updatedInput']['prompt'])
-        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+        self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
         result = worker_runtime_input(discovery.PLUGIN, self.f.project, {'session_id': self.f.sid,
                  'tool_input': {'subagent_type':'company-agent:medium-worker', 'prompt':'요약해줘'}})
         text = result['hookSpecificOutput']['updatedInput']['prompt']
-        self.assertIn('office-reader', text)
+        self.assertIn('html-report', text)
         self.assertIn('selectedSkill', text)
         self.assertNotIn('"skillIndex"', text)
         self.assertEqual(1, len(self.state()['skillWorkflow']['readSkills']))
 
     def test_subagent_load_is_not_a_coordinator_body_receipt(self):
-        file = discovery.PLUGIN / 'skills/office-reader/SKILL.md'
+        file = discovery.PLUGIN / 'skills/html-report/SKILL.md'
         for tool, inputs, response in [
-            ('Skill', {'skill': 'company-agent:office-reader'}, {'success': True}),
+            ('Skill', {'skill': 'company-agent:html-report'}, {'success': True}),
             ('Read', {'file_path': str(file)},
              {'file': {'content': file.read_text(encoding='utf-8-sig'), 'startLine': 1}}),
         ]:
@@ -259,7 +255,7 @@ class SkillExecutionTests(unittest.TestCase):
 
     def test_subagent_read_does_not_replace_coordinator_selection_or_index_receipt(self):
         ctx, _ = self.output()
-        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+        self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
         before = self.state()['skillWorkflow']
         for file in [discovery.PLUGIN / 'skills/html-report/SKILL.md',
                      Path(ctx['skillSelection']['catalog']['path'])]:
@@ -273,7 +269,7 @@ class SkillExecutionTests(unittest.TestCase):
                 self.assertEqual(before, self.state()['skillWorkflow'])
         later, _ = self.output()
         self.assertEqual('reuse', later['skillExecution']['mode'])
-        self.assertEqual('office-reader', later['skillExecution']['name'])
+        self.assertEqual('html-report', later['skillExecution']['name'])
 
     def test_subagent_preflight_does_not_use_or_spend_coordinator_correction(self):
         self.output()
@@ -291,16 +287,16 @@ class SkillExecutionTests(unittest.TestCase):
         observe(self.f.state, self.f.project, {
             'session_id': self.f.sid, 'hook_event_name': 'PostToolUse',
             'agent_type': 'company-agent:medium-worker',
-            'tool_name': 'Skill', 'tool_input': {'skill': 'company-agent:office-reader'},
+            'tool_name': 'Skill', 'tool_input': {'skill': 'company-agent:html-report'},
             'tool_response': {'success': True},
         })
-        self.assertEqual('office-reader', self.state()['skillWorkflow']['selected']['name'])
+        self.assertEqual('html-report', self.state()['skillWorkflow']['selected']['name'])
 
     def test_legacy_delivery_is_not_reuse_and_is_removed(self):
         ctx = self.f.context()
         state = self.state()
         inv = inventory_skills(self.f.state, project_root=self.f.project, plugin_root=discovery.PLUGIN, claude_root=self.f.claude)
-        item = next(x for x in inv['skills'] if x['name'] == 'office-reader')
+        item = next(x for x in inv['skills'] if x['name'] == 'html-report')
         state['skillWorkflow']['providedSkills'] = {item['id']: item['sha256']}
         atomic_write_json(self.f.state / 'sessions' / (self.f.sid + '.json'), state)
         result, text = self.output(context=ctx)

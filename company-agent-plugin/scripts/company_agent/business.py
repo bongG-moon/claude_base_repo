@@ -85,30 +85,10 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action == 'ppt-preview':
         from .business_artifacts import preview_template
         return preview_template(safe_path(args.template, exists=True), safe_path(args.output))
-    if action == 'office-read' and getattr(args, 'file', None):
-        from .execution_contract import office_file_name
-        # Join only a bare filename to the actual invocation cwd. No guessing,
-        # recursion, fallback to Desktop, or repair of an explicit wrong path.
-        source = str(Path.cwd() / args.file) if office_file_name(args.file) else args.file
-        spec = {'file': source}
-        for flag, field in (('start','start'),('end','end'),('sheet','sheet'),('range','range'),
-                            ('max_chars','maxChars'),('expected_count','expectedCount')):
-            value = getattr(args, flag, None)
-            if value is not None:
-                spec[field] = int(value) if flag=='sheet' and value.isdigit() else value
-    else:
-        if action == 'office-read' and any(getattr(args,key,None) is not None for key in
-                                          ('start','end','sheet','range','max_chars','expected_count')):
-            raise ValueError('office-read: --spec과 직접 범위 인자는 함께 사용할 수 없습니다.')
-        spec = _spec(args.spec)
+    spec = _spec(args.spec)
     if (blocked := blocked_input(spec)) is not None:
         return blocked
     spec.pop("protection", None)
-    if action == 'office-read':
-        from .office_reader import read_office
-        from .office_progress import cli_progress
-        return read_office(spec, progress=cli_progress(), state_root=state,
-                           session_id=getattr(args, 'session', '') or '')
     if action == 'ppt-choices':
         from .ppt_workflow import choices
         return choices(spec, args.template)
@@ -165,7 +145,7 @@ def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
     for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview", "ppt-template",
-                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "office-read", "artifact-start", "artifact-publish", "ppt-fit-images", "ppt-capabilities"):
+                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "artifact-start", "artifact-publish", "ppt-fit-images", "ppt-capabilities"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
         if action in {'html-designs', 'html-template'}:
@@ -179,15 +159,6 @@ def register(subparsers: Any) -> None:
             command.add_argument("--folder", required=True)
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
-        if action == 'office-read':
-            command.add_argument('--session', help='후크 JSON의 현재 대화 ID (환경변수가 아님; 연결된 후크가 누락 값 보완)')
-            source = command.add_mutually_exclusive_group(required=True)
-            source.add_argument('--spec')
-            source.add_argument('--file')
-            for flag in ('start','end','max-chars','expected-count'):
-                command.add_argument('--'+flag, type=int)
-            command.add_argument('--sheet')
-            command.add_argument('--range')
         if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images", "mail-search", "mail-read"}:
             command.add_argument("--spec", required=True)
         if action in {"html", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images"}:

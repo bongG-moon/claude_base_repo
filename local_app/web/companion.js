@@ -213,11 +213,11 @@
     const budget=field(times,'다음 요청부터 토큰 알림 기준 (빈칸은 해제)','','number');budget.min=1;
     times.append(button('이 대화에만 알림 설정',async()=>{const r=await action({action:'budget',tokenAlert:budget.value===''?null:Number(budget.value)});message(r.notice);}));
     const c=card('선택한 기록만 분석','과거 기록은 자동 검색하지 않습니다. 직접 고른 JSONL만 최대 8개 읽고 원문·경로를 분석 결과에 저장하지 않습니다. 현재 요청 값과 합산하지 않습니다.');
-    const paths=field(c,'분석할 JSONL 절대 경로 (한 줄에 하나)'), office=field(c,'Office 결과 JSON 절대 경로 (선택)','','text');
-    c.append(button('선택한 로컬 기록 분석',async()=>{const result=await action({action:'usage',paths:paths.value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),officeResult:office.value.trim()||undefined});const out=metricsPanel('선택 로그 · 별도 분석',result);out.append(note(`상태: ${result.status} / 같은 범위 재읽기: ${result.sameRangeReads??'미확인'} / 고유 메시지: ${result.uniqueUsageMessages??'미확인'}`),note(`관찰한 도구 오류 ${result.observedToolErrors??'미확인'} / 재시도 ${result.retryCount??'미확인'}`),note(result.costReason));for(const model of result.byModel||[])out.append(metricsPanel('모델 · '+model.model,model));if(result.officeTiming)out.append(el('pre',JSON.stringify(result.officeTiming,null,2)));c.append(out);}));if(data.unavailable) c.append(note(data.unavailable));content.append(c);
+    const paths=field(c,'분석할 JSONL 절대 경로 (한 줄에 하나)');
+    c.append(button('선택한 로컬 기록 분석',async()=>{const result=await action({action:'usage',paths:paths.value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean)});const out=metricsPanel('선택 로그 · 별도 분석',result);out.append(note(`상태: ${result.status} / 같은 범위 재읽기: ${result.sameRangeReads??'미확인'} / 고유 메시지: ${result.uniqueUsageMessages??'미확인'}`),note(`관찰한 도구 오류 ${result.observedToolErrors??'미확인'} / 재시도 ${result.retryCount??'미확인'}`),note(result.costReason));for(const model of result.byModel||[])out.append(metricsPanel('모델 · '+model.model,model));c.append(out);}));if(data.unavailable) c.append(note(data.unavailable));content.append(c);
   }
   function checks(){
-    const c=card('준비 상태와 실제 결과는 다릅니다','파일·목록이 있다는 사실만으로 모델 성능이나 Office 읽기 성공을 판정하지 않습니다.');
+    const c=card('준비 상태와 실제 결과는 다릅니다','파일·목록이 있다는 사실만으로 모델 성능이나 업무 성공을 판정하지 않습니다.');
     for(const check of data.harness?.checks||[])c.append(note(check.label+' · '+(labels[check.status]||check.status)+(check.count!==undefined?' ('+check.count+')':'')));
     if(!data.harness)c.append(note(data.unavailable||'작업 폴더 선택 후 확인할 수 있습니다.'));
     if(data.harness){c.append(note(`스킬 이름 충돌: ${data.harness.skillConflicts} / 목록에 표시된 스킬: ${data.harness.skills.length}`));const d=el('details');d.append(el('summary','발견한 스킬 · 실제 실행과 별개'));for(const s of data.harness.skills)d.append(note(`${s.invocation||s.name} · ${s.source} · ${s.description}`));c.append(d);}content.append(c);

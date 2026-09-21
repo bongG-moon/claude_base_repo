@@ -45,7 +45,7 @@ class ServiceTests(unittest.TestCase):
     def test_snapshot_is_read_only_and_reports_skills_not_fake_performance(self):
         value = self.service.snapshot()
         self.assertFalse(self.state.exists())
-        self.assertIn('office-reader', [x['name'] for x in value['skills']])
+        self.assertIn('html-report', [x['name'] for x in value['skills']])
         self.assertEqual([x['status'] for x in value['checks'] if x['id'] in {'office','model'}], ['unverified','unverified'])
         self.assertNotIn('knowledge', value)
         self.assertTrue(self.service.snapshot('memory')['learning']['enabled'])
@@ -380,8 +380,8 @@ class CompanionTests(unittest.TestCase):
 
     def test_missing_fields_duplicate_result_and_tool_id_are_not_totals(self):
         begin_turn(self.item)
-        observe(self.item,'activity',{'tool':'Skill','id':'t1','skill':'company-agent:office-reader'})
-        observe(self.item,'activity',{'tool':'Skill','id':'t1','skill':'company-agent:office-reader'})
+        observe(self.item,'activity',{'tool':'Skill','id':'t1','skill':'company-agent:html-report'})
+        observe(self.item,'activity',{'tool':'Skill','id':'t1','skill':'company-agent:html-report'})
         self.item['state']='done'
         result={'usage':{'input_tokens':7},'costUsd':None,'durationMs':150}
         observe(self.item,'result',result)

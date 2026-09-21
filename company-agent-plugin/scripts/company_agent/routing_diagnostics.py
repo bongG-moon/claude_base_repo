@@ -177,15 +177,12 @@ def main(argv=None):
     parser.add_argument('--json', action='store_true')
     parser.add_argument('--report', type=Path, help='새 HTML 파일에 진단 저장 (기존 파일 보존)')
     parser.add_argument('--usage-log', type=Path, action='append', default=[], help='선택한 UTF-8 JSONL만 사용량 분석; 자동 탐색하지 않음')
-    parser.add_argument('--office-result', type=Path, help='선택한 Office 결과 JSON의 단계 시간만 확인')
     args = parser.parse_args(argv)
     result = inspect(args.claude_root, args.local_appdata, args.project_root, args.session)
     from .environment_checks import inspect_environment
     result['environment'] = inspect_environment()
-    from .usage_diagnostics import analyze_usage, inspect_office_timing
+    from .usage_diagnostics import analyze_usage
     result['usage'] = analyze_usage(args.usage_log)
-    if args.office_result:
-        result['officeTiming'] = inspect_office_timing(args.office_result)
     if args.report:
         from .diagnostic_report import write_report
         write_report(args.report, result)
@@ -193,7 +190,7 @@ def main(argv=None):
     if args.json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return 0
-    print('Company Agent 진단 — 설정 변경·모델 호출·업무 문서 열기 없음 (선택한 로그/결과만 별도 읽기)')
+    print('Company Agent 진단 — 설정 변경·모델 호출·업무 문서 열기 없음 (선택한 로그만 별도 읽기)')
     print('확인 폴더:', result['projectRoot'])
     print('Claude 설정:', result['claudeConfigRoot'])
     for plugin in result['plugins']:

@@ -2,15 +2,15 @@
 
 처음이라면 **[Company Agent 통합 가이드](docs/Company-Agent-Guide.html)**를 여세요. Markdown이 편하면 **[안내서 목차](docs/README.md)**에서 시작하기, Claude Code 기본 사용법, 업무 예문, 하네스 설명, 명령어·단축키를 골라 읽을 수 있습니다. 회사 자료나 참고 PPT 없이 가상 자료로 연습합니다.
 
-개발용 **[Company Workspace 로컬 업무 화면](docs/LOCAL_WORKSPACE.md)**을 추가했습니다. `Company-Workspace.vbs`를 더블클릭하면 기존 Claude Code 설정을 사용하는 채팅·파일 선택·질문·승인 화면이 열립니다. [1.4.22 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.22)의 별도 `company-workspace-preview-0.7-*.zip`으로 시험할 수 있습니다. 하네스 설치 ZIP과 별개이며 사내 HCP·DRM 문서의 실제 업무 검증은 필요합니다.
+개발용 **[Company Workspace 로컬 업무 화면](docs/LOCAL_WORKSPACE.md)**을 추가했습니다. `Company-Workspace.vbs`를 더블클릭하면 기존 Claude Code 설정을 사용하는 채팅·파일 선택·질문·승인 화면이 열립니다. [1.4.23 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.23)의 별도 `company-workspace-preview-0.8-*.zip`으로 시험할 수 있습니다. 하네스 설치 ZIP과 별개이며 사내 HCP·DRM 문서의 실제 업무 검증은 필요합니다.
 
-Workspace 0.7은 **회사 공통 / 개인 전체 / 이 프로젝트**를 먼저 나누고 각 범위에서 **기억·지식 / 업무 구성**을 확인합니다. 새 기억·지식·스킬·도구는 개인 전체 또는 이 프로젝트를 선택한 뒤 저장하며 회사 공통은 읽기 전용입니다. 자동 학습은 기존 설치 범위에서만 작동하고 명시적 저장 선택으로 범위가 바뀌지 않습니다. 5단계 첫 업무 코스와 사용량/대기 시간·결과 확인도 제공합니다. 화면 조회에 추가 모델 호출은 없고 기존 데이터·로그인·모델·MCP 설정은 보존합니다. **하네스 1.4.22와 Workspace 0.7을 함께 적용**하고 기존 앱은 먼저 종료하세요. 이번 Workspace 묶음은 실행 코드 변경 없이 안내서를 갱신했습니다. 기존 설치가 자동 갱신되지는 않습니다.
+Workspace 0.8은 **회사 공통 / 개인 전체 / 이 프로젝트**를 먼저 나누고 각 범위에서 **기억·지식 / 업무 구성**을 확인합니다. 새 기억·지식·스킬·도구는 개인 전체 또는 이 프로젝트를 선택한 뒤 저장하며 회사 공통은 읽기 전용입니다. 자동 학습은 기존 설치 범위에서만 작동하고 명시적 저장 선택으로 범위가 바뀌지 않습니다. 5단계 첫 업무 코스와 사용량/대기 시간·결과 확인도 제공합니다. 화면 조회에 추가 모델 호출은 없고 기존 데이터·로그인·모델·MCP 설정은 보존합니다. **하네스 1.4.23과 Workspace 0.8을 함께 적용**하고 기존 앱은 먼저 종료하세요. 이번 Workspace 묶음은 안내서뿐 아니라 실행 코드도 바뀌었습니다. 제거된 Office 읽기의 전용 결과 입력·표시를 정리하고 화면 체험은 가상 보고서 제작으로 바꿨습니다. 기존 설치가 자동 갱신되지는 않습니다.
 
 [Workspace 0.3 구현·검증 결과](docs/VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md)에서 확인된 동작과 사내 환경에서 더 확인할 항목을 구분했습니다.
 
 **기억·하네스 관리 → 구성 한눈에**는 선택한 폴더 기준으로 회사 공통·개인 전체·이 프로젝트의 저장 위치와 설정 상태를 비교하고 HTML로 저장합니다. 설정 켜짐과 실제 스킬 본문 로드 기록은 구분하며, 조회에 AI를 호출하거나 설정을 변경하지 않습니다. [구성 지도 구현·검증 결과](docs/VALIDATION_HARNESS_MAP_2026-09-19.md)를 참고하세요.
 
-현재 배포 버전은 **1.4.22**입니다. Office 스킬 옆의 고정 실행 파일과 현재 폴더 파일명 지원으로 경로 재조합을 줄였습니다. 경로 오류를 보호 차단으로 오인하던 후크를 수정하고, 실제 파일 잠금에만 저장·닫기 안내를 제공합니다. 정상 읽기에 추가 모델 호출·사전 검증을 넣지 않았습니다. 문서·범위별 승인, 로그인·모델·MCP·개인 자료 보존과 Cua 미포함은 유지합니다. [변경·설치 안내](docs/UPDATE_1.4.22.md)와 [배포 검증 기록](docs/VALIDATION_RELEASE_1.4.22.md)을 확인하세요.
+현재 공개 배포 버전은 **1.4.23**입니다. **1.4.23에는 기본 Office 읽기 스킬과 전용 실행·승인 연결 제거, 학습·스킬 선택 보완, 통합 안내서 갱신을 포함합니다.** 기존 Release와 설치된 PC는 자동으로 바뀌지 않으므로 새 배포본으로 업데이트해야 적용됩니다. 문서 읽기는 실제 설치된 스킬·도구의 지원 범위에 따릅니다. PPT 제작·HTML 보고서·메일 업무와 회사 보호 정책은 유지합니다. [1.4.23 변경 이력](docs/UPDATE_1.4.23.md)과 [배포 검증 범위](docs/VALIDATION_RELEASE_1.4.23.md)를 확인하세요. 이전 버전의 변경·검증 기록은 당시 배포 내용으로 보존합니다.
 
 **감사 보완 반영:** [감사 결과와 검증 범위](docs/AUDIT_HARNESS_2026-09-20.md)에 유명 스킬의 선별 반영과 미도입 항목을 정리했습니다. 해당 수정은 1.4.19부터 포함하며 이번 버전에도 유지합니다. 기존 Release ZIP과 이미 설치된 PC는 변경하지 않습니다.
 
@@ -18,11 +18,9 @@ Workspace 0.7은 **회사 공통 / 개인 전체 / 이 프로젝트**를 먼저 
 
 세부 보완: [스킬 선택 경량화·한국어 진단](docs/LEAN_SKILL_ROUTING_2026-09-16.md). 새 ZIP과 소스의 `Diagnose-CompanyAgent.cmd`로 상태를 확인할 수 있습니다. 공개 1.4.10 ZIP과 이미 설치된 PC는 자동으로 바뀌지 않습니다.
 
-설치 파일은 [1.4.22 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.22) 또는 [설치 ZIP 바로 받기](https://github.com/bongG-moon/claude_base_repo/releases/download/v1.4.22/company-agent-1.4.22-2026.09.03.zip)에서 받으세요. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다.
+설치 파일은 [1.4.23 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.23) 또는 [설치 ZIP 바로 받기](https://github.com/bongG-moon/claude_base_repo/releases/download/v1.4.23/company-agent-1.4.23-2026.09.03.zip)에서 받으세요. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다.
 [폴더별 자동 스킬 목록](docs/SKILL_CATALOG.md), 각 PC의 Python 탐색과 Ouroboros 연결 교정을 포함합니다.
-기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.22 묶음에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.22`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
-
-Office 읽기는 별도 준비물이 필요합니다: Excel/CSV는 선택한 Python의 xlwings·pandas와 Excel, PPT/Word는 pywin32와 해당 Office. ZIP에 이 라이브러리나 Office를 넣거나 자동 다운로드하지 않습니다. 개발 PC의 일반 PPT·Word 읽기는 성공했지만 Excel은 xlwings 미설치로 실제 읽기 미검증이며, 사내 DRM 호환성은 별도로 확인해야 합니다.
+기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.23 묶음에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.23`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
 
 Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARGE 모델을 사용하는 개인화 하네스입니다. 공통 엔진과 개인 Knowledge·Memory·Skill을 분리하고 사용자 또는 프로젝트 범위로 설치합니다.
 
@@ -74,7 +72,7 @@ Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지�
 
 1.0.0에서 제공한 설치 전 Skill 겹침 확인, 프로젝트별 우선 선택, 외부 Python 사용, 기존 하네스 유지/교체 선택, 개인 저장 경로 재사용·형식 보호를 유지합니다. 교체는 선택 범위에만 적용하며 상위 폴더·다른 범위·별도 플러그인의 지침/Hook까지 초기화하지 않습니다. [개인 상태 보존과 복구](docs/STATE_PRESERVATION.md)를 참고하세요.
 
-1.1.0부터 `Stop` 완료 검토 → 추출된 관찰 → 안전한 개인 변경 → 다음 업무의 결과 비교를 연결합니다. 명확한 사용자 교정은 기억 요청 없이 반영할 수 있고, 추론한 선호는 서로 다른 요청에서 반복 관찰된 후 반영합니다. 개인 Skill의 자동 수정 범위는 실제 읽은 버전에 대한 제한된 점검 절차이며, 공통 Skill·다른 플러그인·실행 코드를 자율 재작성하지 않습니다. 검토는 기존 Claude 대화에서 수행하며 새 LLM 연결은 필요하지 않습니다. `/company-agent:learning`으로 내역 확인·일시 중지·재개·선택 복구를 요청할 수 있습니다. [자동 학습 동작과 한계](docs/SELF_LEARNING.md)를 참고하세요.
+1.1.0부터 `Stop` 완료 검토 → 추출된 관찰 → 안전한 개인 변경 → 다음 업무의 결과 비교를 연결합니다. 명확한 사용자 교정은 기억 요청 없이 반영할 수 있고, 추론한 선호는 서로 독립된 업무에서 반복 관찰된 후 반영합니다. 같은 업무의 여러 응답을 독립된 근거로 세지 않습니다. 개인 Skill의 자동 수정 범위는 실제 읽은 버전에 대한 제한된 점검 절차이며, 공통 Skill·다른 플러그인·실행 코드를 자율 재작성하지 않습니다. 새 스킬은 별도 생성 요청이나 제안에 대한 동의 후 만듭니다. 검토는 기존 Claude 대화에서 수행하므로 토큰과 시간이 들 수 있지만 새 LLM 연결은 필요하지 않습니다. 매 답변이나 Claude 종료 후에 실행되는 상시 학습은 아닙니다. `/company-agent:learning`으로 내역 확인·일시 중지·재개·선택 복구를 요청할 수 있습니다. [자동 학습 동작과 한계](docs/SELF_LEARNING.md)를 참고하세요.
 
 ## Skill이 겹치면
 
@@ -90,10 +88,10 @@ Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지�
 
 ```powershell
 # PC에 이미 설치된 승인 Python을 사용하는 기본 직원 ZIP 생성
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.22 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.23 -KnowledgeVersion 2026.09.03
 ```
 
-결과는 `dist\company-agent-1.4.22-2026.09.03.zip`입니다. 뒤의 날짜는 회사 지식팩 버전이며 ZIP 생성일이 아닙니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
+결과는 `dist\company-agent-1.4.23-2026.09.03.zip`입니다. 뒤의 날짜는 회사 지식팩 버전이며 ZIP 생성일이 아닙니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 1.4.23 배포 내용과 다른 소스를 패키징할 때는 같은 버전을 재사용하지 말고 새 CoreVersion과 일치하는 플러그인 manifest 버전을 사용합니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
 
 로컬 ZIP은 기본적으로 Git 추적에서 제외합니다. 게시를 요청받으면 소스·안내서를 검증한 뒤 새 버전의 ZIP을 Release에 첨부하고 다운로드 SHA-256을 확인합니다. 과거 Git에 기록했던 1.2.0 파일을 최신 설치본으로 취급하지 마세요.
 

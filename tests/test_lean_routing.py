@@ -31,12 +31,12 @@ class LeanRoutingTests(unittest.TestCase):
         for prompt in ('@테스트자료.pptx 이 자료 내용 확인해서 정리해줄 수 있을까?',
                        'PPT 내용을 읽고 md파일로 요약해줘', 'Read and summarize this PowerPoint'):
             with self.subTest(prompt=prompt):
-                self.assertEqual(['office-reader'], self.names(prompt))
+                self.assertEqual([], self.names(prompt))
 
     def test_new_ppt_and_multi_step_request(self):
         self.assertEqual(['presentation'], self.names('월간 실적 PPT를 새로 만들어줘'))
         names = self.names('기존 PPT 내용을 읽고 새 PPT를 만들어줘')
-        self.assertIn('office-reader', names)
+        self.assertNotIn('office-reader', names)
         self.assertIn('presentation', names)
 
     def test_extension_is_not_dispatch_for_file_organization(self):
@@ -59,13 +59,13 @@ class LeanRoutingTests(unittest.TestCase):
 
     def test_brief_is_self_contained_on_reuse_and_not_duplicated(self):
         self.f.context(source='startup')
-        ctx = self.f.context('PPT 읽고 요약해줘')
+        ctx = self.f.context('HTML 보고서를 만들어줘')
         self.assertEqual('reuse', ctx['skillIndex']['mode'])
         result = task_prompt_context('{"company_agent_route":{}}', json.dumps({'company_agent_runtime': ctx}, ensure_ascii=False))
         brief = result.split('\n{"company_agent_route"')[0]
-        self.assertIn('company-agent:office-reader', brief)
+        self.assertIn('company-agent:html-report', brief)
         tail = json.loads(result.splitlines()[-1])['company_agent_runtime']
-        self.assertEqual(discovery.PLUGIN / 'skills/office-reader/SKILL.md', Path(tail['skillExecution']['path']))
+        self.assertEqual(discovery.PLUGIN / 'skills/html-report/SKILL.md', Path(tail['skillExecution']['path']))
         self.assertNotIn('groups', tail['taskSkills'])
         self.assertNotIn(TASK_SKILL_RULE, tail['instructions'])
         self.assertLessEqual(len(brief), MAX_SKILL_BRIEF_CHARS)
@@ -73,7 +73,7 @@ class LeanRoutingTests(unittest.TestCase):
         self.assertEqual('load', tail['skillExecution']['mode'])
         from company_agent.native_runtime import worker_runtime_input
         worker = worker_runtime_input(discovery.PLUGIN, self.f.project, {'session_id': self.f.sid,
-            'tool_input': {'subagent_type': 'company-agent:medium-worker', 'prompt': 'PPT 읽기'}})
+            'tool_input': {'subagent_type': 'company-agent:medium-worker', 'prompt': 'HTML 보고서 만들기'}})
         worker_text = worker['hookSpecificOutput']['updatedInput']['prompt']
         self.assertNotIn('"selectedSkill":', worker_text)
         self.assertNotIn('"groups":', worker_text)
@@ -88,7 +88,7 @@ class LeanRoutingTests(unittest.TestCase):
     def test_unrecognized_skill_response_records_reason_not_success_or_payload(self):
         self.f.context()
         payload = {'hook_event_name': 'PostToolUse', 'session_id': self.f.sid, 'tool_name': 'Skill',
-                   'tool_input': {'skill': 'company-agent:office-reader'}, 'tool_response': {'text': 'PRIVATE-BODY'}}
+                   'tool_input': {'skill': 'company-agent:html-report'}, 'tool_response': {'text': 'PRIVATE-BODY'}}
         observe(self.f.state, self.f.project, payload)
         state = load_session(self.f.sid, self.f.state)
         self.assertEqual('response-unrecognized', state['skillWorkflow']['loadObservation']['status'])
@@ -101,7 +101,7 @@ class LeanRoutingTests(unittest.TestCase):
 
     def test_partial_read_distinguished_from_bad_shape(self):
         self.f.context()
-        file = discovery.PLUGIN / 'skills/office-reader/SKILL.md'
+        file = discovery.PLUGIN / 'skills/html-report/SKILL.md'
         payload = {'hook_event_name': 'PostToolUse', 'session_id': self.f.sid, 'tool_name': 'Read',
                    'tool_input': {'file_path': str(file)}}
         observe(self.f.state, self.f.project, {**payload, 'tool_response': {'text': 'wrong-shape'}})
@@ -126,7 +126,7 @@ class ReadOnlyDiagnosticTests(unittest.TestCase):
         self.rec = {'schemaVersion': 1, 'coreVersion': '1.4.10', 'scope': 'User', 'claudeConfigRoot': str(self.claude), 'userStateRoot': str(self.state)}
         atomic_write_json(self.local / 'CompanyAgent/installations/user/company-agent-install.json', self.rec)
         atomic_write_json(self.state / 'sessions/example.json', {'turnId': 'one', 'prompt': 'PRIVATE', 'hookDiagnostics': {
-            'UserPromptSubmit': {'status': 'output-produced', 'elapsedMs': 234, 'candidateNames': ['office-reader'], 'raw': 'PRIVATE'}},
+            'UserPromptSubmit': {'status': 'output-produced', 'elapsedMs': 234, 'candidateNames': ['html-report'], 'raw': 'PRIVATE'}},
             'skillWorkflow': {'loadObservation': {'status': 'response-unrecognized', 'turn': 'one'}}})
 
     def snapshot(self):
@@ -216,7 +216,7 @@ class ReadOnlyDiagnosticTests(unittest.TestCase):
 
     def test_stale_load_is_not_reported_as_current_success(self):
         atomic_write_json(self.state / 'sessions/example.json', {'turnId': 'two', 'skillWorkflow': {
-            'lastBodyLoad': {'name': 'office-reader'}, 'loadObservation': {'status': 'loaded', 'turn': 'one'}}})
+            'lastBodyLoad': {'name': 'html-report'}, 'loadObservation': {'status': 'loaded', 'turn': 'one'}}})
         self.assertEqual('unknown', inspect(self.claude, self.local, self.project)['sessions'][0]['loadStatus'])
 
     def test_list_review_diagnostic_is_bounded_and_never_claims_application(self):

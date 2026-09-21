@@ -27,6 +27,22 @@
 등록 정보는 `CompanyAgent\installations`에 있으며 개인 학습자료는 공통 배포물에 넣지 않는다.
 회사 Knowledge/config만 변경해도 현재 scoped 패키지는 새로운 CoreVersion이 필요하다.
 
+## 무엇이 어디에 저장되나요
+
+아래 경로는 기본값이다. 개인 경로를 따로 지정했다면 설치 결과와 등록의 `userStateRoot`가 기준이다. 경로를 확인하기 위해 자료를 새 기본 폴더로 복사하거나 기존 폴더를 초기화하지 않는다.
+
+| 내용 | 저장 위치와 관리 주체 |
+| --- | --- |
+| 회사 공통 엔진·스킬·후크·지식·정책 | `CompanyAgent-Distribution/marketplace/versions/<CoreVersion>`의 배포 자료. 관리자가 새 버전으로 전달 |
+| User 설치의 개인 전체 자료 | `%LOCALAPPDATA%/CompanyAgent/states/user` 또는 등록된 개인 경로 |
+| User 설치에서 명시 선택한 프로젝트 자료 | 위 개인 경로의 `project-scopes/<폴더 해시>` |
+| 별도 Project 설치의 개인 자료 | `%LOCALAPPDATA%/CompanyAgent/states/projects/<경로해시>` 또는 그 설치에 등록된 개인 경로 |
+| 기억·지식·개인 스킬·도구·MCP | 선택한 개인 저장소의 `memory`, `knowledge`, `personal-root/.claude/skills`, `tools`, `mcp` |
+| 설치 기본 설정·학습 설정·스킬 선택·실행 기록 | 활성 설치 저장소의 `config`, `learning`, `sessions` 등. 모두가 선택 백업에 포함되는 것은 아님 |
+| Claude 자체 설정·규칙·자동 기억·기존 MCP | 기존 Claude의 저장소. Company Agent 개인 기억과 자동 병합하지 않음 |
+
+User 설치의 `project-scopes`는 요청의 정확한 작업 폴더 경로를 구분한다. 같은 프로젝트의 하위 폴더라도 별도 경로로 열면 같은 프로젝트 자료가 자동 상속된다고 가정하지 않는다. 반면 **별도 Project 설치의 적용 범위**는 등록한 폴더와 하위 폴더다. User의 프로젝트 자료를 별도 Project 설치로 전환하거나 폴더를 옮길 때 자동 이관하지 않는다는 점도 구분한다.
+
 Skill 우선 선택은 같은 개인 상태의 `config/skill-preferences.json`에 둔다.
 “기존 선택 유지”로 갱신하면 기본값과 프로젝트별 선택이 유지된다. “새 Company Agent Skill 우선”을
 선택한 경우에만 겹친 이름의 선택을 변경하며, 설치 실패 시 그 변경도 복구한다. 버전/캐시 경로가
@@ -57,8 +73,9 @@ Skill 자체의 이름/구조가 바뀌어 후보를 찾지 못하면 조용히 
 - `config/skill-preferences.json`, `config/skill-preferences-history`: Skill 기본값·프로젝트별 선택과 변경 전 이력
 - `config/learning.json`, `learning/state.json`: 자동 학습 켜짐/중지, 관찰, 개인 자동 변경 전후 점검 영역, 다음 사용 평가와 복구 기록. 잠금 파일과 임시 제출 파일은 선택하지 않는다.
 
-이는 **선택한 학습자료 백업**이다. 전체 PC/전체 State를 복구하는 이미지가 아니다.
-대화·세션 원문, history, tmp, 캐시, 검색 인덱스, MCP 실행환경과 자격 증명, `.env`, 개인키는 제외한다.
+이는 **선택한 설치 저장소의 일부 학습자료 백업**이다. 전체 PC/전체 State를 복구하는 이미지나 다른 PC로 완전히 이사하는 패키지가 아니다.
+현재 선택 목록은 `project-scopes` 전체를 따라가거나 `tools`·`mcp/servers`의 소스 전체 및 자산 검증 기록까지 수집하지 않는다. 대화·세션 원문, history, tmp, 캐시, 검색 인덱스, MCP 실행환경과 자격 증명, `.env`, 개인키도 제외한다.
+제외됐다는 것은 일반 업데이트가 해당 원본을 삭제한다는 뜻이 아니다. 원래 저장소에는 남지만 **이 선택 백업만으로 모든 프로젝트 자료·도구·MCP를 재구성할 수는 없다.** PC 교체나 전체 복구가 필요하면 담당자가 원본 경로·추가 백업·의존성·등록을 별도 확인한다.
 JSON의 secret/token/password 등 민감 필드는 마스킹하므로 복원 시 해당 값은 다시 설정해야 할 수 있다.
 Markdown 안의 업무 지식까지 익명화하는 기능은 아니다. 백업을 공유 저장소나 Git에 올리지 않는다.
 파일/총용량/개수/깊이 제한을 넘거나 필요한 선택 파일 복사에 실패하면 설치를 진행하지 않는다.
@@ -90,6 +107,17 @@ junction/symlink는 따라가지 않는다. 필수 개인 학습자료 안에서
 따라서 다른 프로세스가 동시에 파일을 쓰는 상황까지 전체 파일의 단일 시점 일관성을 보장하지 않는다.
 
 ## 복구
+
+다음 네 가지를 구분한다.
+
+| 필요한 복구 | 현재 지원 범위 |
+| --- | --- |
+| 설치 도중 실패 | 설치기가 변경한 등록·선택 및 교체 대상의 복구를 시도. 충돌 시 강제 덮어쓰기 없이 안내 |
+| 개인 기억·지식 등 일부 복원 | 아래 선택 백업의 실제 포함 항목을 확인하여 필요한 파일만 복원 |
+| 명시적으로 교체했던 기존 하네스로 복귀 | 같은 범위 Company Agent 제거 후 `Restore-PreviousHarness.ps1`로 기존 규칙·Hook 복구 |
+| 성공한 User/Project 업데이트의 공통 버전을 하향 | 일반 설치기는 숫자 버전 하향을 차단하며, 현재 이를 한 번에 수행하는 전용 scoped 롤백 명령은 없음 |
+
+`Rollback-CompanyAgent.ps1`는 별도 관리자용 Machine 설치 경로를 위한 도구다. 현재 User/Project 설치나 개인 자료 선택 복원을 위한 명령으로 사용하지 않는다. 아래 수동 복원도 전체 이관·모든 외부 연결의 복구를 보장하지 않는다.
 
 1. 실행 중인 Claude와 해당 개인 상태를 쓰는 작업을 종료한다.
 2. 출력된 백업 폴더의 `backup-manifest.json`에서 원래 저장 위치와 백업 항목을 확인한다.

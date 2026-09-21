@@ -87,7 +87,7 @@ try{
   await page.getByRole('button',{name:'업무 구성',exact:true}).click();
   await page.getByRole('heading',{name:'공통 업무 기준 · 읽기 전용',exact:true}).waitFor();
   await page.getByText('필수 · 가상 공통 기준: 확인한 수치만 보고합니다.',{exact:true}).waitFor();
-  if(!(await page.locator('#companion-content').textContent()).includes('company-agent:office-reader'))throw new Error('missing common skill');
+  if(!(await page.locator('#companion-content').textContent()).includes('company-agent:html-report'))throw new Error('missing common skill');
   if((await page.locator('#companion-content').textContent()).includes('my-fixture'))throw new Error('personal skill leaked into common harness');
   await page.screenshot({path:path.join(out,'shared-harness-1440.png')});
   await page.locator('#companion-tabs').getByRole('button',{name:'개인 전체',exact:true}).click();
@@ -109,7 +109,7 @@ try{
   await page.getByRole('button',{name:'업무 구성',exact:true}).click();
   await page.getByText('my-fixture · 내 Claude 설정에 설치',{exact:true}).waitFor();
   await page.getByText('fixture-candidate · MCP 연결 정의 · 시험 전 후보',{exact:true}).waitFor();
-  if((await page.locator('#companion-content').textContent()).includes('company-agent:office-reader'))throw new Error('common skill leaked into my harness');
+  if((await page.locator('#companion-content').textContent()).includes('company-agent:html-report'))throw new Error('common skill leaked into my harness');
   await page.screenshot({path:path.join(out,'my-harness-1440.png')});
   if(await page.getByLabel('업무 목표',{exact:true}).count())throw new Error('project brief appears in personal-wide view');
   await page.getByLabel('어디에 저장할까요?',{exact:true}).selectOption('project');

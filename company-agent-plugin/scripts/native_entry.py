@@ -14,12 +14,6 @@ import time
 # plugin cache live in different directories or versions.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-# Emit before the larger runtime/CLI imports; keep Hook/other CLI stdout and
-# stderr contracts unchanged. No prompt, source path or document text is logged.
-if sys.argv[1:4] == ['--cli', 'business', 'office-read'] and not any(x in sys.argv[4:] for x in ('-h', '--help')):
-    from company_agent.office_progress import begin_cli
-    begin_cli()
-
 from company_agent.native_runtime import COMPANY_WORKERS, task_prompt_context, configure_runtime, runtime_context, session_start
 
 
@@ -80,11 +74,8 @@ def main() -> int:
             preparation = prepare_skill_review()
         if event == 'PreToolUse' and payload.get('tool_name') == 'AskUserQuestion':
             from company_agent.user_language import question_preflight
-            from company_agent.office_consent import observe as observe_consent
             payload['hook_event_name'] = event
             result = question_preflight(user_state_root(), payload)
-            if not result:
-                observe_consent(user_state_root(), cwd, payload)
             print(json.dumps(result, ensure_ascii=True))
             return 0
         if event == "SessionStart":
@@ -117,14 +108,6 @@ def main() -> int:
             # The corporate policy handler accepts only its own MCP servers.
             # Other tools get preparation checks, NOT a new permission grant.
             if event == "PreToolUse" and not corporate_tool:
-                if preparation.get('hookSpecificOutput', {}).get('permissionDecision') != 'deny':
-                    from company_agent.execution_contract import bind_office_context
-                    bound = bind_office_context(payload, user_state_root())
-                    if bound:
-                        # Add only missing execution context; permissions and
-                        # the real user's document-processing consent remain.
-                        bound['hookSpecificOutput'].update(preparation.get('hookSpecificOutput', {}))
-                        preparation = bound
                 print(json.dumps(preparation, ensure_ascii=True))
                 return 0
             handler = __import__(handlers[event])
@@ -139,10 +122,8 @@ def main() -> int:
             result = json.loads(output.getvalue() or "{}")
             if event == "UserPromptSubmit":
                 from company_agent.user_language import prepare_questions
-                from company_agent.office_consent import observe as observe_consent
                 from company_agent.project_bootstrap import initialize
                 prepare_questions(user_state_root(), payload)
-                consent_context = observe_consent(user_state_root(), cwd, payload)
                 project_context = initialize(cwd, payload)
                 text = result["hookSpecificOutput"]["additionalContext"]
                 runtime_text = runtime_context(
@@ -150,33 +131,16 @@ def main() -> int:
                     session_id=str(payload.get("session_id") or "")
                 )
                 result["hookSpecificOutput"]["additionalContext"] = '\n'.join(filter(None, [
-                    task_prompt_context(text, runtime_text), project_context, consent_context]))
-            if event in {'PostToolUse', 'PostToolUseFailure'}:
-                from company_agent.execution_contract import runtime_probe_context
-                correction = runtime_probe_context(payload, user_state_root())
-                if correction:
-                    target = result.setdefault('hookSpecificOutput', {'hookEventName': event})
-                    target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), correction]))
+                    task_prompt_context(text, runtime_text), project_context]))
             if event == "PostToolUse":
                 from company_agent.skill_workflow import observe
                 from company_agent.paths import user_state_root
                 try:
-                    loaded = observe(user_state_root(), cwd, payload)
-                    from company_agent.execution_contract import office_load_context
-                    ready = office_load_context(plugin, user_state_root(), payload, loaded)
-                    if ready:
-                        target = result.setdefault('hookSpecificOutput', {'hookEventName': event})
-                        target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), ready]))
+                    observe(user_state_root(), cwd, payload)
                 except Exception:
                     # No fabricated read receipt; a later preflight reports the
                     # missing preparation without turning it into a Stop error.
                     pass
-                if payload.get('tool_name') == 'AskUserQuestion':
-                    from company_agent.office_consent import observe as observe_consent
-                    notice = observe_consent(user_state_root(), cwd, payload)
-                    if notice:
-                        target = result.setdefault('hookSpecificOutput', {'hookEventName': event})
-                        target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), notice]))
                 if payload.get("tool_name") in {"Bash", "PowerShell"}:
                     from company_agent.execution_contract import _trusted_arguments
                     inputs = payload.get("tool_input") or {}

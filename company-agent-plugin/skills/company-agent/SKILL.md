@@ -43,7 +43,7 @@ Pass runtime context and the sanitized session ID explicitly to every worker.
 
 For folder cleanup, mail work, HTML reports or editable PPTs, use the selected
 `file-organizer`, `outlook-assistant`, `html-report` or `presentation` workflow.
-Existing Office analysis: compare `office-reader` and personal/project alternatives; creation and reading are different intents.
+For other work, compare the currently available Skills by intent; creation and reading are different intents.
 Check supported capabilities with `/company-agent:business-check` when needed.
 On DRM/access denial, stop that item without extraction/capture/OCR/app-switch
 workarounds; continue independent allowed items and explicitly report omissions.
@@ -154,7 +154,7 @@ Respect pause and user controls at `/company-agent:learning`.
 - An individual command's denial does not establish the permission state of a
   different command or all of Bash. Never claim a factory was denied without an
   actual attempt/result. Name only the observed blocked step and missing approval.
-- Do not repeat conversational approval for bounded diagnostics. Office reading uses its reader-returned one-time AI-processing question in Claude, not a popup.
+- Do not repeat conversational approval for bounded diagnostics.
   Native/managed permissions still apply. For business doctor
   and mail-capabilities use runtime metadataCommand with exact --state-root;
   only this narrow form can receive automatic native permission. Never broadly

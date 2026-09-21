@@ -8,7 +8,6 @@ Never call it from PreToolUse: explicit native/managed deny rules must prevail.
 from __future__ import annotations
 
 import os
-import json
 from pathlib import Path
 import re
 import shutil
@@ -17,7 +16,7 @@ import sys
 from typing import Any
 
 
-def _words(command: str, *, office_paths: bool = False) -> list[str] | None:
+def _words(command: str) -> list[str] | None:
     from .state import _literal_command_words
 
     if not isinstance(command, str) or len(command) > 16_384:
@@ -27,11 +26,9 @@ def _words(command: str, *, office_paths: bool = False) -> list[str] | None:
         value = value[2:].lstrip()
     # Disallow cmd expansion/escaping and shell syntax even within quotes. It
     # may become executable when passed through a Windows .cmd wrapper.
-    forbidden = "\r\n\0$`%!^;|<>&{}*?" + ('' if office_paths else '()[]')
+    forbidden = "\r\n\0$`%!^;|<>&{}*?()[]"
     if any(char in value for char in forbidden):
         return None
-    # The literal lexer still rejects UNQUOTED parentheses/brackets. This
-    # opt-in is only used for the owned Office reader, never auto-permission.
     return _literal_command_words(value)
 
 
@@ -64,25 +61,12 @@ def _powershell() -> Path | None:
     return Path(buffer.value) / "WindowsPowerShell" / "v1.0" / "powershell.exe"
 
 
-def _office_command_parts(command: str) -> tuple[str, str]:
-    """Separate only a terminal stderr merge; the caller must validate the body.
-
-    The literal lexer rejects an unclosed quote, another redirect, a chain or
-    a pipe in the remaining body. This is NOT a general shell normalizer and
-    is used only for the owned Office command, never automatic permission.
-    """
-    match = re.search(r'\s+2>&1\s*$', command)
-    return (command[:match.start()], command[match.start():]) if match else (command, '')
-
-
-def _trusted_arguments(command: str, *, office_paths: bool = False) -> list[str] | None:
+def _trusted_arguments(command: str) -> list[str] | None:
     from .state import _own_cli_arguments
 
     if not isinstance(command, str) or len(command) > 16_384:
         return None
-    if office_paths:
-        command, _ = _office_command_parts(command)
-    words = _words(command, office_paths=office_paths)
+    words = _words(command)
     if not words:
         return None
     program = words[0]
@@ -103,17 +87,11 @@ def _trusted_arguments(command: str, *, office_paths: bool = False) -> list[str]
                                       (resolved and _same(resolved, powershell))):
             return None
     args = _own_cli_arguments(command)
-    return None if office_paths and (not args or args[:2] != ['business', 'office-read']) else args
-
-
-def office_file_name(value: str) -> bool:
-    """An exact filename in the caller's cwd, never a search or path repair."""
-    return (isinstance(value, str) and 0 < len(value) < 2049 and value not in {'.', '..'}
-            and value[-1] not in ' .' and not any(c in value for c in '\\/:\0\r\n'))
+    return args
 
 
 def _fields(arguments: list[str], allowed: set[str], required: set[str] | None = None, *,
-            template_suffixes: tuple[str, ...] = ('.pptx',), allow_file_name: bool = False) -> dict[str, str] | None:
+            template_suffixes: tuple[str, ...] = ('.pptx',)) -> dict[str, str] | None:
     if len(arguments) % 2:
         return None
     fields: dict[str, str] = {}
@@ -126,8 +104,6 @@ def _fields(arguments: list[str], allowed: set[str], required: set[str] | None =
         return None
     for name in ("--state-root", "--spec", "--project", "--project-root", "--base", "--index", "--file", "--template"):
         if name in fields and not _absolute(fields[name]):
-            if name == '--file' and allow_file_name and office_file_name(fields[name]):
-                continue
             return None
     if "--spec" in fields and Path(fields["--spec"]).suffix.casefold() != ".json":
         return None
@@ -265,7 +241,7 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     """
     if discovery_command(command, tool=tool) or _literal_listing(command):
         return "read_only"
-    args = _trusted_arguments(command) or _trusted_arguments(command, office_paths=True)
+    args = _trusted_arguments(command)
     if not args:
         return "unknown"
     head = tuple(args[:2])
@@ -309,10 +285,6 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         args = [value for value in args if value != '--open']
     if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "ppt-capabilities"), ("business", "html-designs")}:
         allowed = {"--state-root"}
-    elif head == ('business','office-read'):
-        allowed = {'--state-root','--spec'} if '--spec' in args else {'--state-root','--file','--start','--end','--sheet','--range','--max-chars','--expected-count'}
-        allowed.add('--session')
-        required = {'--spec'} if '--spec' in args else {'--file'}
     elif head in {("business", "mail-search"), ("business", "html-choices")}:
         allowed, required = {"--state-root", "--spec"}, {"--spec"}
     elif head == ('business','ppt-choices'):
@@ -334,8 +306,7 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     else:
         return "unknown"
     suffixes = ('.html', '.htm') if head == ('business', 'html-template') else ('.pptx', '.html', '.htm') if head in {('business','ppt-choices'),('business','ppt-analyze')} else ('.pptx',)
-    return "read_only" if _fields(args[2:], allowed, required, template_suffixes=suffixes,
-                                 allow_file_name=head == ('business', 'office-read')) is not None else "unknown"
+    return "read_only" if _fields(args[2:], allowed, required, template_suffixes=suffixes) is not None else "unknown"
 
 
 def internal_plan_command(command: str, root: Path) -> bool:
@@ -379,116 +350,3 @@ def safe_permission(payload: dict[str, Any], root: Path) -> dict[str, str] | Non
     if fields is None or ("--state-root" in fields and not _same(fields["--state-root"], root)):
         return None
     return {"behavior": "allow"}
-
-
-def runtime_probe_context(payload: dict[str, Any], root: Path) -> str:
-    """Correct a metadata/env confusion after a probe; never change its result.
-
-    Pure current-hook metadata only: no env lookup, state scan, command execution,
-    permission grant, or fabricated replacement for the tool's actual output.
-    """
-    if payload.get('hook_event_name') not in {'PostToolUse', 'PostToolUseFailure'} or payload.get('tool_name') not in {'Bash', 'PowerShell'}:
-        return ''
-    inputs = payload.get('tool_input')
-    command = (inputs.get('command') or inputs.get('cmd')) if isinstance(inputs, dict) else None
-    if not isinstance(command, str) or len(command) > 16_384:
-        return ''
-    name = r'(?:company_agent_session_id|stateRoot|cliCommand)'
-    if not re.search(r'%' + name + r'%|\$(?:env:)?' + name + r'\b|\benv:' + name +
-                     r'\b|\bcompany_agent_runtime\.(?:officeReadCommand|cliCommand|stateRoot)\b', command, re.I):
-        return ''
-    from .office_consent import native_session_id
-    session = native_session_id(payload.get('session_id'))
-    values = {'company_agent_session_id': session, 'stateRoot': str(root)} if session else {}
-    if session:
-        from .native_runtime import cli_command
-        cli = cli_command(Path(__file__).resolve().parents[2])
-        if re.search(r'\bcompany_agent_runtime\.officeReadCommand\b', command, re.I):
-            ready = office_read_command(cli, root, session)
-            if ready:
-                values['officeReadCommand'] = ready
-        else:
-            values['cliCommand'] = cli  # Other tasks do not acquire an Office workflow.
-    return ('company_agent_runtime.*는 실행할 명령어가 아니라 후크 JSON의 항목 이름입니다. '
-            '환경변수 NOT SET으로 문서 권한·DRM·읽기 불가를 판정하지 마세요. '
-            '현재 후크 정보: ' + json.dumps(values, ensure_ascii=False, separators=(',', ':')) +
-            '. 전달된 officeReadCommand/cliCommand와 선택한 스킬로 계속하며 환경변수 탐색·대체 파서는 사용하지 마세요. '
-            '정보가 비어 있으면 실제 연결 누락만 알리세요. 이 안내는 승인·권한을 부여하지 않으며 실제 거절은 유지합니다.')
-
-
-def office_read_command(cli: str, root: Path, session: str) -> str:
-    """Ready prefix from native context, not environment discovery or consent."""
-    from .office_consent import _session
-    if not _session(session):
-        return ''
-    command = cli + ' business office-read --session "' + session + '" --state-root "' + root.resolve().as_posix() + '"'
-    expected = ['business', 'office-read', '--session', session, '--state-root', root.resolve().as_posix()]
-    # No probing processes, shell expansion, model-provided source or state scan.
-    return command if _trusted_arguments(command, office_paths=True) == expected else ''
-
-
-def office_load_context(plugin: Path, root: Path, payload: dict[str, Any], loaded: dict | None) -> str:
-    """One copy-ready command after an observed company reader load.
-
-    No discovery, body re-read, model call or consent. A similarly named
-    personal skill must retain its own execution contract.
-    """
-    if (payload.get('hook_event_name') != 'PostToolUse' or not isinstance(loaded, dict)
-            or loaded.get('source') != 'company' or loaded.get('name') != 'office-reader'
-            or not _same(str(loaded.get('path', '')), plugin / 'skills/office-reader/SKILL.md')):
-        return ''
-    from .office_consent import native_session_id
-    from .native_runtime import cli_command
-    command = office_read_command(cli_command(plugin), root, native_session_id(payload.get('session_id')))
-    if not command:
-        return ''
-    return ('Office 읽기: 아래 officeReadCommand의 실제 문자열 뒤에 --file "현재 폴더의 정확한 파일명 또는 확인한 절대경로"와 요청한 범위만 붙이세요. '
-            '항목 이름을 실행하거나 세션·설치 경로를 다시 찾지 마세요. 반환된 승인 질문은 그대로 받습니다.\n' +
-            json.dumps({'officeReadCommand': command}, ensure_ascii=False, separators=(',', ':')))
-
-
-def bind_office_context(payload: dict[str, Any], root: Path) -> dict[str, Any]:
-    """Fill omitted context on one literal installed Office reader invocation.
-
-    Only the current native hook supplies identity; never inspect other session
-    files, infer a latest session, grant permission, or answer a consent question.
-    Explicit context (including a delegated parent's session) is not rewritten.
-    All original tool fields and source/range arguments survive unchanged.
-    """
-    if payload.get('hook_event_name') != 'PreToolUse' or payload.get('tool_name') not in {'Bash', 'PowerShell'}:
-        return {}
-    inputs = payload.get('tool_input')
-    if not isinstance(inputs, dict) or inputs.get('run_in_background'):
-        return {}
-    key = 'command' if 'command' in inputs else 'cmd'
-    command = inputs.get(key)
-    if not isinstance(command, str):
-        return {}
-    args = _trusted_arguments(command, office_paths=True)
-    if not args or args[:2] != ['business', 'office-read'] or classify_command(command) != 'read_only':
-        return {}
-    fields = dict(zip(args[2::2], args[3::2]))  # Already validated by classify_command.
-    from .office_consent import native_session_id
-    session = native_session_id(payload.get('session_id'))
-    if not session:
-        return {}
-    if '--session' in fields and fields['--session'] != session:
-        return {}  # A worker may carry its parent's approved scope.
-    if '--state-root' in fields and not _same(fields['--state-root'], root):
-        return {}  # Never silently redirect an explicit state scope.
-    additions = []
-    if '--session' not in fields:
-        additions.extend(['--session', session])
-    if '--state-root' not in fields:
-        additions.extend(['--state-root', root.resolve().as_posix()])
-    if not additions:
-        return {}
-    # Literal double-quoted values work in both PowerShell and Git Bash. Reject
-    # shell metacharacters via the same strict grammar after construction.
-    suffix = ''.join(' ' + flag + ' "' + value + '"' for flag, value in zip(additions[::2], additions[1::2]))
-    body, redirect = _office_command_parts(command)
-    updated = body.rstrip() + suffix + redirect
-    if _trusted_arguments(updated, office_paths=True) != args + additions:
-        return {}
-    return {'hookSpecificOutput': {'hookEventName': 'PreToolUse',
-                                  'updatedInput': {**inputs, key: updated}}}

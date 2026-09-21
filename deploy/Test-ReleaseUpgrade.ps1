@@ -101,23 +101,21 @@ try {
         'scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py',
         'scripts\company_agent\execution_contract.py', 'scripts\company_agent\native_runtime.py',
         'scripts\native_entry.py',
-        'scripts\company_agent\office_progress.py', 'scripts\company_agent\office_reader.py',
-        'scripts\company_agent\business.py', 'scripts\company_agent\excel_xlwings.py',
-        'scripts\company_agent\office_pywin32.py',
+        'scripts\company_agent\business.py',
         'scripts\company_agent\business_safety.py', 'scripts\company_agent\workspace_api.py',
         'scripts\company_agent\resource_scope.py', 'scripts\company_agent\harness_map.py',
         'scripts\company_agent\harness_map_html.py',
         'scripts\company_agent\company_policy.py', 'scripts\company_agent\skill_decision.py',
         'scripts\company_agent\workflow_evidence.py', 'scripts\company_agent\state.py',
+        'scripts\company_agent\learning.py', 'scripts\company_agent\work.py',
+        'scripts\company_agent\skill_task_context.py', 'skills\self-learning\SKILL.md',
         'scripts\company_agent\html_reference.py', 'scripts\company_agent\knowledge.py',
         'scripts\Invoke-CompanyAgent.ps1', 'scripts\Confirm-BusinessAction.ps1',
-        'skills\office-reader\SKILL.md', 'skills\html-report\SKILL.md',
-        'skills\office-reader\scripts\Invoke-CompanyAgent.ps1',
-        'skills\office-reader\references\reading.md',
+        'skills\html-report\SKILL.md',
         'resources\first-work.html', 'resources\onboarding-course.json',
         'resources\manuals\Company-Agent-Handbook.html', 'resources\manuals\Company-Agent-Onboarding.html',
         'resources\manuals\Company-Agent-Guide.html',
-        'scripts\company_agent\office_consent.py', 'scripts\company_agent\project_bootstrap.py',
+        'scripts\company_agent\project_bootstrap.py',
         'scripts\company_agent\artifact_delivery.py', 'scripts\company_agent\ppt_html.py',
         'scripts\company_agent\ppt_html_import.py', 'scripts\company_agent\ppt_dom_capture.js',
         'scripts\company_agent\ppt_scene.py', 'scripts\company_agent\ppt_image_edit.py',
@@ -126,6 +124,12 @@ try {
         $cachedModule = Join-Path $current[0].installPath $relative
         $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
         Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedModule -Algorithm SHA256).Hash) "Updated file was not installed intact: $relative"
+    }
+    foreach ($removed in @('skills\office-reader', 'scripts\Read-CompanyOffice.py', 'scripts\Read-CompanyExcel.py',
+        'scripts\company_agent\office_reader.py', 'scripts\company_agent\office_consent.py',
+        'scripts\company_agent\office_progress.py', 'scripts\company_agent\office_pywin32.py',
+        'scripts\company_agent\office_structure.py', 'scripts\company_agent\excel_xlwings.py')) {
+        Assert-ReleaseUpgrade (-not (Test-Path -LiteralPath (Join-Path $current[0].installPath $removed))) "Removed reader still exists in the active plugin: $removed"
     }
     $debugFile = Join-Path $testRoot 'updated-init.log'
     Push-Location -LiteralPath $project

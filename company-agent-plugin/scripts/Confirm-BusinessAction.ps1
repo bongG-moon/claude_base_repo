@@ -41,12 +41,6 @@ try {
     $form.CancelButton = $no
     # Enter must not silently accept a destructive plan.
     $form.AcceptButton = $no
-    if ($env:COMPANY_AGENT_OFFICE_PROGRESS -eq '1') {
-        $form.Add_Shown({
-            [Console]::Error.WriteLine('CA_OFFICE_STAGE:confirmation_wait')
-            [Console]::Error.Flush()
-        })
-    }
     $approved = $form.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK
     $form.Dispose()
     @{ approved = [bool]$approved } | ConvertTo-Json -Compress

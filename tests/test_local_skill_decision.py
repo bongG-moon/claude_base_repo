@@ -71,9 +71,9 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
     output = execution.SkillExecutionTests.output
     state = execution.SkillExecutionTests.state
 
-    def command(self, operation='office-read'):
+    def command(self, operation='eml-read'):
         cli = discovery.PLUGIN / 'scripts/harness_cli.py'
-        return f'"{sys.executable}" -B "{cli}" business {operation} --file "{self.f.project / "PRIVATE.pptx"}"'
+        return f'"{sys.executable}" -B "{cli}" business {operation} --file "{self.f.project / "PRIVATE.eml"}"'
 
     def activity(self, result=None, **changes):
         payload = {'session_id': self.f.sid, 'hook_event_name': 'PostToolUse', 'tool_name': 'Bash',
@@ -96,21 +96,21 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
         candidate.update(path='C:/PRIVATE/invented.md', invocation='invented', name='invented')
         result, _ = prepare_execution(ctx)
         self.assertEqual('load', result['mode'])
-        self.assertEqual('office-reader', result['name'])
+        self.assertEqual('html-report', result['name'])
         self.assertNotIn('invented', json.dumps(result))
 
     def test_every_preparation_mode_has_a_concrete_next_action(self):
-        for prompt, expected in [('PPT 내용 읽어줘', 'load'), ('2 더하기 3', 'review')]:
+        for prompt, expected in [('HTML 보고서 만들어줘', 'load'), ('2 더하기 3', 'review')]:
             ctx, _ = self.output(prompt)
             self.assertEqual(expected, ctx['skillExecution']['mode'])
             self.assertEqual(NEXT_ACTIONS[expected], ctx['skillWorkflow']['nextAction'])
-        self.f.skill('office-reader', 'PPT 내용 읽기')
+        self.f.skill('html-report', 'HTML 보고서 작성')
         ctx, _ = self.output()
         self.assertEqual('ask-skill-choice', ctx['skillWorkflow']['nextAction'])
 
     def test_body_loading_alone_never_claims_execution_or_quality(self):
         self.output()
-        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+        self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
         progress = workflow_progress(self.state())
         self.assertEqual('loaded', progress['body'])
         self.assertEqual('not-observed', progress['execution'])
@@ -119,12 +119,12 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
 
     def test_known_runtime_result_is_separate_from_load_and_verification(self):
         self.output()
-        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+        self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
         before = self.state()
         state = self.activity({'ok': True, 'status': 'read', 'items': [{'text': 'PRIVATE-DOCUMENT'}]})
         progress = workflow_progress(state)
         self.assertEqual('reported-success', progress['execution'])
-        self.assertEqual('office-read', progress['operation'])
+        self.assertEqual('eml-read', progress['operation'])
         self.assertEqual('loaded', progress['bodyAtResponse'])
         self.assertEqual('not-verified', progress['resultQuality'])
         self.assertEqual(before['verification'], state['verification'])
@@ -138,7 +138,7 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
         self.assertEqual('reported-success', workflow_progress(state)['execution'])
         self.assertEqual('not-observed', workflow_progress(state)['bodyAtResponse'])
         self.assertEqual({}, state['skillWorkflow']['readSkills'])
-        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+        self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
         self.assertEqual('not-observed', workflow_progress(self.state())['bodyAtResponse'])
 
     def test_runtime_partial_cancel_and_input_wait_are_not_success_or_retry_authorization(self):
@@ -174,7 +174,7 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
         self.output()
         commands = [self.command() + ' --help', self.command() + ' | more',
                     'python -c "print(1)"', self.command('doctor'),
-                    f'"{self.f.project / "harness_cli.py"}" business office-read --file x.pptx']
+                    f'"{self.f.project / "harness_cli.py"}" business eml-read --file x.eml']
         for cmd in commands:
             state = self.activity(tool_input={'command': cmd})
             self.assertEqual('not-observed', workflow_progress(state)['execution'])
@@ -183,7 +183,7 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
 
     def test_new_turn_and_compaction_do_not_reuse_execution_results(self):
         self.output()
-        self.f.read(discovery.PLUGIN / 'skills/office-reader/SKILL.md')
+        self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')
         self.activity()
         self.output()
         progress = workflow_progress(self.state())
@@ -216,7 +216,7 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
         state = {'turnId': 'now', 'skillWorkflow': {'turn': 'now', 'executionPlan': {'mode': ['PRIVATE']},
                  'businessObservation': {'turn': 'now', 'operation': 'PRIVATE', 'status': ['PRIVATE'], 'bodyAtResponse': 'PRIVATE'}}}
         self.assertNotIn('PRIVATE', json.dumps(workflow_progress(state)))
-        state['skillWorkflow']['businessObservation']['operation'] = 'office-read'
+        state['skillWorkflow']['businessObservation']['operation'] = 'eml-read'
         self.assertEqual('not-observed', workflow_progress(state)['execution'])
 
 
@@ -230,7 +230,7 @@ class LocalDecisionDiagnosticTests(unittest.TestCase):
             'turn': 'one', 'executionPlan': {'mode': 'load'},
             'selected': {'id': 'reader', 'sha256': sha}, 'readSkills': {'reader': sha},
             'lastBodyLoad': {'turn': 'one', 'id': 'reader', 'sha256': sha},
-            'businessObservation': {'turn': 'one', 'operation': 'office-read',
+            'businessObservation': {'turn': 'one', 'operation': 'eml-read',
                                     'status': 'partial', 'bodyAtResponse': 'loaded', 'raw': 'PRIVATE'}}})
         before = self.snapshot()
         report = routing.inspect(self.claude, self.local, self.project)
@@ -246,7 +246,7 @@ class LocalDecisionDiagnosticTests(unittest.TestCase):
 
     def test_old_or_stale_observations_do_not_become_current_results(self):
         for state in ({}, {'turnId': 'two', 'skillWorkflow': {'turn': 'one', 'executionPlan': {'mode': 'load'},
-                      'businessObservation': {'turn': 'one', 'operation': 'office-read', 'status': 'reported-success'}}}):
+                      'businessObservation': {'turn': 'one', 'operation': 'eml-read', 'status': 'reported-success'}}}):
             atomic_write_json(self.state / 'sessions/example.json', state)
             progress = routing.inspect(self.claude, self.local, self.project)['sessions'][0]['workflowProgress']
             self.assertEqual('unknown', progress['decision'])

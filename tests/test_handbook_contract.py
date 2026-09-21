@@ -29,6 +29,20 @@ class HandbookTests(unittest.TestCase):
         self.assertNotIn("knowledge:'회사·개인 지식'",ui)
         self.assertNotIn("brief:'폴더 업무 지침'",ui)
 
+    def test_storage_and_learning_limits_are_explained_to_users(self):
+        handbook=(ROOT/'docs/COMPANY_AGENT_HANDBOOK.md').read_text(encoding='utf-8')
+        self.assertIn(r'%LOCALAPPDATA%\CompanyAgent\states\user',handbook)
+        for term in ('project-scopes/', 'memory/items/', 'personal-root/.claude/skills/',
+                     'learning/state.json', 'Claude 자체', 'User 설치', 'Project 설치'):
+            self.assertIn(term,handbook)
+        for name in ('COMPANY_AGENT_HANDBOOK.md','USER_GUIDE.md','ONBOARDING_COURSE.md'):
+            text=(ROOT/'docs'/name).read_text(encoding='utf-8')
+            for term in ('새 스킬', '자동 학습', '일시 중지'):
+                self.assertIn(term,text,name)
+        index=(ROOT/'docs/README.md').read_text(encoding='utf-8')
+        for term in ('어디에 저장', '후크', '무엇을 자동으로'):
+            self.assertIn(term,index)
+
     def test_default_skills_match_source_exactly(self):
         text=(ROOT/'docs/COMPANY_AGENT_HANDBOOK.md').read_text(encoding='utf-8')
         section=text.split('## 4.',1)[1].split('## 5.',1)[0]
@@ -36,11 +50,30 @@ class HandbookTests(unittest.TestCase):
         actual={p.parent.name for p in (PLUGIN/'skills').glob('*/SKILL.md')
                 if 'disable-model-invocation: true' not in p.read_text(encoding='utf-8').split('---',2)[1]}
         self.assertEqual(actual,documented)
-        self.assertEqual(12,len(actual))
+        self.assertEqual(11,len(actual))
         self.assertIn(f'기본 스킬 {len(actual)}개와 이전 이름 1개',text)
         compatibility=(PLUGIN/'skills/platform-mcp-builder/SKILL.md').read_text(encoding='utf-8')
         self.assertIn('disable-model-invocation: true',compatibility.split('---',2)[1])
         self.assertIn('호환용으로만 남아',text)
+
+    def test_current_implementation_inventory_tracks_skill_removal(self):
+        skills=list((PLUGIN/'skills').glob('*/SKILL.md'))
+        automatic=[p for p in skills
+                   if 'disable-model-invocation: true' not in p.read_text(encoding='utf-8').split('---',2)[1]]
+        review=(ROOT/'docs/IMPLEMENTATION_REVIEW.md').read_text(encoding='utf-8')
+        self.assertIn(f'현재 소스의 기본 스킬 파일은 {len(skills)}개',review)
+        self.assertIn(f'자동 호출 가능 {len(automatic)}개와 호환 안내 {len(skills)-len(automatic)}개',review)
+
+    def test_current_install_entry_points_do_not_send_staff_to_old_releases(self):
+        # Historical UPDATE/VALIDATION records retain their original versions.
+        # Only the currently linked install instructions must agree with README.
+        readme=(ROOT/'README.md').read_text(encoding='utf-8')
+        version=re.search(r'현재 공개 배포 버전은 \*\*([\d.]+)\*\*',readme).group(1)
+        for name in ('DEPLOYMENT.md','BUSINESS_PILOT_GUIDE.md','LOCAL_WORKSPACE.md'):
+            intro='\n'.join((ROOT/'docs'/name).read_text(encoding='utf-8').splitlines()[:40])
+            self.assertIn(version,intro,name)
+            linked=re.findall(r'/releases/(?:tag|download)/v([\d.]+)',intro)
+            self.assertTrue(all(v==version for v in linked),(name,linked))
 
     def test_audit_guidance_gives_next_steps_without_claiming_full_plugin_install(self):
         handbook=(ROOT/'docs/COMPANY_AGENT_HANDBOOK.md').read_text(encoding='utf-8')
@@ -171,8 +204,10 @@ class HandbookTests(unittest.TestCase):
         for phrase in ('참고 파일은 없어','새 디자인','HTML 초안','내가 확인하면','최종 PPT 한 파일','자동 설치하지 마'):
             self.assertIn(phrase,ppt)
         text=(ROOT/'docs/ONBOARDING_COURSE.md').read_text(encoding='utf-8')
-        for phrase in ('1-1. 준비물 없는','1-2. 만든 파일','1-3. Office','MD·HTML 실습만','미실행','목표 합계 300'):
+        for phrase in ('1-1. 준비물 없는','1-2. 만든 파일','미실행','목표 합계 300'):
             self.assertIn(phrase,text)
+        self.assertNotIn('company-agent:office-reader',text)
+        self.assertNotIn('이 범위 읽기 승인',text)
         self.assertIn(first['prompt'],(PLUGIN/'resources/first-work.html').read_text(encoding='utf-8'))
 
     def test_beginner_copy_is_plain_and_excludes_internal_delivery_notes(self):

@@ -299,10 +299,11 @@ try {
         }
     }
 
-    foreach ($docName in @('UPDATE_1.4.8.md','HTML_REFERENCE_STYLES_2026-09-16.md','UPDATE_1.4.7.md','SKILL_DISCOVERY_VALIDATION_2026-09-16.md','UPDATE_1.4.0.md','VALIDATION_1.4.0.md','UPDATE_1.4.1.md','VALIDATION_1.4.1.md','UPDATE_1.4.2.md','UPDATE_1.4.3.md','UPDATE_1.4.4.md','UPDATE_1.4.5.md','UPDATE_1.4.6.md','REPORT_WAIT_AND_WHITE_GLASS_2026-09-15.md','PPT_DESIGN_APPROVAL_2026-09-15.md','HTML_AND_SKILL_PREPARATION_FIX_2026-09-15.md','HTML_THEME_REVIEW_2026-09-15.md','SKILL_ROUTING_VALIDATION_2026-09-15.md','OFFICE_READ_TROUBLESHOOTING.md')) {
+    # Historical Office-reader records remain in source, outside new employee bundles.
+    foreach ($docName in @('UPDATE_1.4.8.md','HTML_REFERENCE_STYLES_2026-09-16.md','UPDATE_1.4.7.md','SKILL_DISCOVERY_VALIDATION_2026-09-16.md','UPDATE_1.4.0.md','VALIDATION_1.4.0.md','UPDATE_1.4.3.md','UPDATE_1.4.4.md','UPDATE_1.4.5.md','UPDATE_1.4.6.md','REPORT_WAIT_AND_WHITE_GLASS_2026-09-15.md','PPT_DESIGN_APPROVAL_2026-09-15.md','HTML_AND_SKILL_PREPARATION_FIX_2026-09-15.md','HTML_THEME_REVIEW_2026-09-15.md','SKILL_ROUTING_VALIDATION_2026-09-15.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
-    foreach ($docName in @('UPDATE_1.4.9.md', 'UPDATE_1.4.10.md', 'UPDATE_1.4.11.md', 'UPDATE_1.4.12.md', 'UPDATE_1.4.13.md', 'UPDATE_1.4.14.md', 'OFFICE_READ_PROGRESS_2026-09-17.md', 'SKILL_LIST_REVIEW_2026-09-17.md', 'SKILL_FIRST_EXECUTION_2026-09-17.md', 'SKILL_SELECTION_ENCODING_VALIDATION_2026-09-16.md', 'SKILL_AUTO_SELECTION_FIX_2026-09-16.md', 'LEAN_SKILL_ROUTING_2026-09-16.md')) {
+    foreach ($docName in @('UPDATE_1.4.9.md', 'UPDATE_1.4.10.md', 'UPDATE_1.4.11.md', 'UPDATE_1.4.12.md', 'UPDATE_1.4.13.md', 'SKILL_LIST_REVIEW_2026-09-17.md', 'SKILL_FIRST_EXECUTION_2026-09-17.md', 'SKILL_SELECTION_ENCODING_VALIDATION_2026-09-16.md', 'SKILL_AUTO_SELECTION_FIX_2026-09-16.md', 'LEAN_SKILL_ROUTING_2026-09-16.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
     foreach ($docName in @('UPDATE_1.4.15.md', 'LOCAL_WORKSPACE.md', 'BEGINNER_WORKFLOW_DESIGN_2026-09-19.md', 'LOCAL_DECISION_WORKFLOW_2026-09-19.md', 'VALIDATION_AUDIT_FIXES_2026-09-19.md', 'VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md', 'VALIDATION_COMPANY_PERSONAL_2026-09-18.md', 'VALIDATION_EXECUTION_RECOVERY_2026-09-19.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-18.md', 'VALIDATION_LOCAL_WORKSPACE_2026-09-19.md')) {
@@ -311,11 +312,8 @@ try {
     foreach ($docName in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CLAUDE_CODE_COMMANDS.md', 'Company-Agent-Guide.html', 'Company-Agent-Handbook.html', 'Company-Agent-Onboarding.html', 'UPDATE_1.4.16.md', 'UPDATE_1.4.17.md', 'UPDATE_1.4.18.md', 'UPDATE_1.4.19.md', 'VALIDATION_RESOURCE_SCOPES_2026-09-19.md', 'VALIDATION_HARNESS_MAP_2026-09-19.md', 'VALIDATION_PPT_HTML_FIRST_2026-09-19.md', 'VALIDATION_PPT_NATIVE_HTML_2026-09-19.md', 'VALIDATION_SINGLE_DELIVERY_2026-09-19.md', 'VALIDATION_UNIFIED_GUIDE_2026-09-19.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
-    Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\UPDATE_1.4.20.md') -Destination (Join-Path $stagePath 'docs\UPDATE_1.4.20.md') -Force
-    foreach ($docName in @('UPDATE_1.4.21.md', 'VALIDATION_EXECUTION_FLOW_2026-09-21.md', 'UPDATE_1.4.22.md', 'VALIDATION_OFFICE_PATH_ERRORS_2026-09-21.md')) {
-        Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
-    }
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\AUDIT_HARNESS_2026-09-20.md') -Destination (Join-Path $stagePath 'docs\AUDIT_HARNESS_2026-09-20.md') -Force
+    Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\UPDATE_1.4.23.md') -Destination (Join-Path $stagePath 'docs\UPDATE_1.4.23.md') -Force
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'Diagnose-CompanyAgent.cmd') -Destination (Join-Path $stagePath 'Diagnose-CompanyAgent.cmd') -Force

@@ -83,7 +83,7 @@ class KoreanDefaultTests(unittest.TestCase):
 
     def test_common_menu_descriptions_are_korean_without_renaming_skills(self):
         files = [*PLUGIN.glob("skills/*/SKILL.md"), *PLUGIN.glob("commands/*.md"), *PLUGIN.glob("agents/*.md")]
-        self.assertEqual(19, len(files))
+        self.assertEqual(18, len(files))
         for path in files:
             with self.subTest(path=path):
                 metadata, _ = parse_frontmatter_text(path.read_text(encoding="utf-8"))

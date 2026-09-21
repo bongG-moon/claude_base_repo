@@ -56,7 +56,7 @@ class WorkerRuntimeHandoffTests(unittest.TestCase):
         self.assertNotIn("updatedInput", result["hookSpecificOutput"])
 
     def test_missing_native_session_is_not_hashed_into_a_fabricated_conversation(self):
-        from company_agent.office_consent import native_session_id
+        from company_agent.state import native_session_id
         for session in (None, '', ' ', 'unknown-session', 'company_agent_session_id', 'SESSION'):
             with self.subTest(session=session), patch('company_agent.native_runtime._skill_routing', return_value=([], {})):
                 result = worker_runtime_input(PLUGIN, ROOT, {'session_id': session, 'tool_input': {

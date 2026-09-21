@@ -54,14 +54,31 @@ change the task's success/failure verdict. Mention the limitation only if releva
    Distinct project/recipient/workflow conventions must have distinct keys
    and explicit scope in title/body. Never generalize one team's business rule
    to the company or overwrite a conflicting explicit personal memory.
-5. For a procedural lesson, target only a personal Skill actually read with the
-   Read tool in this work unit. Match the captured name/hash in session.usedSkills
-   or session.work.usedSkills; read the current version again if it changed.
+   For repeated direct corrections to the same scoped item, keep the same key
+   and the latest explicit value, including A -> B -> A. Do not rename the key,
+   revive an older conflicting candidate, or count same-work corrections as
+   independent repeated evidence. The final review must reflect that latest
+   correction rather than a stale summary of earlier feedback.
+5. For a procedural lesson, target only a personal Skill whose full body was
+   actually loaded in this work unit. Match the captured name/hash in
+   session.usedSkills or session.work.usedSkills; load the current version again
+   if it changed. A successful Read must return matching content covering the
+   whole file. Partial reads accumulate only within the same user turn and file
+   hash; a new turn clears incomplete coverage. A completed work-level receipt
+   can remain for the same ongoing work. Failed, mismatched, partial, or another
+   worker's reads do not create a new full-body receipt. An exact successful
+   native Skill load can also provide body-load evidence; neither kind of load
+   alone proves that the procedure was applied or that the work succeeded.
    Improve a concrete missing check/step/exception, not an entire invented recipe.
    `verified_fix` requires an observed failure followed by recorded verification
    success. Record unsupported ideas as observations; don't describe them as
    verified improvements. Common plugins, project factory files, arbitrary
    scripts, permissions and corporate policy are not automatic edit targets.
+   Native-only execution requirements such as context: fork, model, allowed-tools,
+   or dynamic instructions still require an exact successful Skill invocation
+   in the current turn. Read is not an execution substitute. If the native
+   target cannot be invoked exactly, report that limitation without claiming
+   native execution or weakening the requirement.
 6. Evaluate a previously changed Skill only when its exact version was actually
    read and applied in this task. Read alone does not prove application: omit
    the evaluation if you only inspected the Skill. Helpful/harmful judgments
@@ -110,7 +127,11 @@ Then run:
 Do not call asset create or edit SKILL.md yourself to bypass a deferred/rejected
 automatic proposal. The engine performs eligibility checks, observations,
 version-bound changes and rollback. Skill changes here are a bounded added
-checklist, not generated code. Normal explicit Skill creation requests still
+checklist, not generated code. For an existing learned item with the same key,
+the engine replaces that checklist item instead of appending contradictory
+versions. Legacy item keys must be recoverable from recorded history; if not,
+defer only that automatic improvement and preserve the existing Skill body.
+Do not guess a key, rewrite its history, or bypass this deferral. Normal explicit Skill creation requests still
 use asset-factory. Extracting a new standalone workflow may be proposed to the
 user if no eligible personal Skill exists; don't claim one was auto-created.
 
