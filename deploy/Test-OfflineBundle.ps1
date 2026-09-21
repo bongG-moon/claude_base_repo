@@ -60,6 +60,8 @@ function Assert-EmployeeBundle {
         'docs/UPDATE_1.4.14.md',
         'docs/UPDATE_1.4.15.md',
         'docs/UPDATE_1.4.16.md',
+        'docs/UPDATE_1.4.21.md',
+        'docs/VALIDATION_EXECUTION_FLOW_2026-09-21.md',
         'docs/VALIDATION_RESOURCE_SCOPES_2026-09-19.md',
         'docs/VALIDATION_HARNESS_MAP_2026-09-19.md',
         'docs/LOCAL_WORKSPACE.md',

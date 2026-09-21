@@ -64,9 +64,24 @@ def _powershell() -> Path | None:
     return Path(buffer.value) / "WindowsPowerShell" / "v1.0" / "powershell.exe"
 
 
+def _office_command_parts(command: str) -> tuple[str, str]:
+    """Separate only a terminal stderr merge; the caller must validate the body.
+
+    The literal lexer rejects an unclosed quote, another redirect, a chain or
+    a pipe in the remaining body. This is NOT a general shell normalizer and
+    is used only for the owned Office command, never automatic permission.
+    """
+    match = re.search(r'\s+2>&1\s*$', command)
+    return (command[:match.start()], command[match.start():]) if match else (command, '')
+
+
 def _trusted_arguments(command: str, *, office_paths: bool = False) -> list[str] | None:
     from .state import _own_cli_arguments
 
+    if not isinstance(command, str) or len(command) > 16_384:
+        return None
+    if office_paths:
+        command, _ = _office_command_parts(command)
     words = _words(command, office_paths=office_paths)
     if not words:
         return None
@@ -370,12 +385,23 @@ def runtime_probe_context(payload: dict[str, Any], root: Path) -> str:
     if not isinstance(command, str) or len(command) > 16_384:
         return ''
     name = r'(?:company_agent_session_id|stateRoot|cliCommand)'
-    if not re.search(r'%' + name + r'%|\$(?:env:)?' + name + r'\b|\benv:' + name + r'\b', command, re.I):
+    if not re.search(r'%' + name + r'%|\$(?:env:)?' + name + r'\b|\benv:' + name +
+                     r'\b|\bcompany_agent_runtime\.(?:officeReadCommand|cliCommand|stateRoot)\b', command, re.I):
         return ''
     from .office_consent import native_session_id
     session = native_session_id(payload.get('session_id'))
     values = {'company_agent_session_id': session, 'stateRoot': str(root)} if session else {}
-    return ('조회한 환경변수는 후크 JSON과 다릅니다. NOT SET으로 문서 권한·DRM·읽기 불가를 판정하지 마세요. '
+    if session:
+        from .native_runtime import cli_command
+        cli = cli_command(Path(__file__).resolve().parents[2])
+        if re.search(r'\bcompany_agent_runtime\.officeReadCommand\b', command, re.I):
+            ready = office_read_command(cli, root, session)
+            if ready:
+                values['officeReadCommand'] = ready
+        else:
+            values['cliCommand'] = cli  # Other tasks do not acquire an Office workflow.
+    return ('company_agent_runtime.*는 실행할 명령어가 아니라 후크 JSON의 항목 이름입니다. '
+            '환경변수 NOT SET으로 문서 권한·DRM·읽기 불가를 판정하지 마세요. '
             '현재 후크 정보: ' + json.dumps(values, ensure_ascii=False, separators=(',', ':')) +
             '. 전달된 officeReadCommand/cliCommand와 선택한 스킬로 계속하며 환경변수 탐색·대체 파서는 사용하지 마세요. '
             '정보가 비어 있으면 실제 연결 누락만 알리세요. 이 안내는 승인·권한을 부여하지 않으며 실제 거절은 유지합니다.')
@@ -390,6 +416,26 @@ def office_read_command(cli: str, root: Path, session: str) -> str:
     expected = ['business', 'office-read', '--session', session, '--state-root', root.resolve().as_posix()]
     # No probing processes, shell expansion, model-provided source or state scan.
     return command if _trusted_arguments(command, office_paths=True) == expected else ''
+
+
+def office_load_context(plugin: Path, root: Path, payload: dict[str, Any], loaded: dict | None) -> str:
+    """One copy-ready command after an observed company reader load.
+
+    No discovery, body re-read, model call or consent. A similarly named
+    personal skill must retain its own execution contract.
+    """
+    if (payload.get('hook_event_name') != 'PostToolUse' or not isinstance(loaded, dict)
+            or loaded.get('source') != 'company' or loaded.get('name') != 'office-reader'
+            or not _same(str(loaded.get('path', '')), plugin / 'skills/office-reader/SKILL.md')):
+        return ''
+    from .office_consent import native_session_id
+    from .native_runtime import cli_command
+    command = office_read_command(cli_command(plugin), root, native_session_id(payload.get('session_id')))
+    if not command:
+        return ''
+    return ('Office 읽기: 아래 officeReadCommand의 실제 문자열 뒤에 --file "확인한 절대경로"와 요청한 범위만 붙여 실행하세요. '
+            '항목 이름을 실행하거나 세션·설치 경로를 다시 찾지 마세요. 반환된 승인 질문은 그대로 받습니다.\n' +
+            json.dumps({'officeReadCommand': command}, ensure_ascii=False, separators=(',', ':')))
 
 
 def bind_office_context(payload: dict[str, Any], root: Path) -> dict[str, Any]:
@@ -431,7 +477,8 @@ def bind_office_context(payload: dict[str, Any], root: Path) -> dict[str, Any]:
     # Literal double-quoted values work in both PowerShell and Git Bash. Reject
     # shell metacharacters via the same strict grammar after construction.
     suffix = ''.join(' ' + flag + ' "' + value + '"' for flag, value in zip(additions[::2], additions[1::2]))
-    updated = command.rstrip() + suffix
+    body, redirect = _office_command_parts(command)
+    updated = body.rstrip() + suffix + redirect
     if _trusted_arguments(updated, office_paths=True) != args + additions:
         return {}
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse',

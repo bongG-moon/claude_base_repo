@@ -3,7 +3,8 @@
 Only observed successful reads create read receipts; Hook body delivery is
 not selection. Persist hashes/IDs, never task or Skill content. A new
 prompt needs a relevant choice, not another scan/read of unchanged files.
-One missed list review may redirect the first action, never a repeated gate.
+List review stays advisory. A definite current-task workflow needs its body
+before execution; retrying the same unprepared action does not load that body.
 No Stop hook, permission allow, model call, or background watcher is used here.
 """
 from __future__ import annotations
@@ -23,6 +24,28 @@ from .state import _locked_session, _stale_native_prompt, load_session, safe_ses
 
 def _hash(raw: bytes) -> str:
     return hashlib.sha256(raw).hexdigest()
+
+
+def _preparation_caution(prompt: str) -> str:
+    """Keyword retrieval is not a mandate for negated or diagnostic references."""
+    text = prompt[:2000].casefold()
+    from .skill_task_context import _DOMAINS, _features
+    domain = '(?:' + '|'.join(_DOMAINS.values()) + ')'
+    for clause in re.split(r'[.!?;\n]', text):
+        if not _features(clause)[0]:
+            continue
+        # Negate the workflow/output, not preservation constraints such as
+        # "read XLSX without editing the original" or "HTML without an API".
+        if (re.search(domain + r'\s*(?:(?:보고서|문서|파일|자료|report|document|file)\s*)?'
+                      r'(?:은|는|을|를|이|가)?\s*(?:말고|대신|필요\s*없|(?:is\s+)?not\s+(?:needed|required|wanted))', clause)
+                or re.search(r'(?:만들|생성|제작|작성|읽|추출|분석|요약)[가-힣\s]{0,8}지\s*(?:마|말|않)', clause)
+                or re.search(r'\b(?:do\s+not|not|don[\x27’]t|no\s+need\s+to)\s+'
+                             r'(?:create|make|build|generate|read|extract|summari[sz]e|analy[sz]e)\b', clause)):
+            return 'negated-or-contrasting-request'
+    if (re.search(r'코드|스크립트|후크|\b(?:api|hook|script|code|python)\b', text)
+            and re.search(r'오류|에러|버그|고쳐|디버그|\b(?:fix|debug|bug|traceback)\b|[a-z]+(?:error|exception)\b', text)):
+        return 'code-diagnosis'
+    return ''
 
 
 def _subagent_context(payload: dict) -> bool:
@@ -70,13 +93,19 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
         route.pop('providedSkills', None)  # Old hook output is not an observed load.
         turn = state.get("turnId", "")
         if route.get("turn") != turn or compact:
-            route.update(turn=turn, selected=None, fallback=None, turnChoices={}, taskCandidates=[], executionPlan={})
+            route.update(turn=turn, selected=None, fallback=None, turnChoices={}, taskCandidates=[], executionPlan={},
+                         preparationCaution='', namedSkillChoices=[], turnLoads={})
             route['loadObservation'] = {'status': 'not-observed', 'turn': turn}
             route.pop('reviewCheckpoint', None)
             route.pop('businessObservation', None)
         if prompt:
             # Exact native slash invocations only, not a general opt-out guess.
             route["explicit"] = re.findall(r"(?<!\S)/([A-Za-z0-9][A-Za-z0-9:_-]{0,159})(?=\s|$)", prompt)[:8]
+            route['preparationCaution'] = _preparation_caution(prompt)
+            # An explicitly named host-only Skill can be respected after its
+            # native success. This is not slash invocation of manual-only files.
+            route['namedSkillChoices'] = re.findall(
+                r'(?<![A-Za-z0-9:_-])([A-Za-z][A-Za-z0-9:_-]{0,159})\s+(?:스킬|skill\b)', prompt[:2000], re.I)[:8]
         state["skillWorkflow"] = route
         atomic_write_json(path, state)
         return {"status": "ready", "indexRead": route.get("indexRead", False),
@@ -146,7 +175,7 @@ def _record_read(route: dict, key: str, response: Any, raw: bytes) -> bool:
     return merged == [[1, len(lines)]]
 
 
-def observe(root: Path, project: Path, payload: dict) -> None:
+def observe(root: Path, project: Path, payload: dict) -> dict | None:
     if payload.get("hook_event_name") != "PostToolUse":
         return
     if _subagent_context(payload):
@@ -165,9 +194,9 @@ def observe(root: Path, project: Path, payload: dict) -> None:
             if (isinstance(value, str) and Path(value).is_absolute()
                     and Path(value).name.casefold() != 'skill.md' and _canonical(Path(value)) != route.get('catalog')):
                 return  # Do not reopen the skill catalogue for ordinary document reads.
-        def note(status):
+        def note(status, **facts):
             # Latest event only, never persist tool input/response or file content.
-            route['loadObservation'] = {'status': status, 'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
+            route['loadObservation'] = {'status': status, 'tool': payload['tool_name'], 'turn': state.get('turnId', ''), **facts}
             atomic_write_json(path, state)
         if payload.get('error') or payload.get('tool_error'):
             note('tool-failed')
@@ -209,7 +238,8 @@ def observe(root: Path, project: Path, payload: dict) -> None:
                 # catalogue. A real successful native load counts for this turn,
                 # but cannot create a local hash receipt or future reuse claim.
                 _review_observed(route, 'native-skill-outside-catalog')
-                note('native-skill-outside-catalog')
+                note('native-skill-outside-catalog', explicit=(invocation in route.get('explicit', [])
+                     or invocation in route.get('namedSkillChoices', [])))
                 return
         # Native Skill loading can precede the catalogue Read. Preserve the
         # actual body receipt without claiming that the index was read. The
@@ -231,6 +261,10 @@ def observe(root: Path, project: Path, payload: dict) -> None:
             return
         cache = route.setdefault("readSkills", {})
         cache[item["id"]] = item["sha256"]
+        fresh = route.setdefault('turnLoads', {})
+        fresh[item['id']] = item['sha256']
+        while len(fresh) > 32:
+            del fresh[next(iter(fresh))]
         route['lastBodyLoad'] = {'id': item['id'], 'name': item['name'], 'sha256': item['sha256'],
                                  'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
         route['loadObservation'] = {'status': 'loaded', 'tool': payload['tool_name'], 'turn': state.get('turnId', '')}
@@ -242,6 +276,7 @@ def observe(root: Path, project: Path, payload: dict) -> None:
             route.update(selected={key: item[key] for key in ("id", "name", "path", "sha256")}, fallback=None)
             _review_observed(route, 'skill-loaded')
         atomic_write_json(path, state)
+        return item  # Only a validated complete body load, never hook delivery.
 
 
 def record_task_candidates(root: Path, session_id: str, hints: dict, *, intent: dict | None = None) -> None:
@@ -333,26 +368,47 @@ def _review_observed(route: dict, status: str) -> None:
 
 
 def _list_review_checkpoint(route: dict, data: dict) -> dict:
-    """One concrete correction, not a semantic classifier or authorization.
+    """Require a definite task's body, not just any earlier list/body receipt.
 
-    An observed list read permits general work without a marker command. A
-    successful Skill load (including host-only skills) also satisfies preparation.
-    The caller caps redirects at one per turn/revision even if ignored.
+    Ambiguous or unmatched requests retain advisory discovery. This checks the
+    already recorded plan and snapshot; it does not run a new search or model.
     """
-    if route.get('indexRead') or route.get('fallback') == 'no-relevant-skill':
+    if route.get('fallback') == 'no-relevant-skill':
+        return {}
+    plan = route.get('executionPlan', {})
+    target = None
+    support_target = False
+    if plan.get('mode') in {'load', 'reuse'}:
+        target = next((x for x in data['skills'] if x['id'] == plan.get('id')), None)
+        if not target or not _allowed(target, data, route):
+            return {}  # A vanished/ambiguous target must not become a forced load.
+        try:
+            support_target = _frontmatter_field(_current(target, route), 'company-agent-role') == 'support'
+        except (OSError, ValueError):
+            return {}
+    elif route.get('indexRead'):
         return {}
     observed = route.get('loadObservation', {})
-    if observed.get('turn') == route.get('turn') and observed.get('status') == 'native-skill-outside-catalog':
+    if ((not target or observed.get('explicit') is True) and observed.get('turn') == route.get('turn')
+            and observed.get('status') == 'native-skill-outside-catalog'):
         return {}
     selected = route.get('selected') or {}
     item = next((x for x in data['skills'] if x['id'] == selected.get('id')), None)
+    if support_target and route.get('readSkills', {}).get(target['id']) == target['sha256']:
+        item = target  # Support loads intentionally do not replace selected workflow.
     if item and _allowed(item, data, route) and route.get('readSkills', {}).get(item['id']) == item['sha256']:
-        _current(item, route)
-        return {}
+        explicit_choice = (route.get('turnChoices', {}).get(item['name'].casefold()) == item['id']
+                           or str(item.get('invocation', '')).lstrip('/') in route.get('explicit', []))
+        if not target or item['id'] == target['id'] or explicit_choice:
+            if not target or item['id'] != target['id']:
+                _current(item, route)
+            fresh_required = (target and item['id'] == target['id'] and plan.get('mode') == 'load'
+                              and plan.get('reason') in {'host-loading-rules', 'native-skill-semantics', 'native-frontmatter-parser'})
+            if not fresh_required or route.get('turnLoads', {}).get(item['id']) == item['sha256']:
+                return {}
     if not any(not x.get('explicitOnly') or x.get('invocation') in route.get('explicit', []) for x in data['skills']):
         return {}
-    plan = route.get('executionPlan', {})
-    if plan.get('mode') != 'load':
+    if not target:
         # A shortlist miss is not a missing prerequisite. The full index is
         # already supplied at prompt time; do not require a redundant Read or
         # force an unrelated Skill just to unlock Write/Bash.
@@ -360,18 +416,11 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
             '제공된 스킬 목록의 용도를 비교해 관련 본문만 불러오세요. 없으면 일반 실행하고, 같은 역할이 겹치면 사용자에게 물으세요. '
             '목록이 보이지 않을 때만 skillSelection.catalog.path를 Read합니다. 이 안내는 실행 차단이나 권한 오류가 아닙니다.'}}
     reason = '[스킬 확인] 아직 실행하지 않았습니다. 권한 오류가 아닙니다. '
-    item = next((x for x in data['skills'] if x['id'] == plan.get('id')), None)
-    if item and _allowed(item, data, route):
-        try:
-            _current(item, route)
-        except (OSError, ValueError):
-            return {}  # A disappeared target must not become a forced load.
-        from .skill_task_context import load_target
-        action = json.dumps(load_target(item, data['skills']), ensure_ascii=False, separators=(',', ':'))
-        reason += f'요청에 맞으면 {action}로 본문을 불러오세요. 아니면 제공된 스킬 목록을 확인하세요.'
-    else:
-        return {}  # Never force an unavailable/ambiguous load target.
-    reason += ' 관련 스킬이 없으면 일반 실행하세요.'
+    from .skill_task_context import load_target
+    action = json.dumps(load_target(target, data['skills']), ensure_ascii=False, separators=(',', ':'))
+    reason += f'{action}로 이번 작업의 본문을 먼저 불러오세요. '
+    reason += ('무관한 후보라면 목록 비교 후 현재 요청의 skill route --fallback no-relevant-skill로 제외하세요. '
+               '로드 실패는 같은 실행을 재시도하지 말고 알려주세요.')
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                                   'permissionDecisionReason': reason}}
 
@@ -451,10 +500,10 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
 
 
 def preflight(root: Path, project: Path, payload: dict) -> dict:
-    """At most one list-review correction; never repeated blocks or tool allows."""
+    """One list advisory; definite workflow prerequisites persist until loaded."""
     if _subagent_context(payload):
         # The worker receives its own exact-path loading instructions. Parent
-        # receipts and its one correction budget cannot validate that context.
+        # receipts and selection cannot validate that separate context.
         # Returning no preparation decision does not bypass native/MCP policy.
         return {}
     session_id = str(payload.get('session_id') or '')
@@ -466,25 +515,26 @@ def preflight(root: Path, project: Path, payload: dict) -> dict:
         return {}  # Neither consume the correction nor claim a Skill was read.
     existing = load_session(session_id, root)
     route = existing.get('skillWorkflow', {})
-    if route.get('reminded') == [existing.get('turnId', ''), route.get('revision', '')]:
-        checkpoint = route.get('reviewCheckpoint', {})
-        tool = str(payload.get('tool_name', ''))
-        if (checkpoint.get('status') == 'redirected' and not _stale_native_prompt(payload, existing)
-                and (tool in {'Bash', 'PowerShell', 'Write', 'Edit', 'MultiEdit', 'NotebookEdit', 'Agent', 'Task'} or tool.startswith('mcp__'))):
-            with _locked_session(session_id, root) as (state, path):
-                current = state.get('skillWorkflow', {})
-                if current.get('reviewCheckpoint') == checkpoint:
-                    current['reviewCheckpoint']['status'] = 'unconfirmed-limit-reached'
-                    atomic_write_json(path, state)
-        return {}  # no repeated catalogue/body reads for a bookkeeping reminder
+    reminded = route.get('reminded') == [existing.get('turnId', ''), route.get('revision', '')]
+    definite = route.get('reviewProtocol') == 1 and route.get('executionPlan', {}).get('mode') in {'load', 'reuse'}
+    if reminded and not definite:
+        return {}  # No repeated discovery advice for an unmatched/general task.
     advice = _preparation_advice(root, project, payload)
     if not advice:
         return {}
+    if reminded:
+        # No growing retry state, repeated list scan, or Stop loop. Returning the
+        # same short prerequisite prevents the old second-attempt escape hatch.
+        return advice if advice.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny' else {}
     with _locked_session(str(payload['session_id']), root) as (state, path):
         route = state.get('skillWorkflow', {})
         marker = [state.get('turnId', ''), route.get('revision', '')]
-        if marker != [existing.get('turnId', ''), existing.get('skillWorkflow', {}).get('revision', '')] or route.get('reminded') == marker:
+        if marker != [existing.get('turnId', ''), existing.get('skillWorkflow', {}).get('revision', '')]:
             return {}
+        if route.get('reminded') == marker:
+            # Parallel unprepared calls can see the same pre-lock state. A
+            # reminder written by the first call is not a load by the second.
+            return advice if advice.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny' else {}
         route['reminded'] = marker
         if advice.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny':
             route['reviewCheckpoint'] = {'turn': marker[0], 'revision': marker[1], 'status': 'redirected'}

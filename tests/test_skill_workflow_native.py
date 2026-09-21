@@ -176,7 +176,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertEqual('load', runtime['skillExecution']['mode'])
         self.assertEqual('deny', first['hookSpecificOutput']['permissionDecision'])
         self.assertIn('[스킬 확인]', first['hookSpecificOutput']['permissionDecisionReason'])
-        self.assertEqual({}, self.hook('PreToolUse', **execution))
+        self.assertEqual('deny', self.hook('PreToolUse', **execution)['hookSpecificOutput']['permissionDecision'])
         # Even before catalogue receipt, advisory discovery cannot bypass DB policy.
         denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query':'DELETE FROM employees'})
         self.assertEqual('deny', denied['hookSpecificOutput']['permissionDecision'])
@@ -197,6 +197,40 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertIsNone(next_runtime["skillWorkflow"]["selected"])
         self.read(self.plugin / "skills/presentation/SKILL.md")
         self.assertEqual({}, self.hook("PreToolUse", **execution))
+
+    def test_excel_to_html_followup_requires_the_new_workflow_before_write(self):
+        self.hook('SessionStart', source='startup')
+        result = self.hook('UserPromptSubmit', prompt='@AI_CAMP_지원현황.xlsx 여기 파일 내용읽고 어떤 정보들 있는지 확인해줘')
+        runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        self.read(Path(runtime['skillSelection']['catalog']['path']))
+        self.read(self.plugin / 'skills/office-reader/SKILL.md')
+        result = self.hook('UserPromptSubmit', prompt='위 내용을 바탕으로 신청자 현황과 강사 현황을 볼 수 있는 html을 만들고싶어')
+        runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        self.assertEqual('html-report', runtime['skillExecution']['name'])
+        write = {'tool_name': 'Write', 'tool_input': {'file_path': str(self.project / 'report.html')}}
+        for _ in range(2):
+            self.assertEqual('deny', self.hook('PreToolUse', **write)['hookSpecificOutput']['permissionDecision'])
+        self.read(self.plugin / 'skills/office-reader/SKILL.md')
+        self.assertEqual('deny', self.hook('PreToolUse', **write)['hookSpecificOutput']['permissionDecision'])
+        self.read(self.plugin / 'skills/html-report/SKILL.md')
+        self.assertEqual({}, self.hook('PreToolUse', **write))
+
+    def test_successful_office_skill_delivers_this_installation_ready_command(self):
+        self.hook('SessionStart', source='startup')
+        self.hook('UserPromptSubmit', prompt='@자료.xlsx 내용 읽어줘')
+        loaded = self.hook('PostToolUse', tool_name='Skill',
+                          tool_input={'skill': 'company-agent:office-reader'},
+                          tool_response={'success': True})
+        context = loaded['hookSpecificOutput']['additionalContext']
+        command = json.loads(context.splitlines()[-1])['officeReadCommand']
+        self.assertIn((self.plugin / 'scripts/Invoke-CompanyAgent.ps1').as_posix(), command)
+        self.assertIn('--session "' + self.payload['session_id'] + '"', command)
+        self.assertIn('--state-root "' + Path(self.record['userStateRoot']).as_posix() + '"', command)
+        self.assertNotIn('--file', command)
+        for skill, success in [('company-agent:office-reader', False), ('company-agent:html-report', True)]:
+            result = self.hook('PostToolUse', tool_name='Skill', tool_input={'skill': skill},
+                               tool_response={'success': success})
+            self.assertNotIn('officeReadCommand', json.dumps(result))
 
     def test_html_answer_turn_does_not_deadlock_and_choices_execute(self):
         self.hook("SessionStart", source="startup")

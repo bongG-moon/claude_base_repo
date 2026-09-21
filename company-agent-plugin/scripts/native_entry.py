@@ -161,7 +161,12 @@ def main() -> int:
                 from company_agent.skill_workflow import observe
                 from company_agent.paths import user_state_root
                 try:
-                    observe(user_state_root(), cwd, payload)
+                    loaded = observe(user_state_root(), cwd, payload)
+                    from company_agent.execution_contract import office_load_context
+                    ready = office_load_context(plugin, user_state_root(), payload, loaded)
+                    if ready:
+                        target = result.setdefault('hookSpecificOutput', {'hookEventName': event})
+                        target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), ready]))
                 except Exception:
                     # No fabricated read receipt; a later preflight reports the
                     # missing preparation without turning it into a Stop error.

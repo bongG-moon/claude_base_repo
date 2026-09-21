@@ -99,6 +99,8 @@ try {
     Assert-ReleaseUpgrade ($current.Count -eq 1) 'Native Claude registry did not select the new version'
     foreach ($relative in @(
         'scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py',
+        'scripts\company_agent\execution_contract.py', 'scripts\company_agent\native_runtime.py',
+        'scripts\native_entry.py',
         'scripts\company_agent\office_progress.py', 'scripts\company_agent\office_reader.py',
         'scripts\company_agent\business_safety.py', 'scripts\company_agent\workspace_api.py',
         'scripts\company_agent\resource_scope.py', 'scripts\company_agent\harness_map.py',

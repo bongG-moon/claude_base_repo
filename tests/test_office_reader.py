@@ -41,6 +41,70 @@ class OfficeReaderTests(unittest.TestCase):
             with self.subTest(changes=changes),self.assertRaises((ValueError,TypeError)):
                 reader.normalize({**self.spec,**changes})
 
+    def test_missing_korean_path_is_not_encoding_or_office_access_failure(self):
+        correct_dir=self.root/'TEST용'; correct_dir.mkdir()
+        correct=correct_dir/'AI_CAMP_지원현황.xlsx'; correct.write_bytes(b'fixture')
+        wrong=self.root/'TEST'/'AI_CAMP_지원현황.xlsx'
+        with patch.object(reader,'_invoke') as invoke,patch.object(reader,'authorize') as confirm:
+            result=reader.read_office({'file':str(wrong)})
+        self.assertEqual('source_not_found',result['code'])
+        self.assertEqual(str(wrong),result['diagnostics']['requestedFile'])
+        self.assertFalse(result['sourceOpened'])
+        self.assertEqual('not_checked',result['documentAccess'])
+        self.assertEqual('request_validation',result['failureKind'])
+        self.assertNotIn(str(correct),json.dumps(result,ensure_ascii=False))
+        invoke.assert_not_called(); confirm.assert_not_called()
+        self.assertEqual(str(correct),reader.normalize({'file':str(correct)})['file'])
+
+    def test_validation_errors_identify_the_invalid_field_without_opening(self):
+        cases=[({'file':str(self.root/'file.pdf')},'unsupported_office_format','file'),
+               ({'file':'relative.xlsx'},'invalid_office_path','file'),
+               ({'range':'A1:Z500'},'invalid_office_range','range'),
+               ({'sheet':True},'invalid_office_range','sheet'),
+               ({'start':1},'invalid_office_range','start/end'),
+               ({'maxChars':20001},'invalid_office_limit','maxChars'),
+               ({'expectedCount':2},'invalid_expected_count','expectedCount')]
+        for changes,code,field in cases:
+            with self.subTest(changes=changes),patch.object(reader,'_invoke') as invoke,patch.object(reader,'authorize') as confirm:
+                result=reader.read_office({**self.spec,**changes})
+            self.assertEqual(code,result['code']); self.assertEqual(field,result['diagnostics']['field'])
+            self.assertFalse(result['sourceOpened']); self.assertEqual('not_checked',result['documentAccess'])
+            invoke.assert_not_called(); confirm.assert_not_called()
+
+    def test_metadata_failure_does_not_leak_os_error_or_claim_office_denial(self):
+        with patch.object(reader,'safe_path',side_effect=PermissionError('private OS detail')),patch.object(reader,'_invoke') as invoke,patch.object(reader,'authorize') as confirm:
+            result=reader.read_office(self.spec)
+        self.assertEqual('source_metadata_unavailable',result['code'])
+        self.assertNotIn('private OS detail',json.dumps(result))
+        self.assertEqual('not_checked',result['documentAccess'])
+        self.assertFalse(result['sourceOpened'])
+        invoke.assert_not_called(); confirm.assert_not_called()
+
+    def test_source_disappearing_before_consent_is_a_typed_failure(self):
+        safe=reader.safe_path
+        calls=0
+        def remove_before_consent(*args,**kwargs):
+            nonlocal calls
+            calls+=1
+            if calls==2:
+                self.file.unlink()
+            return safe(*args,**kwargs)
+        with patch.object(reader,'safe_path',side_effect=remove_before_consent),patch.object(reader,'_invoke') as invoke,patch.object(reader,'authorize') as confirm:
+            result=reader.read_office(self.spec)
+        self.assertEqual('source_not_found',result['code'])
+        self.assertFalse(result['sourceOpened'])
+        self.assertEqual('not_checked',result['documentAccess'])
+        invoke.assert_not_called(); confirm.assert_not_called()
+
+    def test_directory_and_executable_spec_have_distinct_truthful_failures(self):
+        directory=self.root/'directory.xlsx'; directory.mkdir()
+        result=reader.read_office({'file':str(directory)})
+        self.assertEqual('invalid_office_source',result['code'])
+        result=reader.read_office({**self.spec,'approved':True})
+        self.assertEqual('invalid_office_request',result['code'])
+        self.assertFalse(result['sourceOpened'])
+        self.assertNotIn('requestedFile',result['diagnostics'])
+
     def test_protection_refusal_never_opens_or_prompts(self):
         for protection in ('protected','blocked','unknown'):
             with patch.object(reader,'_invoke') as invoke,patch.object(reader,'authorize') as confirm:

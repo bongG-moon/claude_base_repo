@@ -117,6 +117,27 @@ class ExcelRecipeTests(unittest.TestCase):
         self.selected.options.assert_not_called()
         self.assertEqual(100, result['coverage']['rows'])
 
+    def test_offset_used_range_keeps_title_blank_rows_and_data_coordinates(self):
+        self.selected.row=2; self.selected.column=2
+        self.selected.rows.count=22; self.selected.columns.count=4
+        values=[[None]*4 for _ in range(22)]
+        values[0][0]='AI CAMP 강사 현황'
+        values[2]=['이름','부서','분야','인원']
+        values[3]=['가상 강사','가상 부서','교육',2]
+        self.selected.options.return_value.value=pd.DataFrame(values)
+        result=excel._read(self.request,self.xw,pd)
+        self.assertTrue(result['ok'],result)
+        self.assertFalse(result['truncated'])
+        self.assertEqual((2,2,22,4),tuple(result['coverage'][key] for key in ('firstRow','firstColumn','rows','columns')))
+        by_location={item['location']:item['text'] for item in result['items']}
+        self.assertEqual('AI CAMP 강사 현황',by_location['R2C2'])
+        self.assertEqual('이름',by_location['R4C2'])
+        self.assertEqual('가상 강사',by_location['R5C2'])
+        self.assertFalse(any(location.startswith('R3C') for location in by_location))
+        self.selected.options.assert_called_once_with(pd.DataFrame,header=False,index=False)
+        self.books.open.assert_called_once()
+        self.sheet.range.assert_not_called()
+
     def test_character_limit_and_named_sheet(self):
         self.book.sheets = {'실적': self.sheet}
         result = excel._read({**self.request, 'sheet': '실적', 'maxChars': 3}, self.xw, pd)

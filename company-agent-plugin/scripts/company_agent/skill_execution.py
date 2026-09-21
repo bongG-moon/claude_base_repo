@@ -108,6 +108,10 @@ def prepare_execution(runtime: dict) -> tuple[dict, str]:
         return {'mode': 'inspect', 'reason': 'catalog-unavailable'}, ''
     decision = decide_preparation(hints, data['skills'], route.get('explicit', []))
     result = decision.plan()
+    if decision.mode == 'load' and route.get('preparationCaution') and not route.get('explicit'):
+        # Keep real catalogue hints visible, but do not turn a negated workflow
+        # or a code diagnosis mentioning it into an execution prerequisite.
+        return {'mode': 'select', 'reason': 'contextual-reference-needs-review'}, ''
     if decision.mode != 'load':
         if decision.mode == 'review':
             result['catalogReviewed'] = bool(route.get('indexRead'))

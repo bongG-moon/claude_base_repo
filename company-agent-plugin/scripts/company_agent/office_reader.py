@@ -3,6 +3,7 @@ from pathlib import Path
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -16,6 +17,14 @@ from .office_progress import Progress, run_helper
 TYPES={'.xlsx':'excel','.csv':'excel','.pptx':'powerpoint','.docx':'word'}
 
 
+class OfficeRequestError(ValueError):
+    """Bounded validation evidence, without returning filesystem exceptions."""
+    def __init__(self, code, field):
+        super().__init__(code)
+        self.code = code
+        self.field = field
+
+
 def normalize(spec):
     if not isinstance(spec,dict):
         raise ValueError('invalid request')
@@ -23,31 +32,45 @@ def normalize(spec):
     if set(spec)-allowed:
         raise ValueError('unknown fields, permissions cannot be supplied in JSON')
     path=Path(spec.get('file',''))
-    if not path.is_absolute() or '..' in path.parts or path.suffix.lower() not in TYPES:
-        raise ValueError('unsupported local Office file')
-    path=safe_path(path,exists=True)
-    if not path.is_file() or path.stat().st_size>100*1024*1024:
-        raise ValueError('file size limit')
+    if not path.is_absolute() or '..' in path.parts:
+        raise OfficeRequestError('invalid_office_path', 'file')
+    if path.suffix.lower() not in TYPES:
+        raise OfficeRequestError('unsupported_office_format', 'file')
+    try:
+        # Check path safety before distinguishing a missing file. Do not search
+        # sibling folders or repair a model-reconstructed source path.
+        path=safe_path(path)
+        info=path.stat()
+    except FileNotFoundError:
+        raise OfficeRequestError('source_not_found', 'file') from None
+    except ValueError:
+        raise OfficeRequestError('invalid_office_path', 'file') from None
+    except OSError:
+        raise OfficeRequestError('source_metadata_unavailable', 'file') from None
+    if not stat.S_ISREG(info.st_mode):
+        raise OfficeRequestError('invalid_office_source', 'file')
+    if info.st_size>100*1024*1024:
+        raise OfficeRequestError('office_source_too_large', 'file')
     result={'file':str(path),'kind':TYPES[path.suffix.lower()],'maxChars':spec.get('maxChars',10000)}
     if 'expectedCount' in spec:
         count = spec['expectedCount']
         if result['kind']=='excel' or type(count) is not int or not 1<=count<=100000:
-            raise ValueError('invalid expected count')
+            raise OfficeRequestError('invalid_expected_count', 'expectedCount')
         result['expectedCount']=count
     if type(result['maxChars']) is not int or not 100<=result['maxChars']<=20000:
-        raise ValueError('character limit')
+        raise OfficeRequestError('invalid_office_limit', 'maxChars')
     if result['kind']=='excel':
         if 'start' in spec or 'end' in spec:
-            raise ValueError('use sheet and range')
+            raise OfficeRequestError('invalid_office_range', 'start/end')
         sheet=spec.get('sheet',1)
         if not ((type(sheet) is int and 1<=sheet<=1000) or (isinstance(sheet,str) and 1<=len(sheet)<=31)):
-            raise ValueError('invalid sheet')
+            raise OfficeRequestError('invalid_office_range', 'sheet')
         address=spec.get('range','used')
         if address=='used':
             result.update(sheet=sheet,range='used')
             return result
         if not isinstance(address,str) or not re.fullmatch(r'[A-Z]{1,3}[1-9]\d{0,6}:[A-Z]{1,3}[1-9]\d{0,6}',address):
-            raise ValueError('invalid range')
+            raise OfficeRequestError('invalid_office_range', 'range')
         def cell(value):
             letters,row=re.fullmatch(r'([A-Z]+)(\d+)',value).groups()
             col=0
@@ -55,13 +78,13 @@ def normalize(spec):
             return col,int(row)
         c1,r1=cell(address.split(':')[0]); c2,r2=cell(address.split(':')[1])
         if not (c1<=c2<=16384 and r1<=r2<=1048576 and (c2-c1+1)<=20 and (r2-r1+1)<=200 and (c2-c1+1)*(r2-r1+1)<=2000):
-            raise ValueError('range limit')
+            raise OfficeRequestError('invalid_office_range', 'range')
         result.update(sheet=sheet,range=address)
     else:
-        if 'sheet' in spec or 'range' in spec: raise ValueError('invalid document selection')
+        if 'sheet' in spec or 'range' in spec: raise OfficeRequestError('invalid_office_range', 'sheet/range')
         start,end=spec.get('start',1),spec.get('end',5 if result['kind']=='powerpoint' else 20)
         if type(start) is not int or type(end) is not int or not 1<=start<=end<=100000 or end-start+1>50:
-            raise ValueError('selection limit')
+            raise OfficeRequestError('invalid_office_range', 'start/end')
         result.update(start=start,end=end)
     return result
 
@@ -69,6 +92,32 @@ def normalize(spec):
 def failed(code, message, status='blocked'):
     return {'ok':False,'status':status,'code':code,'message':message,
             'retryAllowed':False,'rawContentStored':False,'bypassSupported':False}
+
+
+def _request_failure(spec, error):
+    messages={
+        'source_not_found':'지정한 경로에 파일이 없습니다. 요청에 첨부된 정확한 경로와 비교하세요. 경로를 추측해 바꾸거나 인코딩·DRM 문제로 단정하지 마세요.',
+        'invalid_office_path':'지원하지 않는 파일 경로입니다. 링크·네트워크 경로가 아닌 원본의 정확한 로컬 절대 경로를 지정하세요.',
+        'unsupported_office_format':'지원하지 않는 확장자입니다. xlsx/csv/pptx/docx만 지원합니다.',
+        'invalid_office_source':'지정한 경로가 일반 파일이 아닙니다. 원본 파일의 정확한 경로를 확인하세요.',
+        'source_metadata_unavailable':'파일 정보를 확인하지 못했습니다. Office에서 문서를 열지 않았으며 문서 접근 권한은 아직 확인하지 않았습니다.',
+        'office_source_too_large':'파일 크기가 읽기 한도 100MB를 넘습니다. 문서를 열지 않았습니다.',
+        'invalid_office_range':'읽을 범위를 확인하세요. Excel은 시트와 셀 범위(최대 200행·20열·2,000셀), PPT/Word는 시작·끝(최대 50개)을 지정합니다.',
+        'invalid_office_limit':'maxChars는 100~20,000 사이 정수여야 합니다.',
+        'invalid_expected_count':'expectedCount는 PPT/Word에만 지정하는 1~100,000 사이 정수입니다.',
+        'invalid_office_request':'읽기 요청 형식이 잘못되었습니다. 파일·범위 값과 허용된 항목을 확인하세요.',
+    }
+    code=error.code if isinstance(error,OfficeRequestError) else 'invalid_office_request'
+    result={**failed(code,messages[code],'failed'), 'sourceOpened':False,
+            'documentAccess':'not_checked', 'failureKind':'request_validation'}
+    if isinstance(error,OfficeRequestError):
+        result['diagnostics']={'field':error.field}
+        # Echo only the caller's source identity, never another discovered path
+        # or OS exception. This is metadata, not document content.
+        source=spec.get('file') if isinstance(spec,dict) else None
+        if error.field=='file' and isinstance(source,(str,Path)) and len(str(source))<=32768:
+            result['diagnostics']['requestedFile']=str(source)
+    return result
 
 
 def _invoke(request, *, progress=None):
@@ -103,12 +152,19 @@ def _read_office(spec, progress, *, state_root=None, session_id='', cwd=None):
         return restricted
     try:
         request=normalize(spec)
-    except (ValueError,TypeError,OSError):
-        return failed('invalid_office_request','파일·지원 형식·읽을 범위를 확인해 주세요. xlsx/csv/pptx/docx만 지원합니다.','failed')
+    except (ValueError,TypeError,OSError) as error:
+        return _request_failure(spec,error)
     if os.name!='nt':
         return failed('office_unavailable','Windows에 설치된 Office가 필요한 기능입니다.','unavailable')
     progress.begin('conversation_consent')
-    consent_source = safe_path(request['file'], exists=True).stat()
+    try:
+        consent_source = safe_path(request['file']).stat()
+    except FileNotFoundError:
+        return _request_failure(spec,OfficeRequestError('source_not_found','file'))
+    except ValueError:
+        return _request_failure(spec,OfficeRequestError('invalid_office_path','file'))
+    except OSError:
+        return _request_failure(spec,OfficeRequestError('source_metadata_unavailable','file'))
     consent = authorize(request, root=state_root or user_state_root(), session_id=session_id, cwd=cwd)
     if consent is not None:
         return consent

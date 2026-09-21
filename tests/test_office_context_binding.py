@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'company-agent-plugin/scripts'))
-from company_agent.execution_contract import bind_office_context, office_read_command, runtime_probe_context, classify_command, _trusted_arguments, _words, safe_permission
+from company_agent.execution_contract import bind_office_context, office_read_command, office_load_context, runtime_probe_context, classify_command, _trusted_arguments, _words, safe_permission
 from company_agent import office_reader, office_consent
 from company_agent.state import begin_turn, load_session, record_activity, stop_decision
 from company_agent.cli import build_parser
@@ -66,7 +66,9 @@ class OfficeContextBindingTests(unittest.TestCase):
             self.assertEqual({}, self.bound({**self.payload, **change}))
 
     def test_untrusted_complex_or_different_commands_unchanged(self):
-        commands = [self.command + suffix for suffix in ('; echo x', ' | head -40', ' 2>&1',
+        commands = [self.command + suffix for suffix in ('; echo x', ' | head -40',
+                    ' 2>&1 | head -40', ' 2>&1; echo x', ' 2>&1 && echo x', ' 2>&1 2>&1',
+                    ' > output.txt 2>&1', ' 2>error.txt', ' 1>&2', ' &',
                     ' && echo x', ' --approved true', ' --session x --session y', ' --help')]
         commands += [self.command.replace('harness_cli.py', 'other_cli.py'),
                      self.command.replace('office-read', 'ppt'),
@@ -75,6 +77,31 @@ class OfficeContextBindingTests(unittest.TestCase):
         for command in commands:
             with self.subTest(command=command):
                 self.assertEqual({}, self.bound({**self.payload, 'tool_input': {'command': command}}))
+
+    def test_terminal_stderr_merge_binds_before_redirect_without_permission_or_mutation(self):
+        for tool, key in [('Bash', 'command'), ('PowerShell', 'cmd')]:
+            for redirect in (' 2>&1', '  2>&1  '):
+                payload = {**self.payload, 'tool_name': tool, 'tool_input': {key: self.command + redirect}}
+                result = self.bound(payload)['hookSpecificOutput']
+                command = result['updatedInput'][key]
+                self.assertTrue(command.endswith(redirect))
+                self.assertEqual(_trusted_arguments(self.command) + ['--session', 'current-session', '--state-root', self.root.as_posix()],
+                                 _trusted_arguments(command, office_paths=True))
+                self.assertEqual('read_only', classify_command(command, tool=tool))
+                self.assertNotIn('permissionDecision', result)
+                self.assertIsNone(safe_permission({**payload, 'hook_event_name': 'PermissionRequest',
+                                                  'tool_input': result['updatedInput']}, self.root))
+                begin_turn('current-session', 'MEDIUM', False, [], self.root)
+                state = record_activity({**payload, 'hook_event_name': 'PostToolUse',
+                                         'tool_input': result['updatedInput']}, self.root)
+                self.assertEqual(0, state['mutationCount'])
+                self.assertEqual({}, self.bound({**payload, 'tool_input': result['updatedInput']}))
+        for bad in (self.command.replace('office-read', 'ppt') + ' 2>&1',
+                    self.command.replace('harness_cli.py', 'foreign.py') + ' 2>&1',
+                    self.command + ' --range "unclosed 2>&1',
+                    self.command.replace('A1:F50', '"A1:F50 2>&1"')):
+            self.assertEqual('unknown', classify_command(bad))
+            self.assertEqual({}, self.bound({**self.payload, 'tool_input': {'command': bad}}))
 
     def test_ready_command_uses_native_context_not_environment_and_preserves_scope(self):
         cli = f'"{sys.executable}" -B "{ROOT / "company-agent-plugin/scripts/harness_cli.py"}"'
@@ -96,12 +123,42 @@ class OfficeContextBindingTests(unittest.TestCase):
             notice = runtime_probe_context(payload, self.root)
         self.assertIn('"company_agent_session_id":"current-session"', notice)
         self.assertNotIn('wrong-env', notice)
+        self.assertNotIn('"officeReadCommand":', notice)
         self.assertEqual({'stdout': 'NOT SET'}, payload['tool_response'])
         self.assertFalse(self.root.exists())
         self.assertEqual('', runtime_probe_context({**payload, 'tool_name': 'Read'}, self.root))
         self.assertEqual('', runtime_probe_context({**payload, 'tool_input': {'command': 'echo %PATH%'}}, self.root))
         self.assertEqual('', runtime_probe_context({**payload, 'hook_event_name': 'PreToolUse'}, self.root))
         self.assertNotIn('e3b0c44298fc1c149afbf4c8996fb924', runtime_probe_context({**payload, 'session_id': ''}, self.root))
+
+    def test_property_probe_delivers_actual_command_not_an_executable_property_name(self):
+        payload = {**self.payload, 'hook_event_name': 'PostToolUseFailure',
+                   'tool_input': {'command': 'company_agent_runtime.officeReadCommand 2>&1 || echo "NOT SET"'},
+                   'error': 'command not found'}
+        notice = runtime_probe_context(payload, self.root)
+        self.assertIn('officeReadCommand', notice)
+        if os.name == 'nt':
+            self.assertIn('business office-read --session', notice)
+        self.assertIn('current-session', notice)
+        self.assertFalse(self.root.exists())
+
+    def test_ready_command_only_after_validated_company_reader_load(self):
+        plugin = ROOT / 'company-agent-plugin'
+        item = {'name': 'office-reader', 'source': 'company', 'path': str(plugin / 'skills/office-reader/SKILL.md')}
+        payload = {**self.payload, 'hook_event_name': 'PostToolUse', 'tool_name': 'Skill'}
+        cli = f'"{sys.executable}" -B "{plugin / "scripts/harness_cli.py"}"'
+        with patch('company_agent.native_runtime.cli_command', return_value=cli), \
+             patch('company_agent.state.load_session', side_effect=AssertionError('no new session/catalogue lookup')):
+            notice = office_load_context(plugin, self.root, payload, item)
+            ready = json.loads(notice.splitlines()[-1])['officeReadCommand']
+            self.assertEqual(['business', 'office-read', '--session', 'current-session', '--state-root', self.root.as_posix()],
+                             _trusted_arguments(ready))
+            self.assertLess(len(notice), 1100)
+            for change in (None, {}, {**item, 'source': 'personal'}, {**item, 'path': str(self.project / 'SKILL.md')},
+                           {**item, 'name': 'html-report'}):
+                self.assertEqual('', office_load_context(plugin, self.root, payload, change))
+            self.assertEqual('', office_load_context(plugin, self.root, {**payload, 'hook_event_name': 'PostToolUseFailure'}, item))
+            self.assertEqual('', office_load_context(plugin, self.root, {**payload, 'session_id': ''}, item))
 
     def test_missing_context_or_placeholder_is_not_a_document_access_verdict(self):
         for value in ('', 'unknown-session', 'company_agent_session_id', 'SESSION', None):
@@ -203,6 +260,28 @@ class OfficeContextBindingTests(unittest.TestCase):
         self.assertNotIn('updatedInput', result)
         self.assertEqual(0, load_session('current-session', self.root)['mutationCount'])
 
+    def test_native_successful_skill_load_delivers_command_without_runtime_rediscovery(self):
+        import native_entry
+        plugin = ROOT / 'company-agent-plugin'
+        item = {'name': 'office-reader', 'source': 'company', 'path': str(plugin / 'skills/office-reader/SKILL.md')}
+        payload = {**self.payload, 'hook_event_name': 'PostToolUse', 'tool_name': 'Skill',
+                   'tool_input': {'skill': 'company-agent:office-reader'}, 'tool_response': {'success': True}}
+        cli = f'"{sys.executable}" -B "{plugin / "scripts/harness_cli.py"}"'
+        with patch.dict(os.environ, {'COMPANY_AGENT_USER_STATE': str(self.root)}), \
+             patch.object(native_entry, 'configure_runtime', return_value=True), \
+             patch.object(native_entry, 'runtime_context', side_effect=AssertionError('no catalogue rescan')), \
+             patch('company_agent.native_runtime.cli_command', return_value=cli), \
+             patch('company_agent.skill_workflow.observe', return_value=item), \
+             patch.object(sys, 'argv', ['native_entry.py', '--event', 'PostToolUse']), \
+             patch.object(sys, 'stdin', io.StringIO(json.dumps(payload))):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(0, native_entry.main())
+        output = json.loads(out.getvalue())['hookSpecificOutput']
+        self.assertEqual({'hookEventName', 'additionalContext'}, set(output))
+        ready = json.loads(output['additionalContext'].splitlines()[-1])['officeReadCommand']
+        self.assertIn('--session "current-session"', ready)
+
     @unittest.skipUnless(os.name == 'nt', 'Windows installed wrapper')
     def test_real_wrapper_missing_session_is_bound_before_first_invocation(self):
         from company_agent.native_runtime import cli_command
@@ -218,6 +297,23 @@ class OfficeContextBindingTests(unittest.TestCase):
         self.assertNotEqual('conversation_session_required', data.get('code'))
         self.assertFalse(data['sourceOpened'])
         self.assertIn('questions', data)
+        self.assertNotIn('application', data['diagnostics']['progress']['stageMs'])
+
+    @unittest.skipUnless(os.name == 'nt' and Path('C:/Program Files/Git/bin/bash.exe').is_file(), 'Windows Git Bash required')
+    def test_real_git_bash_stderr_merge_reaches_consent_without_opening_office(self):
+        from company_agent.native_runtime import cli_command
+        command = cli_command(ROOT / 'company-agent-plugin') + f' business office-read --file "{self.source}" 2>&1'
+        updated = self.bound({**self.payload, 'tool_input': {'command': command}})['hookSpecificOutput']['updatedInput']['command']
+        env = {**os.environ, 'COMPANY_AGENT_USER_STATE': str(self.root), 'PYTHONUTF8': '1', 'PYTHONIOENCODING': 'utf-8'}
+        completed = subprocess.run(['C:/Program Files/Git/bin/bash.exe', '--noprofile', '--norc', '-c', updated],
+                                   cwd=self.project, env=env, capture_output=True, timeout=30, encoding='utf-8')
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        # Progress goes to stderr; the user's merge now includes it on stdout.
+        start = completed.stdout.index('{')
+        data = json.loads(completed.stdout[start:])
+        self.assertEqual('office_read_consent', data['code'])
+        self.assertFalse(data['sourceOpened'])
+        self.assertIn(str(self.source), data['questions'][0]['question'])
         self.assertNotIn('application', data['diagnostics']['progress']['stageMs'])
 
     def test_missing_session_reaches_question_in_first_call_and_read_only_after_answer(self):

@@ -13,22 +13,27 @@ doctor, session status, 검증 기록이 필요 없습니다. 회사 정책·명
 
 1. 사용자가 지정한 정확한 파일 경로를 사용합니다. 모호하면 질문하고, 파일명이 주어졌다면
    현재 폴더에서 Glob으로 한 번 확인합니다. 이미 확인한 경로·스킬·목록은 재탐색하지 않습니다.
-2. 후크에 `company_agent_runtime.officeReadCommand`가 있으면 **그 명령 뒤에 파일·범위만**
-   붙여 실행합니다. 세션은 이미 들어 있으므로 추가하거나 먼저 검사하지 않습니다.
+2. 스킬을 불러온 뒤 전달된 `officeReadCommand`의 **실제 명령 문자열**을 복사하고,
+   뒤에 파일·범위만 붙여 실행합니다. `company_agent_runtime.officeReadCommand`라는
+   항목 이름 자체를 실행하는 것이 아닙니다. 세션은 이미 들어 있으므로 검사·재조립하지 않습니다.
 
    ```text
    <officeReadCommand> --file "<절대경로>"
    ```
 
-   이 값이 없으면 `cliCommand` 뒤에 `business office-read --file "<절대경로>"`를 붙입니다.
+   이 값이 없으면 `cliCommand`의 실제 문자열 뒤에 `business office-read --file "<절대경로>"`를 붙입니다.
    대화에 실제 `company_agent_session_id`·`stateRoot` 값이 있을 때만 `--session`·`--state-root`로
    붙이고, 없으면 해당 옵션을 생략합니다. 후크가 누락 값을 보완하므로 먼저 한 번 실행합니다.
    이 이름들은 **후크 JSON 값이지 환경변수가 아닙니다**. echo, `%...%`, `$env:...`, env,
    session status·--help, 세션 파일 탐색으로 확인하지 않습니다. `NOT SET`은 읽기 불가의 증거가 아닙니다.
 
-   cliCommand도 없으면 이 SKILL.md 경로의 두 단계 위에 있는
-   `scripts/Invoke-CompanyAgent.ps1`을 사용합니다:
-   `powershell.exe -NoLogo -NoProfile -File "<실제 plugin 경로>/scripts/Invoke-CompanyAgent.ps1" -Mode Cli`.
+   cliCommand도 없으면 이 SKILL.md가 속한 **plugin 폴더**의 스크립트로 다음 완성형을 사용합니다.
+   꺾쇠 부분만 실제 경로로 바꾸며 `company-agent`를 추가하거나 `--business`로 바꾸지 않습니다.
+
+   ```text
+   powershell.exe -NoLogo -NoProfile -File "<plugin 폴더>/scripts/Invoke-CompanyAgent.ps1" -Mode Cli business office-read --file "<확인한 절대경로>"
+   ```
+
    설치 오류는 그대로 알리고 멈춥니다. 다른 Python·설치 경로·PYTHONPATH를 찾지 않습니다.
 3. `code=office_read_consent`와 `questions`가 있으면 정상 승인 대기이며 아직 Office를 열지 않았습니다.
    반환된 `questions`를 그대로 AskUserQuestion에 전달하고 기다립니다. 질문 도구가 없으면
@@ -60,6 +65,8 @@ doctor, session status, 검증 기록이 필요 없습니다. 회사 정책·명
   `limitReached`·거절·시간초과·개수 불일치에서 같은 범위를 반복 열지 않습니다.
 - 텍스트·표/셀 좌표로 읽은 내용만 해석합니다. PPT 그림 속 글자·SmartArt·노트·차트 값,
   Word 머리말·꼬리말·주석 등은 완전 수집하지 않습니다. 병합 셀이나 그림 내용을 추측하지 않습니다.
+- Excel의 첫 행이 제목이거나 다음 행이 비어 있어도 실패가 아닙니다. 반환된 표와 실제 셀 좌표를
+  먼저 확인합니다. used 영역은 A1에서 시작하지 않을 수 있으며, 빈 행 때문에 다시 열거나 전체 시트를 요청하지 않습니다.
 
 ## 지켜야 할 경계
 
