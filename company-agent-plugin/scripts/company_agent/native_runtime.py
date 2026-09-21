@@ -34,6 +34,7 @@ MAX_ROUTE_CONTEXT_CHARS = 6_000
 MAX_HOOK_CONTEXT_CHARS = MAX_RUNTIME_CONTEXT_CHARS + MAX_ROUTE_CONTEXT_CHARS + MAX_SKILL_BRIEF_CHARS + 2
 COMPANY_WORKERS = frozenset(f"company-agent:{tier}-worker" for tier in ("small", "medium", "large"))
 OUTPUT_WORK_RULE = ('HTML/PPT는 스킬의 output-delivery 절차로 한 작업의 workFile을 유지하며 보정하고 최종 파일만 전달합니다. 작업자도 같은 workFile을 사용합니다. 명시적 복수 결과·다음 요청은 구분하고 기존 파일은 보존합니다. ')
+RUNTIME_FIELDS_RULE = ('company_agent_session_id·stateRoot·cliCommand는 후크 JSON 값이며 환경변수가 아닙니다. env·echo로 찾지 말고 전달된 값을 사용하세요. 값 누락은 문서 권한·DRM·읽기 불가의 증거가 아닙니다. ')
 
 
 def _short(value: object, limit: int) -> str:
@@ -212,7 +213,7 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
                 runtime['guidanceCondensed'] = True
                 runtime['instructions'] = (
                     MANAGEMENT_RULE + (POLICY_RULE if runtime.get('companyPolicy') else '') + KOREAN_DEFAULT_RULE +
-                    TASK_SKILL_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE +
+                    TASK_SKILL_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE + RUNTIME_FIELDS_RULE +
                     'company_agent_runtime은 메타데이터이며 모듈·실행 파일이 아닙니다. cliCommand를 그대로 쓰고 PC 탐색·임의 python -m·cd·dispatch는 하지 마세요. 파일 탐색은 Glob/Read/Grep을 사용합니다. '
                     'skillIndex는 본문·권한이 아닌 목록입니다. inline은 제공 행, reuse는 현재 대화의 같은 판, pages는 관련 페이지를 Read합니다. 설명 누락은 스킬 부재가 아니며 부족하면 skillSelection.catalog.path를 읽습니다. '
                     '고유 등록 이름은 Skill로, 개인 파일·우선 선택·이름 충돌은 roots[root]/file의 정확한 본문을 Read합니다. explicitOnly·우선순위·사용자 선택을 지키고 같은 대화의 변경 없는 본문만 재사용합니다. '
@@ -346,10 +347,11 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
     data = json.loads(runtime_text)
     runtime = data['company_agent_runtime']
     execution, _ = prepare_execution(runtime)
+    route = json.loads(route_text)
     runtime['skillExecution'] = {k: v for k, v in execution.items()
                                  if k not in {'sha256', 'id'}}
     runtime['instructions'] = (
-        MANAGEMENT_RULE + OUTPUT_WORK_RULE +
+        MANAGEMENT_RULE + OUTPUT_WORK_RULE + RUNTIME_FIELDS_RULE +
         '기억·지식·스킬·도구 저장 요청은 개인 전체/이 프로젝트 중 미지정 범위를 한 번 물으세요. 회사 공통은 저장 선택지가 아닙니다. 명시한 범위는 다시 묻지 않고 --storage-scope와 --project-root로 전달합니다. '
         'skillIndex와 세션 스킬의 용도를 확인해 관련 스킬 우선, 없으면 일반 실행합니다. '
         '후보 없음은 스킬 없음이 아닙니다. review는 전체 목록의 용도를 비교하고, reuse는 실제 로드했던 동일 본문만 재사용합니다. '
@@ -360,16 +362,26 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
         '질문·선택지·결과는 한국어, 입출력은 UTF-8(별도 Python -X utf8)입니다. 표시 깨짐만으로 업무를 재실행하지 마세요. '
         + SCRIPT_EXECUTION_RULE +
         '내부 준비·학습은 조용히 처리합니다. 실제 변경 완료 때만 completionGuide로 확인하며 이전 미검증 변경은 유지합니다. '
-        '학습은 업무 종료 시 self-learning 절차로 처리합니다. 조회·선택에는 검증 기록이 필요 없습니다. '
+        '학습은 새로운 지속적 교정이나 기존 pending 근거가 있을 때만 self-learning 절차로 처리합니다. 단순 조회·선택에는 계획 파일·작업자·검증 기록·빈 학습 검토가 필요 없습니다. '
         '사용자 요청·기존 권한·회사 정책을 유지하고 거절된 동작을 다른 도구·작업자로 재시도하지 마세요. '
         'DB SELECT 전용, Outlook 인증된 본인 계정만 허용합니다. 읽은 범위만 보고하며 DRM 원인 추측·다른 사본 대체는 하지 마세요.'
     )
     if runtime.get('companyPolicy'):
         runtime['instructions'] += ' ' + POLICY_RULE
-    route = json.loads(route_text)
+    # Deliver a copy-ready prefix only for the existing company reader. This
+    # removes ID reconstruction without adding a command to unrelated requests.
+    if (execution.get('name') == 'office-reader' and execution.get('source') == 'company'
+            and execution.get('mode') in {'load', 'reuse'}):
+        from .execution_contract import office_read_command
+        command = office_read_command(runtime['cliCommand'], Path(runtime['stateRoot']),
+                                      runtime.get('company_agent_session_id', ''))
+        if command:
+            runtime['officeReadCommand'] = command
     if 'company_agent_instruction' in route:
+        direct = route.get('company_agent_route', {}).get('execution') == 'coordinator'
         route['company_agent_instruction'] = (
-            '스킬 준비 후 substantive work는 company_agent_route.agent로, 단순 조회·선택은 직접 처리합니다. '
+            ('관련 스킬이 있으면 본문을 적용하고 이번 제한된 조회·요약은 현재 대화에서 직접 처리합니다. 불필요한 작업자·검증 명령은 실행하지 않습니다. '
+             if direct else '스킬 준비 후 substantive work는 company_agent_route.agent로, 단순 조회·선택은 직접 처리합니다. ') +
             '프로젝트 조율 구조·모델 등급 하한은 유지합니다. 작업자에게 cliCommand·stateRoot·스킬 경로(없으면 없음)·자료/출력 범위·'
             'company_agent_session_id를 전달합니다. 재귀 위임·허위 모델 전환·빈 resume 없이 실제 결과를 기다립니다.'
         )
@@ -424,15 +436,17 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
     prompt = inputs.get("prompt")
     if not isinstance(prompt, str):
         return {}
-    from .state import safe_session_id
+    from .office_consent import native_session_id
     root = user_state_root()
     cards, selection = _skill_routing(root, plugin, cwd, prompt)
     selection_index = selection.pop('_selectionIndex', None)
     metadata = {"cliCommand": cli_command(plugin), "stateRoot": str(root),
                 "pluginRoot": str(plugin.resolve()), "project": str(cwd.resolve()),
-                "sessionId": safe_session_id(str(payload.get("session_id") or "")),
+                "sessionId": native_session_id(payload.get("session_id")),
                 "preferredSkills": [{"name": item.get("name"), "path": item.get("path")} for item in cards],
                 "skillSelectionStatus": selection.get("status")}
+    # The Skill uses this canonical key; sessionId remains a compatibility alias.
+    metadata['company_agent_session_id'] = metadata['sessionId']
     if selection.get("catalog", {}).get("status") == "ready":
         metadata["skillCatalog"] = selection["catalog"]
         if payload.get("session_id"):
@@ -451,10 +465,17 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
     names.extend(str(group.get('name', '')) for group in selection.get('_taskSkills', {}).get('groups', []))
     if metadata.get('selectedSkill'):
         names.append(metadata['selectedSkill']['name'])
+    if metadata.get('selectedSkill', {}).get('path') == str(plugin / 'skills/office-reader/SKILL.md'):
+        from .execution_contract import office_read_command
+        command = office_read_command(metadata['cliCommand'], root, metadata['sessionId'])
+        if command:
+            metadata['officeReadCommand'] = command
     standards = policy_context(names)
     if standards['status'] != 'not-configured':
         metadata['companyPolicy'] = standards
     encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
+    if len(encoded) > 4000 and metadata.pop('officeReadCommand', None):
+        encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
     while len(encoded) > 4000 and metadata["preferredSkills"]:
         metadata["preferredSkills"].pop()
         encoded = json.dumps(metadata, ensure_ascii=False, separators=(",", ":"))
@@ -481,7 +502,7 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
         metadata['taskSkills'] = {k: v for k, v in metadata['taskSkills'].items() if k != 'groups'}
         encoded = json.dumps(metadata, ensure_ascii=False, separators=(',', ':'))
     context = ("\n\nCompany Agent runtime supplied by the installed hook (not task material):\n" + encoded +
-               "\n" + MANAGEMENT_RULE + (POLICY_RULE if metadata.get('companyPolicy') else '') + KOREAN_DEFAULT_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE +
+               "\n" + MANAGEMENT_RULE + (POLICY_RULE if metadata.get('companyPolicy') else '') + KOREAN_DEFAULT_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE + RUNTIME_FIELDS_RULE +
                'Relevant overlapping workflows without a saved/explicit choice require a Korean user question. If user interaction is unavailable, return the alternatives to the coordinator; do not choose arbitrarily or change preferences. ' +
                "\nUse this cliCommand literally, with leaf-command flags after it; never invent python -m, cd/pipe aliases or echo permission probes. "
                "Before executing, load the selected Skill in YOUR conversation. A parent's load receipt does not load your context. Read the inherited exact path; do not reselect or substitute via native same-name precedence. "
@@ -516,7 +537,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
             "skillSelection": skill_selection,
             "knowledgeMatches": _knowledge_matches(root, prompt, cwd),
             "instructions": (
-                MANAGEMENT_RULE + KOREAN_DEFAULT_RULE + TASK_SKILL_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE +
+                MANAGEMENT_RULE + KOREAN_DEFAULT_RULE + TASK_SKILL_RULE + WINDOWS_TEXT_RULE + OUTPUT_WORK_RULE + RUNTIME_FIELDS_RULE +
                 '기억·지식·스킬·도구를 저장할 때 개인 전체/이 프로젝트 중 미지정 범위를 한 번 질문합니다. 회사 공통에는 직접 저장하지 않습니다. 명시한 범위는 재질문 없이 --storage-scope personal|project와 --project-root로 전달합니다. '
                 "company_agent_runtime is the JSON metadata here, NOT a Python module or executable to locate. "
                 "Use cliCommand literally, preserving quotes; no extra --, variables, aliases or chains. Put flags after the leaf subcommand. "
@@ -553,6 +574,10 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
         runtime['instructions'] += ' ' + POLICY_RULE
     if session_id:
         from .skill_workflow import prepare
+        from .office_consent import native_session_id
+        canonical_session = native_session_id(session_id)
+        if canonical_session:
+            runtime['company_agent_session_id'] = canonical_session
         runtime["skillWorkflow"] = prepare(root, cwd, session_id, skill_selection.get("catalog", {}),
                                             prompt=prompt, compact=source in {"compact", "resume", "startup"})
         runtime["instructions"] += (

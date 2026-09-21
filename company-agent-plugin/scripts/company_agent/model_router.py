@@ -41,6 +41,7 @@ class RouteDecision:
     verification_required: bool
     reason_codes: tuple[str, ...]
     schema_version: int = 1
+    execution: str = "worker"
 
     def as_dict(self) -> dict[str, object]:
         value = asdict(self)
@@ -53,18 +54,22 @@ class RouteDecision:
         session_id: str | None = None,
         personal_memory_context: str | None = None,
     ) -> str:
+        execution_instruction = (
+            "이번 요청은 범위가 작은 읽기·요약·설명·조회이므로 현재 대화에서 직접 처리하세요. "
+            "읽기 도구 사용만으로 작업자를 추가하지 마세요. "
+            if self.execution == "coordinator" else
+            f"실질 작업은 {self.agent} 작업자 한 명에게 위임하세요. 단순 질문·선택은 직접 처리하세요. "
+        )
         envelope = {
             "company_agent_route": self.as_dict(),
             "company_agent_instruction": (
-                "FIRST resolve the relevant workflow Skill and load its body in the coordinator (or reuse an unchanged body still in context). Resolve user choices before delegation. "
-                f"THEN, for substantive work invoke the Agent tool with subagent_type={self.agent} BEFORE writing the business deliverable; it is the primary execution worker, not merely a label. Trivial lookups/choices stay in the coordinator. Unless a project orchestrator is active. "
-                "In that case keep the orchestrator in the main conversation, invoke its project agents directly, "
-                "and apply the routed tier as a minimum for substantive work. "
-                "Keep the parent conversation as coordinator, apply managed policy and effective knowledge, "
-                "Each Agent prompt MUST include the exact company_agent_runtime.cliCommand, stateRoot, selected Skill absolute path, source/output scope and current sanitized session ID. A Skill name alone is not executable context. "
-                "and verify durable changes before reporting completion. If company_agent_session_id is present, "
-                "use that exact sanitized identifier when recording verification. "
-                "If the routed agent is missing, denied or fails, report that specific limit; do not claim the tier switched when no worker ran. Never have an execution subagent delegate again."
+                "관련 스킬이 있으면 본문부터 적용하고, 없으면 일반 실행하세요. 겹친 역할은 사용자 선택을 먼저 받으세요. "
+                "현재 대화에 있는 동일 본문은 재사용하세요. "
+                + execution_instruction +
+                "회사 정책·승인과 활성 프로젝트 오케스트레이터 지침이 우선입니다. 위임 시 지정 tier 이상을 사용하고 "
+                "cliCommand·stateRoot·실제로 선택한 스킬 절대경로(있을 때)·입출력 범위·company_agent_session_id를 전달하세요. "
+                "작업자는 재위임하지 않습니다. 위임 실패는 사실대로 알리세요. "
+                "지속적인 변경은 완료 전에 검증하세요. 단순 읽기·응답만으로 변경 검증을 추가하지 마세요."
             ),
         }
         if session_id:
@@ -128,11 +133,13 @@ _WRITE_PATTERNS: Final = (
 _EXPLICIT_LARGE: Final = (
     r"\b(use|route|switch to)\s+(the\s+)?large(\s+model)?\b",
     r"\bhighest[- ]capability model\b",
+    r"(large|라지|대형|고성능)\s*모델\s*(로|으로)\s+",
     r"(large|라지|대형|고성능)\s*(모델)?\s*(로|으로)?\s*(사용|전환|처리|해줘)",
 )
 
 _EXPLICIT_MEDIUM: Final = (
     r"\b(use|route|switch to)\s+(the\s+)?medium(\s+model)?\b",
+    r"(medium|미디엄|중형)\s*모델\s*(로|으로)\s+",
     r"(medium|미디엄|중형)\s*(모델)?\s*(로|으로)?\s*(사용|전환|처리|해줘)",
 )
 
@@ -140,6 +147,24 @@ _EXPLICIT_SMALL: Final = (
     r"\b(use|route|switch to)\s+(the\s+)?small(\s+model)?\b",
     r"\bsmall\s*(?:model|모델)",
     r"(small|스몰|소형)\s*(모델)?\s*(로|으로)?\s*(사용|전환|처리|해줘)",
+)
+
+# Execution location is separate from the worker's model tier. A registered
+# read tool alone does not justify a second model invocation. Keep this opt-out
+# deliberately narrow: ambiguous, mutating, analytical, explicit-tier and
+# project-orchestrated work retains its existing delegation rules.
+_BOUNDED_READ_PATTERNS: Final = (
+    r"\b(read|summari[sz]e|translate|explain|lookup|look up|status|list|show)\b",
+    r"(읽어|읽고|읽기|요약|번역|설명|조회|알려|보여)",
+    r"내용.{0,20}(정리|파악|확인)",
+    r"(상태|현황|목록).{0,15}확인",
+)
+
+_DELEGATION_WORK_PATTERNS: Final = (
+    r"\b(create|write|edit|update|modify|delete|rename|move|refactor|implement|fix|patch|save|send|install|uninstall|deploy|commit|push|execute|run)\b",
+    r"(생성|작성|편집|수정|삭제|이름\s*변경|이동|리팩터링|구현|패치|저장|발송|설치|배포|커밋|푸시|실행|만들)",
+    r"\b(debug|diagnose|analy[sz]e|investigate|audit|compare|worker|subagent|delegate|parallel)\b",
+    r"(디버그|진단|분석|조사|감사|비교|작업자|서브\s*에이전트|위임|병렬)",
 )
 
 
@@ -221,6 +246,14 @@ def classify_prompt(prompt: str) -> RouteDecision:
     if verification_required:
         reason_codes.append("FILE_WRITE_INTENT")
 
+    execution = "worker"
+    if (len(text) < 1_500 and tier != LARGE and not verification_required
+            and not (explicit_large or explicit_medium or explicit_small)
+            and _matches_any(text, _BOUNDED_READ_PATTERNS)
+            and not _matches_any(text, _DELEGATION_WORK_PATTERNS)):
+        execution = "coordinator"
+        reason_codes.append("BOUNDED_READ_IN_COORDINATOR")
+
     # Preserve insertion order while making repeated signals deterministic.
     unique_reasons = tuple(dict.fromkeys(reason_codes))
     return RouteDecision(
@@ -229,6 +262,7 @@ def classify_prompt(prompt: str) -> RouteDecision:
         agent=AGENT_NAME[tier],
         verification_required=verification_required,
         reason_codes=unique_reasons,
+        execution=execution,
     )
 
 

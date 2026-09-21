@@ -176,7 +176,7 @@ def register(subparsers: Any) -> None:
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
         if action == 'office-read':
-            command.add_argument('--session', help='현재 Claude 대화의 company_agent_session_id')
+            command.add_argument('--session', help='후크 JSON의 현재 대화 ID (환경변수가 아님; 연결된 후크가 누락 값 보완)')
             source = command.add_mutually_exclusive_group(required=True)
             source.add_argument('--spec')
             source.add_argument('--file')

@@ -14,7 +14,7 @@ import time
 
 from .business_safety import safe_path
 from .paths import atomic_write_json
-from .state import _locked_session, _stale_native_prompt
+from .state import _locked_session, _stale_native_prompt, safe_session_id
 
 TTL = 15 * 60
 APPROVE = '이 범위 읽기 승인'
@@ -22,7 +22,19 @@ CANCEL = '취소'
 
 
 def _session(value):
-    return isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,99}', value) and value != 'unknown-session'
+    # Template labels are not conversation identities. Do not create a pending
+    # question that no native user-answer event can ever match.
+    return (isinstance(value, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9._-]{0,99}', value)
+            and value.casefold() not in {'unknown-session', 'company_agent_session_id',
+                                        'session_id', 'session', 'none', 'null', 'undefined'})
+
+
+def native_session_id(value):
+    """Normalize an actually supplied native ID; never hash an absent value."""
+    if not isinstance(value, str) or not value.strip():
+        return ''
+    normalized = safe_session_id(value)
+    return normalized if _session(normalized) else ''
 
 
 def _project(cwd):
@@ -53,7 +65,8 @@ def authorize(request, *, root, session_id='', cwd=None):
     cwd = cwd or Path.cwd()
     if not _session(session_id):
         return {'ok': False, 'status': 'input_required', 'code': 'conversation_session_required',
-                'message': 'Claude 대화에서 현재 company_agent_session_id를 --session에 넣어 다시 요청하세요. 별도 승인 창은 열지 않았습니다.',
+                'message': '문서는 아직 열지 않았습니다. 승인 답변을 연결할 대화 정보가 없어 문서 접근 가능 여부는 미확인입니다. 후크의 officeReadCommand가 있으면 그대로 한 번 실행하세요. 없으면 새 Claude 대화에서 다시 요청하도록 안내하세요. company_agent_session_id는 환경변수가 아닌 후크 JSON 값입니다. env·echo·세션 탐색, 임의 ID, 다른 읽기 방식으로 전환하지 마세요.',
+                'failureKind': 'conversation_context', 'documentAccess': 'not_checked',
                 'sourceOpened': False}
     safe_path(root)
     source = safe_path(request['file'], exists=True)
@@ -85,7 +98,7 @@ def authorize(request, *, root, session_id='', cwd=None):
 
 def observe(root, cwd, payload):
     """Bind native question dispatch/result; accept a narrow plain-chat fallback."""
-    session = payload.get('session_id')
+    session = native_session_id(payload.get('session_id'))
     event = payload.get('hook_event_name')
     if not _session(session) or event not in {'PreToolUse', 'PostToolUse', 'UserPromptSubmit'}:
         return ''

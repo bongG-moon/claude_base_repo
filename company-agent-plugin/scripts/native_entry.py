@@ -117,6 +117,14 @@ def main() -> int:
             # The corporate policy handler accepts only its own MCP servers.
             # Other tools get preparation checks, NOT a new permission grant.
             if event == "PreToolUse" and not corporate_tool:
+                if preparation.get('hookSpecificOutput', {}).get('permissionDecision') != 'deny':
+                    from company_agent.execution_contract import bind_office_context
+                    bound = bind_office_context(payload, user_state_root())
+                    if bound:
+                        # Add only missing execution context; permissions and
+                        # the real user's document-processing consent remain.
+                        bound['hookSpecificOutput'].update(preparation.get('hookSpecificOutput', {}))
+                        preparation = bound
                 print(json.dumps(preparation, ensure_ascii=True))
                 return 0
             handler = __import__(handlers[event])
@@ -143,6 +151,12 @@ def main() -> int:
                 )
                 result["hookSpecificOutput"]["additionalContext"] = '\n'.join(filter(None, [
                     task_prompt_context(text, runtime_text), project_context, consent_context]))
+            if event in {'PostToolUse', 'PostToolUseFailure'}:
+                from company_agent.execution_contract import runtime_probe_context
+                correction = runtime_probe_context(payload, user_state_root())
+                if correction:
+                    target = result.setdefault('hookSpecificOutput', {'hookEventName': event})
+                    target['additionalContext'] = '\n'.join(filter(None, [target.get('additionalContext'), correction]))
             if event == "PostToolUse":
                 from company_agent.skill_workflow import observe
                 from company_agent.paths import user_state_root

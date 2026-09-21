@@ -9,11 +9,15 @@ that a test failed. The native CLI may show its own brief hook status.
 
 Use the exact `company_agent_runtime.cliCommand` and `stateRoot`; replace the
 `company-agent` prefix in examples with that full, already-quoted command.
-Use the current `company_agent_session_id` supplied by route context, never an
-invented or previously remembered session. If current status is needed, run
-`company-agent session status --session "<id>"`.
-If the context, reference, or required command cannot be read/executed, do not
-guess a path or forge a receipt. State the actual missing capability briefly.
+These and `company_agent_session_id` are injected JSON values, not environment
+variables. Do not use echo, Get-ChildItem Env:, or session-folder searches to
+find them. Use only the current supplied ID; status lookup is optional and
+requires that known ID. If bookkeeping context is absent, still perform the
+available outcome checks and deliver their evidence; defer only the marker or
+learning operation that needs it. Never guess paths/IDs or forge receipts.
+Missing bookkeeping context does not block read-only work, invalidate completed
+results, or prove Office/DRM denial. Preserve actual unverified changes and
+report a relevant recording limitation only when needed.
 
 ## Verify the outcome before the final response
 
@@ -39,7 +43,7 @@ guess a path or forge a receipt. State the actual missing capability briefly.
   failures and skipped checks. Do not reuse an old pass or accept a worker's
   conclusion without checking the changed result. Match the requested outcome
   separately: a passing test suite is not proof of requirements it never tests.
-- After an observed successful check, record:
+- After an observed successful check, with valid current context, record:
   `company-agent session verify --session "<id>" --status pass --summary "<short evidence>"`.
 - Record a genuinely failed check with `--status fail`. Permission denial,
   approval waiting or missing capability is `--status unavailable`, or `partial`
@@ -61,7 +65,8 @@ A Stop reminder never creates permission to finish an unfinished task or start
 an empty review. For a genuinely completed work with pending reusable feedback
 or an eligible next-use assessment, read `../../self-learning/SKILL.md` and its
 required schema reference. Run `company-agent learning status --session "<id>"`
-to get the actual current turn and milestone status. Do not invent IDs.
+only with a known current ID to get the turn and milestone status. Missing
+context defers learning; do not search for or invent IDs or a replacement state.
 
 Only a successfully completed checkpoint may be reviewed. If a Stop reminder
 already requested that review, inspect its pending status instead of making a

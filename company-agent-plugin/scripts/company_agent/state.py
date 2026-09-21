@@ -150,6 +150,22 @@ def _known_shell_mutation(command: str) -> bool | None:
         name = name[:-4]
     if name in _INLINE_RUNTIMES:
         return words[1:] not in (["--version"], ["-v"])
+    probe_arguments = words[1:]
+    if name == "py" and probe_arguments[:1] in (["-3"], ["-3.11"], ["-3.12"], ["-3.13"], ["-3.14"]):
+        probe_arguments = probe_arguments[1:]
+    while name in {"python", "python3", "py"} and probe_arguments:
+        if probe_arguments[0] in {"-I", "-B", "-u", "-Xutf8"}:
+            probe_arguments = probe_arguments[1:]
+        elif probe_arguments[:2] == ["-X", "utf8"]:
+            probe_arguments = probe_arguments[2:]
+        else:
+            break
+    if (name in {"python", "python3", "py"} and probe_arguments in (["--version"], ["-V"])
+            and _known_runtime(words[0], {"python", "python.exe", "python3", "python3.exe", "py", "py.exe"})):
+        # An exact runtime version probe does not modify a business result.
+        # Extra arguments, scripts, redirections and shell expansions retain
+        # conservative accounting; this is never an execution permission.
+        return False
     if name != 'git':
         return None
     index = 1
@@ -546,8 +562,13 @@ def _own_cli_arguments(command: str) -> list[str] | None:
     elif _known_runtime(program, {"python", "python.exe", "python3", "python3.exe", "py", "py.exe"}):
         if arguments and arguments[0] in {"-3", "-3.11", "-3.12", "-3.13", "-3.14"}:
             arguments.pop(0)
-        while arguments and arguments[0] in {"-I", "-B", "-u"}:
-            arguments.pop(0)
+        while arguments:
+            if arguments[0] in {"-I", "-B", "-u", "-Xutf8"}:
+                arguments.pop(0)
+            elif arguments[:2] == ["-X", "utf8"]:
+                arguments = arguments[2:]
+            else:
+                break
         if not arguments or not _same_absolute_path(arguments[0], scripts / "harness_cli.py"):
             return None
         arguments = arguments[1:]

@@ -311,6 +311,7 @@ try {
     foreach ($docName in @('COMPANY_AGENT_HANDBOOK.md', 'ONBOARDING_COURSE.md', 'CLAUDE_CODE_COMMANDS.md', 'Company-Agent-Guide.html', 'Company-Agent-Handbook.html', 'Company-Agent-Onboarding.html', 'UPDATE_1.4.16.md', 'UPDATE_1.4.17.md', 'UPDATE_1.4.18.md', 'UPDATE_1.4.19.md', 'VALIDATION_RESOURCE_SCOPES_2026-09-19.md', 'VALIDATION_HARNESS_MAP_2026-09-19.md', 'VALIDATION_PPT_HTML_FIRST_2026-09-19.md', 'VALIDATION_PPT_NATIVE_HTML_2026-09-19.md', 'VALIDATION_SINGLE_DELIVERY_2026-09-19.md', 'VALIDATION_UNIFIED_GUIDE_2026-09-19.md')) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force
     }
+    Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\UPDATE_1.4.20.md') -Destination (Join-Path $stagePath 'docs\UPDATE_1.4.20.md') -Force
     Copy-Item -LiteralPath (Join-Path $SourceRoot 'docs\AUDIT_HARNESS_2026-09-20.md') -Destination (Join-Path $stagePath 'docs\AUDIT_HARNESS_2026-09-20.md') -Force
     Copy-Item -LiteralPath $claudeInstallDoc -Destination (Join-Path $stagePath 'INSTALL_WITH_CLAUDE.md') -Force
     Copy-Item -LiteralPath $easyInstaller -Destination (Join-Path $stagePath 'Install-CompanyAgent.cmd') -Force

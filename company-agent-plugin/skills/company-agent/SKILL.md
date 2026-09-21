@@ -52,12 +52,9 @@ in personal learning or claim a pilot connector guarantees corporate DRM access.
 
 ## Route work
 
-If a generated project orchestrator is active, keep that orchestrator in the MAIN
-conversation and delegate its individual stages to the generated project agents.
-Use the routed tier as a minimum reasoning tier for the substantive work (raise
-the Agent tool model when a stage is below that floor). Do not delegate the whole
-orchestrator to one worker: ordinary subagents cannot spawn their own subagents.
-The single-worker procedure below applies to requests without a project orchestrator.
+Keep an active project orchestrator in the MAIN conversation; delegate its stages to project agents at or above the routed reasoning tier. Never delegate the whole orchestrator to one worker: ordinary subagents cannot spawn subagents.
+Otherwise, `company_agent_route.execution == "coordinator"` keeps short reads/summaries in the current conversation after applying the relevant Skill. Tool use alone needs no worker, plan file, completion marker or empty learning review.
+This heuristic does not measure document size: preserve actual reader limits, approvals and incomplete-result reporting. Explicit worker requests, project orchestration, complex analysis and changes keep the appropriate worker path below.
 
 1. Handle trivial clarification, status/list lookup and choices in the coordinator; do not spawn a worker merely to inspect a directory. After selecting/loading the workflow and resolving choices, for substantive work read `company_agent_route.agent` and delegate to that plugin agent:
    - `company-agent:small-worker` for bounded, low-risk work.

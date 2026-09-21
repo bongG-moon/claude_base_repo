@@ -10,7 +10,8 @@ from pathlib import Path
 from company_agent.memory import MAX_MEMORY_RESULTS, render_memory_context, search_scoped_memory
 from company_agent.model_router import MEDIUM, RouteDecision, hook_output, classify_prompt
 from company_agent.paths import user_state_root
-from company_agent.state import begin_turn, learning_context, safe_session_id
+from company_agent.state import begin_turn, learning_context
+from company_agent.office_consent import native_session_id
 
 
 def _safe_default(reason: str) -> RouteDecision:
@@ -51,7 +52,7 @@ def main() -> int:
 
             session_id = payload.get("session_id")
             if isinstance(session_id, str) and session_id:
-                sanitized_session_id = safe_session_id(session_id)
+                sanitized_session_id = native_session_id(session_id) or None
                 try:
                     state = begin_turn(
                         session_id,

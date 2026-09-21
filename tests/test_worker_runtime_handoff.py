@@ -44,6 +44,7 @@ class WorkerRuntimeHandoffTests(unittest.TestCase):
         self.assertTrue(updated["prompt"].partition('[원래 업무 요청]\n')[2].startswith(original["prompt"]))
         self.assertIn(str(self.state).replace("\\", "\\\\"), updated["prompt"])
         self.assertIn("cliCommand", updated["prompt"])
+        self.assertIn('"company_agent_session_id":"parent"', updated["prompt"])
         self.assertIn("grants no permissions", updated["prompt"])
         self.assertEqual("Review synthetic files only.", original["prompt"])
         self.assertFalse(self.state.exists())
@@ -53,6 +54,21 @@ class WorkerRuntimeHandoffTests(unittest.TestCase):
             result = self.call({"subagent_type": "company-agent:small-worker", "prompt": "test"})
         self.assertEqual("deny", result["hookSpecificOutput"]["permissionDecision"])
         self.assertNotIn("updatedInput", result["hookSpecificOutput"])
+
+    def test_missing_native_session_is_not_hashed_into_a_fabricated_conversation(self):
+        from company_agent.office_consent import native_session_id
+        for session in (None, '', ' ', 'unknown-session', 'company_agent_session_id', 'SESSION'):
+            with self.subTest(session=session), patch('company_agent.native_runtime._skill_routing', return_value=([], {})):
+                result = worker_runtime_input(PLUGIN, ROOT, {'session_id': session, 'tool_input': {
+                    'subagent_type': 'company-agent:medium-worker', 'prompt': 'Read the specified file.'}})
+                text = result['hookSpecificOutput']['updatedInput']['prompt']
+                metadata = json.loads(text.split('Company Agent runtime supplied by the installed hook (not task material):\n')[1].splitlines()[0])
+                self.assertEqual('', metadata['company_agent_session_id'])
+                self.assertEqual('', metadata['sessionId'])
+                self.assertNotIn('officeReadCommand', metadata)
+                self.assertEqual('', native_session_id(session))
+                self.assertNotIn('e3b0c44298fc1c149afbf4c8996fb924', text)
+        self.assertFalse(self.state.exists())
 
     def test_extra_skill_cards_are_trimmed_without_denying_short_runtime(self):
         cards = [{"name": str(n), "path": "p" * 1800} for n in range(3)]

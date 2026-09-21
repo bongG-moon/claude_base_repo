@@ -59,9 +59,15 @@ Excel/CSV는 현재 하네스의 Python에 설치된 xlwings·pandas와 데스�
 
 ## 간단 실행과 범위 확인
 
-일반 읽기는 `cliCommand` 뒤에 `business office-read --file "절대경로" --session "현재 company_agent_session_id" --state-root "stateRoot"`를 붙입니다.
+일반 읽기는 후크의 `officeReadCommand` 뒤에 `--file "절대경로"`와 필요한 범위만 붙입니다.
+없으면 `cliCommand` 뒤에 `business office-read --file "절대경로"`를 붙이고 대화에 실제로 전달된 세션·상태 값만 추가합니다.
+`company_agent_session_id`·`stateRoot`·`cliCommand`는 환경변수가 아닌 JSON 값입니다. env·echo로 확인하지 않습니다.
 JSON 파일이나 doctor 선행 실행은 필요 없습니다. `--start 1 --end 4 --expected-count 4`
 처럼 요청 범위와 알고 있는 개수를 지정할 수 있습니다. spec과 직접 인자는 혼용하지 않습니다.
+현재 후크는 등록된 단독 읽기 명령의 누락된 세션·상태 경로만 보완합니다. 명시된 값,
+원본 경로·범위·승인·실행 권한은 바꾸지 않습니다. 세션 정보 누락 오류가 계속되면
+세션 폴더·도움말 탐색 대신 중단하고 새 Claude 대화에서 다시 요청하도록 안내합니다.
+연결 정보 누락은 문서를 열기 전의 상태이며 문서 권한·DRM·Office 지원 여부는 미확인입니다. 다른 파서로 대체하지 않습니다.
 첫 호출은 문서를 열지 않고 한국어 질문을 반환합니다. Claude 대화에서 파일·범위·AI 처리
 안내를 보여주고 승인/취소를 받습니다. 실제 사용자 답변을 후크가 확인한 뒤 같은 명령을
 한 번 실행합니다. 별도 Windows 확인 창이나 모델이 작성한 승인 값은 사용하지 않습니다.

@@ -21,11 +21,17 @@ requests such as "기억해줘" still use personal-memory immediately. Ordinary
 corrections during unfinished work use staging, never an immediate memory upsert.
 One-time or unclear preferences apply to the current task only. This boundary
 also applies when personal-memory was selected first. No new interview and no background daemon.
-Use `company_agent_runtime.cliCommand` and its `stateRoot` for all commands below.
+Use `company_agent_runtime.cliCommand`, `stateRoot`, and the current
+`company_agent_session_id` from injected JSON for all commands below. They are
+not environment variables: do not use echo, Get-ChildItem Env:, or session-folder
+searches to recover them. If required context is absent, defer learning without
+inventing IDs, paths, or replacement state. Continue read-only work and deliver
+completed results with actual evidence; a missing learning record does not
+change the task's success/failure verdict. Mention the limitation only if relevant.
 
 ## Review the current turn
 
-1. Run `company-agent learning status --session "<company_agent_session_id>"`.
+1. With valid current context, run `company-agent learning status --session "<company_agent_session_id>"`.
    Use the exact current `session.turnId` and previousTurnId, not an invented ID.
    If disabled, complete, skipped, deferred, or missing a valid turn, do not
    force a new review. Never reset verification/review budgets to continue.

@@ -28,12 +28,75 @@ class ModelRouterTests(unittest.TestCase):
         decision = classify_prompt("이 문단을 짧게 요약해줘")
         self.assertEqual(SMALL, decision.tier)
         self.assertEqual("haiku", decision.model_alias)
+        self.assertEqual("coordinator", decision.execution)
+
+    def test_bounded_reads_use_coordinator_without_changing_tier_aliases(self) -> None:
+        for prompt in (
+            "@AI_CAMP_지원현황.xlsx 이 파일 내용 읽고 정리해줘",
+            "엑셀 첫 번째 시트를 읽어줘",
+            "@보고서.pptx 내용 읽고 요약해줘",
+            "실제 사용 가능한 스킬 목록 보여줘",
+            "현재 진행 상태 알려줘",
+            "이 설정이 무엇인지 간단히 설명해줘",
+            "Read this document and summarize it",
+            "Show the available tools",
+        ):
+            with self.subTest(prompt=prompt):
+                decision = classify_prompt(prompt)
+                self.assertEqual("coordinator", decision.execution)
+                self.assertFalse(decision.verification_required)
+                self.assertIn("BOUNDED_READ_IN_COORDINATOR", decision.reason_codes)
+        self.assertEqual(MEDIUM, classify_prompt("엑셀 첫 번째 시트를 읽어줘").tier)
+        self.assertEqual("sonnet", classify_prompt("엑셀 첫 번째 시트를 읽어줘").model_alias)
+
+    def test_mutation_or_analytical_read_followups_keep_worker(self) -> None:
+        for prompt in (
+            "문서 읽고 요약 파일을 작성해줘",
+            "엑셀을 읽고 보고서 만들어줘",
+            "Read the document and save a summary",
+            "Explain the design then implement the code",
+            "문서 읽고 메일 발송해줘",
+            "슬라이드를 읽고 두 자료의 차이를 비교 분석해줘",
+            "이 장애의 근본 원인을 읽고 설명해줘",
+            "계속 진행해줘",
+            "Read " + "x" * 1_500,
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertEqual("worker", classify_prompt(prompt).execution)
+
+    def test_explicit_tier_and_worker_requests_do_not_skip_delegation(self) -> None:
+        for prompt in (
+            "SMALL 모델로 간단히 요약해줘",
+            "MEDIUM 모델로 간단히 요약해줘",
+            "LARGE 모델로 간단히 요약해줘",
+            "서브에이전트로 이 문서를 읽고 요약해줘",
+            "Delegate the summary to a worker",
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertEqual("worker", classify_prompt(prompt).execution)
+
+    def test_compact_instructions_keep_policy_and_verification_boundaries(self) -> None:
+        for prompt in ("이 문서 읽어줘", "코드를 수정해줘"):
+            with self.subTest(prompt=prompt):
+                context = json.loads(classify_prompt(prompt).as_additional_context())
+                instruction = context["company_agent_instruction"]
+                self.assertLess(len(instruction), 700)
+                self.assertIn("없으면 일반 실행", instruction)
+                self.assertIn("회사 정책·승인", instruction)
+                self.assertIn("활성 프로젝트 오케스트레이터", instruction)
+                self.assertIn("지속적인 변경은 완료 전에 검증", instruction)
+                self.assertIn("company_agent_session_id", instruction)
+                self.assertIn("재위임하지 않습니다", instruction)
+        readonly = json.loads(classify_prompt("이 문서 읽어줘").as_additional_context())
+        self.assertIn("현재 대화에서 직접 처리", readonly["company_agent_instruction"])
+        self.assertNotIn("한 명에게 위임", readonly["company_agent_instruction"])
 
     def test_normal_implementation_routes_medium_and_requires_verification(self) -> None:
         decision = classify_prompt("이 Python 파일의 오류를 수정하고 테스트도 실행해줘")
         self.assertEqual(MEDIUM, decision.tier)
         self.assertEqual("sonnet", decision.model_alias)
         self.assertTrue(decision.verification_required)
+        self.assertEqual("worker", decision.execution)
 
     def test_architecture_and_mcp_creation_route_large(self) -> None:
         decision = classify_prompt("전사 에이전트 아키텍처를 설계하고 MCP 서버를 구현해줘")
@@ -47,6 +110,7 @@ class ModelRouterTests(unittest.TestCase):
         )
         self.assertEqual(LARGE, decision.tier)
         self.assertIn("SAFE_TIER_FLOOR_APPLIED", decision.reason_codes)
+        self.assertEqual("worker", decision.execution)
 
     def test_read_only_analysis_does_not_require_file_verification(self) -> None:
         decision = classify_prompt("이 장애의 근본 원인을 분석해서 설명해줘")

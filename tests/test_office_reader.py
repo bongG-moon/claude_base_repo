@@ -141,9 +141,9 @@ class OfficeReaderTests(unittest.TestCase):
 
     def test_skill_is_reading_only_and_preserves_other_workflows(self):
         text=(ROOT/'company-agent-plugin/skills/office-reader/SKILL.md').read_text(encoding='utf-8')
-        self.assertIn('not a replacement',text)
-        self.assertIn('Use the shipped bounded reader and its supported options',text)
-        self.assertIn('Reading alone needs no',text)
+        self.assertIn('보고서/PPT 생성은 별도 작업',text)
+        self.assertIn('고정된 읽기 방식',text)
+        self.assertIn('읽기만 했으면 session verify, work checkpoint, 빈 학습 검토를 실행하지 않습니다',text)
 
     def test_typed_spec_and_read_do_not_create_verification_work(self):
         from company_agent.state import begin_turn,record_activity,stop_decision

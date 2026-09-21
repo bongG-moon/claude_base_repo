@@ -29,6 +29,26 @@ class SkillExecutionTests(unittest.TestCase):
     def state(self):
         return load_session(self.f.sid, self.f.state)
 
+    def test_bounded_read_route_and_session_survive_native_context_compaction(self):
+        from company_agent.model_router import classify_prompt
+        prompt = '@자료.xlsx 내용 읽고 정리해줘'
+        ctx = self.f.context(prompt)
+        route = classify_prompt(prompt).as_additional_context(session_id=self.f.sid)
+        text = task_prompt_context(route, json.dumps({'company_agent_runtime': ctx}, ensure_ascii=False))
+        objects = [json.loads(line) for line in text.splitlines() if line.startswith('{')]
+        delivery = next(item for item in objects if 'company_agent_route' in item)
+        runtime = objects[-1]['company_agent_runtime']
+        self.assertEqual('coordinator', delivery['company_agent_route']['execution'])
+        self.assertIn('직접 처리', delivery['company_agent_instruction'])
+        self.assertEqual(self.f.sid, runtime['company_agent_session_id'])
+        self.assertNotIn('substantive work는', delivery['company_agent_instruction'])
+        self.assertEqual('load', runtime['skillExecution']['mode'])
+        from company_agent.execution_contract import _trusted_arguments
+        args = _trusted_arguments(runtime['officeReadCommand'])
+        self.assertEqual(self.f.sid, args[args.index('--session') + 1])
+        self.assertEqual(str(self.f.state.resolve().as_posix()), args[args.index('--state-root') + 1])
+        self.assertNotIn('--file', args)  # User still chooses the actual document.
+
     def test_unmentioned_ppt_gets_existing_load_target_not_fake_selection(self):
         ctx, text = self.output()
         self.assertEqual('load', ctx['skillExecution']['mode'])
@@ -60,6 +80,7 @@ class SkillExecutionTests(unittest.TestCase):
         self.output()
         ctx, _ = self.output('HTML 보고서를 만들어줘')
         self.assertNotEqual('office-reader', ctx['skillExecution'].get('name'))
+        self.assertNotIn('officeReadCommand', ctx)
 
     def test_html_first_ppt_description_does_not_capture_reading_or_html_reports(self):
         for prompt,name in [('PPT 내용 읽어줘','office-reader'),
