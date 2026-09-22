@@ -11,6 +11,8 @@ build/
 .env.*
 !.env.example
 .credentials.json
+# Local Workspace diagnostic results are never source artifacts.
+Workspace-Diagnostic-*.json
 .codex-remote-attachments/
 *.pem
 *.key
