@@ -14,6 +14,9 @@ New-Item -ItemType Directory -Path (Join-Path $payload 'docs') -Force | Out-Null
 $files = @(
     'Company-Workspace.vbs',
     'deploy\Start-CompanyWorkspace.ps1',
+    'deploy\CompanyWorkspace.Startup.ps1',
+    'deploy\CompanyWorkspace.NormalToken.cs',
+    'deploy\CompanyAgent.UserContext.ps1',
     'docs\LOCAL_WORKSPACE.md',
     'docs\SKILL_PRIORITY.md', 'docs\AUDIT_HARNESS_2026-09-20.md', 'docs\UPDATE_1.4.23.md',
     'docs\UPDATE_1.4.24.md',
@@ -37,7 +40,7 @@ foreach ($relative in $files) {
     New-Item -ItemType Directory -Path (Split-Path (Join-Path $payload $relative) -Parent) -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $repoRoot $relative) -Destination (Join-Path $payload $relative)
 }
-$zip = Join-Path $outputRoot ('company-workspace-preview-0.8-' + $stamp + '.zip')
+$zip = Join-Path $outputRoot ('company-workspace-preview-0.9-' + $stamp + '.zip')
 if (Test-Path -LiteralPath $zip) { throw 'Output already exists; refusing to overwrite.' }
 Compress-Archive -LiteralPath $payload -DestinationPath $zip -CompressionLevel Optimal
 Get-FileHash -LiteralPath $zip -Algorithm SHA256 | Select-Object Path, Hash

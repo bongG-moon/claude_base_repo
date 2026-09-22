@@ -1,19 +1,31 @@
-[CmdletBinding()]
-param([string]$PythonCommand = 'python', [switch]$Demo, [switch]$NoBrowser, [string]$StateRoot)
+﻿[CmdletBinding()]
+param([string]$PythonCommand = 'python', [switch]$Demo, [switch]$NoBrowser, [string]$StateRoot,
+      [switch]$NormalTokenRelaunch)
 $ErrorActionPreference = 'Stop'
 $workspaceMutex = $null
 $workspaceLockHeld = $false
 try {
-    $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
-    $principal = New-Object Security.Principal.WindowsPrincipal($identity)
-    if ($principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) { throw 'Start Company Workspace as your normal Windows user, not as administrator.' }
-    $mutexName = 'Local\CompanyWorkspace-' + $identity.User.Value
+    $startupHelper = Join-Path $PSScriptRoot 'CompanyWorkspace.Startup.ps1'
+    if (-not (Test-Path -LiteralPath $startupHelper -PathType Leaf)) { throw 'WORKSPACE_STARTUP:41' }
+    . $startupHelper
+    $context = Get-WorkspaceVerifiedContext
+    if ((Get-WorkspaceLaunchAction -Context $context -Relaunched ([bool]$NormalTokenRelaunch)) -eq 'relaunch') {
+        # Reduce privileges BEFORE mutex/state/CLI/Python creation. The child
+        # rechecks identity and privileges; this flag never skips a check.
+        $childCode = Invoke-WorkspaceNormalTokenRelaunch -Context $context -ScriptPath $PSCommandPath `
+            -PythonCommand $PythonCommand -Demo ([bool]$Demo) -NoBrowser ([bool]$NoBrowser) -StateRoot $StateRoot
+        if ($childCode -eq 0) { return }
+        if ($childCode -notin @(22,30,31,32,33,34,35,36,37,38,39,40,41,42,45)) { $childCode = 35 }
+        throw ('WORKSPACE_STARTUP:' + $childCode)
+    }
+    Assert-WorkspaceNormalProcess -Context $context
+    $mutexName = 'Local\CompanyWorkspace-' + $context.sid
     if ($Demo) { $mutexName += '-demo' }
     $workspaceMutex = New-Object Threading.Mutex($false, $mutexName)
     $workspaceLockHeld = $workspaceMutex.WaitOne(0)
     if (-not $workspaceLockHeld) { return }
     $appRoot = Split-Path $PSScriptRoot -Parent
-    $appStateRoot = if ($StateRoot) { [IO.Path]::GetFullPath($StateRoot) } else { Join-Path $env:LOCALAPPDATA 'CompanyAgent\local-ui' }
+    $appStateRoot = if ($StateRoot) { [IO.Path]::GetFullPath($StateRoot) } else { Join-Path $context.localAppData 'CompanyAgent\local-ui' }
     $runtimeStateRoot = $appStateRoot
     if ($Demo) { $runtimeStateRoot = Join-Path $appStateRoot 'demo' }
     $runtimePath = Join-Path $runtimeStateRoot 'runtime.json'
@@ -28,7 +40,7 @@ try {
             $origin = $uri.GetLeftPart([UriPartial]::Authority)
             $health = Invoke-RestMethod -Uri ($origin + '/api/bootstrap') -Headers @{ Authorization = ('Bearer ' + $auth) } -TimeoutSec 2
             if ($health.application -eq 'company-workspace' -and [bool]$health.demo -eq [bool]$Demo) {
-                if ($health.workspaceVersion -eq '0.8' -and $health.appRoot -eq $appRoot) {
+                if ($health.workspaceVersion -eq '0.9' -and $health.appRoot -eq $appRoot) {
                     if ($NoBrowser) { return }
                     $edge = Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'
                     if (Test-Path -LiteralPath $edge) { Start-Process -FilePath $edge -ArgumentList @('--new-window', ('--app=' + $uri.AbsoluteUri)) -WindowStyle Normal | Out-Null }
@@ -40,11 +52,12 @@ try {
         } catch { # Stale runtime records never authorize process termination.
         }
     }
-    if ($otherWorkspaceRunning) { throw 'Another Workspace version is still running. Use its top-right power button to exit, then open this version. Existing work was not stopped.' }
+    if ($otherWorkspaceRunning) { throw 'WORKSPACE_STARTUP:39' }
     if (-not $Demo -and -not $env:COMPANY_AGENT_CLAUDE) {
         # Resolve exactly what `claude` means in this user's shell. Do not silently
         # replace a profile alias/company wrapper with another executable on PATH.
-        $terminalClaude = Get-Command claude -ErrorAction Stop | Select-Object -First 1
+        try { $terminalClaude = Get-Command claude -ErrorAction Stop | Select-Object -First 1 }
+        catch { throw 'WORKSPACE_STARTUP:36' }
         while ($terminalClaude.CommandType -eq 'Alias') { $terminalClaude = $terminalClaude.ResolvedCommand }
         if ($terminalClaude.CommandType -in @('Application', 'ExternalScript')) {
             $env:COMPANY_WORKSPACE_CLAUDE_ENTRY = $terminalClaude.Source
@@ -59,12 +72,14 @@ try {
                 $definitionBytes = [Text.Encoding]::UTF8.GetBytes($terminalClaude.Definition)
                 $env:COMPANY_WORKSPACE_CLAUDE_DEFINITION_HASH = [BitConverter]::ToString($definitionHasher.ComputeHash($definitionBytes))
             } finally { $definitionHasher.Dispose() }
-        } else { throw 'The terminal claude command could not be resolved. No login or settings were changed.' }
+        } else { throw 'WORKSPACE_STARTUP:36' }
         $env:COMPANY_WORKSPACE_SHELL = (Get-Process -Id $PID).Path
     }
-    $resolvedPython = (Get-Command $PythonCommand -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
-    $probe = & $resolvedPython -X utf8 -c "import sys; print(sys.executable); print(int(sys.version_info >= (3, 11)))"
-    if ($LASTEXITCODE -ne 0 -or $probe[-1] -ne '1') { throw 'Python 3.11 or later is required. Use the approved Company Agent Python installation.' }
+    try { $resolvedPython = (Get-Command $PythonCommand -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source }
+    catch { throw 'WORKSPACE_STARTUP:37' }
+    try { $probe = @(& $resolvedPython -X utf8 -c "import sys; print(sys.executable); print(int(sys.version_info >= (3, 11)))") }
+    catch { throw 'WORKSPACE_STARTUP:38' }
+    if ($LASTEXITCODE -ne 0 -or $probe.Count -ne 2 -or $probe[-1] -ne '1') { throw 'WORKSPACE_STARTUP:38' }
     $resolvedPython = [string]$probe[0]
     $windowless = Join-Path (Split-Path $resolvedPython -Parent) 'pythonw.exe'
     if (Test-Path -LiteralPath $windowless) { $resolvedPython = $windowless }
@@ -72,7 +87,8 @@ try {
     if ($Demo) { $arguments += '--demo' }
     if ($NoBrowser) { $arguments += '--no-browser' }
     if ($StateRoot) { $arguments += @('--state', ('"' + $appStateRoot + '"')) }
-    $workspaceProcess = Start-Process -FilePath $resolvedPython -ArgumentList $arguments -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru
+    try { $workspaceProcess = Start-Process -FilePath $resolvedPython -ArgumentList $arguments -WorkingDirectory $appRoot -WindowStyle Hidden -PassThru }
+    catch { throw 'WORKSPACE_STARTUP:40' }
     $workspaceReady = $false
     $deadline = [DateTime]::UtcNow.AddSeconds(40)
     while ([DateTime]::UtcNow -lt $deadline -and -not $workspaceProcess.HasExited) {
@@ -85,14 +101,28 @@ try {
         Start-Sleep -Milliseconds 200
         $workspaceProcess.Refresh()
     }
-    if (-not $workspaceReady) { throw 'The local app did not become ready. Check the approved Python and Claude installation. No settings were changed.' }
+    if (-not $workspaceReady) { throw 'WORKSPACE_STARTUP:40' }
 } catch {
-    if ($NoBrowser) { [Console]::Error.WriteLine($_.Exception.Message) }
-    else {
-        Add-Type -AssemblyName System.Windows.Forms
-        [Windows.Forms.MessageBox]::Show($_.Exception.Message, 'Company Workspace - startup', 'OK', 'Warning') | Out-Null
+    $code = 41
+    $message = 'Workspace 실행 파일을 읽지 못했습니다. ZIP 전체를 새 폴더에 압축 해제한 뒤 다시 실행해 주세요.'
+    if (Get-Command Get-WorkspaceStartupMessage -CommandType Function -ErrorAction SilentlyContinue) {
+        $code = Get-WorkspaceStartupCode -Message $_.Exception.Message
+        $message = Get-WorkspaceStartupMessage -Code $code
     }
-    exit 1
+    $message += [Environment]::NewLine + ('오류 코드: WS-' + $code)
+    # One UI owner: a relaunched child returns a code without opening a modal.
+    # Parent presents it once; VBS recognizes 20 as already explained.
+    if ($NoBrowser -or $NormalTokenRelaunch) {
+        [Console]::Error.WriteLine($message)
+        exit $code
+    }
+    else {
+        try {
+            Show-WorkspaceStartupDialog -Message $message
+            exit 20
+        }
+        catch { exit $code }
+    }
 } finally {
     if ($workspaceLockHeld -and $workspaceMutex) { $workspaceMutex.ReleaseMutex() }
     if ($workspaceMutex) { $workspaceMutex.Dispose() }

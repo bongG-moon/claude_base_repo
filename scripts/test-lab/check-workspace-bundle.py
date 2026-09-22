@@ -10,6 +10,8 @@ parser.add_argument("bundle", type=Path)
 args = parser.parse_args()
 count = 0
 expected = {"Company-Workspace.vbs", "deploy/Start-CompanyWorkspace.ps1", "docs/LOCAL_WORKSPACE.md",
+            "deploy/CompanyWorkspace.Startup.ps1", "deploy/CompanyWorkspace.NormalToken.cs",
+            "deploy/CompanyAgent.UserContext.ps1",
             "docs/SKILL_PRIORITY.md", "docs/AUDIT_HARNESS_2026-09-20.md", "docs/UPDATE_1.4.23.md",
             "docs/UPDATE_1.4.24.md",
             "docs/UPDATE_1.4.25.md",

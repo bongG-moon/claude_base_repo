@@ -280,7 +280,7 @@ class ServerTests(unittest.TestCase):
     def test_bootstrap_identifies_shared_cli_without_claiming_login_success(self):
         with self.request("/api/bootstrap") as response:
             value = json.load(response)
-        self.assertEqual(value["workspaceVersion"], "0.8")
+        self.assertEqual(value["workspaceVersion"], "0.9")
         self.assertEqual(value["appRoot"], str(ROOT))
         self.assertEqual(value["runtime"]["authentication"], "shared-with-cli")
         self.assertNotIn("loggedIn", value["runtime"])
@@ -476,7 +476,7 @@ class ResolutionTests(unittest.TestCase):
                         str(ROOT / "deploy/Start-CompanyWorkspace.ps1"), "-Demo", "-NoBrowser", "-StateRoot", str(state)],
                         capture_output=True, timeout=15)
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn(b"power button", result.stderr)
+                self.assertIn(b"WS-39", result.stderr)
                 self.assertEqual(json.loads(runtime.read_text(encoding="utf-8"))["pid"], os.getpid())
                 self.assertTrue(thread.is_alive())
             finally:
