@@ -259,6 +259,10 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         ("memory", "search"), ("memory", "upsert"), ("session", "verify"),
         ("work", "checkpoint"), ("learning", "stage"), ("learning", "review"),
         ("business", "eml-read"), ("business", "files-plan"),
+        ("business", "ppt-choices"), ("business", "html-choices"),
+        ("business", "ppt"), ("business", "ppt-design-preview"),
+        ("business", "ppt-template"), ("business", "html"),
+        ("business", "artifact-start"), ("business", "artifact-publish"),
     } and len(args) == 3:
         return "read_only"
     if head in {('memory', 'upsert'), ('knowledge', 'upsert'), ('asset', 'create')} and '--storage-scope' not in args:
@@ -285,10 +289,12 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         args = [value for value in args if value != '--open']
     if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "ppt-capabilities"), ("business", "html-designs")}:
         allowed = {"--state-root"}
-    elif head in {("business", "mail-search"), ("business", "html-choices")}:
+    elif head == ("business", "mail-search"):
         allowed, required = {"--state-root", "--spec"}, {"--spec"}
+    elif head == ('business', 'html-choices'):
+        allowed = {'--state-root', '--spec'}
     elif head == ('business','ppt-choices'):
-        allowed, required = {'--state-root','--spec','--template'}, {'--spec'}
+        allowed = {'--state-root','--spec','--template'}
     elif head in {('business','ppt-analyze'),('business','ppt-inspect'),('business','html-template')}:
         allowed, required = {'--state-root','--template'}, {'--template'}
     elif head == ("business", "eml-read"):
@@ -310,12 +316,23 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
 
 
 def internal_plan_command(command: str, root: Path) -> bool:
-    """A known plan writes only its internal receipt, never moves source files.
+    """Internal plans or owned intermediate cleanup never change source/final files.
 
     This is a bookkeeping classification, NOT an approval or a blanket tmp-write
     exemption. Explicit alternate state roots remain business changes.
     """
     args = _trusted_arguments(command)
+    if args and args[:2] == ["business", "artifact-cleanup"]:
+        fields = _fields(args[2:], {"--work", "--state-root"}, {"--work"})
+        if fields is None or not _absolute(fields['--work']):
+            return False
+        work = Path(fields['--work'])
+        # Only the exact work receipt layout under the current state is exempt
+        # from completion bookkeeping. The cleanup implementation independently
+        # validates ownership, publication, content and links. No allow is issued.
+        return bool(work.name == 'work.json' and re.fullmatch('[a-f0-9]{32}', work.parent.name)
+                    and _same(str(work.parent.parent), root / 'tmp' / 'artifact-work')
+                    and ('--state-root' not in fields or _same(fields['--state-root'], root)))
     if not args or args[:2] not in (["business", "files-plan"], ["business", "artifact-start"]):
         return False
     key = '--output' if args[1] == 'artifact-start' else '--folder'

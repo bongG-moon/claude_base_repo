@@ -152,7 +152,7 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/skills/platform-mcp-builder/assets/template/requirements-local.txt',
         'payload/core/plugin/skills/personal-knowledge/references/term-quality.md',
         'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md',
-        'docs/LEAN_SKILL_INTEGRATION.md', 'docs/UPDATE_1.4.23.md', 'docs/UPDATE_1.4.24.md'
+        'docs/LEAN_SKILL_INTEGRATION.md', 'docs/UPDATE_1.4.23.md', 'docs/UPDATE_1.4.24.md', 'docs/UPDATE_1.4.25.md'
     )) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Lean guidance/provenance is absent: $relative"
     }

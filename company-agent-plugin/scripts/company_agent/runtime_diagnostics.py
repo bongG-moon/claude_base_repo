@@ -54,6 +54,8 @@ def failure_hint(payload):
 
 def recovery_hint_once(payload, hint, root=None):
     """At most one short recovery hint per category/turn; store no error/code."""
+    if hint and hint.get('category') == 'approval_classifier_timeout':
+        return _approval_recovery(payload, hint, root)
     if not hint or hint.get('category') not in {'python_regex_error', 'python_regex_trace_incomplete', 'write_failed'}:
         return hint
     session = payload.get('session_id')
@@ -74,6 +76,36 @@ def recovery_hint_once(payload, hint, root=None):
         state['executionRecovery'] = {'turn': turn, 'categories': [*categories, category][-2:]}
         atomic_write_json(path, state)
     return hint
+
+
+def _approval_recovery(payload, hint, root=None):
+    """One retry suggestion, then one pending notice; never repeat permission work.
+
+    Only the existing exact host pre-execution timeout is eligible. A generic
+    service/PowerPoint timeout or a denial must not gain this exception.
+    """
+    session = payload.get('session_id')
+    if not session:
+        return hint
+    from .state import _locked_session, _stale_native_prompt
+    from .paths import atomic_write_json, user_state_root
+    with _locked_session(str(session), root or user_state_root()) as (state, path):
+        if _stale_native_prompt(payload, state):
+            return None
+        turn = state.get('turnId', '')
+        prior = state.get('approvalRecovery', {})
+        count = prior.get('notices', 0) if isinstance(prior, dict) and prior.get('turn') == turn else 0
+        count = count if type(count) is int and 0 <= count <= 2 else 0
+        if count >= 2:
+            return None
+        state['approvalRecovery'] = {'turn': turn, 'notices': count + 1}
+        atomic_write_json(path, state)
+    if count == 0:
+        return hint
+    return {**hint, 'message': '실행 전 안전 확인이 계속 지연되어 해당 작업을 보류했습니다.',
+            'instruction': '이번 턴의 재시도는 끝났습니다. 명령·도구·작업자를 바꾸거나 승인 설정을 바꾸어 실행하지 마세요. '
+                '준비한 입력과 기존 결과는 보존하고, 완료된 부분과 실행되지 않은 부분만 간단히 안내하세요. '
+                '이 장애를 검증 실패나 학습 대상으로 기록하지 마세요.'}
 
 
 def inspect_runtime():

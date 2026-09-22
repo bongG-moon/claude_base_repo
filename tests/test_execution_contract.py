@@ -202,6 +202,33 @@ class ExecutionContractTests(unittest.TestCase):
             self.assertEqual('unknown',classify_command(cmd))
             self.assertIsNone(self.permission(cmd))
 
+    def test_owned_cleanup_is_internal_bookkeeping_not_permission_or_verification(self):
+        from company_agent.execution_contract import internal_plan_command
+        work = self.root / 'tmp' / 'artifact-work' / ('a' * 32) / 'work.json'
+        command = f'{self.cli} business artifact-cleanup --work "{work}" --state-root "{self.root}"'
+        self.assertTrue(internal_plan_command(command, self.root))
+        self.assertEqual('unknown', classify_command(command))  # Not a read-only operation.
+        self.assertIsNone(self.permission(command))  # No native approval bypass.
+        for invalid in (
+            command + '; echo changed', command + ' --recursive', command + f' --work "{work}"',
+            command.replace('work.json', 'other.json'), command.replace('a' * 32, 'existing-files'),
+            command.replace(str(work), str(self.root / 'work.json')),
+            command.replace(f'--state-root "{self.root}"', f'--state-root "{self.root / "other"}"'),
+        ):
+            with self.subTest(invalid=invalid):
+                self.assertFalse(internal_plan_command(invalid, self.root))
+                self.assertIsNone(self.permission(invalid))
+        begin_turn('artifact-cleanup', 'MEDIUM', False, [], self.root)
+        event = {'session_id': 'artifact-cleanup', 'hook_event_name': 'PostToolUse',
+                 'tool_name': 'Bash', 'tool_input': {'command': command},
+                 'tool_response': {'stdout': '{"ok":true,"status":"cleaned"}'}}
+        self.assertEqual(0, record_activity(event, self.root)['mutationCount'])
+        self.assertEqual({}, stop_decision({'session_id': 'artifact-cleanup'}, self.root))
+        record_activity({'session_id': 'artifact-cleanup', 'tool_name': 'Write',
+                         'tool_input': {'file_path': str(self.root / 'real-output.md')}}, self.root)
+        self.assertEqual(1, record_activity(event, self.root)['mutationCount'])
+        self.assertEqual('block', stop_decision({'session_id': 'artifact-cleanup'}, self.root)['decision'])
+
     def test_permission_only_exact_metadata_and_current_root(self) -> None:
         for operation in ("doctor", "mail-capabilities"):
             command = f"{self.cli} business {operation}"

@@ -150,7 +150,9 @@ class QuestionLanguageTests(unittest.TestCase):
         self.assertEqual('deny', decision['permissionDecision'])
         self.assertIn('한국어', decision['permissionDecisionReason'])
         user_language.prepare_questions(self.state, self.event('UserPromptSubmit', prompt='동일 요청 재전달'))
-        self.assertEqual({}, user_language.question_preflight(self.state, payload))
+        retry = user_language.question_preflight(self.state, payload)['hookSpecificOutput']
+        self.assertNotIn('permissionDecision', retry)
+        self.assertEqual('계속', retry['updatedInput']['questions'][0]['options'][0]['label'])
 
     def test_korean_identifiers_and_explicit_other_language_unchanged(self):
         payload = self.event('PreToolUse', tool_name='AskUserQuestion', tool_input={'questions': [

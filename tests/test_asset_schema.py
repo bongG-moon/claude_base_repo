@@ -103,7 +103,7 @@ class AssetSchemaTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 assets.validate_script_tool_runtime(state, 'bounded-tool', input_file)
             self.assertEqual([], list(path.glob('.receipts/*.json')))
-            self.assertEqual('candidate', json.loads((path / 'tool.json').read_text())['status'])
+            self.assertEqual('candidate', json.loads((path / 'tool.json').read_text(encoding='utf-8'))['status'])
 
     def test_business_schema_failure_cannot_produce_success_evidence(self):
         class Session:

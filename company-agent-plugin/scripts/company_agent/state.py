@@ -713,16 +713,26 @@ def _is_mail_search_spec_write(tool_name: str, tool_input: dict, root: Path) -> 
 def _is_ppt_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
     """Only bounded temporary choice metadata, never jobs or output slides."""
     import json
-    if tool_name.casefold()!='write':
+    if tool_name.casefold() not in {'write', 'edit'}:
         return False
     value,content=tool_input.get('file_path'),tool_input.get('content')
-    if not isinstance(value,str) or not isinstance(content,str) or len(content.encode('utf-8'))>8192:
+    if not isinstance(value,str):
         return False
     path=Path(value)
     if (path.parent!=root.absolute()/'tmp' or not re.fullmatch(r'ppt-choices-[a-zA-Z0-9_-]{1,80}\.json',path.name)
             or not _safe_local_path(path,root,allow_missing_leaf=True)):
         return False
     try:
+        if tool_name.casefold() == 'edit':
+            # Called only after success: classify the entire resulting choice
+            # file, never an arbitrary replacement fragment or failed edit.
+            with path.open('rb') as stream:
+                raw = stream.read(8193)
+            if len(raw) > 8192:
+                return False
+            content = raw.decode('utf-8-sig')
+        if not isinstance(content, str) or len(content.encode('utf-8')) > 8192:
+            return False
         spec=json.loads(content)
         if not isinstance(spec,dict) or set(spec)-{'creationMode','referenceMode','purpose','audience','slideCount','designPreset','referenceImages'}:
             return False
@@ -751,7 +761,10 @@ def _is_html_choices_spec_write(tool_name: str, tool_input: dict, root: Path) ->
             # PostToolUse only: validate the complete resulting metadata, not
             # an arbitrary replacement fragment. Never exempt jobs or reports.
             with path.open('rb') as stream:
-                content = stream.read(8193).decode('utf-8-sig')
+                raw = stream.read(8193)
+            if len(raw) > 8192:
+                return False
+            content = raw.decode('utf-8-sig')
         if not isinstance(content, str) or len(content.encode('utf-8')) > 8192:
             return False
         spec = json.loads(content)
@@ -972,7 +985,7 @@ def record_activity(
         bookkeeping = bookkeeping or _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
         bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
         bookkeeping = bookkeeping or (not failed and _is_html_choices_spec_write(tool_name, tool_input, root or user_state_root()))
-        bookkeeping = bookkeeping or _is_ppt_choices_spec_write(tool_name, tool_input, root or user_state_root())
+        bookkeeping = bookkeeping or (not failed and _is_ppt_choices_spec_write(tool_name, tool_input, root or user_state_root()))
         if tool_name.casefold().strip() in {"bash", "powershell"}:
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
             from .execution_contract import classify_command, internal_plan_command

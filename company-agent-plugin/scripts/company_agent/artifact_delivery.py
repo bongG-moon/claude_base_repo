@@ -15,7 +15,8 @@ import uuid
 from .business_artifacts import ArtifactError, _failure, _publish, _source, _target
 from .business_safety import safe_path, blocked_input
 from .paths import atomic_write_json
-from .state import _interprocess_lock
+from .state import _interprocess_lock, _thread_lock_for
+from . import artifact_cleanup
 
 
 def _hash(path):
@@ -33,8 +34,8 @@ def start(root, output):
         folder = safe_path(base / uuid.uuid4().hex)
         folder.mkdir(parents=True, exist_ok=False)
         work = folder / 'work.json'
-        atomic_write_json(work, {'schema':1, 'output':str(output), 'draft':None,
-                                 'candidate':None, 'published':None})
+        atomic_write_json(work, {'schema':2, 'output':str(output), 'draft':None,
+                                 'candidate':None, 'published':None, 'ownedFiles':[]})
         return {'ok':True, 'status':'workspace_ready', 'workFile':str(work),
                 'jobPath':str(folder/'job.json'), 'workingDirectory':str(folder),
                 'finalOutputPath':str(output), 'finalCreated':False,
@@ -51,28 +52,46 @@ def _locked(root, work_file):
             or not re.fullmatch('[a-f0-9]{32}',work.parent.name) or not work.is_file()):
         raise ArtifactError('invalid_artifact_work', '이번 작업에서 반환된 workFile을 그대로 사용해 주세요.')
     lock = safe_path(work.parent/'work.lock')
-    with _interprocess_lock(lock):
+    with _thread_lock_for(lock), _interprocess_lock(lock):
         safe_path(work, exists=True)
         if work.stat().st_size > 128*1024:
             raise ArtifactError('invalid_artifact_work', '작업 기록의 크기를 확인해 주세요.')
-        data = json.loads(work.read_text(encoding='utf-8'))
-        if (not isinstance(data,dict) or data.get('schema') != 1
+        try:
+            data = json.loads(work.read_text(encoding='utf-8'))
+        except (ValueError, UnicodeError):
+            raise ArtifactError('invalid_artifact_work', '작업 기록의 형식을 확인해 주세요.') from None
+        if (not isinstance(data,dict) or type(data.get('schema')) is not int or data['schema'] not in (1,2)
                 or not isinstance(data.get('output'),str) or not Path(data['output']).is_absolute()
                 or Path(data['output']).suffix.lower() not in ('.html','.pptx')):
             raise ArtifactError('invalid_artifact_work', '작업 기록의 형식을 확인해 주세요.')
         safe_path(data['output'])
+        for name in ('draft','candidate','published'):
+            record = data.get(name)
+            if record is None:
+                continue
+            if (not isinstance(record,dict) or not isinstance(record.get('sha256'),str)
+                    or not re.fullmatch('[a-f0-9]{64}',record['sha256'])
+                    or not isinstance(record.get('status'),str)
+                    or not isinstance(record.get('warnings',[]),list)
+                    or any(not isinstance(value,str) for value in record.get('warnings',[]))
+                    or (name != 'published' and (not isinstance(record.get('path'),str)
+                        or not Path(record['path']).is_absolute()))):
+                raise ArtifactError('invalid_artifact_work', '작업 기록의 형식을 확인해 주세요.')
         yield work, data
 
 
-def _completed(data):
+def _completed(data, work=None):
     output = _source(Path(data['output']), ('.html','.pptx'))
     record = data['published']
     if _hash(output) != record['sha256']:
         raise ArtifactError('delivered_file_changed', '전달한 결과 파일이 이후 변경되었습니다. 덮어쓰거나 새 사본을 만들지 않았습니다.')
-    return {'ok':True, 'status':record['status'], 'outputPath':str(output),
+    result = {'ok':True, 'status':record['status'], 'outputPath':str(output),
             'alreadyDelivered':True, 'deliveryStatus':'published', 'deliverables':[str(output)],
             'message':'이미 전달한 결과입니다. 새 내용으로 바꾸는 다음 요청은 새 작업으로 시작하세요.',
             'warnings':record.get('warnings',[])}
+    if work is not None:
+        result['cleanup'] = artifact_cleanup.after_publish(work, data)
+    return result
 
 
 def build(root, work_file, operation, spec=None, template=None, *, spec_path=None):
@@ -80,7 +99,7 @@ def build(root, work_file, operation, spec=None, template=None, *, spec_path=Non
     try:
         with _locked(root, work_file) as (work, data):
             if data.get('published'):
-                return _completed(data)
+                return _completed(data, work)
             suffix = Path(data['output']).suffix.lower()
             allowed = {'ppt','ppt-design-preview','ppt-fit-images'} if suffix == '.pptx' else {'html','ppt-template'}
             # A failed revision must not accidentally deliver the prior candidate.
@@ -121,6 +140,7 @@ def build(root, work_file, operation, spec=None, template=None, *, spec_path=Non
                 record = {'path':str(output), 'sha256':_hash(output), 'status':result['status'],
                           'warnings':result.get('warnings',[]), 'operation':operation}
                 data['draft' if operation == 'ppt-design-preview' else 'candidate'] = record
+                artifact_cleanup.register(work, data, attempt, output, result)
                 atomic_write_json(work,data)
                 result.update(deliveryStatus='internal', finalOutputPath=data['output'], workFile=str(work),
                               deliverables=[], nextAction='confirm-draft' if operation == 'ppt-design-preview' else 'inspect-then-artifact-publish')
@@ -134,7 +154,7 @@ def publish(root, work_file):
     try:
         with _locked(root,work_file) as (work,data):
             if data.get('published'):
-                return _completed(data)
+                return _completed(data, work)
             record = data.get('candidate')
             if not isinstance(record,dict):
                 raise ArtifactError('artifact_not_ready', '최종 후보가 아직 없습니다. 초안 또는 실패한 수정 결과는 전달하지 않습니다.')
@@ -154,10 +174,28 @@ def publish(root, work_file):
             else:
                 _target(output, output.suffix.lower())
                 _publish(source,output)
+            if _hash(output) != record['sha256']:
+                raise ArtifactError('delivered_file_changed', '최종 파일 확인 중 변경이 발견되어 임시 파일을 보존했습니다.')
             data['published'] = {k:record[k] for k in ('sha256','status','warnings')}
             atomic_write_json(work,data)
             return {'ok':True,'status':record['status'],'outputPath':str(output),
                     'deliverables':[str(output)],'deliveryStatus':'published',
-                    'warnings':record['warnings'], 'intermediatesRetainedInternally':True}
+                    'warnings':record['warnings'],
+                    'cleanup':artifact_cleanup.after_publish(work, data)}
+    except Exception as exc:
+        return _failure(exc)
+
+
+def cleanup(root, work_file):
+    """Retry only registered-file cleanup; unpublished work is never removed."""
+    try:
+        with _locked(root, work_file) as (work, data):
+            if not data.get('published'):
+                raise ArtifactError('artifact_not_published', '최종 파일을 전달한 뒤 임시 파일을 정리할 수 있습니다. 진행 중인 초안과 후보를 보존했습니다.')
+            completed = _completed(data)  # Verify receipt and final bytes first.
+            result = artifact_cleanup.after_publish(work, data)
+            return {'ok':True, 'status':'cleanup_checked', 'workFile':str(work),
+                    'outputPath':completed['outputPath'], 'deliveryStatus':'published',
+                    'cleanup':result, 'message':result['message']}
     except Exception as exc:
         return _failure(exc)

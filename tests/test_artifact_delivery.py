@@ -54,11 +54,14 @@ class ArtifactDeliveryTests(unittest.TestCase):
             self.html['sections'][0]['body'] = text
             result = self.build(work)
             self.assert_only_source()
+        expected = Path(result['outputPath']).read_bytes()
         final = delivery.publish(self.state,work)
         self.assertTrue(final['ok'],final)
         self.assertEqual([str(self.project/'보고서.html')],final['deliverables'])
         self.assertIn('확인한 최종본',Path(final['outputPath']).read_text(encoding='utf-8'))
-        self.assertEqual(Path(result['outputPath']).read_bytes(),Path(final['outputPath']).read_bytes())
+        self.assertEqual(expected,Path(final['outputPath']).read_bytes())
+        self.assertEqual(3,final['cleanup']['deletedCount'])
+        self.assertFalse(Path(result['outputPath']).exists())
         self.assertEqual({self.source,self.project/'보고서.html'},set(self.project.iterdir()))
         stamp = (self.project/'보고서.html').stat().st_mtime_ns
         with patch.object(artifacts,'create_html',side_effect=AssertionError('must not regenerate')):
@@ -160,6 +163,8 @@ class ArtifactDeliveryTests(unittest.TestCase):
         self.assert_only_source()
         final = delivery.publish(self.state,work)
         self.assertTrue(final['ok'],final)
+        self.assertEqual(6,final['cleanup']['deletedCount'])
+        self.assertTrue(all(not Path(p).exists() for p in built['previews']))
         self.assertEqual({self.source,self.project/'월간 보고.pptx'},set(self.project.iterdir()))
         from pptx import Presentation
         deck = Presentation(final['outputPath'])

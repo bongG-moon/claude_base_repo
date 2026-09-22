@@ -426,6 +426,39 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         self.assertNotIn('office-read', result.stdout)
         self.assertIn('ppt', result.stdout)
 
+    def test_external_plugin_ppt_preparation_runs_without_project_skill_copy_or_stop_loop(self):
+        session = 'ppt-preparation-native'
+        payload = {'session_id': session, 'cwd': str(self.project)}
+        routed = self.run_wrapper(['-Mode', 'Hook', '-Event', 'UserPromptSubmit'],
+                                 {**payload, 'prompt': '새 디자인으로 PPT 3장을 만들어줘'})
+        self.assertEqual(0, routed.returncode, routed.stderr)
+        state_root = Path(self.record['userStateRoot'])
+        initial = self.run_wrapper(['-Mode', 'Cli', 'business', 'ppt-choices'])
+        self.assertEqual(0, initial.returncode, initial.stderr)
+        self.assertEqual('method', json.loads(initial.stdout)['stage'])
+        self.assertFalse((self.project / '.claude/skills/presentation/SKILL.md').exists())
+        choice_file = state_root / 'tmp/ppt-choices-native.json'
+        atomic_write_json(choice_file, {'creationMode': 'new', 'purpose': '보고', 'audience': '팀원',
+                                        'slideCount': 3, 'designPreset': 'business'})
+        selected = self.run_wrapper(['-Mode', 'Cli', 'business', 'ppt-choices', '--spec', str(choice_file)])
+        self.assertEqual(0, selected.returncode, selected.stderr)
+        body = json.loads(selected.stdout)
+        self.assertEqual('preview_required', body['status'])
+        self.assertEqual('prepare_full_job', body['nextAction'])
+        for tool, inputs in (
+            ('Edit', {'file_path': str(choice_file), 'old_string': '2', 'new_string': '3'}),
+            ('Bash', {'command': cli_command(self.plugin) + ' business ppt-choices'}),
+            ('Bash', {'command': cli_command(self.plugin) + ' business ppt-choices --help'}),
+        ):
+            observed = self.run_wrapper(['-Mode', 'Hook', '-Event', 'PostToolUse'],
+                                       {**payload, 'tool_name': tool, 'tool_input': inputs,
+                                        'tool_response': {'success': True}})
+            self.assertEqual(0, observed.returncode, observed.stderr)
+        self.assertEqual(0, load_session(session, state_root)['mutationCount'])
+        stopped = self.run_wrapper(['-Mode', 'Hook', '-Event', 'Stop'], payload)
+        self.assertEqual(0, stopped.returncode, stopped.stderr)
+        self.assertNotEqual('block', json.loads(stopped.stdout).get('decision'))
+
     def test_native_hooks_refresh_catalog_without_business_verification_obligation(self) -> None:
         session = "catalog-only-session"
         payload = {"session_id": session, "cwd": str(self.project)}

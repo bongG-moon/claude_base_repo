@@ -60,6 +60,41 @@ class LeanSkillContractTests(unittest.TestCase):
         self.assertNotIn("ponytail", (PLUGIN / "hooks/hooks.json").read_text(encoding="utf-8"))
         self.assertNotIn("i-have-adhd", (PLUGIN / "hooks/hooks.json").read_text(encoding="utf-8"))
 
+    def test_core_workflows_limit_loaded_text_not_only_line_count(self):
+        # Long paragraphs formerly met 180 lines while repeating startup work.
+        for name, limit in (("company-agent", 10000), ("presentation", 7500), ("html-report", 8000)):
+            with self.subTest(name=name):
+                text = self.read(f"{name}/SKILL.md")
+                self.assertLessEqual(len(text), limit)
+                self.assertNotIn('Read `../company-agent/references/business-protection.md` first', text)
+                self.assertIn('cliCommand', text)
+        for path in SKILLS.glob('*/SKILL.md'):
+            self.assertLessEqual(len(path.read_text(encoding='utf-8').splitlines()), 180, path)
+
+    def test_drafting_references_do_not_restart_choice_or_discovery(self):
+        ppt = self.read('presentation/references/design-and-quality.md')
+        html = self.read('html-report/references/design-and-numbers.md')
+        self.assertNotIn('현재 Skill 목록의 출처 우선순위를 확인', ppt)
+        self.assertNotIn('질문 전 `business html-choices', html)
+        self.assertIn('질문·Skill 선택·런타임 탐색을 다시 시작', ppt)
+        self.assertIn('질문/런타임/스킬 탐색을', html)
+        self.assertNotIn('현재 목록에서 관련 디자인 스킬', self.read('presentation/references/native-layout.md'))
+
+    def test_conditional_ppt_choices_reference_matches_live_schema(self):
+        import json
+        import sys
+        sys.path.insert(0, str(PLUGIN / 'scripts'))
+        from company_agent.ppt_workflow import choices
+        text = self.read('presentation/references/choices.md')
+        sample = json.loads(re.search(r'```json\n(.*?)\n```', text, re.S).group(1))
+        result = choices(sample)
+        self.assertEqual('design_preview', result['stage'])
+        self.assertEqual('prepare_full_job', result['nextAction'])
+        self.assertFalse(result['waitForUser'])
+        self.assertEqual(sample['slideCount'], result['contentRequirement']['requiredCount'])
+        for field in ('htmlSource', 'designReview', 'workFile/jobPath', 'allowedValues/expected'):
+            self.assertIn(field, text)
+
     def test_result_style_keeps_completeness_and_uncertainty(self):
         main = self.read("company-agent/SKILL.md")
         for text in ("preserve all requested items and exact counts", "Give full detail when requested",

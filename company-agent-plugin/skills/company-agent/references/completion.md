@@ -85,6 +85,12 @@ HTML/PPT internal candidates are not final delivery. After their checks, use the
 same artifact work's publish command once. Return only its deliverables, not the
 job, previous drafts or QA images. A failed latest correction is not permission
 to publish an earlier candidate. Do not restart artifact-start on a retry.
+Publish also cleans only registered, unchanged disposable intermediates after
+checking delivery. Read its cleanup result; keep original/final/referenced,
+modified or unknown files. A locked intermediate is not a failed deliverable.
+Never regenerate or loop to clean leftovers, use broad deletion, or disable the
+guard. If the user later requests another cleanup, use artifact-cleanup with the
+same workFile; it is not a general filesystem deletion command.
 
 Do not narrate check markers, checkpoint/review calls, pass/fail labels, accepted
 reviews, no-observation receipts, or this procedure in progress/final text.

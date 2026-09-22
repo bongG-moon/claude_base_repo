@@ -13,6 +13,93 @@ from company_agent import ppt_workflow as flow, business_artifacts as artifacts
 
 
 class PptWorkflowTests(unittest.TestCase):
+    def complete_choices(self):
+        return {'creationMode':'new','purpose':'보고','audience':'부서장',
+                'slideCount':2,'designPreset':'business'}
+
+    def test_empty_choices_starts_method_without_requiring_a_file_or_content(self):
+        result=flow.choices({})
+        self.assertEqual('method',result['stage'])
+        self.assertEqual('input_required',result['status'])
+        self.assertEqual(['creationMode'],result['missing'])
+        self.assertTrue(result['waitForUser'])
+        self.assertEqual({},result['preservedChoices'])
+
+    def test_invalid_choice_identifies_exact_field_and_allowed_values(self):
+        for field,value,allowed in (
+                ('creationMode','rebuild',['new','reference','saved']),
+                ('referenceMode','exact',['style','preserve']),
+                ('designPreset','corporate',['business','monochrome','warm'])):
+            with self.subTest(field=field):
+                result=flow.choices({**self.complete_choices(),field:value})
+                self.assertEqual('invalid_choice',result['code'])
+                self.assertEqual(field,result['field'])
+                self.assertEqual(allowed,result['allowedValues'])
+                self.assertEqual('repair_choice_spec',result['nextAction'])
+                self.assertNotIn('selection',result)
+
+    def test_invalid_choice_type_has_bounded_repair_without_echoing_input(self):
+        for value,field in (([], '$'), ({'slideCount':'2'}, 'slideCount'),
+                            ({'slideCount':True}, 'slideCount'), ({'audience':''}, 'audience'),
+                            ({'purpose':None}, 'purpose'), ({'referenceImages':'private-image'}, 'referenceImages')):
+            with self.subTest(field=field,value=value):
+                result=flow.choices(value)
+                self.assertEqual('invalid_choice',result['code'])
+                self.assertEqual(field,result['field'])
+                self.assertIn('expected',result)
+                self.assertLess(len(json.dumps(result)),1000)
+        private='private input ' * 10000
+        result=flow.choices({'designPreset':private})
+        self.assertNotIn('private input',json.dumps(result))
+
+    def test_complete_choice_metadata_guides_full_job_before_preview(self):
+        spec=self.complete_choices()
+        result=flow.choices(spec)
+        self.assertEqual('preview_required',result['status'])
+        self.assertTrue(result['choicesReady'])
+        self.assertFalse(result['waitForUser'])
+        self.assertEqual('prepare_full_job',result['nextAction'])
+        self.assertEqual({'field':'slides','requiredCount':2,'providedCount':None,
+                          'exampleItem':{'title':'슬라이드 제목','body':'제공된 자료의 내용'}},result['contentRequirement'])
+        self.assertEqual(spec,result['preservedChoices'])
+        self.assertNotIn('code',result)
+        self.assertNotIn('slides',spec)
+
+    def test_bad_or_mismatched_slide_array_does_not_claim_content_ready(self):
+        for rows in (None,[],[{'title':'한 장'}],['잘못된 첫 장','잘못된 둘째 장']):
+            with self.subTest(rows=rows):
+                result=flow.choices({**self.complete_choices(),'slides':rows})
+                self.assertTrue(result['choicesReady'])
+                self.assertEqual('prepare_full_job',result['nextAction'])
+                self.assertEqual(2,result['contentRequirement']['requiredCount'])
+                self.assertEqual(len(rows) if isinstance(rows,list) else None,result['contentRequirement']['providedCount'])
+
+    def test_full_job_advances_to_preview_without_skipping_review(self):
+        spec={**self.complete_choices(),'slides':[{'title':'첫 장'},{'title':'둘째 장'}]}
+        result=flow.choices(spec)
+        self.assertEqual('create_html_preview',result['nextAction'])
+        self.assertEqual('preview_required',result['status'])
+        self.assertNotIn('contentRequirement',result)
+        self.assertFalse(result['ok'])
+        spec['designReview']={'specSha256':'0'*64,'previewSha256':'0'*64,
+                              'previewPath':str(ROOT/'draft.html'),'confirmed':False}
+        result=flow.choices(spec)
+        self.assertEqual('design_confirm',result['stage'])
+        self.assertTrue(result['waitForUser'])
+        spec['designReview']['confirmed']='true'
+        result=flow.choices(spec)
+        self.assertEqual('designReview',result['field'])
+        self.assertEqual('regenerate_html_preview',result['nextAction'])
+        self.assertEqual('invalid_choice',result['code'])
+
+    def test_sections_and_html_source_keep_their_supported_content_paths(self):
+        result=flow.choices({**self.complete_choices(),'sections':[{'title':'한 장'}]})
+        self.assertEqual('sections',result['contentRequirement']['field'])
+        spec={**self.complete_choices(),'creationMode':'reference','htmlSource':{'path':str(ROOT/'reference.html')}}
+        result=flow.choices(spec)
+        self.assertEqual('create_html_preview',result['nextAction'])
+        self.assertNotIn('contentRequirement',result)
+
     def test_questions_are_sequential_and_keep_known_brief(self):
         spec={'purpose':'보고','audience':'부서장','slideCount':2}
         self.assertEqual('method',flow.choices(spec)['stage'])

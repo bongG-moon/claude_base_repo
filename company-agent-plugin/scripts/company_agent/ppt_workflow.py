@@ -18,35 +18,68 @@ DESIGNS = {
 }
 
 
+def _choice_error(field, message, *, allowed=None, expected=None, next_action='repair_choice_spec'):
+    """Describe a bounded input repair without echoing arbitrary input or sources."""
+    result = {'ok':False, 'status':'blocked', 'code':'invalid_choice', 'field':field,
+              'message':message, 'nextAction':next_action}
+    if allowed is not None:
+        result['allowedValues'] = list(allowed)
+    if expected is not None:
+        result['expected'] = expected
+    return result
+
+
+def _preview_step(result, spec, message):
+    """The choice helper can finish before a complete slide job exists."""
+    field = 'sections' if 'sections' in spec else 'slides'
+    rows = spec.get(field)
+    count = len(rows) if isinstance(rows, list) else None
+    ready = bool(spec.get('htmlSource')) or (count == spec['slideCount']
+                                           and all(isinstance(row, dict) for row in rows))
+    step = {**result, 'status':'preview_required', 'stage':'design_preview',
+            'missing':['designReview'], 'waitForUser':False, 'choicesReady':True,
+            'nextAction':'create_html_preview' if ready else 'prepare_full_job',
+            'question':message if ready else '제작 조건은 준비되었습니다. 선택값을 전체 작업 명세에 유지하고, 선택한 장수만큼 본문을 작성한 뒤 HTML 초안을 만드세요.',
+            'previewCommand':'business ppt-design-preview --spec FULL_JOB.json --work WORK_FILE'}
+    if not ready:
+        step['contentRequirement'] = {'field':field, 'requiredCount':spec['slideCount'],
+                                      'providedCount':count,
+                                      'exampleItem':{'title':'슬라이드 제목', 'body':'제공된 자료의 내용'}}
+    return step
+
+
 def choices(spec, template=None, *, for_preview=False):
-    from .business_artifacts import ArtifactError, _failure
+    from .business_artifacts import _failure
     try:
         if not isinstance(spec, dict):
-            raise ArtifactError('invalid_choice', 'PPT 제작 조건의 형식을 확인해 주세요.')
+            return _choice_error('$', 'PPT 제작 조건은 JSON 객체로 지정해 주세요.', expected='JSON object')
+        if template is not None and not isinstance(template, (str, Path)):
+            return _choice_error('template', '참고 양식은 파일 경로로 지정해 주세요.', expected='PPTX or HTML path')
         for key, allowed in (('creationMode', ('new','reference','saved')),
                              ('referenceMode', ('style','preserve')),
                              ('designPreset', tuple(DESIGNS))):
             if key in spec and spec[key] not in allowed:
-                raise ArtifactError('invalid_choice', '지원하는 PPT 제작 방식을 선택해 주세요.')
+                return _choice_error(key, f'{key}에 지원하는 값을 지정해 주세요.', allowed=allowed)
         if 'slideCount' in spec and (type(spec['slideCount']) is not int or not 1 <= spec['slideCount'] <= 60):
-            raise ArtifactError('invalid_choice', '장수는 1~60장 사이로 선택해 주세요.')
+            return _choice_error('slideCount', '장수는 1~60장 사이의 정수로 지정해 주세요.', expected='integer 1..60')
         for key in ('purpose','audience'):
             if key in spec and (not isinstance(spec[key], str) or not spec[key].strip() or len(spec[key]) > 200):
-                raise ArtifactError('invalid_choice', '목적과 대상을 짧은 문장으로 알려 주세요.')
+                return _choice_error(key, '목적과 대상은 빈칸이 아닌 짧은 문장으로 지정해 주세요.', expected='non-empty string, at most 200 characters')
         images = spec.get('referenceImages', [])
         if (not isinstance(images,list) or len(images)>3 or any(not isinstance(p,str) or len(p)>2048
                 or not Path(p).is_absolute() or Path(p).suffix.lower() not in ('.png','.jpg','.jpeg') for p in images)):
-            raise ArtifactError('invalid_choice','참고 캡처는 로컬 PNG/JPEG 경로 1~3개로 지정해 주세요. 보통 2~3장이면 충분합니다.')
+            return _choice_error('referenceImages', '참고 캡처는 로컬 PNG/JPEG 경로 1~3개로 지정해 주세요. 보통 2~3장이면 충분합니다.',
+                                 expected='list of at most 3 absolute PNG/JPEG paths')
         html_template = bool(template and Path(template).suffix.lower() in ('.html','.htm'))
         html_source = spec.get('htmlSource')
         if html_source:
             if not isinstance(html_source,dict) or not isinstance(html_source.get('path'),str) or not Path(html_source['path']).is_absolute():
-                raise ArtifactError('invalid_choice','기준 HTML의 절대경로를 htmlSource.path에 지정해 주세요.')
+                return _choice_error('htmlSource.path', '기준 HTML의 절대경로를 htmlSource.path에 지정해 주세요.', expected='absolute HTML path')
             if template or images or spec.get('referenceMode')=='preserve':
-                raise ArtifactError('invalid_choice','HTML 직접 변환은 다른 양식/캡처 또는 PPTX 개체 유지와 섞지 않습니다.')
+                return _choice_error('htmlSource', 'HTML 직접 변환은 다른 양식/캡처 또는 PPTX 개체 유지와 섞지 않습니다.')
         known = {k:spec[k] for k in ('creationMode','referenceMode','purpose','audience','slideCount','designPreset','designReview','referenceImages') if k in spec}
         if spec.get('creationMode') == 'new' and (template or images or html_source or 'referenceMode' in spec):
-            raise ArtifactError('invalid_choice', '새 디자인 제작과 기존 양식 유지 조건이 함께 지정되었습니다. 제작 방식을 확인해 주세요.')
+            return _choice_error('creationMode', '새 디자인 제작과 기존 양식 유지 조건이 함께 지정되었습니다. 제작 방식을 확인해 주세요.')
         result = {'ok':False,'status':'input_required','preservedChoices':known,'waitForUser':True}
         if 'creationMode' not in spec:
             return {**result,'stage':'method','missing':['creationMode'],
@@ -58,9 +91,9 @@ def choices(spec, template=None, *, for_preview=False):
                         'question':('저장한 HTML 대표 양식을 첨부하거나 경로를 알려 주세요. 기존 PPTX 양식도 사용할 수 있습니다.'
                                     if spec['creationMode']=='saved' else '원하는 PPT의 캡처 2~3장(표지·본문·표/차트)을 첨부해 주세요. 1장이나 기존 PPTX/HTML 양식도 괜찮습니다.')}
             if (images or html_template) and spec.get('referenceMode') == 'preserve':
-                raise ArtifactError('invalid_choice','캡처·HTML 양식은 디자인 참고용입니다. 원본 개체·마스터 유지에는 기존 PPTX 양식이 필요합니다.')
+                return _choice_error('referenceMode', '캡처·HTML 양식은 디자인 참고용입니다. 원본 개체·마스터 유지에는 기존 PPTX 양식이 필요합니다.', allowed=('style',))
             if template and images:
-                raise ArtifactError('invalid_choice','이번 디자인의 기준을 캡처 또는 양식 파일 중 하나로 정해 주세요.')
+                return _choice_error('referenceImages', '이번 디자인의 기준을 캡처 또는 양식 파일 중 하나로 정해 주세요.')
             if 'referenceMode' not in spec and not (images or html_template or html_source):
                 return {**result,'stage':'reference_scope','missing':['referenceMode'],
                         'question':'기존 양식을 어느 정도 유지할까요?',
@@ -77,19 +110,16 @@ def choices(spec, template=None, *, for_preview=False):
             return {'ok':True,'status':'preview_ready','stage':'preview_ready','selection':known}
         review = spec.get('designReview')
         if review is None:
-            return {**result,'status':'preview_required','stage':'design_preview','missing':['designReview'],'waitForUser':False,
-                    'question':'전체 슬라이드의 HTML 초안을 준비해 보여주고 승인을 기다리세요. 최종 PPT는 아직 만들지 않습니다.',
-                    'previewCommand':'business ppt-design-preview --spec FULL_JOB.json --work WORK_FILE'}
+            return _preview_step(result, spec, '전체 슬라이드의 HTML 초안을 준비해 보여주고 승인을 기다리세요. 최종 PPT는 아직 만들지 않습니다.')
         if isinstance(review,dict) and str(review.get('previewPath','')).lower().endswith('.pptx'):
-            return {**result,'status':'preview_required','stage':'design_preview','missing':['designReview'],'waitForUser':False,
-                    'question':'이전 PPT 미리보기 대신 HTML 초안을 생성해 확인해 주세요.',
-                    'previewCommand':'business ppt-design-preview --spec FULL_JOB.json --work WORK_FILE'}
+            return _preview_step(result, spec, '이전 PPT 미리보기 대신 HTML 초안을 생성해 확인해 주세요.')
         if (not isinstance(review,dict) or set(review) != {'specSha256','previewPath','previewSha256','confirmed'}
                 or type(review.get('confirmed')) is not bool
                 or any(not isinstance(review.get(k),str) or not re.fullmatch('[a-f0-9]{64}',review[k]) for k in ('specSha256','previewSha256'))
                 or not isinstance(review.get('previewPath'),str) or not Path(review['previewPath']).is_absolute()
                 or len(review['previewPath'])>2048 or Path(review['previewPath']).suffix.lower()!='.html'):
-            raise ArtifactError('invalid_choice','HTML 초안 확인 정보를 다시 준비해 주세요.')
+            return _choice_error('designReview', 'HTML 초안 확인 정보는 초안 생성 결과에서 가져와 주세요.',
+                                 next_action='regenerate_html_preview')
         if not review['confirmed']:
             return {**result,'stage':'design_confirm','missing':['designReview.confirmed'],
                     'question':'HTML 초안의 구성·디자인·수치를 확인해 주세요. 이대로 PPT 제작 / 수정 요청 / 참고 디자인 변경 중 선택해 주세요.'}

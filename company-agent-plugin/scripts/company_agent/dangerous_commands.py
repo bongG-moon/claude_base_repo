@@ -12,7 +12,7 @@ import re
 MAX_COMMAND_CHARS = 16_384
 MAX_TOKENS = 2_048
 MAX_WRAPPER_DEPTH = 2
-_REASON = '안전 보호: 되돌리기 어려운 삭제·강제 변경 명령은 실행하지 않았습니다. 필요한 경우 명령과 대상을 직접 검토한 뒤 수동으로 실행해 주세요.'
+_REASON = '안전 보호: 폴더 전체 강제 삭제·강제 변경은 실행하지 않았습니다. 이번 작업의 등록된 중간 파일은 전용 정리 기능을 사용하세요. 그 외 대상은 직접 검토해 주세요.'
 
 
 def _segments(command: str) -> list[list[str]]:

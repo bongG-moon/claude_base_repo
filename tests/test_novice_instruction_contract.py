@@ -6,6 +6,29 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class NoviceInstructionContractTests(unittest.TestCase):
+    def test_first_choice_has_no_reference_or_shell_preparation_gate(self):
+        folder = ROOT / 'company-agent-plugin/skills'
+        for name in ('presentation', 'html-report'):
+            with self.subTest(name=name):
+                source = (folder / name / 'SKILL.md').read_text(encoding='utf-8')
+                start = source.split('## 바로 다음 행동', 1)[1]
+                self.assertIn('immediately ask ONE', start)
+                self.assertIn('empty', start)
+                self.assertRegex(start, r'(?:load|read) references')
+                self.assertIn('[--spec "<choices.json>"]', source)
+                self.assertIn('omit --spec', source)
+                self.assertNotIn('before asking choices run', source)
+                self.assertNotIn('BEFORE drafting or delegating', source)
+
+    def test_ppt_keeps_html_approval_editability_and_originals(self):
+        source = (ROOT / 'company-agent-plugin/skills/presentation/SKILL.md').read_text(encoding='utf-8')
+        for text in ('Preserve originals', 'ALL requested slides', 'business ppt-design-preview',
+                     'confirmed:true ONLY after actual approval', 'native editable text/tables/charts',
+                     'same workFile', 'Inspect every rendered slide', 'do not create draft2/v2 copies',
+                     'Actual permission denials are never retried', 'only standard drafting reference'):
+            self.assertIn(text, source)
+        self.assertLess(source.index('business ppt-design-preview'), source.index('business ppt --spec'))
+
     def test_html_choices_are_plain_and_have_an_easy_default(self):
         source = (ROOT / "company-agent-plugin/skills/html-report/SKILL.md").read_text(encoding="utf-8")
         for text in ("깔끔한 업무형", "지표 중심형", "추가 디자인(미리보기)", "추천대로", "1 / 보통 / 스크롤",
@@ -18,7 +41,7 @@ class NoviceInstructionContractTests(unittest.TestCase):
         for text in ('Never batch the initial design question', "IMMEDIATELY show the helper's selectionPrompt",
                      'Do not ask length/mode or start a worker before a specific design is chosen', 'business html-choices',
                      'NEVER replace the whole object', 'delegate generation only after ready',
-                     'Preview is optional', 'length:"detailed",mode:"scroll"',
+                     'Preview is optional', '"length":"detailed","mode":"scroll"',
                      'all ten numbered names', 'END THIS TURN', '선택 대기 중입니다',
                      'End the turn', 'same design question and WAIT'):
             self.assertIn(text, source)

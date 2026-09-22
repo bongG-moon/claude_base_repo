@@ -38,12 +38,38 @@ def _spec(path: str) -> dict[str, Any]:
     return value
 
 
+def _choice_spec(path: str | None) -> tuple[dict, dict | None]:
+    """Return a small actionable input error, without echoing private JSON."""
+    if not path:
+        return {}, None
+    try:
+        selected = safe_path(path)
+        if not selected.exists():
+            raise FileNotFoundError(path)
+        return _spec(path), None
+    except FileNotFoundError:
+        message = '선택 파일이 없습니다. 방금 작성한 정확한 경로를 확인하세요. 첫 질문은 --spec 없이 실행할 수 있습니다.'
+        details = {}
+    except json.JSONDecodeError as exc:
+        message = '선택 파일의 JSON 형식을 수정하세요. 스크립트나 설치 폴더를 검색할 필요는 없습니다.'
+        details = {'line': exc.lineno, 'column': exc.colno}
+    except (UnicodeError, ValueError):
+        message = '선택 파일의 경로와 형식을 확인하세요. 512 KiB 이하 UTF-8 JSON 객체여야 합니다. 첫 질문은 --spec 없이 실행할 수 있습니다.'
+        details = {}
+    return {}, {'ok': False, 'status': 'failed', 'code': 'invalid_choice_spec',
+                'message': message, 'nextAction': 'repair_choice_spec', **details}
+
+
 def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     action = args.business_action
     state = safe_path(args.state_root or user_state_root())
-    if action in {'artifact-start','artifact-publish'}:
+    if action in {'artifact-start','artifact-publish','artifact-cleanup'}:
         from . import artifact_delivery
-        return artifact_delivery.start(state,args.output) if action == 'artifact-start' else artifact_delivery.publish(state,args.work)
+        if action == 'artifact-start':
+            return artifact_delivery.start(state,args.output)
+        if action == 'artifact-cleanup':
+            return artifact_delivery.cleanup(state,args.work)
+        return artifact_delivery.publish(state,args.work)
     if action in {"html", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images"} and getattr(args,'work',None):
         from .artifact_delivery import build
         return build(state,args.work,action,spec_path=args.spec,
@@ -85,7 +111,14 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action == 'ppt-preview':
         from .business_artifacts import preview_template
         return preview_template(safe_path(args.template, exists=True), safe_path(args.output))
-    spec = _spec(args.spec)
+    # The initial choice screen has no user data yet. Do not require an empty
+    # file, filesystem probes or a write/verification cycle just to ask it.
+    if action in {'ppt-choices', 'html-choices'}:
+        spec, error = _choice_spec(args.spec)
+        if error:
+            return error
+    else:
+        spec = _spec(args.spec)
     if (blocked := blocked_input(spec)) is not None:
         return blocked
     spec.pop("protection", None)
@@ -138,14 +171,14 @@ def run(args: argparse.Namespace) -> int:
     print(json.dumps(result, ensure_ascii=True, indent=2))
     # Partial/cancelled results remain machine-readable rather than causing a
     # shell-driven retry of a potentially completed external action.
-    return 0 if result.get("ok") or result.get("status") in {"partial", "cancelled", "blocked", "input_required"} else 1
+    return 0 if result.get("ok") or result.get("status") in {"partial", "cancelled", "blocked", "input_required", "preview_required"} else 1
 
 
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
     for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview", "ppt-template",
-                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "artifact-start", "artifact-publish", "ppt-fit-images", "ppt-capabilities"):
+                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "artifact-start", "artifact-publish", "artifact-cleanup", "ppt-fit-images", "ppt-capabilities"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
         if action in {'html-designs', 'html-template'}:
@@ -160,15 +193,16 @@ def register(subparsers: Any) -> None:
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
         if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images", "mail-search", "mail-read"}:
-            command.add_argument("--spec", required=True)
+            command.add_argument("--spec", required=action not in {'ppt-choices', 'html-choices'},
+                                 help='UTF-8 JSON 파일. ppt-choices/html-choices는 생략하면 첫 질문만 반환합니다.')
         if action in {"html", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images"}:
             destination = command.add_mutually_exclusive_group(required=True)
             destination.add_argument('--work',help='artifact-start에서 반환된 workFile. 중간 결과는 작업 공간에만 저장합니다.')
             destination.add_argument('--output',help='기존 직접 저장 호환 모드. 일반 스킬 작업은 --work를 사용합니다.')
         if action in {"ppt-preview", "artifact-start"}:
             command.add_argument("--output", required=True)
-        if action == 'artifact-publish':
-            command.add_argument('--work',required=True)
+        if action in {'artifact-publish', 'artifact-cleanup'}:
+            command.add_argument('--work',required=True,help='artifact-start에서 반환된 해당 작업의 workFile')
         if action in {"ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview", "ppt-template"}:
             command.add_argument("--template", required=action in {'ppt-inspect','ppt-analyze','ppt-preview'})
         command.set_defaults(func=run)
