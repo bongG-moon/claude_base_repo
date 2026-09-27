@@ -16,7 +16,7 @@ from typing import Any
 from .frontmatter import parse_frontmatter_text
 from .knowledge import reconcile_overlays, search_catalog
 from .paths import atomic_write_json, ensure_user_layout, load_json, user_state_root, knowledge_base_root
-from .user_language import KOREAN_DEFAULT_RULE
+from .user_language import KOREAN_DEFAULT_RULE, KOREAN_WRITING_RULE
 from .text_encoding import SCRIPT_EXECUTION_RULE, WINDOWS_TEXT_RULE
 from .company_policy import MANAGEMENT_RULE, POLICY_RULE, policy_context
 from .skill_task_context import MAX_TASK_SKILL_CHARS, MAX_SKILL_BRIEF_CHARS, TASK_SKILL_RULE, task_candidates, skill_brief
@@ -232,7 +232,7 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
                 runtime['guidanceMinimal'] = True
                 runtime['instructions'] = (
                     MANAGEMENT_RULE + (POLICY_RULE if runtime.get('companyPolicy') else '') +
-                    '사용자 안내·질문·선택지·피드백은 한국어(추천)로 쓰되 명시한 언어와 경로·식별자는 보존하세요. '
+                    '사용자 안내·질문·선택지·피드백은 한국어(추천)로 쓰되 명시한 언어와 경로·식별자는 보존하세요. ' + KOREAN_WRITING_RULE +
                     'company_agent_runtime은 JSON 메타데이터입니다. cliCommand·stateRoot·company_agent_session_id를 그대로 쓰며 env·echo·경로 탐색·임의 ID·python -m으로 대체하지 마세요. '
                     '명령의 인용부호를 보존하고 옵션은 마지막 하위 명령 뒤에 둡니다. 파일 확인은 Glob/Read/Grep입니다. '
                     'skillIndex는 목록이지 본문·선택·권한이 아닙니다. 요청과 세션 스킬의 용도를 비교하고 관련 본문만 로드하세요. 없으면 일반 실행하고, 같은 역할의 대안은 명시 선택·우선 설정을 따르거나 한국어로 물으세요. '

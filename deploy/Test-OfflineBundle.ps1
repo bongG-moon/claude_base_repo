@@ -30,6 +30,7 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle ($manifest.runtime.command -ceq 'python') 'Default Python command is not recorded.'
     foreach ($relative in @(
         'payload/core/plugin/THIRD_PARTY_NOTICES.md',
+        'payload/core/plugin/licenses/frontend-design-Apache-2.0.txt',
         'payload/core/plugin/resources/onboarding-course.json',
         'payload/core/plugin/resources/manuals/Company-Agent-사용자-안내서.html',
         'payload/core/plugin/scripts/company_agent/workspace_api.py',
@@ -114,6 +115,10 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md'
     )) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Lean guidance/provenance is absent: $relative"
+    }
+    foreach ($notice in @('THIRD_PARTY_NOTICES.md', 'licenses/frontend-design-Apache-2.0.txt')) {
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('payload/core/plugin/' + $notice)) -Algorithm SHA256).Hash -ceq
+            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('company-agent-plugin/' + $notice)) -Algorithm SHA256).Hash) "Packaged license differs from source: $notice"
     }
     Assert-OfflineBundle ($manifest.runtime.description -match 'existing Python') 'External runtime requirement is not explained.'
     foreach ($removed in @(

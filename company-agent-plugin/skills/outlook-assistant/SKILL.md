@@ -99,6 +99,9 @@ different selection or operation requires its own guard; never self-approve it.
   approval through supported corporate MCP tools.
 - Draft a reply in conversation. Sending through corporate MCP requires a preview
   of recipients/body/attachments and user approval; the local pilot cannot send.
+  Polish new prose before that preview, respecting company wording and the user's tone.
+  Keep quotations, facts, conditions, uncertainty and obligation strength; invent no familiarity or feelings.
+  Do not silently rewrite the approved message or add a separate polishing task/file.
 - PST capacity cleanup needs real corporate MCP archive tools, destination and
   period choice, protection-preserving copy verification, separately approved
   original move and partial-result receipts. If tools are missing say connection

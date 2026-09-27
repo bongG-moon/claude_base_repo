@@ -121,6 +121,11 @@ extracted corrections, never transcripts or protected source documents.
   explicit scoped exceptions to workers. English source is not a language request;
   an English deliverable changes only that deliverable, not the surrounding chat.
   Preserve exact names/paths/commands/code/API/JSON/model IDs and quotations.
+- Polish newly written prose during authoring and existing checks, before rendering/approval:
+  reduce translationese, hype and repetition; keep facts, uncertainty, obligations and useful tables/lists.
+  Current requests, company wording and relevant personal style take precedence; pass that style to workers.
+  Preserve uncertain wording; never invent experiences, silently rewrite approved content or replace raw HTML/JSON wholesale,
+  add a polishing worker/gate/file, or promise human authorship or an AI-detector score.
 - Ask only missing choices that materially change the result; use brief options
   and a recommendation. Do not ask users for internal IDs or tool knowledge.
 - Lead with the requested result, without inventing a next task. Keep actual

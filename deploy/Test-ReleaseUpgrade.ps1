@@ -127,7 +127,12 @@ try {
         'scripts\company_agent\artifact_delivery.py', 'scripts\company_agent\ppt_html.py',
         'scripts\company_agent\ppt_html_import.py', 'scripts\company_agent\ppt_dom_capture.js',
         'scripts\company_agent\ppt_scene.py', 'scripts\company_agent\ppt_image_edit.py',
-        'skills\platform-mcp-builder\SKILL.md'
+        'skills\platform-mcp-builder\SKILL.md',
+        'licenses\frontend-design-Apache-2.0.txt', 'THIRD_PARTY_NOTICES.md',
+        'scripts\company_agent\user_language.py', 'scripts\company_agent\native_runtime.py',
+        'skills\html-report\references\design-and-numbers.md',
+        'skills\presentation\references\design-and-quality.md',
+        'skills\outlook-assistant\SKILL.md'
     )) {
         $cachedModule = Join-Path $current[0].installPath $relative
         $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
