@@ -183,7 +183,7 @@ def build(destination: Path, bundle: Path) -> dict:
     make_fixtures(destination / "workspace")
     operator = destination / "operator"
     operator.mkdir()
-    docs = {"VALIDATION_CHAT_SET.md": "ORIGINAL_CHAT_SET.md", "Company-Agent-운영-검증-채팅.html": "ORIGINAL_CHAT_SET.html",
+    docs = {"VALIDATION_CHAT_SET.md": "ORIGINAL_CHAT_SET.md",
             "VALIDATION_RESULTS_TEMPLATE.md": "BLANK_RESULTS.md",
             f"UPDATE_{version}.md": "UPDATE_GUIDE.md"}
     for source_name, target_name in docs.items():

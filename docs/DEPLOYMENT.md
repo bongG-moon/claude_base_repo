@@ -1,6 +1,6 @@
 # Company Agent 설치와 배포 — Windows
 
-현재 소스·배포 버전은 **1.4.26**입니다. 직원은 담당자가 검토·승인하여 제공한 설치 ZIP을 사용합니다. 스킬 선택·압축 후 연결·요청형 설명 도표를 보완하고 사용자 안내서를 HTML 하나로 통일했습니다. 기본 Office Reader 제거와 개인 자료 보존은 유지합니다. 비전 모델 자동 전환과 사내 게이트웨이 설정은 변경하지 않았습니다. 기존 Release·ZIP·설치된 PC는 자동 갱신되지 않습니다. [1.4.26 변경 내용](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/UPDATE_1.4.26.md)과 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.26.md)를 확인하세요. 과거 버전의 변경·검증 기록은 당시 배포 내용이며 현재 기능 목록으로 사용하지 않습니다.
+현재 소스·배포 버전은 **1.4.27**입니다. 직원은 담당자가 검토·승인하여 제공한 설치 ZIP을 사용합니다. 중복 운영 검증 HTML·생성기를 정리하고 과거 진단 기록과 현재 안내를 구분했습니다. 1.4.26의 스킬 선택·설명 도표·단독 사용자 안내서와 개인 자료 보존은 유지합니다. 비전 모델 자동 전환과 사내 게이트웨이 설정은 변경하지 않았습니다. 기존 Release·ZIP·설치된 PC는 자동 갱신되지 않습니다. [1.4.27 변경 내용](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/UPDATE_1.4.27.md)과 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.27.md)를 확인하세요. 과거 버전의 변경·검증 기록은 당시 배포 내용이며 현재 기능 목록으로 사용하지 않습니다.
 
 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다.
 

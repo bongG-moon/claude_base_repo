@@ -189,6 +189,28 @@ class TestLab(unittest.TestCase):
         self.assertIn('Company-Agent-사용자-안내서.html#onboarding', dashboard)
         self.assertNotIn('00_FIRST_WORK.html', dashboard)
 
+    def test_built_lab_keeps_original_questions_without_duplicate_html(self):
+        source = REPO / 'docs/VALIDATION_CHAT_SET.md'
+        version = re.search(r'대상 버전 ([\d.]+)', source.read_text(encoding='utf-8')).group(1)
+        bundle = self.root / 'synthetic-bundle.zip'
+        with zipfile.ZipFile(bundle, 'w') as archive:
+            archive.writestr('bundle-manifest.json', json.dumps({'coreVersion': version}))
+        destination = self.root / '새 연습실'
+        result = builder.build(destination, bundle)
+        self.assertFalse(result['installed'])
+        self.assertEqual(35, result['cases'])
+        self.assertEqual(source.read_bytes(), (destination / 'operator/ORIGINAL_CHAT_SET.md').read_bytes())
+        self.assertFalse((destination / 'operator/ORIGINAL_CHAT_SET.html').exists())
+        self.assertFalse((REPO / 'docs/Company-Agent-운영-검증-채팅.html').exists())
+        self.assertFalse((REPO / 'scripts/build-validation-chat-set.mjs').exists())
+        page = (destination / '00_START_HERE.html').read_text(encoding='utf-8')
+        self.assertIn('href="operator/ORIGINAL_CHAT_SET.md" download', page)
+        self.assertIn('id="T34"', page)
+        self.assertIn('id="L01"', page)
+        self.assertNotIn('ORIGINAL_CHAT_SET.html', page)
+        for target in re.findall(r'href="([^"#][^"]*)"', page):
+            self.assertTrue((destination / target.split('#', 1)[0]).is_file(), target)
+
 
 if __name__ == "__main__":
     unittest.main()
