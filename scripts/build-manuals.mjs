@@ -11,14 +11,14 @@ const i=process.argv.indexOf('--modules');
 if(i<0||!process.argv[i+1])throw Error('Provide approved --modules; no dependencies are downloaded.');
 const req=createRequire(path.join(path.resolve(process.argv[i+1]),'_manual_builder.cjs'));
 const {marked}=await import(pathToFileURL(req.resolve('marked')).href);
-const output='Company-Agent-Guide.html';
-const standaloneOutput='Company-Agent-사용자-안내서.html';
+const output='Company-Agent-사용자-안내서.html';
 const books=[
   {id:'onboarding',label:'01 · 시작하기',source:'ONBOARDING_COURSE.md',legacy:'Company-Agent-Onboarding.html'},
   {id:'basics',label:'02 · Claude Code 기본 사용법',source:'CLAUDE_CODE_BASICS.md'},
   {id:'usage',label:'03 · 업무별 사용법',source:'USER_GUIDE.md',legacy:'Company-Agent-사용자-안내서.html'},
   {id:'handbook',label:'04 · 기억·스킬·하네스 이해',source:'COMPANY_AGENT_HANDBOOK.md',legacy:'Company-Agent-Handbook.html'},
   {id:'commands',label:'05 · Claude Code 명령어·단축키',source:'CLAUDE_CODE_COMMANDS.md',legacy:'Claude-Code-필수-사용법.html'},
+  {id:'design',label:'06 · 디자인 용어 참고',source:'DESIGN_TERMS.md'},
 ];
 const esc=x=>x.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fontRoot=path.join(root,'scripts/assets/manual-font');
@@ -102,7 +102,7 @@ for(const book of books){
 }
 const toc=(expanded=false)=>books.map(b=>`<details${expanded&&b.id==='onboarding'?' open':''}><summary>${esc(b.label)}</summary><a href="#${b.id}">이 안내부터 보기</a>${b.headings.map((h,i)=>`<a href="#${b.id}-section-${i+1}">${esc(h)}</a>`).join('')}</details>`).join('');
 const metadata=books.map(b=>`<meta name="source-sha256" data-file="${b.source}" content="${b.sha}">`).join('');
-const html=head('Company Agent 통합 가이드',metadata)+`<body>
+const html=head('Company Agent 사용자 안내서',metadata)+`<body>
 <a class="skip" href="#content">본문으로 이동</a>
 <div class="layout">
   <aside>
@@ -116,7 +116,7 @@ const html=head('Company Agent 통합 가이드',metadata)+`<body>
     <details class="mobile-nav"><summary>Company Agent · 목차</summary><nav class="toc" aria-label="모바일 목차">${toc()}</nav></details>
     <header class="hero" id="start">
       <span class="eyebrow">처음 사용하는 분을 위한 안내</span>
-      <h1><span>Company Agent</span> 통합 가이드</h1>
+      <h1><span>Company Agent</span> 사용자 안내서</h1>
       <p class="lead">파일이 없어도, 명령어를 몰라도.<br>작은 가상 업무 하나부터 시작해 보세요.</p>
       <div class="paths">
         <a href="#onboarding-section-2"><span class="path-label">01 · 첫 연습</span><b>처음이라면</b><span class="path-desc">가상 자료 만들기 → 실제 읽기</span></a>
@@ -128,24 +128,12 @@ const html=head('Company Agent 통합 가이드',metadata)+`<body>
     ${books.map(b=>`<section class="book" aria-labelledby="${b.id}">${b.body}<p class="back"><a href="#start">처음 안내로 돌아가기 ↑</a></p></section>`).join('')}
   </main>
 </div></body></html>\n`;
-emit(output,html);
-// The release attachment must work alone, with all five books and its old
-// usage bookmarks. Both full readers come from the same Markdown, not copies
-// maintained by hand. Keep the canonical filename for existing app links.
-const standaloneHtml=html
-  .replace('<title>Company Agent 통합 가이드</title>','<title>Company Agent 사용자 안내서</title>')
-  .replace('<h1><span>Company Agent</span> 통합 가이드</h1>','<h1><span>Company Agent</span> 사용자 안내서</h1>')
-  .replace(/(<h3 id="usage-section-(\d+)">)/g,'$1<span id="section-$2" aria-hidden="true"></span>');
-emit(standaloneOutput,standaloneHtml);
-// The remaining old pages are small navigation-only compatibility pages.
-const legacyBooks=books.filter(b=>b.legacy&&b.legacy!==standaloneOutput);
-for(const b of legacyBooks){
-  const legacy=head(b.title+' — 사용 가이드')+`<body><main class="book standalone"><h1>${esc(b.title)}</h1><p><a href="${output}#${b.id}">사용 가이드 열기</a></p><nav aria-label="목차">${b.headings.map((h,i)=>`<a id="section-${i+1}" href="${output}#${b.id}-section-${i+1}">${esc(h)}</a>`).join('')}</nav></main></body></html>\n`;
-  emit(b.legacy,legacy);
-}
-for(const reader of [html,standaloneHtml]){
+// One complete reader; keep bookmarks previously shared for this filename.
+const manual=html.replace(/(<h3 id="usage-section-(\d+)">)/g,'$1<span id="section-$2" aria-hidden="true"></span>');
+emit(output,manual);
+for(const reader of [manual]){
   const ids=[...reader.matchAll(/\bid="([^"]+)"/g)].map(m=>m[1]);
   if(new Set(ids).size!==ids.length)throw Error('Duplicate guide anchors');
   for(const [,id]of reader.matchAll(/href="#([^"]+)"/g))if(!ids.includes(id))throw Error('Missing guide anchor '+id);
 }
-console.log(`${output}: ${books.length} parts, ${books.reduce((n,b)=>n+b.headings.length,0)} chapters, ${Buffer.byteLength(html)} bytes; ${standaloneOutput}: ${Buffer.byteLength(standaloneHtml)} bytes; ${legacyBooks.length} compatibility links; ${books.length+1} installed Markdown guides`);
+console.log(`${output}: ${books.length} parts, ${books.reduce((n,b)=>n+b.headings.length,0)} chapters, ${Buffer.byteLength(manual)} bytes; one HTML reader; ${books.length+1} Markdown sources`);

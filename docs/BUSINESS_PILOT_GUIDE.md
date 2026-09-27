@@ -1,8 +1,8 @@
 # Company Agent 업무팩 시범 사용 안내
 
-업무 시범 안내 · 배포 버전 1.4.25
+업무 시범 안내 · 배포 버전 1.4.26
 
-**적용 범위:** 이 안내서는 1.4.25를 기준으로 설명합니다. 기본 Office Reader 제거와 학습·스킬 선택 보완은 유지하고 단독 사용자 안내서를 갱신합니다. 기존 Release·ZIP·설치된 PC는 자동으로 바뀌지 않으며, 실제 사용할 수 있는 기능은 업데이트 후 설치 버전과 연결된 도구를 먼저 확인합니다. [변경 내용](UPDATE_1.4.25.md)과 [검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.25.md)를 참고하세요.
+**적용 범위:** 이 안내서는 1.4.26을 기준으로 설명합니다. 사용자 안내서는 HTML 하나로 통일하고 스킬 선택과 요청형 설명 도표를 보완했습니다. 기존 Release·ZIP·설치된 PC는 자동으로 바뀌지 않으며, 실제 사용할 수 있는 기능은 업데이트 후 설치 버전과 연결된 도구를 먼저 확인합니다. [변경 내용](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/UPDATE_1.4.26.md)과 [검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.26.md)를 참고하세요.
 
 이 안내서는 코딩을 하지 않는 직원이 **파일 정리, 메일 확인, HTML 보고서, PPT 만들기**를 시작하는 방법을 설명합니다. Claude에 하고 싶은 일을 말하면 필요한 것만 질문하고, 준비된 도구로 진행하는 방식입니다.
 
@@ -12,7 +12,7 @@
 
 이미 Company Agent를 사용 중이라면 Claude를 다시 설치하거나 모델을 다시 설정할 필요는 없습니다.
 
-1. 회사 담당자가 제공한 승인 ZIP의 버전과 시범 범위를 확인합니다. 현재 배포 버전은 1.4.25입니다. Workspace를 사용한다면 별도 0.8 묶음을 함께 적용합니다.
+1. 회사 담당자가 제공한 승인 ZIP의 버전과 시범 범위를 확인합니다. 현재 배포 버전은 1.4.26입니다. Workspace를 사용한다면 별도 0.9 묶음을 함께 적용합니다. WS-33 등 해당 PC의 시작 제한은 별도 확인이 필요합니다.
 2. 작업을 저장하고 Claude Code를 닫습니다.
 3. ZIP **전체를 새 폴더에 압축 해제**합니다. 설치 파일 한 개만 옮기지 마세요.
 4. 압축을 푼 폴더의 최상위 `Install-CompanyAgent.cmd`를 평소처럼 더블클릭합니다.

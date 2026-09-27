@@ -25,6 +25,25 @@ SAFE_FILES = {".md", ".txt", ".csv", ".tsv", ".html", ".htm", ".pdf", ".pptx", "
 MAX_BODY = 256 * 1024
 MAX_PREVIEW = 1024 * 1024
 WORKSPACE_VERSION = "0.9"
+MANUAL_FILENAME = "Company-Agent-사용자-안내서.html"
+MANUAL_CSP = (
+    "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; font-src data:; "
+    "img-src 'none'; connect-src 'none'; object-src 'none'; base-uri 'none'; "
+    "frame-ancestors 'none'; form-action 'none'"
+)
+# Closed URL aliases only: legacy documents need not exist on disk.
+MANUAL_ALIASES = {
+    '/manual/handbook': '#handbook',
+    '/manual/onboarding': '#onboarding',
+    '/manual/usage': '#usage',
+    '/manual/commands': '#commands',
+    '/manual/Company-Agent-Guide.html': '',
+    '/manual/Company-Agent-Handbook.html': '#handbook',
+    '/manual/Company-Agent-Onboarding.html': '#onboarding',
+    '/manual/Claude-Code-필수-사용법.html': '#commands',
+    '/manual/First-Work.html': '#onboarding',
+    '/manual/first-work.html': '#onboarding',
+}
 
 
 def folder(value):
@@ -258,7 +277,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *args):
         pass  # URLs, auth tokens and file paths must never enter access logs.
 
-    def reply(self, data, status=200, content_type="application/json; charset=utf-8"):
+    def reply(self, data, status=200, content_type="application/json; charset=utf-8", *, location=None, csp=None):
         body = data if isinstance(data, bytes) else json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", content_type)
@@ -266,7 +285,9 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        self.send_header("Content-Security-Policy", "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self' about:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
+        if location is not None:
+            self.send_header("Location", location)
+        self.send_header("Content-Security-Policy", csp if csp is not None else "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src 'self' about:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'")
         self.end_headers()
         try:
             self.wfile.write(body)
@@ -341,16 +362,12 @@ class Handler(BaseHTTPRequestHandler):
                                                'message':'정적 미리보기입니다. 모든 구역을 표시하며 스크립트·외부 연결은 실행하지 않습니다. 선택은 채팅으로 알려 주세요.'})
                     return self.reply({"kind": "text", "name": path.name, "text": text})
                 return self.reply({"kind": "external", "name": path.name, "message": "Office·PDF 원본은 원래 앱에서 열어 확인해 주세요."})
-            manuals = {'/manual/guide': 'Company-Agent-Guide.html',
-                       '/manual/handbook': 'Company-Agent-Handbook.html',
-                       '/manual/onboarding': 'Company-Agent-Onboarding.html',
-                       '/manual/usage': 'Company-Agent-사용자-안내서.html',
-                       '/manual/commands': 'Claude-Code-필수-사용법.html'}
-            manuals.update({'/manual/' + name: name for name in list(manuals.values())})
             manual_path = unquote(route.path)
-            if manual_path in manuals:
-                return self.reply((ASSETS.parent.parent / 'docs' / manuals[manual_path]).read_bytes(),
-                                  content_type='text/html; charset=utf-8')
+            if manual_path in {'/manual/guide', '/manual/' + MANUAL_FILENAME}:
+                return self.reply((ASSETS.parent.parent / 'docs' / MANUAL_FILENAME).read_bytes(),
+                                  content_type='text/html; charset=utf-8', csp=MANUAL_CSP)
+            if manual_path in MANUAL_ALIASES:
+                return self.reply({}, 302, location='/manual/guide' + MANUAL_ALIASES[manual_path])
             assets = {"/": ("index.html", "text/html; charset=utf-8"), "/app.js": ("app.js", "text/javascript; charset=utf-8"),
                       "/companion.js": ("companion.js", "text/javascript; charset=utf-8"),
                       "/app.css": ("app.css", "text/css; charset=utf-8")}

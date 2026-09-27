@@ -22,7 +22,7 @@ sys.path.insert(0, str(SCRIPTS))
 from company_agent.cli import main as cli_main  # noqa: E402
 from company_agent.frontmatter import dump_frontmatter  # noqa: E402
 from company_agent.native_runtime import (  # noqa: E402
-    MAX_HOOK_CONTEXT_CHARS, MAX_RUNTIME_CONTEXT_CHARS, bounded_prompt_context,
+    MAX_HOOK_CONTEXT_CHARS, MAX_RUNTIME_BASE_CHARS, MAX_RUNTIME_CONTEXT_CHARS, bounded_prompt_context,
     cli_command, configure_runtime, resolve_registration, runtime_context, session_start,
 )
 from company_agent.paths import atomic_write_json, atomic_write_text, load_json  # noqa: E402
@@ -246,6 +246,74 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
         self.assertEqual(str(managed), runtime['companyPolicy']['path'])
         self.assertIn('scope', runtime)
         self.assertLessEqual(len(encoded), MAX_RUNTIME_CONTEXT_CHARS)
+
+    def test_scoped_startup_with_long_paths_and_session_retains_execution_metadata(self) -> None:
+        # Regression for the actual PS 5.1 isolated install: the older long-path
+        # test omitted session metadata and used short state/knowledge roots.
+        sandbox = Path('C:/Users/employee/AppData/Local/Temp/CompanyAgent-ScopedSmoke-123456789012')
+        profile = sandbox / 'profile 한글—🚀' / 'AppData/Local'
+        plugin = profile / 'CompanyAgent-Distribution/marketplace/versions/1.4.26/plugin'
+        root = profile / 'CompanyAgent/states/projects/d39491de5e150534'
+        base = plugin.parent / 'knowledge'
+        project = sandbox / 'My project 한글—🚀'
+        session = 'd4edafbc-bfc6-4cf0-967e-512dc75a1344'
+        selection = {'status': 'ready', 'manager': '/company-agent:skills',
+                     'nativePrecedenceChanged': False, 'conflictCount': 0, 'warningCount': 0,
+                     'unresolvedCount': 0, 'resolvedOverlapCount': 0, 'namespacedOverlapCount': 0,
+                     'scanWarningCount': 0, 'stalePreferenceCount': 0, 'conflicts': [],
+                     'catalog': {'status': 'ready', 'path': str(root / 'skill-catalogs' / ('a' * 64) / 'SKILL_CATALOG.md'),
+                                 'revision': 'b' * 64, 'count': 14}}
+        workflow = {'status': 'ready', 'indexRead': False, 'sessionId': session,
+                    'selectionRecording': 'optional', 'selected': None, 'nextAction': 'read-index', 'turn': ''}
+        policy = {'status': 'available', 'path': str(plugin.parent / 'config/managed.json'),
+                  'revision': 'test', 'forWorkflows': [], 'truncated': False,
+                  'rules': [{'id': 'personal-preservation', 'level': 'required', 'text': '개인 자료 보존'}]}
+        with patch.dict(os.environ, {'COMPANY_AGENT_USER_STATE': str(root),
+                                   'COMPANY_AGENT_KNOWLEDGE_BASE': str(base), 'COMPANY_AGENT_SCOPE': 'Project'}), \
+                patch('company_agent.native_runtime._skill_routing', return_value=([], selection)), \
+                patch('company_agent.native_runtime._knowledge_matches', return_value=[]), \
+                patch('company_agent.native_runtime.policy_context', return_value=policy), \
+                patch('company_agent.skill_workflow.prepare', return_value=workflow), \
+                patch('company_agent.skill_workflow.record_task_candidates'):
+            encoded = runtime_context(plugin, project, session_id=session, source='startup')
+        runtime = json.loads(encoded)['company_agent_runtime']
+        self.assertNotIn('contextStatus', runtime)
+        self.assertEqual('Project', runtime['scope'])
+        self.assertEqual(str(root), runtime['stateRoot'])
+        self.assertEqual(str(project), runtime['project'])
+        self.assertEqual(str(base), runtime['knowledgeBase'])
+        self.assertEqual(cli_command(plugin), runtime['cliCommand'])
+        self.assertEqual(session, runtime['company_agent_session_id'])
+        self.assertEqual(session, runtime['skillWorkflow']['sessionId'])
+        self.assertEqual(selection['catalog']['path'], runtime['skillSelection']['catalog']['path'])
+        self.assertEqual(policy['path'], runtime['companyPolicy']['path'])
+        self.assertEqual(plugin / 'scripts/harness_cli.py', Path(shlex.split(runtime['metadataCommand'])[2]))
+        self.assertEqual(str(plugin / 'skills/company-agent/references/completion.md'), runtime['completionGuide'])
+        self.assertTrue(runtime['guidanceMinimal'])
+        self.assertEqual([{'id': 'personal-preservation', 'level': 'required', 'text': '개인 자료 보존'}],
+                         runtime['companyPolicy']['rules'])
+        self.assertIn('required', runtime['instructions'])
+        self.assertIn('SELECT', runtime['instructions'])
+        self.assertLessEqual(len(encoded), MAX_RUNTIME_BASE_CHARS)
+
+    def test_oversize_optional_context_diagnostic_keeps_exact_runtime_identity(self) -> None:
+        from company_agent.native_runtime import _encode_runtime
+        core = {'scope': 'Project', 'project': 'C:/업무 폴더', 'stateRoot': 'C:/개인 상태',
+                'knowledgeBase': 'C:/회사 지식', 'cliCommand': 'powershell.exe -File "C:/설치/실행.ps1" -Mode Cli',
+                'metadataCommand': 'python -B "C:/설치/harness_cli.py"',
+                'completionGuide': 'C:/설치/completion.md', 'company_agent_session_id': 'session-1'}
+        runtime = {**core, 'instructions': 'extra guidance', 'knowledgeMatches': [],
+                   'personalSkills': [], 'oversizedOptionalMetadata': 'x' * MAX_RUNTIME_CONTEXT_CHARS}
+        encoded = _encode_runtime(runtime)
+        diagnostic = json.loads(encoded)['company_agent_runtime']
+        self.assertEqual(core, {key: diagnostic[key] for key in core})
+        self.assertEqual('metadata-exceeds-budget', diagnostic['contextStatus'])
+        self.assertNotIn('oversizedOptionalMetadata', diagnostic)
+        self.assertLessEqual(len(encoded), MAX_RUNTIME_BASE_CHARS)
+        runtime = {**core, 'cliCommand': 'x' * MAX_RUNTIME_CONTEXT_CHARS, 'instructions': '',
+                   'knowledgeMatches': [], 'personalSkills': []}
+        with self.assertRaisesRegex(ValueError, 'paths were not truncated'):
+            _encode_runtime(runtime)
 
     def test_stale_project_install_record_falls_back_to_enabled_native_user_install(self) -> None:
         profile = self.root / "claude-profile"

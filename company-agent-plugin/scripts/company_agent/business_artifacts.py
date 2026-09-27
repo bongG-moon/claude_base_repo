@@ -166,6 +166,10 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
         raise ArtifactError("invalid_sections", "본문은 1~60개 페이지 또는 구역으로 구성해 주세요.")
     result = {"title": _text(spec.get("title", "업무 보고서"), 300), "subtitle": _text(spec.get("subtitle", ""), 1000),
               "style": style, "mode": mode, "length": length, "sections": []}
+    if "fontSource" in spec:
+        if spec["fontSource"] not in ("system", "google"):
+            raise ArtifactError("invalid_font_source", "글꼴은 system 또는 google 중에서 선택해 주세요.")
+        result["fontSource"] = spec["fontSource"]
     for row in rows:
         if not isinstance(row, dict):
             raise ArtifactError("invalid_section", "각 페이지에는 제목과 본문을 객체로 지정해 주세요.")
@@ -205,6 +209,9 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
             section["chart"] = {"type": chart.get("type", "column"), "categories": [_text(v, 200) for v in categories], "series": checked}
         if "image" in row:
             section["image"] = _image(row["image"])
+        if "diagram" in row:
+            from .explanation_diagram import normalize
+            section["diagram"] = normalize(row["diagram"])
         result["sections"].append(section)
     if len(json.dumps(result, ensure_ascii=True)) > 32 * 1024 * 1024:
         raise ArtifactError("spec_too_large", "전체 자료가 너무 큽니다. 보고서를 나누어 주세요.")
@@ -369,9 +376,10 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
             draft.write_text(document, encoding="utf-8")
             _publish(draft, output)
         return {"ok": True, "status": "created", "outputPath": str(output), "style": data["style"], "mode": data["mode"],
-                "sections": len(data["sections"]), "offline": True, "validation": validation,
+                "sections": len(data["sections"]), "offline": data.get("fontSource") != "google", "validation": validation,
                 "templateReference": reference,
-                "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."] + (reference['warnings'] if reference else [])}
+                "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."] + (reference['warnings'] if reference else [])
+                + (["Google Fonts 사용 시 글꼴 서비스로 연결합니다. 연결 불가 시 PC 글꼴로 표시하며 본문은 오프라인에서도 열립니다."] if data.get("fontSource") == "google" else [])}
     except Exception as exc:
         return _failure(exc)
 

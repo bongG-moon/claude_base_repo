@@ -83,13 +83,16 @@ def skill_brief(runtime: dict) -> str:
                       'Read는 본문 확인일 뿐 실행 조건을 적용하지 못합니다. 임의 대체·재시도하지 말고 '
                       '호출명 충돌 해소 또는 다른 스킬 선택이 필요하다고 알려주세요.')
         else:
-            action = ('목록에서 찾은 후보입니다. 요청에 맞으면 첫 행동으로 '
+            action = ('본문을 로드하기 전에 제공된 목록과 현재 세션의 다른 스킬 설명을 비교하세요. '
+                      '같은 업무의 대안이 있고 명시 선택·우선 설정이 없으면 먼저 한국어로 하나를 물으세요. '
+                      '제작과 디자인 보조처럼 역할이 다르면 경쟁 후보가 아닙니다. '
+                      '대안이 없고 요청에 맞으면 '
                       + json.dumps(execution.get('load', {}), ensure_ascii=False)
                       + '를 호출해 본문부터 불러오세요. 일반 코드 실행부터 시작하지 마세요. '
                       '후보가 맞지 않으면 skillSelection.catalog.path의 전체 목록을 비교하고 없을 때만 일반 실행하세요. '
                       'Unknown skill은 전체 스킬 부재가 아닙니다. Read는 본문 확인용이며 nativeRequired는 대체하지 못합니다. 실제 권한 거절은 우회하지 마세요.')
         text = ('[업무 시작: 관련 스킬 우선]\n' + identity + '\n' + action
-                + '\n다른 세션 스킬도 같은 일을 하고 우선 선택이 없으면 사용자에게 물으세요. '
+                + '\n'
                 '내부 준비만을 위한 추가 승인은 요구하지 않으며 기존 실행 권한은 그대로 적용됩니다.')
         if len(text) <= MAX_SKILL_BRIEF_CHARS:
             return text
@@ -100,7 +103,8 @@ def skill_brief(runtime: dict) -> str:
                 '목록이 이미 제공됐다면 다시 탐색하거나 스킬 설치·선택 기록·확인용 명령을 실행할 필요가 없습니다.')
     if mode == 'review':
         return ('[업무 시작: 사용 가능한 목록과 요청 비교]\n'
-                '키워드 후보가 없지만 목록에는 스킬이 있습니다. skillIndex와 세션 스킬의 설명을 요청의 의미와 비교하세요. '
+                '검색만으로 관련성을 확정하지 않았습니다. skillIndex와 세션 스킬의 설명을 요청의 의미와 비교하세요. '
+                '스킬 설치·수정·설명 요청은 그 스킬로 업무를 실행하라는 뜻이 아닙니다. '
                 '관련 스킬을 찾으면 해당 본문만 Skill/Read로 불러오세요. 제공된 목록만으로 판단할 수 있으면 재읽지 않습니다. '
                 '목록이 보이지 않거나 상세 확인이 필요할 때만 skillSelection.catalog.path를 Read합니다. '
                 '관련 스킬이 없으면 일반 실행하세요. 없는 스킬 호출·설치·선택 기록 명령은 필요 없습니다.')
@@ -148,24 +152,112 @@ _DOMAINS = {
     'word': r'(?<![a-z])(?:docx?|word)(?![a-z])|워드',
     'html': r'(?<![a-z])html?(?![a-z])|웹페이지',
     'mail': r'(?<![a-z])(?:outlook|email|mail)(?![a-z])|아웃룩|메일',
+    'image': r'(?<![a-z])(?:images?|pictures?|photos?|png|jpe?g)(?![a-z])|이미지|사진',
 }
 _READ = re.compile(r'읽|요약|분석|추출|파악|확인|\bread|summari[sz]|extract|analy[sz]')
+_COMPLETED_READ_REFERENCE = re.compile(
+    r'(?<![가-힣])(?:읽은|읽었던|읽어\s*둔|요약한|분석한|추출한|파악한|확인한)'
+    r'(?=\s*(?:내용|자료|파일|문서|표|결과))'
+)
 _MAKE = re.compile(r'만들|만듭|생성|제작|작성|\bcreat|\bgenerat|\bbuild')
 _ORGANIZE = re.compile(r'폴더.{0,30}정리|정리.{0,30}폴더|이동|삭제|이름.{0,15}변경|\brename|\bmove|\bdelete|\borganize')
 _GENERIC = {'내용', '자료', '파일', '업무', '진행', '사용', '해줘', '해주세요', '정리해줘', '이거',
             '관련', '없는', '질문'}
+_ASSET = r'(?:스킬|스크립트|도구|(?<![a-z])(?:skills?|scripts?|tools?|mcp)(?![a-z]))'
+_LIFECYCLE = {
+    'install': r'설치|등록|추가|\binstall|\bregister',
+    'inspect': r'설명|비교|무엇|뭐하는|검토|\bexplain|\bcompare|\binspect|\breview',
+    'manage': r'수정|편집|개선|삭제|제거|갱신|업데이트|\bmodify|\bedit|\bupdate|\buninstall|\bremove',
+    'make': r'만들|만듭|생성|제작|작성|\bcreat|\bgenerat|\bbuild',
+}
+_LIFECYCLE_BEFORE = {
+    'install': r'\b(?:install(?:s|ing)?|register(?:s|ing)?)\b|(?:설치|등록|추가)해(?:줘|주세요)',
+    'inspect': r'\b(?:explain|compare|inspect|review)\b|(?:설명|비교|검토)해(?:줘|주세요)',
+    'manage': r'\b(?:modify|edit|update|uninstall|remove)\b|(?:수정|삭제|제거)해(?:줘|주세요)',
+    'make': r'\b(?:create|creates|creating|generate|generates|generating|build|builds|building)\b',
+}
+
+
+def _lifecycle_features(text: str) -> tuple[set, set] | None:
+    """Distinguish managing an asset from executing the work it describes.
+
+    Only a nearby asset object with a lifecycle verb counts. In particular,
+    '이미지 읽는 스킬 ... 설치' is installation, while '스킬로 이미지 읽어줘'
+    remains image reading. This is a bounded lexical hint, not semantic proof.
+    """
+    for clause in re.split(r'[.!?;\n]', text):
+        for asset in re.finditer(_ASSET, clause):
+            before, after = clause[max(0, asset.start() - 60):asset.start()], clause[asset.end():asset.end() + 100]
+            # Names/filenames such as image-reader.zip are not asset nouns;
+            # using a Skill to create a report is not creating the Skill.
+            if (re.match(r'(?:로|으로)\b|(?:로|으로)\s', after)
+                    or re.search(r'사용|활용|이용|통해|\busing\b|\bwith\b', after)
+                    or re.search(r'\b(?:using|with)\b[^,.;]{0,45}$', before)):
+                continue
+            found = {action for action, pattern in _LIFECYCLE.items() if re.search(pattern, after)}
+            if not found:
+                # English commands put the verb before the object. Korean
+                # words before the object usually describe the Skill's work
+                # ('HTML을 제작하는 스킬을 설치'), not its lifecycle action.
+                found = {action for action, pattern in _LIFECYCLE_BEFORE.items()
+                         if re.search('(?:' + pattern + r').{0,45}$', before)}
+            if found:
+                # Reading/content words modify the asset to be installed;
+                # they must not route the request to a document reader.
+                return {'assets'}, found
+    return None
 
 
 def _positive_text(text: str) -> str:
     # Exclusions / references to another workflow are not positive capabilities.
+    # Registry descriptions are capped at 600 chars. Keep every capability in
+    # that metadata while still bounding callers that pass a user prompt.
     return ' '.join(s for s in re.split(r'[.!?]\s+', text.casefold()[:2000])
-                    if not re.search(r'아닙|제외|용도입니다|않습니다|\bnot for\b|\binstead\b', s))
+                    if not re.search(r'아닙|제외|용도입니다|않습니다|\bnot for\b|\binstead\b', s)
+                    and not re.search(r'^(?:참고|저장한).{0,140}(?:양식|캡처).{0,30}(?:제작|만들)', s))
+
+
+def _explanation_intent(text: str) -> bool:
+    """Bounded relation-explanation hint shared by prompts and descriptions.
+
+    This is neither a completion trigger nor proof of conversational meaning.
+    Skill instructions still check the current request and evidence before
+    creating anything. Asset lifecycle requests are handled before this hint.
+    """
+    if re.search(r'글로\s*만|텍스트로\s*만|(?:그림|도표|도식|다이어그램)\s*없[이음]|'
+                 r'(?:그리|그려|시각화하|도식화하)\s*지?\s*(?:마|말)|'
+                 r'\b(?:text[- ]only|words? only|without (?:any )?(?:diagrams?|visuals?))\b|'
+                 r'\b(?:no|do not|don.t)\s+(?:draw|diagrams?|visuali[sz]e)\b', text):
+        return False
+    if re.search(r'(?:수정|변경|개선|리팩터링)(?:해|하)|고쳐|구현해|'
+                 r'(?:^|[.;]\s*|\band\s+|\bthen\s+)(?:please\s+)?(?:fix|refactor|implement)\b', text):
+        return False
+    # Restructuring code is not a request to explain its structure. Explicit
+    # explanation/drawing remains possible, e.g. "코드 구조를 그림으로 설명".
+    if re.search(r'(?:코드|소스|함수|클래스)\s*(?:의\s*)?구조.{0,12}정리', text):
+        return False
+    subject = r'(?:흐름|구조|다이어그램|순서도|관계도|\bworkflow\b|\bflow(?:chart)?\b|\bstructure\b|\bdiagram\b)'
+    return bool(re.search(subject + r'[^.!?;\n]{0,36}(?:설명|정리|보여|그려|시각화|도식화)', text)
+                or re.search(r'\b(?:explain|show|draw|visuali[sz]e|diagram)\b[^.!?;\n]{0,70}' + subject, text))
 
 
 def _features(text: str) -> tuple[set, set]:
     positive = _positive_text(text)
+    lifecycle = _lifecycle_features(positive)
+    if lifecycle:
+        return lifecycle
     domains = {name for name, pattern in _DOMAINS.items() if re.search(pattern, positive)}
-    actions = ({'read'} if _READ.search(positive) else set()) | ({'make'} if _MAKE.search(positive) else set())
+    # A completed input reference ("읽은 내용을 HTML로 만들어줘") is not
+    # another read operation. Keep negated/unread inputs and any separate
+    # request to read again; do not weaken genuine read-then-create routing.
+    current_actions = _COMPLETED_READ_REFERENCE.sub(
+        lambda match: match.group() if re.search(r'(?:안|못|아직)\s*$', positive[max(0, match.start() - 16):match.start()]) else '',
+        positive,
+    )
+    actions = ({'read'} if _READ.search(current_actions) else set()) | ({'make'} if _MAKE.search(positive) else set())
+    if _explanation_intent(positive):
+        domains.add('explanation')
+        actions.add('make')
     if _ORGANIZE.search(positive):
         actions.add('organize')
     return domains, actions
@@ -185,15 +277,23 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
     # evidence only; never a decision to execute a workflow.
     grams = {word[i:i+2] for word in words if re.fullmatch('[가-힣]+', word)
              for i in range(len(word)-1)}
-    prompt_domains, prompt_actions = _features(prompt)
+    prompt_domains, prompt_actions = _features(prompt[:2000])
+    # Compute capabilities before shortening descriptions for display. A
+    # multi-purpose skill may genuinely perform the same requested role.
+    capabilities = {x['id']: _features(str(x.get('description', ''))) for x in items}
+    def strong(item):
+        domains, actions = capabilities[item['id']]
+        return bool(prompt_domains and prompt_actions and prompt_domains <= domains and prompt_actions <= actions)
     def score(item):
         name = str(item.get('name', '')).casefold()
         text = name + ' ' + str(item.get('description', '')).casefold()
-        domains, actions = _features(text)
+        domains, actions = capabilities[item['id']]
         named = name in prompt.casefold()  # user names are stronger than heuristics
         shared = prompt_domains & domains
         general_reader = bool(re.search(r'문서|documents?', _positive_text(text))) and 'read' in actions
         organize = 'organize' in prompt_actions & actions
+        if 'assets' in prompt_domains and ('assets' not in domains or not prompt_actions & actions):
+            return 0
         if prompt_domains and prompt_actions & {'read', 'make'} and not shared and not named and not organize and not (general_reader and 'read' in prompt_actions and not domains):
             return 0
         if shared and prompt_actions and actions and not (prompt_actions & actions) and not named:
@@ -236,10 +336,17 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
             result['groups'].pop()
             result['moreInCatalog'] = True
             break
+    if len(ranked) > len(result['groups']):
+        result['moreInCatalog'] = True
     if any(g['resolution'] in {'unresolved', 'stale-choice'} for g in result['groups']):
         result['status'] = 'needs-choice'
     if ranked and not result['groups']:
         result['status'] = 'check-catalog'
+    emitted = {row['id'] for group in result['groups'] for row in group['candidates']}
+    strong_ids = [x['id'] for x in items if x['id'] in emitted and strong(x)
+                  and (not x.get('explicitOnly') or x.get('invocation') in explicit)]
+    if strong_ids:
+        result['strongIds'] = strong_ids[:8]
     # Only a single known domain/action with matching positive capabilities is
     # strong enough to require a choice. Multi-stage or vague search hits stay
     # advisory. Use emitted whole groups only, never a hidden/truncated option.
@@ -247,8 +354,8 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
         competing = []
         for group in result['groups']:
             for row in group['candidates']:
-                domains, actions = _features(row['description'])
-                if (domains == prompt_domains and actions == prompt_actions
+                domains, actions = capabilities[row['id']]
+                if (prompt_domains <= domains and prompt_actions <= actions
                         and (not row.get('explicitOnly') or row.get('invocation') in explicit)):
                     competing.append(row['id'])
         if 1 < len(competing) <= 8:
@@ -261,4 +368,5 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
         result['competingIds'] = exact
     if len(json.dumps(result, ensure_ascii=False, separators=(',', ':'))) > MAX_TASK_SKILL_CHARS:
         result.pop('competingIds', None)  # Oversized ambiguity stays inspection-only.
+        result.pop('strongIds', None)
     return result

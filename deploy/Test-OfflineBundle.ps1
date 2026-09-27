@@ -30,10 +30,8 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle ($manifest.runtime.command -ceq 'python') 'Default Python command is not recorded.'
     foreach ($relative in @(
         'payload/core/plugin/THIRD_PARTY_NOTICES.md',
-        'payload/core/plugin/resources/first-work.html',
         'payload/core/plugin/resources/onboarding-course.json',
-        'payload/core/plugin/resources/manuals/Company-Agent-Onboarding.html',
-        'payload/core/plugin/resources/manuals/Company-Agent-Handbook.html',
+        'payload/core/plugin/resources/manuals/Company-Agent-사용자-안내서.html',
         'payload/core/plugin/scripts/company_agent/workspace_api.py',
         'payload/core/plugin/scripts/company_agent/resource_scope.py',
         'payload/core/plugin/scripts/company_agent/harness_map.py',
@@ -46,46 +44,30 @@ function Assert-EmployeeBundle {
         'docs/COMPANY_PERSONAL_WORKFLOW.md',
         'docs/COMPANY_AGENT_HANDBOOK.md',
         'docs/ONBOARDING_COURSE.md',
-        'docs/Company-Agent-Handbook.html',
-        'docs/Company-Agent-Onboarding.html',
+        'docs/Company-Agent-사용자-안내서.html',
         'payload/core/plugin/scripts/company_agent/skill_catalog.py',
         'payload/core/plugin/scripts/company_agent/skill_discovery.py',
-        'docs/UPDATE_1.4.7.md',
-        'docs/UPDATE_1.4.8.md',
-        'docs/UPDATE_1.4.9.md',
-        'docs/UPDATE_1.4.10.md',
-        'docs/UPDATE_1.4.11.md',
-        'docs/UPDATE_1.4.12.md',
-        'docs/UPDATE_1.4.13.md',
-        'docs/UPDATE_1.4.15.md',
-        'docs/UPDATE_1.4.16.md',
-        'docs/VALIDATION_RESOURCE_SCOPES_2026-09-19.md',
-        'docs/VALIDATION_HARNESS_MAP_2026-09-19.md',
         'docs/LOCAL_WORKSPACE.md',
-        'docs/AUDIT_HARNESS_2026-09-20.md',
-        'docs/VALIDATION_AUDIT_FIXES_2026-09-19.md',
-        'docs/VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md',
         'payload/core/plugin/scripts/company_agent/skill_decision.py',
+        'payload/core/plugin/scripts/company_agent/skill_host_choice.py',
         'payload/core/plugin/scripts/company_agent/workflow_evidence.py',
-        'docs/SKILL_LIST_REVIEW_2026-09-17.md',
-        'docs/SKILL_FIRST_EXECUTION_2026-09-17.md',
         'payload/core/plugin/scripts/company_agent/skill_execution.py',
-        'docs/LEAN_SKILL_ROUTING_2026-09-16.md',
         'payload/core/plugin/scripts/company_agent/skill_metadata_cache.py',
         'payload/core/plugin/scripts/company_agent/environment_checks.py',
         'payload/core/plugin/scripts/diagnose_skill_routing.py',
-        'docs/SKILL_AUTO_SELECTION_FIX_2026-09-16.md',
         'payload/core/plugin/scripts/company_agent/hook_diagnostics.py',
-        'docs/SKILL_SELECTION_ENCODING_VALIDATION_2026-09-16.md',
         'payload/core/plugin/scripts/company_agent/skill_task_context.py',
         'payload/core/plugin/scripts/company_agent/text_encoding.py',
-        'docs/HTML_REFERENCE_STYLES_2026-09-16.md',
-        'docs/SKILL_DISCOVERY_VALIDATION_2026-09-16.md',
         'payload/core/plugin/scripts/company_agent/skill_workflow.py',
         'payload/core/plugin/skills/company-agent/references/skill-selection.md',
         'payload/core/plugin/scripts/company_agent/completion_feedback.py',
         'payload/core/plugin/scripts/company_agent/user_language.py',
         'payload/core/plugin/scripts/company_agent/report_design.py',
+        'payload/core/plugin/scripts/company_agent/explanation_diagram.py',
+        'payload/core/plugin/scripts/company_agent/explanation_export.py',
+        'payload/core/plugin/templates/business/explanation.spec.json',
+        'payload/core/plugin/skills/html-report/references/explanation-diagrams.md',
+        'payload/core/plugin/skills/presentation/references/image-review.md',
         'payload/core/plugin/scripts/company_agent/report_facts.py',
         'payload/core/plugin/scripts/company_agent/report_styles.py',
         'payload/core/plugin/skills/html-report/assets/design-picker.html',
@@ -94,14 +76,6 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/scripts/company_agent/runtime_diagnostics.py',
         'payload/core/plugin/scripts/Inspect-ClaudeRuntime.ps1',
         'payload/core/plugin/skills/presentation/references/sources.md',
-        'docs/UPDATE_1.4.0.md',
-        'docs/VALIDATION_1.4.0.md',
-        'docs/UPDATE_1.4.3.md',
-        'docs/UPDATE_1.4.4.md',
-        'docs/UPDATE_1.4.5.md',
-        'docs/UPDATE_1.4.6.md',
-        'docs/REPORT_WAIT_AND_WHITE_GLASS_2026-09-15.md',
-        'docs/PPT_DESIGN_APPROVAL_2026-09-15.md',
         'payload/core/plugin/scripts/company_agent/background_work.py',
         'payload/core/plugin/skills/presentation/references/design-review.md',
         'payload/core/plugin/skills/presentation/references/html-template.md',
@@ -113,27 +87,13 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/skills/presentation/references/native-layout.md',
         'payload/core/plugin/scripts/company_agent/artifact_delivery.py',
         'payload/core/plugin/skills/company-agent/references/output-delivery.md',
-        'docs/HTML_AND_SKILL_PREPARATION_FIX_2026-09-15.md',
-        'docs/HTML_THEME_REVIEW_2026-09-15.md',
         'payload/core/plugin/scripts/company_agent/html_reference.py',
-        'docs/SKILL_ROUTING_VALIDATION_2026-09-15.md',
         'payload/core/plugin/skills/presentation/references/design-and-quality.md',
         'payload/core/plugin/skills/html-report/references/design-and-numbers.md',
-        'docs/UPDATE_1.3.6.md',
-        'docs/UPDATE_1.3.7.md',
-        'docs/UPDATE_1.3.8.md',
-        'docs/UPDATE_1.3.9.md',
-        'docs/VALIDATION_1.3.9.md',
         'docs/HTML_DESIGN_SELECTION.md',
-        'docs/VALIDATION_1.3.8.md',
-        'docs/VALIDATION_1.3.7.md',
-        'docs/Claude-Code-필수-사용법.html',
         'payload/core/plugin/skills/company-agent/references/completion.md',
         'deploy/CompanyAgent.PluginCompatibility.ps1',
         'docs/SKILL_CATALOG.md',
-        'docs/UPDATE_1.3.3.md',
-        'docs/UPDATE_1.3.4.md',
-        'docs/UPDATE_1.3.5.md',
         'payload/core/plugin/skills/asset-factory/references/authoring.md',
         'payload/core/plugin/skills/asset-factory/references/platform-tools.md',
         'payload/core/plugin/skills/asset-factory/references/legacy-assets.md',
@@ -151,8 +111,7 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/skills/platform-mcp-builder/assets/template/test_tools.py',
         'payload/core/plugin/skills/platform-mcp-builder/assets/template/requirements-local.txt',
         'payload/core/plugin/skills/personal-knowledge/references/term-quality.md',
-        'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md',
-        'docs/LEAN_SKILL_INTEGRATION.md', 'docs/UPDATE_1.4.23.md', 'docs/UPDATE_1.4.24.md', 'docs/UPDATE_1.4.25.md'
+        'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md'
     )) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Lean guidance/provenance is absent: $relative"
     }
@@ -202,12 +161,7 @@ function Assert-EmployeeBundle {
     }
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Install-CompanyAgent.cmd') -PathType Leaf) 'Root installer is missing.'
     Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Diagnose-CompanyAgent.cmd') -PathType Leaf) 'Root diagnostic launcher is missing.'
-    Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -PathType Leaf) 'First-work guide is missing.'
-    $firstWork = Get-Content -LiteralPath (Join-Path $ExpandedPath 'First-Work.html') -Raw -Encoding UTF8
-    Assert-OfflineBundle ($firstWork.Contains('href="docs/Company-Agent-Guide.html"')) 'ZIP start guide does not link to its unified course.'
-    Assert-OfflineBundle ($firstWork.Contains('href="docs/README.md"')) 'ZIP start guide does not link to Markdown contents.'
-    Assert-OfflineBundle (-not $firstWork.Contains('href="manuals/')) 'ZIP guide uses the installed-only manual path.'
-    foreach ($book in @('Company-Agent-Guide.html', 'Company-Agent-Onboarding.html', 'Company-Agent-Handbook.html', 'Company-Agent-사용자-안내서.html', 'Claude-Code-필수-사용법.html')) {
+    foreach ($book in @('Company-Agent-사용자-안내서.html')) {
         $installedBook = Join-Path $ExpandedPath ('payload\core\plugin\resources\manuals\' + $book)
         Assert-OfflineBundle ((Get-FileHash -LiteralPath $installedBook -Algorithm SHA256).Hash -ceq
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $book)) -Algorithm SHA256).Hash) 'Installed manual differs from source.'
@@ -236,8 +190,32 @@ function Assert-EmployeeBundle {
         'payload\core\plugin\skills\self-learning\SKILL.md')) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
     }
-    $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter 'Company-Agent-*.html' -File)
-    Assert-OfflineBundle ($htmlGuides.Count -eq 5) 'Expected two full guides, two Company-Agent compatibility pages and the operator validation reader.'
+    $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter '*.html' -File)
+    Assert-OfflineBundle ($htmlGuides.Count -eq 1 -and $htmlGuides[0].Name -ceq 'Company-Agent-사용자-안내서.html') 'Expected exactly one unified HTML user guide.'
+    $installedHtmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'payload/core/plugin/resources/manuals') -Filter '*.html' -File)
+    Assert-OfflineBundle ($installedHtmlGuides.Count -eq 1 -and $installedHtmlGuides[0].Name -ceq 'Company-Agent-사용자-안내서.html') 'Installed HTML manuals must contain only the unified guide.'
+    $installedMarkdownGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'payload/core/plugin/resources/manuals') -Filter '*.md' -File)
+    Assert-OfflineBundle ($installedMarkdownGuides.Count -eq 7) 'The seven existing text manuals must remain installed.'
+    foreach ($removed in @('First-Work.html', 'first-work.html', 'payload/core/plugin/resources/first-work.html',
+        'docs/Company-Agent-Guide.html', 'docs/Company-Agent-Handbook.html', 'docs/Company-Agent-Onboarding.html',
+        'docs/Claude-Code-필수-사용법.html', 'docs/Company-Agent-운영-검증-채팅.html',
+        'payload/core/plugin/resources/manuals/Company-Agent-Guide.html',
+        'payload/core/plugin/resources/manuals/Company-Agent-Handbook.html',
+        'payload/core/plugin/resources/manuals/Company-Agent-Onboarding.html',
+        'payload/core/plugin/resources/manuals/Claude-Code-필수-사용법.html')) {
+        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath $removed))) "Duplicate or legacy HTML leaked into the bundle: $removed"
+    }
+    $developmentDocs = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -File -Recurse | Where-Object {
+        $_.Name -match '^(UPDATE_|AUDIT_|VALIDATION_)|_\d{4}-\d{2}-\d{2}\.md$'
+    })
+    Assert-OfflineBundle ($developmentDocs.Count -eq 0) 'Historical development records leaked into the employee bundle.'
+    foreach ($operationalDoc in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md',
+        'PROJECT_HARNESS.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md',
+        'SELF_LEARNING.md', 'BUSINESS_PILOT_GUIDE.md', 'SKILL_CATALOG.md',
+        'HTML_DESIGN_SELECTION.md', 'COMPANY_PERSONAL_WORKFLOW.md', 'LOCAL_WORKSPACE.md',
+        'WORKSPACE_STARTUP_DIAGNOSTIC.md')) {
+        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('docs/' + $operationalDoc)) -PathType Leaf) "Operational document is missing: $operationalDoc"
+    }
     foreach ($removed in @('docs/CUA_DRIVER_PILOT.md', 'docs/Company-Agent-Cua-Pilot.html',
         'docs/VALIDATION_CUA_MANUALS_2026-09-19.md',
         'payload/core/plugin/resources/manuals/CUA_DRIVER_PILOT.md',
@@ -249,7 +227,7 @@ function Assert-EmployeeBundle {
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $htmlGuide.Name)) -Algorithm SHA256).Hash) 'HTML guide content changed during packaging.'
     }
     foreach ($manual in @('README.md', 'CLAUDE_CODE_BASICS.md', 'COMPANY_AGENT_HANDBOOK.md',
-        'ONBOARDING_COURSE.md', 'USER_GUIDE.md', 'CLAUDE_CODE_COMMANDS.md')) {
+        'ONBOARDING_COURSE.md', 'USER_GUIDE.md', 'CLAUDE_CODE_COMMANDS.md', 'DESIGN_TERMS.md')) {
         Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('docs\' + $manual)) -Algorithm SHA256).Hash -ceq
             (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $manual)) -Algorithm SHA256).Hash) 'Manual source changed during packaging.'
         Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('payload\core\plugin\resources\manuals\' + $manual)) -Algorithm SHA256).Hash -ceq
@@ -283,6 +261,16 @@ try {
     # An existing build cache also must not select bundled mode implicitly.
     Write-CompanyAgentUtf8File -Path (Join-Path $sourceRoot 'build\runtime\python-3.13.15-embed-amd64.zip') -Content 'Not a verified runtime archive.'
     $runtimeBefore = @(Get-CompanyAgentTreeRecords -Root (Join-Path $pluginRoot 'runtime') | ConvertTo-Json -Depth 10 -Compress) -join ''
+    # Stale source copies must not reintroduce retired entrypoints into new ZIPs.
+    # These fixtures live only in the isolated source copy, never in the checkout.
+    $legacyGuideHashes = @{}
+    foreach ($relative in @('resources\first-work.html', 'resources\manuals\Company-Agent-Guide.html',
+        'resources\manuals\Company-Agent-Handbook.html', 'resources\manuals\Company-Agent-Onboarding.html',
+        'resources\manuals\Claude-Code-필수-사용법.html')) {
+        $legacyGuide = Join-Path $pluginRoot $relative
+        Write-CompanyAgentUtf8File -Path $legacyGuide -Content '<html><body>Retired guide fixture.</body></html>'
+        $legacyGuideHashes[$legacyGuide] = (Get-FileHash -LiteralPath $legacyGuide -Algorithm SHA256).Hash
+    }
     $common = @{
         SourceRoot = $sourceRoot
         CoreVersion = [string]$pluginManifest.version
@@ -298,6 +286,9 @@ try {
     Assert-OfflineBundle ((Get-FileHash -LiteralPath $defaultZip -Algorithm SHA256).Hash -ieq $defaultResult.sha256) 'Reported ZIP digest does not match.'
     $runtimeAfter = @(Get-CompanyAgentTreeRecords -Root (Join-Path $pluginRoot 'runtime') | ConvertTo-Json -Depth 10 -Compress) -join ''
     Assert-OfflineBundle ($runtimeBefore -ceq $runtimeAfter) 'Packaging changed or deleted source runtime files.'
+    foreach ($legacyGuide in $legacyGuideHashes.Keys) {
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath $legacyGuide -Algorithm SHA256).Hash -ceq $legacyGuideHashes[$legacyGuide]) 'Packaging modified a retired source guide instead of excluding it.'
+    }
 
     # Identical payload rebuilds remain possible; changed same-version payloads
     # are rejected even with Force, before damaging the previous output.
@@ -336,6 +327,16 @@ try {
         Assert-BundleBuildRejected $invalid 'Required Markdown manual is missing'
     }
     finally { [IO.File]::WriteAllBytes($installedGuide, $guideBytes) }
+    $installedHtmlGuide = Join-Path $pluginRoot 'resources\manuals\Company-Agent-사용자-안내서.html'
+    $htmlGuideBytes = [IO.File]::ReadAllBytes($installedHtmlGuide)
+    try {
+        Write-CompanyAgentUtf8File -Path $installedHtmlGuide -Content '<html><body>Stale unified guide.</body></html>'
+        Assert-BundleBuildRejected $invalid 'Packaged unified HTML is out of date'
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath $sentinelZip -Algorithm SHA256).Hash -ceq $sentinelHash) 'Stale HTML rejection overwrote the existing ZIP.'
+        Remove-Item -LiteralPath $installedHtmlGuide -Force
+        Assert-BundleBuildRejected $invalid 'Required unified HTML manual is missing'
+    }
+    finally { [IO.File]::WriteAllBytes($installedHtmlGuide, $htmlGuideBytes) }
     $invalid = $common.Clone()
     $invalid.OutputPath = $sentinelZip
     $invalid.Force = $true

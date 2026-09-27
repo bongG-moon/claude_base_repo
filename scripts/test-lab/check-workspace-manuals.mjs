@@ -18,9 +18,16 @@ try{
   page.on('dialog',d=>d.accept()); // only isolated fixture UI confirmations
   await page.goto(runtime.url);
   const origin=new URL(runtime.url).origin;
-  for(const [route,title] of [['guide','Company Agent 통합 가이드'],['handbook','Company Agent 핸드북'],['onboarding','Company Agent 시작하기'],['usage','Company Agent 업무별 사용 가이드'],['commands','Claude Code 명령어·단축키']]){
+  const aliases=[['handbook','#handbook'],['onboarding','#onboarding'],['usage','#usage'],['commands','#commands'],
+    ['Company-Agent-Guide.html',''],['Company-Agent-Handbook.html','#handbook'],['Company-Agent-Onboarding.html','#onboarding'],
+    ['Claude-Code-필수-사용법.html','#commands'],['First-Work.html','#onboarding'],['first-work.html','#onboarding']];
+  for(const [route,anchor] of aliases){
+    const response=await page.request.get(origin+'/manual/'+encodeURIComponent(route),{maxRedirects:0});
+    if(response.status()!==302||response.headers().location!=='/manual/guide'+anchor)throw Error('Invalid manual redirect '+route);
+  }
+  for(const route of ['guide']){
     await page.goto(origin+'/manual/'+route);
-    await page.getByRole('heading',{name:title,exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Company Agent 사용자 안내서',exact:true}).waitFor();
     if(await page.locator('script').count())throw Error('Manual has executable code');
     await page.screenshot({path:path.join(output,route+'-1440.png')});
     const links=await page.locator('a[href*=".html"]').evaluateAll(nodes=>[...new Set(nodes.map(n=>n.href.split('#')[0]))]);
@@ -52,5 +59,5 @@ try{
   if(!prompt.includes('실습_가상자료.md'))throw Error('Getting-started prompt missing');
   if(sends!==0)throw Error('Guide sent model request without user action');
   if(errors.length||external.length)throw Error(JSON.stringify({errors,external}));
-  console.log(JSON.stringify({manuals:1,legacyRoutes:4,manualViewports:[390,1440],panelViewports:[390,768,1440],promptPrepared:true,sends,errors,external,output}));
+  console.log(JSON.stringify({manuals:1,legacyRoutes:aliases.length,manualViewports:[390,1440],panelViewports:[390,768,1440],promptPrepared:true,sends,errors,external,output}));
 }finally{await browser.close();}

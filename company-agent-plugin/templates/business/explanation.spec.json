@@ -1,0 +1,31 @@
+{
+  "title": "가상 업무 · 요청에서 결과까지",
+  "subtitle": "설명 기능 체험용 가상 사례입니다. 실제 업무 수행 기록이 아닙니다.",
+  "purpose": "explanation",
+  "style": "minimalism",
+  "length": "short",
+  "mode": "scroll",
+  "fontSource": "system",
+  "sections": [{
+    "title": "한 번의 요청이 처리되는 흐름",
+    "body": "전체 관계를 먼저 보고, 아래 설명 재생으로 각 단계를 짚어 보세요. 이 화면은 작업을 실행하지 않습니다.",
+    "diagram": {
+      "type": "flow",
+      "title": "요청 → 정리 → 확인 → 전달",
+      "summary": "가상 예제로 계획과 미확인을 구분합니다. 노드 번호와 아래 설명을 함께 보세요.",
+      "nodes": [
+        {"id": "request", "label": "요청과 범위 확인", "status": "planned", "detail": "사용자가 원하는 결과와 사용할 자료를 확인합니다.", "evidence": "가상 예시 · 수행 전 계획"},
+        {"id": "prepare", "label": "자료 정리", "status": "planned", "detail": "이미 확인한 자료를 재사용합니다.", "evidence": "가상 예시 · 수행 전 계획"},
+        {"id": "check", "label": "결과 확인", "status": "planned", "detail": "근거와 결과를 비교하고 확인하지 못한 범위를 남깁니다.", "evidence": "가상 예시 · 수행 전 계획"},
+        {"id": "delivery", "label": "사용자 확인", "status": "unknown", "detail": "실제 전달·사용 여부는 이 예제로 증명하지 않습니다."}
+      ],
+      "edges": [
+        {"from": "request", "to": "prepare", "label": "범위에 맞는 내용만"},
+        {"from": "prepare", "to": "check", "label": "정리한 결과"},
+        {"from": "check", "to": "delivery", "label": "확인 범위와 제한 함께 전달"}
+      ],
+      "motion": "steps",
+      "steps": ["request", "prepare", "check", "delivery"]
+    }
+  }]
+}

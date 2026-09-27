@@ -33,7 +33,10 @@ try{
   if(await page.locator('script,iframe,img,link').count())throw Error('External/runtime dependency in guide');
   const links=await page.locator('a[href^="#"]').evaluateAll(nodes=>nodes.map(n=>n.getAttribute('href')));
   for(const link of links)if(await page.locator(link).count()!==1)throw Error('Missing/duplicate anchor '+link);
-  const targets=['start','onboarding-section-2','onboarding-section-3','onboarding-section-7','onboarding-section-8','onboarding-section-9','basics','handbook-section-4','handbook-section-7','commands-section-1','commands-section-2'];
+  const parts=await page.locator('section.book').count();
+  if(parts!==6)throw Error('Missing guide part');
+  await page.getByRole('heading',{name:'디자인 용어 참고',exact:true}).waitFor();
+  const targets=['start','onboarding-section-2','onboarding-section-3','onboarding-section-7','onboarding-section-8','onboarding-section-9','basics','handbook-section-4','handbook-section-7','commands-section-1','commands-section-2','design','design-section-3','design-section-8','design-section-9'];
   for(const width of [1440,768,390]){
     await page.setViewportSize({width,height:1000});
     for(const target of targets){
@@ -52,33 +55,13 @@ try{
   await page.pdf({path:path.join(args.output,'guide-print.pdf'),format:'A4',printBackground:true});
   await page.emulateMedia({media:'screen'});
   const installed=path.resolve('company-agent-plugin/resources/manuals');
-  for(const filename of ['Company-Agent-Onboarding.html','Company-Agent-Handbook.html','Claude-Code-필수-사용법.html']){
-    await page.goto(pathToFileURL(path.join(installed,filename)).href);
-    await page.locator('a').first().click();
-    await page.getByRole('heading',{name:'Company Agent 통합 가이드',exact:true}).waitFor();
-  }
+  const readers=(await fs.readdir(installed)).filter(name=>name.endsWith('.html'));
+  if(readers.length!==1||readers[0]!=='Company-Agent-사용자-안내서.html')throw Error('Duplicate installed readers');
   await page.goto(pathToFileURL(path.join(installed,'Company-Agent-사용자-안내서.html')).href+'#section-6');
   await page.getByRole('heading',{name:'Company Agent 사용자 안내서',exact:true}).waitFor();
   if(await page.locator('#usage-section-6 #section-6').count()!==1)throw Error('Missing old user-guide bookmark');
-  await page.goto(pathToFileURL(path.resolve('company-agent-plugin/resources/first-work.html')).href);
-  const markdownLink=page.getByRole('link',{name:'Markdown 안내서 · 목차',exact:true});
-  const markdownTarget=await markdownLink.getAttribute('href');
-  if(markdownTarget!=='manuals/README.md')throw Error('Missing Markdown entry point');
   const markdown=await fs.readFile(path.join(installed,'README.md'),'utf8');
-  if(!markdown.includes('CLAUDE_CODE_BASICS.md')||!markdown.includes('CLAUDE_CODE_COMMANDS.md'))throw Error('Incomplete Markdown contents');
-  const copyButtons=page.locator('[data-copy]');
-  if(await copyButtons.count()!==7)throw Error('Missing first-work prompts');
-  for(const button of await copyButtons.all()){
-    const target=await button.getAttribute('data-copy');
-    await button.click();
-    const copied=(await page.evaluate(()=>navigator.clipboard.readText())).replace(/\r\n/g,'\n');
-    if(copied!==(await page.locator('#'+target).inputValue()).replace(/\r\n/g,'\n'))throw Error('Copy mismatch: '+target);
-  }
-  await page.evaluate(()=>{Object.defineProperty(navigator,'clipboard',{value:undefined,configurable:true});document.execCommand=()=>false;});
-  await copyButtons.first().click();
-  if(!(await page.locator('#status').textContent()).includes('직접 복사'))throw Error('Missing manual copy fallback');
-  await page.getByRole('link',{name:'통합 가이드 · 준비물 없이 시작하기',exact:true}).click();
-  await page.getByRole('heading',{name:'Company Agent 통합 가이드',exact:true}).waitFor();
+  if(!['CLAUDE_CODE_BASICS.md','CLAUDE_CODE_COMMANDS.md','DESIGN_TERMS.md'].every(name=>markdown.includes(name)))throw Error('Incomplete Markdown contents');
   if(errors.length||external.length)throw Error(JSON.stringify({errors,external}));
-  console.log(JSON.stringify({standalone:true,parts:5,markdownIndex:true,embeddedFont:'Noto Sans KR',brokenProse:0,viewports:[1440,768,390],screenshots:targets.length*3,anchors:links.length,legacyLinks:3,userGuideBookmarks:true,promptSelection:true,copiedPrompts:7,copyFallback:true,print:true,external,errors}));
+  console.log(JSON.stringify({standalone:true,parts,markdownIndex:true,embeddedFont:'Noto Sans KR',brokenProse:0,viewports:[1440,768,390],screenshots:targets.length*3,anchors:links.length,readers:1,userGuideBookmarks:true,promptSelection:true,print:true,external,errors}));
 }finally{await browser.close();}

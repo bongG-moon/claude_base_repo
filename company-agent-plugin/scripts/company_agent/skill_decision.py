@@ -85,4 +85,7 @@ def decide_preparation(hints: dict, skills: list[dict], explicit: list[str]) -> 
             sum(row.get('id') == candidate_id for row in skills) != 1 or
             not any(row.get('id') == candidate_id for row in eligible)):
         return SkillDecision('inspect', 'candidate-not-eligible')
+    strong = hints.get('strongIds', [])
+    if group.get('resolution') not in ('selected', 'explicit') and (not isinstance(strong, list) or candidate_id not in strong):
+        return SkillDecision('review', 'weak-shortlist-needs-review')
     return SkillDecision('load', 'native-body-load', candidate_id)

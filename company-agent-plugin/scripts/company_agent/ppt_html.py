@@ -96,6 +96,10 @@ def frame_size(value=None):
 def prepare(spec, template=None):
     """Shared normalization and composition for HTML and editable PPT export."""
     from .report_facts import FactError
+    for key in ('slides', 'sections'):
+        rows = spec.get(key)
+        if isinstance(rows, list) and any(isinstance(row, dict) and 'diagram' in row for row in rows):
+            raise artifacts.ArtifactError('diagram_html_only', '설명 도표는 현재 HTML 출력용입니다. 편집 가능한 PPT로 자동 변환하거나 내용을 생략하지 않았습니다.')
     native_template = template
     effective = dict(spec)
     if spec.get('htmlSource'):

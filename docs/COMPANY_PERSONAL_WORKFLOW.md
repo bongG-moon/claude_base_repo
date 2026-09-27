@@ -1,6 +1,6 @@
 # 회사 기준과 개인 업무 연결
 
-하네스 1.4.23과 Workspace 0.8 기준 안내입니다. 1.4.23에는 기본 Office 읽기 스킬과 전용 실행·승인 연결 제거, 학습·스킬 선택 보완과 안내서 갱신을 포함합니다. 기존 ZIP이나 설치된 PC는 자동으로 바뀌지 않으므로 두 배포 묶음을 각각 적용합니다. 실제 동작과 안내서 사본은 설치한 버전을 기준으로 확인합니다. [변경 내용](UPDATE_1.4.23.md)과 [검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.23/docs/VALIDATION_RELEASE_1.4.23.md)를 참고하세요.
+하네스 1.4.23과 Workspace 0.8 기준 안내입니다. 1.4.23에는 기본 Office 읽기 스킬과 전용 실행·승인 연결 제거, 학습·스킬 선택 보완과 안내서 갱신을 포함합니다. 기존 ZIP이나 설치된 PC는 자동으로 바뀌지 않으므로 두 배포 묶음을 각각 적용합니다. 실제 동작과 안내서 사본은 설치한 버전을 기준으로 확인합니다. [변경 내용](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.23/docs/UPDATE_1.4.23.md)과 [검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.23/docs/VALIDATION_RELEASE_1.4.23.md)를 참고하세요.
 
 ## 회사 공통 / 개인 전체 / 이 프로젝트
 
@@ -68,7 +68,7 @@ User 설치의 프로젝트 자료는 정확한 작업 폴더 경로별로 구�
 
 ## 첫 업무 시작
 
-설치 묶음의 `First-Work.html` 또는 설치 완료 시 표시되는 `resources/first-work.html`을 엽니다. 연습실에서는 `00_FIRST_WORK.html`로 연결됩니다.
+설치 완료 시 표시되는 `Company-Agent-사용자-안내서.html`을 열고 **시작하기**를 선택합니다. 연습실의 사용자 안내서도 같은 파일입니다.
 
 1. 자료 하나를 읽고 실제 확인 범위와 원본을 대조합니다.
 2. 가상 실적으로 보고서 디자인을 선택하고 결과 파일을 확인합니다.

@@ -184,15 +184,14 @@ def build(destination: Path, bundle: Path) -> dict:
     operator = destination / "operator"
     operator.mkdir()
     docs = {"VALIDATION_CHAT_SET.md": "ORIGINAL_CHAT_SET.md", "Company-Agent-운영-검증-채팅.html": "ORIGINAL_CHAT_SET.html",
-            "VALIDATION_RESULTS_TEMPLATE.md": "BLANK_RESULTS.md", "Company-Agent-Guide.html": "USER_GUIDE.html",
+            "VALIDATION_RESULTS_TEMPLATE.md": "BLANK_RESULTS.md",
             f"UPDATE_{version}.md": "UPDATE_GUIDE.md"}
     for source_name, target_name in docs.items():
         shutil.copyfile(REPO / "docs" / source_name, operator / target_name)
     articles, nav = render_cases(cases, operator)
     dashboard = (TEMPLATES / "dashboard.html").read_text(encoding="utf-8")
     write(destination / "00_START_HERE.html", dashboard.replace("@@VERSION@@", html.escape(version)).replace("@@CASES@@", articles).replace("@@NAV@@", nav))
-    shutil.copyfile(REPO / 'company-agent-plugin/resources/first-work.html', destination / '00_FIRST_WORK.html')
-    shutil.copytree(REPO / 'company-agent-plugin/resources/manuals', destination / 'manuals')
+    shutil.copyfile(REPO / 'docs/Company-Agent-사용자-안내서.html', destination / 'Company-Agent-사용자-안내서.html')
     organize = destination / "workspace" / "01-folder-organize"
     inputs = {p.relative_to(destination / "workspace").as_posix(): digest(p)
               for p in sorted((destination / "workspace").rglob("*")) if p.is_file() and not p.is_relative_to(organize)}

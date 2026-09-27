@@ -19,7 +19,8 @@ from company_agent.workflow_evidence import workflow_progress, MAX_RESULT_CHARS
 
 def hints(candidate='reader', **changes):
     return {'status': 'candidates', 'matchingGroups': 1, 'groups': [
-        {'name': 'reader', 'resolution': 'available', 'candidates': [{'id': candidate}]}], **changes}
+        {'name': 'reader', 'resolution': 'available', 'candidates': [{'id': candidate}]}],
+        'strongIds': [candidate], **changes}
 
 
 class LocalDecisionTests(unittest.TestCase):
@@ -33,6 +34,7 @@ class LocalDecisionTests(unittest.TestCase):
             (hints(matchingGroups=2), skills, 'select'),
             (hints(moreInCatalog=True), skills, 'select'),
             (hints(), skills, 'load'),
+            (hints(strongIds=[]), skills, 'review'),
             (hints('invented'), skills, 'inspect'),
             (hints(), skills + skills, 'inspect'),
             ({'groups': 'malformed'}, skills, 'inspect'),
@@ -57,6 +59,14 @@ class LocalDecisionTests(unittest.TestCase):
         self.assertEqual('load', decide_preparation(hints('manual'), [manual], ['company:manual']).mode)
         self.assertEqual('inspect', decide_preparation(hints('manual'), [{'id': 'reader'}, manual], []).mode)
         self.assertEqual('general', decide_preparation(hints(), [{'id': 'reader', 'incoming': True}], []).mode)
+
+    def test_weak_singleton_needs_comparison_not_mandatory_body_load(self):
+        result = decide_preparation(hints(strongIds=[]), [{'id': 'reader'}], [])
+        self.assertEqual('weak-shortlist-needs-review', result.reason)
+        self.assertIsNone(result.candidate_id)
+        selected = hints(strongIds=[])
+        selected['groups'][0]['resolution'] = 'selected'
+        self.assertEqual('load', decide_preparation(selected, [{'id': 'reader'}], []).mode)
 
     def test_invalid_or_fabricated_decision_shape_is_rejected(self):
         for mode, reason, candidate in [('execute', 'test', None), ('load', 'test', None),

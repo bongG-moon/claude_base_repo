@@ -8,7 +8,7 @@ from html import escape
 from html.parser import HTMLParser
 import re
 
-ALLOWED = set('html head body title style main header footer section article aside nav div span p h1 h2 h3 h4 h5 h6 ul ol li table thead tbody tfoot tr th td caption colgroup col figure figcaption img br hr strong em b i small label details summary textarea button select option svg g path rect circle ellipse line polyline polygon text tspan defs lineargradient radialgradient stop clippath'.split())
+ALLOWED = set('html head body title style main header footer section article aside nav div span p h1 h2 h3 h4 h5 h6 ul ol li table thead tbody tfoot tr th td caption colgroup col figure figcaption img br hr strong em b i small label details summary textarea button select option svg desc g path rect circle ellipse line polyline polygon text tspan defs lineargradient radialgradient stop clippath'.split())
 VOID = {'img', 'br', 'hr', 'col'}
 DROP = {'script', 'iframe', 'object', 'embed', 'form', 'template', 'noscript', 'audio', 'video'}
 CSP = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; frame-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'"
@@ -41,7 +41,7 @@ class StaticPreview(HTMLParser):
         for key, value in attrs:
             value = value or ''
             if key in {'class', 'id', 'style', 'title', 'role', 'lang', 'dir', 'colspan', 'rowspan', 'scope',
-                       'width', 'height', 'viewbox', 'd', 'x', 'y', 'x1', 'x2', 'y1', 'y2', 'cx', 'cy', 'r', 'rx', 'ry',
+                       'width', 'height', 'viewbox', 'd', 'x', 'y', 'dx', 'dy', 'x1', 'x2', 'y1', 'y2', 'cx', 'cy', 'r', 'rx', 'ry', 'hidden', 'tabindex',
                        'fill', 'stroke', 'stroke-width', 'points', 'transform', 'opacity', 'offset', 'stop-color',
                        'preserveaspectratio', 'clip-path', 'text-anchor', 'font-size', 'font-weight'} or key.startswith(('aria-', 'data-')):
                 if key == 'data-view':

@@ -148,7 +148,7 @@ class ListReviewTests(unittest.TestCase):
 
     def test_removed_hint_does_not_force_a_nonexistent_skill(self):
         file = self.f.skill('unique-helper', 'uniquetask')
-        self.output('uniquetask')
+        self.output('/unique-helper uniquetask')
         file.unlink()
         self.assertEqual({}, self.pre())
         ctx, _ = self.output('uniquetask')
@@ -188,12 +188,24 @@ class ListReviewTests(unittest.TestCase):
             self.assertFalse(_discovery_command(command), command)
 
     def test_definite_ppt_html_and_custom_workflows_need_their_real_body(self):
-        for prompt in ('PPT 만들기', 'HTML 보고서 만들기', '유일한새작업'):
-            if prompt == '유일한새작업':
+        for prompt in ('PPT 만들기', 'HTML 보고서 만들기', '/new-helper 유일한새작업'):
+            if prompt.startswith('/new-helper'):
                 self.f.skill('new-helper', '유일한새작업')
             self.output(prompt)
             self.assertEqual('deny', self.pre('Write')['hookSpecificOutput']['permissionDecision'])
             self.assertEqual('deny', self.pre('Bash')['hookSpecificOutput']['permissionDecision'])
+
+    def test_weak_single_candidate_is_advisory_and_never_requires_a_body(self):
+        self.f.skill('new-helper', '유일한새작업')
+        ctx, _ = self.output('유일한새작업')
+        self.assertEqual('review', ctx['skillExecution']['mode'])
+        self.assertEqual('weak-shortlist-needs-review', ctx['skillExecution']['reason'])
+        self.assertNotIn('id', ctx['skillExecution'])
+        first = self.pre('Write').get('hookSpecificOutput', {})
+        self.assertNotIn('permissionDecision', first)
+        self.assertEqual({}, self.pre('Bash'))
+        self.assertFalse(self.state()['skillWorkflow']['readSkills'])
+        self.assertIsNone(self.state()['skillWorkflow']['selected'])
 
     def test_exact_html_followup_needs_html_body_despite_earlier_catalogue_and_office_load(self):
         self.f.skill('custom-reader', 'XLSX Excel 내용 읽기 및 요약')
@@ -281,7 +293,7 @@ class ListReviewTests(unittest.TestCase):
 
     def test_support_target_can_complete_without_replacing_business_selection(self):
         file = self.f.skill('unique-support', '유일한개발조언', extra='company-agent-role: support\n')
-        ctx, _ = self.output('유일한개발조언')
+        ctx, _ = self.output('/unique-support 유일한개발조언')
         self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertEqual('deny', self.pre('Write')['hookSpecificOutput']['permissionDecision'])
         self.f.read(file)
@@ -334,11 +346,11 @@ class ListReviewTests(unittest.TestCase):
 
     def test_selection_evidence_is_invalidation_safe(self):
         file = self.f.skill('unique-helper', 'uniquetask')
-        self.output('uniquetask')
+        self.output('/unique-helper uniquetask')
         self.f.read(file)
         self.assertEqual({}, self.pre())
         atomic_write_text(file, file.read_text(encoding='utf-8') + '\nchanged')
-        ctx, _ = self.output('uniquetask')
+        ctx, _ = self.output('/unique-helper uniquetask')
         self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertIsNone(self.state()['skillWorkflow']['selected'])
         self.assertEqual('deny', self.pre()['hookSpecificOutput']['permissionDecision'])

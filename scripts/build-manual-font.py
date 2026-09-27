@@ -20,10 +20,9 @@ def main():
     license_text = (ASSETS / 'OFL.txt').read_text(encoding='utf-8')
     names = ['README.md', 'ONBOARDING_COURSE.md', 'CLAUDE_CODE_BASICS.md',
              'USER_GUIDE.md', 'COMPANY_AGENT_HANDBOOK.md',
-             'CLAUDE_CODE_COMMANDS.md']
+             'CLAUDE_CODE_COMMANDS.md', 'DESIGN_TERMS.md']
     files = [*(ROOT / 'docs' / name for name in names),
-             ROOT / 'scripts/build-manuals.mjs', ROOT / 'scripts/build-first-work.py',
-             ROOT / 'company-agent-plugin/resources/first-work.html',
+             ROOT / 'scripts/build-manuals.mjs',
              ROOT / 'company-agent-plugin/resources/onboarding-course.json']
     text = '\n'.join(p.read_text(encoding='utf-8') for p in files)
     text = re.sub(r'data:font/woff;base64,[A-Za-z0-9+/=]+', '', text)

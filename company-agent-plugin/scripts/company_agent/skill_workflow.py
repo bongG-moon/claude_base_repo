@@ -20,6 +20,7 @@ from .execution_contract import discovery_command as _discovery_command
 from .skill_catalog import MAX_CATALOG_BYTES
 from .skill_registry import MAX_SKILL_BYTES, _canonical, _no_reparse, _read, _resolution, _frontmatter_field
 from .state import _locked_session, _stale_native_prompt, load_session, safe_session_id
+from . import skill_host_choice
 
 _PLAIN_FIELDS = {'name', 'description', 'status', 'metadata', 'license', 'compatibility', 'company-agent-role'}
 
@@ -139,7 +140,36 @@ def _snapshot(root: Path, project: Path, route: dict) -> dict:
     return data
 
 
-def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt: str = "", compact: bool = False) -> dict:
+def _compact_continuation(old: dict, route: dict, root: Path, project: Path) -> dict | None:
+    """Restore a current task's identity, never its discarded body receipts."""
+    if any(old.get(key) != route.get(key) for key in ('catalog', 'revision', 'project', 'turn')):
+        return None
+    selected = old.get('selected') or {}
+    try:
+        data = _snapshot(root, project, route)
+        item = next((row for row in data['skills'] if row['id'] == selected.get('id')), None)
+        if (not item or selected.get('sha256') != item['sha256']
+                or old.get('readSkills', {}).get(item['id']) != item['sha256'] or not _allowed(item, data, old)):
+            return None
+        raw = _current(item, old)
+        plan = _load_plan(item, data, raw)
+        if plan.get('limitation'):
+            return None
+        # Compaction stays in the same user request. Retain only that choice;
+        # all successful Read/Skill/native receipts remain cleared.
+        route['explicit'] = old.get('explicit', [])[:8]
+        route['namedSkillChoices'] = old.get('namedSkillChoices', [])[:8]
+        route['turnChoices'] = {item['name'].casefold(): item['id']} if old.get('turnChoices', {}).get(item['name'].casefold()) == item['id'] else {}
+        route['executionPlan'] = plan
+        route['reviewProtocol'] = 1
+        return {'name': item['name'], 'load': plan['load'], 'bodyRequired': True,
+                'basis': 'previous-selection-not-body'}
+    except (OSError, ValueError, KeyError, TypeError):
+        return None  # Changed/disabled/missing files are not restored as choices.
+
+
+def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt: str = "", compact: bool = False,
+            continuing: bool = False) -> dict:
     if not session_id:
         return {"status": "unavailable"}
     with _locked_session(session_id, root) as (state, path):
@@ -162,6 +192,7 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
         route.pop('providedSkills', None)  # Old hook output is not an observed load.
         turn = state.get("turnId", "")
         if route.get("turn") != turn or compact:
+            host_reply = skill_host_choice.continuation(old, prompt, turn, identity['revision']) if same else None
             pending = route.get('pendingChoice', {}) if same else {}
             chosen = route.get('requestChoice', {}) if same else {}
             carry_pending = bool(pending and _choice_continuation(prompt, pending.get('names', []), pending=True))
@@ -172,6 +203,17 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
             route.pop('requiredChoiceIds', None)
             route.pop('pendingChoice', None)
             route.pop('requestChoice', None)
+            route.pop('hostChoice', None)
+            if host_reply:
+                route['hostChoice'] = host_reply
+                if not host_reply['selected']:
+                    try:
+                        snapshot = _snapshot(root, project, route)
+                        item = next(x for x in snapshot['skills'] if x['id'] == host_reply['targetId'])
+                        _apply_choice(route, item, snapshot, _current(item, route))
+                        route.pop('hostChoice', None)
+                    except (OSError, ValueError, KeyError, StopIteration):
+                        route.pop('hostChoice', None)
             if carry_pending:
                 route['pendingChoice'] = pending
                 route['requiredChoiceIds'] = pending.get('ids', [])
@@ -197,15 +239,16 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
             # native success. This is not slash invocation of manual-only files.
             from .skill_task_context import named_choices
             route['namedSkillChoices'] = named_choices(prompt)
+        continuation = _compact_continuation(old, route, root, project) if compact and continuing else None
         state["skillWorkflow"] = route
         atomic_write_json(path, state)
         return {"status": "ready", "indexRead": route.get("indexRead", False),
                 "sessionId": safe_session_id(session_id),
                 "selectionRecording": "optional",
                 "selected": (route.get("selected") or {}).get("name"),
-                "nextAction": "read-index" if not (route.get("indexRead") or route.get('indexDelivered')) else
+                "nextAction": "load-relevant-skill" if continuation else "read-index" if not (route.get("indexRead") or route.get('indexDelivered')) else
                     ("execute-selected" if route.get("selected") or route.get("fallback") else "choose-skill"),
-                "turn": turn}
+                "turn": turn, **({'continuation': continuation} if continuation else {})}
 
 
 def _allowed(item: dict, data: dict, route: dict) -> bool:
@@ -362,7 +405,13 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
         inputs = payload.get("tool_input") or {}
         response = payload.get("tool_response")
         if payload['tool_name'] == 'AskUserQuestion':
-            _observe_choice(route, data, inputs, response)
+            host_answer = skill_host_choice.observe_answer(route, data, inputs, response)
+            if host_answer and host_answer['kind'] == 'local':
+                item = next(x for x in data['skills'] if x['id'] == host_answer['id'])
+                _apply_choice(route, item, data, _current(item, route))
+                route.pop('hostChoice', None)
+            elif not host_answer:
+                _observe_choice(route, data, inputs, response)
             atomic_write_json(path, state)
             return  # Answer receipt is not a Skill load or learning evidence.
         if payload["tool_name"] == "Read":
@@ -385,7 +434,8 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
         else:
             # A successful native Skill event is a load receipt, not execution
             # permission. A namespaced/name collision is not guessed.
-            if not isinstance(response, dict) or response.get("success") is not True:
+            if (not isinstance(response, dict) or response.get("success") is not True
+                    or response.get('isError') or response.get('is_error')):
                 note('tool-failed' if isinstance(response, dict) and response.get('success') is False else 'response-unrecognized')
                 return
             invocation = str(inputs.get("skill", "")).lstrip("/")
@@ -395,9 +445,10 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
                 # catalogue. A real successful native load counts for this turn,
                 # but cannot create a local hash receipt or future reuse claim.
                 _review_observed(route, 'native-skill-outside-catalog')
+                advice = skill_host_choice.register(route, invocation, data)
                 note('native-skill-outside-catalog', explicit=(invocation in route.get('explicit', [])
                      or invocation in route.get('namedSkillChoices', [])))
-                return
+                return {'preparationAdvice': advice} if advice else None
         # Native Skill loading can precede the catalogue Read. Preserve the
         # actual body receipt without claiming that the index was read. The
         # next catalogue Read need not force another identical body read.
@@ -541,6 +592,11 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
     """
     if route.get('fallback') == 'no-relevant-skill':
         return {}
+    host_check = skill_host_choice.checkpoint(route, data)
+    if host_check:
+        return host_check
+    if skill_host_choice.chosen(route):
+        return {}  # User's current workflow choice; never a native permission allow.
     plan = route.get('executionPlan', {})
     choices = plan.get('choiceIds', [])
     if choices:
@@ -649,12 +705,23 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
                 or _is_own_work_command(command, session_id, state, root)
                 or _is_own_learning_command(command, session_id, state, root)):
             return {}
-    elif tool not in {"Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Task"} and not tool.startswith("mcp__"):
+    elif tool not in {"Skill", "Write", "Edit", "MultiEdit", "NotebookEdit", "Agent", "Task"} and not tool.startswith("mcp__"):
         return {}
     try:
         if route.get("turn") != state.get("turnId", ""):
             raise ValueError("Current request preparation is missing")
         data = _snapshot(root, project, route)
+        if tool == 'Skill':
+            invocation = str((payload.get('tool_input') or {}).get('skill', '')).lstrip('/')
+            ids = {x['id'] for x in data['skills'] if x.get('invocation') == invocation}
+            # Resolve known competitors before loading a full body. Other Skills
+            # may be support or host-only; never invent their availability/role.
+            if ids.intersection(plan.get('choiceIds', [])):
+                return _list_review_checkpoint(route, data)
+            host_check = skill_host_choice.checkpoint(route, data)
+            if host_check and plan.get('id') in ids:
+                return host_check
+            return {}
         if route.get('reviewProtocol') == 1:
             return _list_review_checkpoint(route, data)
         if not (route.get("indexRead") or route.get('indexDelivered')) and not (route.get('selected') and route.get('indexDelivery')):

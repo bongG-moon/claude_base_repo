@@ -47,6 +47,19 @@ class SkillActionBriefTests(unittest.TestCase):
         row = {'name': 'reader', 'source': 'personal', 'path': 'C:/personal/reader/SKILL.md', 'invocation': 'reader'}
         self.assertEqual({'tool': 'Read', 'file_path': row['path']}, load_target(row, [row]))
 
+    def test_unique_candidate_brief_compares_session_alternatives_before_loading(self):
+        brief = skill_brief({'skillExecution': {'mode': 'load', 'name': 'web_report', 'source': 'company',
+                            'invocation': 'org:web_report', 'load': {'tool': 'Skill', 'skill': 'org:web_report'}}})
+        self.assertLess(brief.index('다른 스킬 설명을 비교'), brief.index('"tool": "Skill"'))
+        self.assertLess(brief.index('먼저 한국어로 하나를 물으세요'), brief.index('"tool": "Skill"'))
+        self.assertIn('디자인 보조', brief)
+        self.assertLessEqual(len(brief), MAX_SKILL_BRIEF_CHARS)
+
+    def test_review_brief_distinguishes_asset_lifecycle_from_business_execution(self):
+        brief = skill_brief({'skillExecution': {'mode': 'review', 'reason': 'weak-shortlist-needs-review'}})
+        self.assertIn('스킬 설치·수정·설명', brief)
+        self.assertIn('관련 스킬이 없으면 일반 실행', brief)
+
     def test_large_conflict_is_never_presented_as_single_option(self):
         candidates = [{'name': 'reader', 'source': f'source{i}', 'path': 'C:/' + 'a' * 350 + '/SKILL.md',
                        'description': 'description ' * 50} for i in range(10)]

@@ -63,7 +63,7 @@ Do not infer DRM from a generic format, dependency or timeout error.
 4. Inspect the actual HTML, show its link and complete outline, then ask `이대로 PPT 제작 / 수정 요청 / 참고 디자인 변경` and WAIT. If questions are unavailable, end with `확인 대기 중입니다. 미리보기를 확인하고 진행 또는 수정 내용을 알려 주세요.` Do not start final generation while waiting.
 5. Merge the returned designReview into the full job; set confirmed:true ONLY after actual approval of that exact draft. Do not invent paths/hashes. A design choice, opened file or silence is not approval. A material source/content/design change requires a new HTML draft and confirmation in the same workFile.
 6. Run `business ppt --spec "<jobPath>" --work "<workFile>" --state-root "<stateRoot>"`, preserving --template. Keep native editable text/tables/charts where supported; full-slide screenshots do not satisfy an editable-PPT request.
-7. Inspect every rendered slide, actual content/totals and editability; fix clipping, labels, units and unreadable text without dropping requested content. Then run `business artifact-publish --work "<workFile>" --state-root "<stateRoot>"` and deliver only its final path plus real limitations.
+7. Review every rendered slide initially; after corrections inspect changed and affected slides. At image review read `references/image-review.md` once for bounded batches and compact evidence. Check actual content/totals and editability; fix clipping, labels, units and unreadable text without dropping content. Then run `business artifact-publish --work "<workFile>" --state-root "<stateRoot>"` and deliver only its final path plus real limitations.
 
 `created` and static quality checks do not prove visual fidelity. If rendering is
 unavailable, say which structural/content checks ran and that visual QA did not.

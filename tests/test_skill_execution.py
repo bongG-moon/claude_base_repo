@@ -140,11 +140,11 @@ class SkillExecutionTests(unittest.TestCase):
             with self.subTest(token=token):
                 file = self.f.skill('dynamic-special', 'uniquevalue')
                 atomic_write_text(file, file.read_text(encoding='utf-8') + token)
-                ctx, text = self.output('uniquevalue')
+                ctx, text = self.output('/dynamic-special uniquevalue')
                 self.assertEqual('load', ctx['skillExecution']['mode'])
                 self.assertEqual('native-body-load', ctx['skillExecution']['reason'])
                 self.f.read(file)
-                ctx, _ = self.output('uniquevalue')
+                ctx, _ = self.output('/dynamic-special uniquevalue')
                 self.assertEqual('load', ctx['skillExecution']['mode'])
                 self.assertEqual('native-skill-semantics', ctx['skillExecution']['reason'])
                 self.assertNotIn('SECRET-BODY-dynamic-special', text)
@@ -188,7 +188,7 @@ class SkillExecutionTests(unittest.TestCase):
 
     def test_body_change_between_discovery_and_delivery_is_not_exposed(self):
         file = self.f.skill('custom-unique', 'uniquevalue')
-        ctx = self.f.context('uniquevalue')
+        ctx = self.f.context('/custom-unique uniquevalue')
         atomic_write_text(file, file.read_text(encoding='utf-8') + '\nchanged')
         result, text = self.output(context=ctx)
         self.assertEqual('inspect', result['skillExecution']['mode'])
@@ -199,7 +199,7 @@ class SkillExecutionTests(unittest.TestCase):
         file = self.f.claude / 'skills/large-special/SKILL.md'
         atomic_write_text(file, file.read_text(encoding='utf-8') + 'Z' * 8500)
         self.f.context(source='startup')
-        ctx, text = self.output('uniquevalue')
+        ctx, text = self.output('/large-special uniquevalue')
         self.assertEqual('load', ctx['skillExecution']['mode'])
         self.assertNotIn('ZZZZ', text)
 

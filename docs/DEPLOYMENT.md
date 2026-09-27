@@ -1,6 +1,6 @@
 # Company Agent 설치와 배포 — Windows
 
-현재 소스·배포 버전은 **1.4.25**입니다. 직원은 담당자가 검토·승인하여 제공한 설치 ZIP을 사용합니다. PPT 준비 단계·스킬 경량화·중간 파일 정리·한국어 선택지를 보완했으며 전체 사용자 안내서를 단독 HTML로 포함합니다. 기본 Office Reader 제거와 학습·스킬 선택 보완은 유지합니다. 비전 모델 자동 전환과 사내 게이트웨이 설정은 변경하지 않았습니다. 기존 Release·ZIP·설치된 PC는 자동 갱신되지 않습니다. [1.4.25 변경 내용](UPDATE_1.4.25.md)과 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.25.md)를 확인하세요. 과거 버전의 변경·검증 기록은 당시 배포 내용이며 현재 기능 목록으로 사용하지 않습니다.
+현재 소스·배포 버전은 **1.4.26**입니다. 직원은 담당자가 검토·승인하여 제공한 설치 ZIP을 사용합니다. 스킬 선택·압축 후 연결·요청형 설명 도표를 보완하고 사용자 안내서를 HTML 하나로 통일했습니다. 기본 Office Reader 제거와 개인 자료 보존은 유지합니다. 비전 모델 자동 전환과 사내 게이트웨이 설정은 변경하지 않았습니다. 기존 Release·ZIP·설치된 PC는 자동 갱신되지 않습니다. [1.4.26 변경 내용](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/UPDATE_1.4.26.md)과 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.26.md)를 확인하세요. 과거 버전의 변경·검증 기록은 당시 배포 내용이며 현재 기능 목록으로 사용하지 않습니다.
 
 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다.
 
@@ -264,4 +264,4 @@ Claude에 “Company Agent 설치 상태를 확인해줘”라고 요청하면 �
 
 개인 MCP는 구조·프로토콜 검증을 통과한 후 `asset activate-mcp`에서 선택 scope의 Claude 등록까지 수행합니다. 응답 유실 등으로 등록만 남으면 `asset sync-mcp --name ...`으로 재시도합니다. 기존 이름이나 다른 scope의 동일 이름은 덮어쓰지 않습니다. 하네스 자체는 승인 Python의 표준 라이브러리로 실행되지만, 새 MCP 생성에는 해당 자산이 사용하는 승인된 MCP SDK 환경이 별도로 필요합니다. 설치기는 그 SDK나 pip 패키지를 추가하지 않습니다. 모델·자산 실행 환경이 바뀌면 기존 검증 receipt는 재검증이 필요할 수 있습니다.
 
-[Skill 우선 선택](SKILL_PRIORITY.md) · [프로젝트 하네스 생성](PROJECT_HARNESS.md) · [최초 의도와 구현 대조](IMPLEMENTATION_REVIEW.md) · [기존 관리자 배포](LEGACY_MACHINE_DEPLOYMENT.md)
+[Skill 우선 선택](SKILL_PRIORITY.md) · [프로젝트 하네스 생성](PROJECT_HARNESS.md) · [최초 의도와 구현 대조](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/IMPLEMENTATION_REVIEW.md) · [기존 관리자 배포](LEGACY_MACHINE_DEPLOYMENT.md)

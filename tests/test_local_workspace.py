@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest.mock import patch
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import HTTPRedirectHandler, Request, build_opener, urlopen
 from urllib.parse import quote
 import uuid
 
@@ -245,16 +245,77 @@ class ServerTests(unittest.TestCase):
             self.request("/../server.py", token=False)
 
     def test_manual_routes_are_fixed_public_static_documents(self):
-        for route in ('guide','handbook','onboarding','usage','commands','Company-Agent-Guide.html','Company-Agent-Handbook.html','Company-Agent-Onboarding.html','Company-Agent-사용자-안내서.html','Claude-Code-필수-사용법.html'):
-            with self.request('/manual/'+quote(route),token=False) as response:
-                body=response.read().decode('utf-8')
-                self.assertIn('<html lang="ko">',body)
-                self.assertIn("script-src 'none'",body)
-                self.assertNotIn(self.app.token,body)
-        for route in ('../server.py','COMPANY_AGENT_HANDBOOK.md','../../.claude.json','%2e%2e%2fserver.py','cua','Company-Agent-Cua-Pilot.html'):
+        def assert_manual_policy(response):
+            policy = {parts[0]: parts[1:] for directive in response.headers['Content-Security-Policy'].split(';')
+                      if (parts := directive.split())}
+            self.assertEqual(['data:'], policy['font-src'])
+            self.assertEqual(["'unsafe-inline'"], policy['style-src'])
+            for directive in ('default-src', 'script-src', 'connect-src', 'object-src', 'base-uri', 'frame-ancestors'):
+                self.assertEqual(["'none'"], policy[directive], directive)
+
+        canonical = (ROOT / 'docs/Company-Agent-사용자-안내서.html').read_bytes()
+        docs = self.root / 'docs'
+        docs.mkdir()
+        (docs / 'Company-Agent-사용자-안내서.html').write_bytes(canonical)
+        # A bundle containing only the canonical document must serve all links.
+        with patch('local_app.server.ASSETS', self.root / 'local_app/web'):
+            for route in ('guide', 'Company-Agent-사용자-안내서.html'):
+                with self.request('/manual/' + quote(route), token=False) as response:
+                    self.assertEqual(canonical, response.read())
+                    self.assertIn('text/html', response.headers['Content-Type'])
+                    assert_manual_policy(response)
+            for route in ('handbook', 'onboarding', 'usage', 'commands', 'Company-Agent-Guide.html',
+                          'Company-Agent-Handbook.html', 'Company-Agent-Onboarding.html',
+                          'Claude-Code-필수-사용법.html', 'First-Work.html', 'first-work.html'):
+                with self.subTest(route=route), self.request('/manual/' + quote(route), token=False) as response:
+                    self.assertEqual(canonical, response.read())
+                    assert_manual_policy(response)
+        body = canonical.decode('utf-8')
+        self.assertIn('<html lang="ko">', body)
+        self.assertIn("script-src 'none'", body)
+        self.assertIn('data:font/woff;base64,', body)
+        self.assertNotIn('<script', body.lower())
+        self.assertNotIn(self.app.token, body)
+        for route in ('../server.py','COMPANY_AGENT_HANDBOOK.md','../../.claude.json','%2e%2e%2fserver.py',
+                      '%252e%252e%252fserver.py', 'guide/../server.py', 'unknown.html', 'cua','Company-Agent-Cua-Pilot.html'):
             with self.assertRaises(HTTPError) as caught:
                 self.request('/manual/'+route,token=False)
             self.assertEqual(404,caught.exception.code)
+
+    def test_manual_csp_does_not_change_app_api_or_preview_policy(self):
+        with self.request('/', token=False) as response:
+            policy = response.headers['Content-Security-Policy']
+            self.assertIn("script-src 'self'", policy)
+            self.assertIn("connect-src 'self'", policy)
+            self.assertNotIn('font-src data:', policy)
+        source = self.workspace / 'preview.md'
+        source.write_text('단순 미리보기', encoding='utf-8')
+        for route in ('/api/bootstrap', '/api/preview?id=' + self.id + '&path=' + quote(str(source))):
+            with self.subTest(route=route), self.request(route) as response:
+                self.assertEqual(policy, response.headers['Content-Security-Policy'])
+
+    def test_legacy_manual_redirects_are_fixed_local_section_targets(self):
+        class NoRedirect(HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        opener = build_opener(NoRedirect)
+        aliases = {
+            'handbook': '#handbook', 'onboarding': '#onboarding', 'usage': '#usage', 'commands': '#commands',
+            'Company-Agent-Guide.html': '', 'Company-Agent-Handbook.html': '#handbook',
+            'Company-Agent-Onboarding.html': '#onboarding', 'Claude-Code-필수-사용법.html': '#commands',
+            'First-Work.html': '#onboarding', 'first-work.html': '#onboarding',
+        }
+        for route, anchor in aliases.items():
+            with self.subTest(route=route), self.assertRaises(HTTPError) as caught:
+                opener.open(self.server.origin + '/manual/' + quote(route) + '?next=https://invalid.test/', timeout=5)
+            self.assertEqual(302, caught.exception.code)
+            self.assertEqual('/manual/guide' + anchor, caught.exception.headers['Location'])
+            self.assertEqual('no-store', caught.exception.headers['Cache-Control'])
+            caught.exception.close()
+        with self.assertRaises(HTTPError) as caught:
+            self.request('/manual/handbook', token=False, headers={'Origin': 'https://invalid.test'})
+        self.assertEqual(403, caught.exception.code)
 
     def test_removed_screen_control_routes_cannot_execute(self):
         body={'id':self.id,'action':'computer-check'}

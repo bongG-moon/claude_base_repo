@@ -1,23 +1,28 @@
 ---
 name: html-report
-description: HTML 보고서 제작 시 디자인 미리보기 또는 사용자가 첨부한 HTML 양식을 참고하고, 분량·스크롤/페이지 넘김을 선택받아 오프라인 보고서를 만듭니다.
+description: HTML 보고서 제작 시 디자인·분량·표시 방식을 선택받아 오프라인 보고서를 만듭니다. 후속 요청에 현재 작업의 흐름·구조를 다이어그램으로 설명합니다.
 ---
 
 # HTML report
 
 ## 바로 다음 행동
 
+작업 후 `흐름을 그림으로 보여줘 / 구조를 정리해줘 / 작업 흐름을 설명해줘`라는
+요청이면 `references/explanation-diagrams.md`를 한 번 읽고 현재 근거로 설명합니다.
+작업 완료만으로 만들지 않습니다. `방금 작업 정리해줘`는 짧은 텍스트부터,
+`글로만/도표 없이/그리지 마`는 도식 없이 답합니다. 아래 선택 질문은 일반 보고서용입니다.
+
 Reuse known answers. If design is missing, immediately ask ONE design question:
 `1. 깔끔한 업무형(추천) / 2. 지표 중심형 / 3. 추가 디자인(미리보기) / 4. HTML 양식 직접 첨부`.
 Never batch the initial design question with length/mode. Do not run commands,
 write empty choices JSON, read references or start workers just to ask it.
-Questions/explanation-only requests stay in chat without commands or file creation.
+Other questions stay in chat without commands or file creation.
 The third menu item is NOT a report style; it opens the additional-design list.
 
-Use `company_agent_runtime.cliCommand` literally as the complete already-quoted
-prefix for the commands below, with its stateRoot. Metadata is not an executable
-or Python module. Never search for another runtime, inspect implementation source,
-guess entrypoints, use echo/noop probes, or repeat successful Skill discovery.
+Use `company_agent_runtime.cliCommand` literally as the already-quoted command
+prefix, with its stateRoot. Metadata is not executable. Never search for another
+runtime, inspect implementation source, guess entrypoints, use echo/noop probes,
+or repeat successful Skill discovery.
 Reuse selected design guidance from the current Skill catalog; do not search it
 again merely to start this workflow. Native permissions and source scope remain.
 
@@ -97,7 +102,7 @@ only when interpreting restrictions. Do not infer DRM from generic errors.
 2. Write the full job at jobPath: title, confirmed style/length/mode, and permitted sections with title/body/bullets/table/chart/image. Use the reference for layout/eyebrow/takeaway/source, kpis and facts/checks. Do not invent fields or figures. Large work shows an outline or representative page first.
 3. Derive numeric summaries from actual table/chart cells and reuse {{fact:id}}. Recompute totals/denominators/rounding; do not copy earlier summary arithmetic. freeform/3D/Y2K are supported styles, not permission for arbitrary code or claims of external image generation.
 4. Run `business html --spec "<jobPath>" --work "<workFile>" --state-root "<stateRoot>"`. Shipped local HTML/CSS/JS needs no package/font downloads. Read validation/warnings and the actual saved report.
-5. Compare totals, recommendation status and exclusions against sources, not only individual input rows. Check actual visuals when an approved browser is available; existence or SVG presence is not visual QA. arithmetic=checked covers declared calculations only; sourceAccuracy/visual=not_verified must not become a blanket pass. Keep summaries/version labels consistent with revised tables.
+5. Compare totals, recommendation status and exclusions against sources, not only individual input rows. Check actual visuals when an approved browser is available; existence or SVG presence is not visual QA. For screenshot review use `../presentation/references/image-review.md`: all pages/sections initially, then changed and affected regions. arithmetic=checked covers declared calculations only; sourceAccuracy/visual=not_verified is not a blanket pass. Keep summaries/version labels consistent with revised tables.
 6. After checks run `business artifact-publish --work "<workFile>" --state-root "<stateRoot>"` and deliver its final path, selected format and relevant limitations. Keep jobs/drafts/QA internal; do not create draft2/v2 copies.
 
 Use `../company-agent/references/output-delivery.md` only for lifecycle questions.

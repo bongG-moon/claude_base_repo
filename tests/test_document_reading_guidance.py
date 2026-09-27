@@ -16,10 +16,21 @@ class DocumentReadingGuidanceTests(unittest.TestCase):
             files.extend((PLUGIN / 'skills' / name).rglob('*.md'))
         for file in files:
             text = file.read_text(encoding='utf-8').lower()
-            for old in ('우회', 'bypass', 'never decrypt', 'do not recommend a protection-free copy',
+            # The removed Office-reader policy used these blanket directives.
+            # A generic word ban also rejects legitimate actual-denial safeguards.
+            for old in ('never decrypt', 'do not recommend a protection-free copy',
                         'never suggest an unprotected copy', 'no alternate capture',
                         '다른 엔진으로 재시도하지 않는다', '이 절차로 다시 추출하지 않는다'):
                 self.assertNotIn(old, text, str(file))
+
+    def test_actual_permission_restrictions_remain_binding(self):
+        protection = (PLUGIN / 'skills/company-agent/references/business-protection.md').read_text(encoding='utf-8')
+        self.assertIn('Existing corporate MCP policy, native permissions and DRM rules remain binding.', protection)
+        self.assertIn('A DRM label, unknown DRM technology or generic parser error alone is not an access', protection)
+        explanation = (PLUGIN / 'skills/html-report/references/explanation-diagrams.md').read_text(encoding='utf-8')
+        self.assertIn('위임·보호·권한 정책은 유지하며 실제 거절을 우회하지 않습니다.', explanation)
+        presentation = (PLUGIN / 'skills/presentation/SKILL.md').read_text(encoding='utf-8')
+        self.assertIn('Actual permission denials are never retried through another route.', presentation)
 
     def test_runtime_no_longer_reintroduces_removed_document_instructions(self):
         text = (PLUGIN / 'scripts/company_agent/native_runtime.py').read_text(encoding='utf-8')

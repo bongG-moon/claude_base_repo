@@ -4,7 +4,7 @@
 
 ## 실행 방법
 
-1. 이 GitHub 저장소의 ZIP 전체를 압축 해제합니다.
+1. Workspace ZIP 또는 이 GitHub 저장소의 ZIP 전체를 압축 해제합니다.
 2. `Company-Workspace.vbs`와 같은 위치의 **`Check-Workspace.cmd`를 일반 더블클릭**합니다. 관리자 권한으로 실행하지 마세요.
 3. 같은 폴더에 생긴 **`Workspace-Diagnostic-….json`**을 확인한 뒤 담당자에게 전달합니다. 결과가 자동 전송되지는 않습니다.
 

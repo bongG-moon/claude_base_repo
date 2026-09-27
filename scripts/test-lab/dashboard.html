@@ -7,7 +7,7 @@
 <p class="muted">Company Agent @@VERSION@@ · 가상 업무 전용 · 인터넷 없이 열리는 안내 화면</p>
 <h1>파일은 준비됐습니다.<br>이제 한 가지씩 시켜보세요.</h1>
 <p class="lead">실제 회사 자료 대신 준비된 연습 자료로, 답변뿐 아니라 파일·기억·학습 결과도 확인합니다.</p>
-<p><a href="00_FIRST_WORK.html">처음 사용한다면: 자료 읽기 → 보고서 만들기 → 개인 선호 저장 안내</a> — 아래 전체 시험과 별도로 필요한 업무 하나부터 시작할 수 있습니다.</p>
+<p><a href="Company-Agent-사용자-안내서.html#onboarding">처음 사용한다면: 사용자 안내서의 시작하기</a> — 아래 전체 시험과 별도로 필요한 업무 하나부터 시작할 수 있습니다.</p>
 <div class="steps"><ol>
 <li>이 화면 옆에 있는 <strong>01_START_TEST.cmd</strong>를 더블클릭하세요. 메뉴에서 <strong>3</strong>을 선택합니다.</li>
 <li>처음이면 테스트 프로젝트 설치를 안내합니다. 설치에 동의하면 <strong>1</strong>을 입력하세요. 필요한 조건과 기존 설정 충돌은 설치 프로그램이 확인합니다.</li>
@@ -23,7 +23,7 @@
 <li><strong>operator</strong>: 사람이 볼 원래 검증 질문 전체, 정상 기준, 빈 결과지, 파일 비교 기준. 전체를 Claude에 전달하지 마세요.</li>
 <li><strong>installer</strong>: 검증된 로컬 @@VERSION@@ 설치 묶음. 회사 PC로 옮길 때는 이 연습실 폴더 전체를 승인된 경로로 복사하세요. 옮긴 뒤 프로젝트 설치를 다시 합니다.</li></ul>
 <p>기존 모델 설정은 재사용합니다. 설치 과정은 프로젝트 등록과 공통 플러그인 캐시를 갱신할 수 있으므로 진행 중인 다른 Claude 작업은 먼저 마무리하세요. 기존 개인 자료를 삭제하거나 백업 폴더를 정리하지 마세요.</p>
-<p><a href="operator/ORIGINAL_CHAT_SET.html">원래 34개 검증 질문과 자세한 판정 기준</a> · <a href="operator/USER_GUIDE.html">상세 사용자 안내서</a> · <a href="workspace/02-report-input/monthly-results.json">가상 실적 원본 보기</a></p>
+<p><a href="operator/ORIGINAL_CHAT_SET.html">원래 34개 검증 질문과 자세한 판정 기준</a> · <a href="Company-Agent-사용자-안내서.html">사용자 안내서</a> · <a href="workspace/02-report-input/monthly-results.json">가상 실적 원본 보기</a></p>
 <h2>질문과 실행 기록</h2><p>회색 상자의 요청만 한 번에 하나씩 복사하세요. 여러 단계가 있는 시험은 각 단계가 끝난 뒤 다음 요청을 보냅니다. 접힌 ‘진행 안내·판정 기준’에서 새 대화 시점을 먼저 확인하세요.</p>
 <div class="toolbar"><button class="primary" id="download">결과 내려받기 (.md)</button><button id="confirm-saved" disabled>파일 저장을 확인했어요</button><label>보기 <select id="filter"><option value="all">전체</option><option value="local">로컬 자료 / 개인화 시험</option><option value="external">회사 환경이 필요한 선택 시험</option></select></label></div>
 <p class="muted">기록은 현재 화면 메모리에만 있습니다. 자동 저장·전송하지 않습니다. 내려받은 파일은 보통 다운로드 폴더에 저장됩니다. 메일 주소·본문·계정 ID·비밀값은 붙여 넣지 마세요.</p>

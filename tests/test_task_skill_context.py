@@ -4,7 +4,8 @@ from pathlib import Path
 import unittest
 
 import test_skill_discovery as discovery
-from company_agent.skill_task_context import task_candidates, MAX_TASK_SKILL_CHARS
+from company_agent.skill_task_context import task_candidates, MAX_TASK_SKILL_CHARS, _features
+from company_agent.skill_decision import decide_preparation
 from company_agent.skill_workflow import choose, preflight, internal_command
 from company_agent.skill_registry import inventory_skills, set_skill_preference
 from company_agent.state import load_session, record_activity
@@ -48,6 +49,19 @@ class TaskSkillContextTests(unittest.TestCase):
             self.assertIsNone(route['selected'])
             self.assertEqual({}, route['readSkills'])
             self.assertNotIn('테스트자료.md', json.dumps(route, ensure_ascii=False))
+
+    def test_completed_input_reference_is_not_another_read_but_rereading_remains(self):
+        for prompt in ('읽은 내용을 HTML 보고서로 만들어줘', '분석한 결과로 HTML 만들어줘',
+                       '이미 읽어 둔 자료로 HTML 보고서를 작성해줘', '확인한 파일로 HTML 만들어줘'):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(({'html'}, {'make'}), _features(prompt))
+                context = self.f.context(prompt)
+                group = next(g for g in context['taskSkills']['groups'] if g['name'] == 'html-report')
+                self.assertIn(group['candidates'][0]['id'], context['taskSkills']['strongIds'])
+        for prompt in ('내용을 읽고 HTML 보고서를 만들어줘', '읽은 내용을 다시 읽고 HTML로 만들어줘',
+                       '아직 안 읽은 자료를 HTML로 만들어줘', '읽지 않은 자료를 HTML로 만들어줘'):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(({'html'}, {'make', 'read'}), _features(prompt))
 
     def test_first_recovery_supplies_concrete_paths_without_permission_or_red_loop(self):
         self.f.context()
@@ -166,6 +180,101 @@ class TaskSkillContextTests(unittest.TestCase):
             choose(self.f.state, self.f.project, self.f.sid, ctx['skillWorkflow']['turn'], candidate['id'])
         with self.assertRaises(ValueError):
             choose(self.f.state, self.f.project, self.f.sid, ctx['skillWorkflow']['turn'], 'not-an-id')
+
+    def metadata(self, **descriptions):
+        return {'complete': True, 'skills': [
+            {'id': name, 'name': name, 'source': 'user', 'invocation': name,
+             'path': 'C:/skills/' + name + '/SKILL.md', 'description': description}
+            for name, description in descriptions.items()]}
+
+    def decision(self, inventory, prompt):
+        hints = task_candidates(inventory, prompt)
+        return hints, decide_preparation(hints, inventory['skills'], [])
+
+    def test_image_skill_archive_install_is_not_document_or_image_reading(self):
+        prompt = '@image-reader.zip 여기에 이미지 읽는 스킬도 있는데 이것도 설치해줘'
+        inv = self.metadata(document_service='회사 문서 내용을 읽고 분석합니다.',
+                            image_reader='이미지 읽기 및 사진 분석')
+        inv['skills'][1].update(id='image-reader', name='image-reader', invocation='image-reader')
+        hints, decision = self.decision(inv, prompt)
+        self.assertEqual(({'assets'}, {'install'}), _features(prompt))
+        self.assertEqual([], hints['groups'])
+        self.assertEqual('review', decision.mode)
+        inv = self.metadata(document_service='회사 문서 내용을 읽고 분석합니다.',
+                            personal_setup='ZIP 파일의 개인 스킬을 설치하고 등록합니다.')
+        hints, decision = self.decision(inv, prompt)
+        self.assertEqual('load', decision.mode)
+        self.assertEqual('personal_setup', decision.candidate_id)
+        for subject in ('HTML을 제작하는', 'Excel 표를 생성하는', '이미지를 읽는'):
+            with self.subTest(subject=subject):
+                _, decision = self.decision(inv, subject + ' 스킬을 설치해줘')
+                self.assertEqual('personal_setup', decision.candidate_id)
+
+    def test_direct_image_reading_still_uses_actual_reader(self):
+        inv = self.metadata(picture_inspector='이미지 읽기 및 사진 분석',
+                            personal_setup='ZIP 파일의 개인 스킬을 설치하고 등록합니다.')
+        for prompt in ('이 이미지 읽고 확인해줘', '스킬을 사용해서 이미지 읽어줘'):
+            with self.subTest(prompt=prompt):
+                _, decision = self.decision(inv, prompt)
+                self.assertEqual('picture_inspector', decision.candidate_id)
+
+    def test_skill_explanation_and_modification_do_not_execute_described_work(self):
+        inv = self.metadata(picture_inspector='이미지 읽기 및 사진 분석')
+        for prompt, action in [('이미지 읽는 스킬 내용을 설명해줘', 'inspect'),
+                               ('이미지 읽는 스킬을 수정해줘', 'manage')]:
+            with self.subTest(prompt=prompt):
+                self.assertEqual(({'assets'}, {action}), _features(prompt))
+                hints, decision = self.decision(inv, prompt)
+                self.assertEqual([], hints['groups'])
+                self.assertEqual('review', decision.mode)
+
+    def test_using_skill_for_business_creation_is_not_asset_creation(self):
+        for prompt in ('스킬로 HTML 보고서 만들어줘', '스킬을 사용해서 HTML 보고서 만들어줘',
+                       'Create an HTML report using the available skill'):
+            self.assertEqual(({'html'}, {'make'}), _features(prompt), prompt)
+
+    def test_multi_capability_alternatives_are_same_role_before_display_truncation(self):
+        for domain in ('HTML', 'Excel'):
+            with self.subTest(domain=domain):
+                inv = self.metadata(single_creator=domain + ' 보고서 제작',
+                                    broad_creator='다양한 형식에 대한 부연 안내입니다. ' * 15 + domain + ' 및 PPT 보고서 읽기와 제작')
+                hints, decision = self.decision(inv, domain + ' 보고서 만들어줘')
+                self.assertEqual({'single_creator', 'broad_creator'}, set(hints['competingIds']))
+                self.assertEqual('choose', decision.mode)
+                broad = next(row for group in hints['groups'] for row in group['candidates'] if row['id'] == 'broad_creator')
+                self.assertNotIn(domain, broad['description'])
+                self.assertLessEqual(len(json.dumps(hints, ensure_ascii=False)), MAX_TASK_SKILL_CHARS)
+
+    def test_read_then_create_and_distinct_outputs_are_not_forced_alternatives(self):
+        inv = self.metadata(reader='Excel 읽기', maker='HTML 제작', broad='HTML 및 Excel 읽기와 제작')
+        for prompt in ('Excel 읽고 HTML 만들어줘', 'HTML 읽고 HTML 만들어줘'):
+            with self.subTest(prompt=prompt):
+                hints, decision = self.decision(inv, prompt)
+                self.assertNotIn('competingIds', hints)
+                self.assertNotEqual('choose', decision.mode)
+
+    def test_weak_general_reader_and_unknown_topic_stay_advisory(self):
+        for description, prompt in [('문서를 읽고 정리합니다.', '이미지 읽어줘'),
+                                    ('VOC 결과 분류를 도와줍니다.', 'VOC 알려줘')]:
+            inv = self.metadata(candidate=description)
+            hints, decision = self.decision(inv, prompt)
+            self.assertEqual('review', decision.mode)
+            self.assertNotIn('strongIds', hints)
+            self.assertIsNone(decision.candidate_id)
+
+    def test_design_reference_input_is_not_an_alternative_html_creator(self):
+        inv = self.metadata(slides='PPT를 만듭니다. 참고 슬라이드 캡처·기존 PPT·저장한 HTML 대표 양식으로 제작할 수 있습니다.',
+                            web_report='HTML 보고서 제작')
+        hints, decision = self.decision(inv, 'HTML 보고서 만들어줘')
+        self.assertEqual('web_report', decision.candidate_id)
+        self.assertNotIn('competingIds', hints)
+
+    def test_shortlist_truncation_does_not_hide_a_fourth_competing_workflow(self):
+        inv = self.metadata(**{f'creator{i}': 'HTML 보고서 제작' for i in range(4)})
+        hints, decision = self.decision(inv, 'HTML 보고서 만들어줘')
+        self.assertTrue(hints['moreInCatalog'])
+        self.assertNotIn('competingIds', hints)
+        self.assertEqual('select', decision.mode)
 
 
 if __name__ == '__main__':

@@ -12,7 +12,7 @@
 
 왼쪽의 **첫 업무 따라 하기 / 기억·하네스 관리 / 사용 현황·결과 확인**으로 엽니다. 화면 열기·조회·통계에 별도 AI를 호출하지 않습니다.
 
-1. **따라 하기:** 자료 읽기 → 결과 만들기 → 수정 → 선호 저장 → 새 대화 재사용의 5단계입니다. 예문 버튼은 입력창만 채우며 직접 보내야 실행됩니다. ‘직접 확인했어요’는 학습 진행 기록이지 업무 성공의 자동 판정이 아닙니다. 오프라인 첫 업무 안내서도 같은 코스 자료를 사용합니다.
+1. **따라 하기:** 자료 읽기 → 결과 만들기 → 수정 → 선호 저장 → 새 대화 재사용의 5단계입니다. 예문 버튼은 입력창만 채우며 직접 보내야 실행됩니다. ‘직접 확인했어요’는 학습 진행 기록이지 업무 성공의 자동 판정이 아닙니다. 예문과 진행 확인은 기존 코스 JSON을 사용하며, 자세한 설명은 하나의 사용자 안내서에서 읽습니다.
 2. **회사 공통 → 기억·지식:** 설치에 연결된 회사·팀의 배포 지식을 읽습니다. 사용자 화면에서는 수정하지 않습니다. 공동 쓰기·실시간 동기화 서버나 일반 프로젝트 문서 자동 수집 기능은 아닙니다.
 3. **개인 전체 / 이 프로젝트 → 기억·지식:** 나의 선호·업무 맥락과 개인 업무 지식을 함께 관리합니다. 선호는 추가·수정·비활성화·이전 내용 복원안을 확인한 뒤 저장합니다. 지식은 출처·확인일을 붙여 초안으로 만들고 검토 후 활성화합니다. 검토용 내보내기는 로컬 ZIP이며 공통 반영·자동 전송이 아닙니다. 자동 학습 끄기·이력 복구를 지원하며 Claude 자체 기억과 합치지 않습니다.
 4. **회사 공통 → 업무 구성:** 회사 기준·공통 스킬·후크 정의를 읽기 전용으로 확인합니다. 목록이나 정의 파일이 있다는 사실만으로 실제 CLI 실행을 보장하지 않습니다.
@@ -20,9 +20,9 @@
 6. **사용 현황:** 현재 요청의 CLI 보고값과 사용자가 선택한 과거 JSONL 분석을 별도로 보여 줍니다. 누락은 ‘미제공’, 사내 모델 비용은 미추정입니다. 같은 메시지의 스트림 기록은 중복 제거하며 CLI 완료값·작업자·로그 합계를 서로 더하지 않습니다. CLI 버전에 따라 완료값이 누적일 수 있어 요청끼리 합산하지 않습니다. 다음 요청의 토큰 알림은 앱을 닫으면 해제되며 강제 비용 한도가 아닙니다.
 7. **준비·결과 확인:** 설치·스킬 발견·지침 분량과 실제 업무 결과를 분리합니다. 사용자 확인 기록에서 실패·중지·차단·미확인을 빼고 성공률을 만들지 않습니다. 모델/평가 시 설치 버전별 관찰 그룹을 표시하되 전체 AI 성능 점수나 인과적 개선 증거라고 주장하지 않습니다. 실제 실행 당시 버전을 입증하지 못하면 평가 시 버전과 구별합니다.
 
-Company Agent의 현재 배포 버전은 **1.4.25**이며 이번 변경에서 코어 버전은 바꾸지 않습니다. 이 문서의 Workspace 실행 코드 버전은 **0.9**로, 본인 계정·세션·프로필 확인과 일반 권한 재실행, 한국어 시작 오류 안내를 보완한 로컬 시험 버전입니다. 현재 [1.4.25 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.25)의 Workspace는 **0.8**이며 별도 게시 전까지 그대로 유지됩니다. 0.9 시험은 기존 하네스 1.4.25와 새 Workspace 소스 또는 담당자가 제공한 0.9 묶음으로 진행합니다. 제거된 Office 읽기의 전용 결과 연결과 가상 보고서 체험을 유지합니다. 실제 문서 읽기는 설치된 스킬·도구의 지원 범위를 따릅니다.
+Company Agent의 현재 배포 버전은 **1.4.26**이며 이 문서의 Workspace 실행 코드 버전은 **0.9**입니다. 본인 계정·세션·프로필 확인과 일반 권한 재실행, 한국어 시작 오류 안내 및 단일 사용자 안내서 연결을 포함합니다. [1.4.26 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.26)의 별도 Workspace ZIP 또는 담당자가 제공한 승인 묶음으로 시험합니다. 일반 권한 연결 토큰이 없는 관리자 환경의 **WS-33 제한은 여전히 남아 있습니다.** 기본 Office Reader 제거와 가상 보고서 체험은 유지하며 실제 문서 읽기는 설치된 스킬·도구의 지원 범위를 따릅니다.
 
-[1.4.25 변경 안내](UPDATE_1.4.25.md)와 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.25.md)를 확인하세요. 검증 기록의 외부 링크는 인터넷 연결이 필요합니다.
+[1.4.26 변경 안내](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/UPDATE_1.4.26.md)와 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.26.md)를 확인하세요. 검증 기록의 외부 링크는 인터넷 연결이 필요합니다.
 
 Company Agent와 Workspace는 별도 배포 묶음이며 기존 설치·ZIP에 자동 적용되지 않습니다. 기존 앱을 종료한 뒤 승인된 새 Workspace ZIP을 별도 폴더에 풀어 실행하세요. Company Agent만 업데이트해도 이미 풀어 놓은 Workspace와 그 안의 안내서가 갱신되는 것은 아닙니다. 해당 기능이 없는 설치에서는 안내·일반 Claude 대화를 그대로 유지하고 설치 확인 필요만 표시합니다. UI가 임의로 다른 설치/상태 폴더를 선택하거나 플러그인을 설치하지 않습니다. 기존 memory/knowledge/brief API는 호환을 위해 유지합니다.
 
@@ -43,7 +43,7 @@ Company Agent와 Workspace는 별도 배포 묶음이며 기존 설치·ZIP에 �
 
 명시적으로 저장하는 기억·지식·스킬·도구의 범위와 **자동 학습의 범위는 별개**입니다. 자동 학습은 현재 활성 설치의 상태에서 계속되며, 화면에서 프로젝트 항목을 한 번 저장했다고 이후 모든 학습이 그 범위로 바뀌지 않습니다. User 설치의 별도 프로젝트 자산은 자동 수정하지 않습니다. Company Agent 설치 전 선택 백업은 이 모든 폴더의 완전한 이사·복구 패키지가 아니므로 PC 교체 때는 담당자와 각 저장소를 따로 확인합니다.
 
-공통 스킬은 작업 방법, 후크는 실행 시점의 안내·검사·기록을 담당합니다. 목록 표시·정의 조회·선택은 실제 도구 권한·회사 승인·실행 성공을 대신하지 않습니다. 세부 사용법은 화면의 사용자 안내서와 [상세 사용자 안내서](USER_GUIDE.md)를 참고하세요.
+공통 스킬은 작업 방법, 후크는 실행 시점의 안내·검사·기록을 담당합니다. 목록 표시·정의 조회·선택은 실제 도구 권한·회사 승인·실행 성공을 대신하지 않습니다. 세부 사용법은 화면에서도 연결되는 [사용자 안내서](Company-Agent-사용자-안내서.html)를 참고하세요.
 
 저장은 **미리보기 → 명시 확인 → 현재 내용 해시 재확인**으로 진행합니다. 실행 중인 업무가 있으면 개인 기억/지침 변경을 잠시 보류합니다. 응답 시간 초과 때 저장 여부는 미확인으로 안내하며 원래 업무를 자동 재실행하지 않습니다. 외부 편집기의 동시 저장까지 전역 잠금하는 기능은 아닙니다.
 
@@ -61,6 +61,8 @@ Company Agent와 Workspace는 별도 배포 묶음이며 기존 설치·ZIP에 �
 새 ZIP으로 교체할 때도 먼저 기존 앱의 전원 버튼으로 종료하세요. 다른 버전/폴더의 앱이 살아 있으면 구버전을 조용히 재사용하거나 진행 중 업무를 강제 종료하지 않고 안내합니다.
 
 ### 관리자 권한으로 감지되거나 시작할 수 없을 때
+
+`WS-33`으로 중단되면 **별도 Workspace ZIP을 푼 폴더**에서 `Company-Workspace.vbs` 옆의 `Check-Workspace.cmd`를 일반 더블클릭해 읽기 전용 진단을 실행하세요. [결과 읽는 법](WORKSPACE_STARTUP_DIAGNOSTIC.md)을 참고하며, 진단만으로 회사 정책이나 권한이 변경되지는 않습니다.
 
 평소처럼 더블클릭해도 PC의 실행 환경에 따라 관리자 권한으로 시작될 수 있습니다. 실행기는 Windows 사용자 식별자(SID), 로그인 세션, 프로필 경로가 현재 로그인한 본인과 일치하는지 먼저 확인합니다. 다른 계정, SYSTEM, 서비스 세션, 확인할 수 없는 사용자·프로필에서는 시작을 중단합니다. Claude 실행 파일이 발견됐다는 사실만으로 본인의 설정이라고 판단하지 않습니다.
 
@@ -163,13 +165,13 @@ OAuth 만료 등 실제 인증 오류가 발생하면 앱이 소유한 실패 �
 
 ## 검증
 
-왼쪽의 **통합 사용 가이드**와 따라 하기 화면은 `Company-Agent-Guide.html` 한 파일로 연결됩니다. 시작하기·업무별 사용법·기억/스킬/후크·CLI 명령어 안내를 로그인·AI 호출 없이 읽습니다. 첫 예문은 참고 파일 없이 가상 MD를 만들고 다음 요청에서 읽습니다. 안내서 원본들을 수정하면 `scripts/build-manuals.mjs`로 통합본을 생성합니다. `Company-Agent-사용자-안내서.html`도 같은 전체 내용을 담은 독립본이며, 나머지 이전 파일명 3개는 호환 링크입니다. 1.4.24의 설치 ZIP·Workspace ZIP에 독립본을 포함했습니다. 기존 1.4.23 ZIP은 보존하며 자동으로 갱신하지 않습니다.
+왼쪽의 **사용자 안내서**와 따라 하기 화면은 `Company-Agent-사용자-안내서.html` 한 파일로 연결됩니다. 시작하기·업무별 사용법·기억/스킬/후크·CLI 명령어 안내를 로그인·AI 호출 없이 읽습니다. 첫 예문은 참고 파일 없이 가상 MD를 만들고 다음 요청에서 읽습니다. 안내서 Markdown 원본들을 수정하면 `scripts/build-manuals.mjs`로 이 파일을 생성합니다. 별도의 Guide·Handbook·Onboarding·첫 업무 HTML은 배포하지 않습니다. Workspace의 `/manual/guide`는 이 파일을 제공하고, 기존 안내 URL은 명시된 호환 경로만 같은 안내서의 해당 구역으로 연결합니다. 이번 소스 변경은 기존 설치본이나 게시 ZIP을 자동으로 갱신하지 않습니다.
 
-이번 도우미의 실제 구현 범위, 측정값, 남은 사내 확인은 [Workspace 0.3 구현·검증 기록](VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md)을 참고하세요. 사용 안내서와 함께 UI 미리보기 ZIP의 `docs`에도 포함합니다.
+이번 도우미의 실제 구현 범위, 측정값, 남은 사내 확인은 [Workspace 0.3 구현·검증 기록](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_BEGINNER_WORKSPACE_2026-09-19.md)을 참고하세요. 검증 기록은 UI 미리보기 ZIP에 포함하지 않으며 저장소 링크로 별도 열람합니다.
 
-이후 외부 감사에서 지적된 대기·양식 확인·미리보기·조회 및 저장 비용 보완은 [감사 후 수정·검증 기록](VALIDATION_AUDIT_FIXES_2026-09-19.md)에 정리했습니다.
+이후 외부 감사에서 지적된 대기·양식 확인·미리보기·조회 및 저장 비용 보완은 [감사 후 수정·검증 기록](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_AUDIT_FIXES_2026-09-19.md)에 정리했습니다.
 
-종료 경합·스킬 읽음 기록·개인 기억 관련도 등 현재 소스의 후속 수정과 검증 한계는 [2026-09-20 재감사](AUDIT_HARNESS_2026-09-20.md)에 정리했습니다. 소스 검증은 기존 설치본이나 게시 ZIP이 갱신되었다는 뜻이 아닙니다.
+종료 경합·스킬 읽음 기록·개인 기억 관련도 등 현재 소스의 후속 수정과 검증 한계는 [2026-09-20 재감사](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/AUDIT_HARNESS_2026-09-20.md)에 정리했습니다. 소스 검증은 기존 설치본이나 게시 ZIP이 갱신되었다는 뜻이 아닙니다.
 
 ```powershell
 python -X utf8 -m unittest discover -s tests -p test_local_workspace.py -v
@@ -177,13 +179,14 @@ python -X utf8 -m unittest discover -s tests -p test_workspace_close.py -v
 python -X utf8 -m unittest discover -s tests -p test_workspace_companion.py -v
 node --check local_app/web/app.js
 node --check local_app/web/companion.js
-python -X utf8 scripts/build-first-work.py
+# 안내서 생성: 승인된 Node 의존성 경로를 지정
+node scripts/build-manuals.mjs --modules "<승인된 node_modules 경로>"
 # 실제 설치 CLI와 초기화만 확인: 사용자 프롬프트/모델 호출은 보내지 않음
 python -X utf8 scripts/test-lab/check-workspace-transport.py
 # 기존 Company Agent 설치를 그대로 사용하는 별도 미리보기 ZIP 제작
 powershell -NoProfile -File deploy/New-WorkspaceBundle.ps1
 ```
 
-빌더는 `dist/company-workspace-preview-0.9-<생성시각>.zip`을 새로 만들며 기존 ZIP을 덮어쓰지 않습니다. 시작 실행기와 함께 `CompanyWorkspace.Startup.ps1`, `CompanyWorkspace.NormalToken.cs`, `CompanyAgent.UserContext.ps1`을 포함합니다. ZIP 생성과 GitHub 게시·직원 PC 적용은 별도 단계이며, 로컬 제작만으로 공개 Release의 Workspace 0.8이 바뀌지 않습니다.
+빌더는 `dist/company-workspace-preview-0.9-<생성시각>.zip`을 새로 만들며 기존 ZIP을 덮어쓰지 않습니다. 시작 실행기와 함께 `CompanyWorkspace.Startup.ps1`, `CompanyWorkspace.NormalToken.cs`, `CompanyAgent.UserContext.ps1`, 읽기 전용 `Check-Workspace.cmd`·`Check-Workspace.ps1`을 포함합니다. ZIP 생성과 GitHub 게시·직원 PC 적용은 별도 단계이며 과거 Workspace ZIP이나 이미 압축 해제한 폴더를 자동 변경하지 않습니다.
 
 모형 CLI로 프로토콜과 UI를 검증한 결과는 사내 HCP를 대상으로 한 실제 업무 성공 증거가 아닙니다. 사내 확인 시에는 가상 MD 자료 생성, 실제 파일 읽기와 수치 대조, 결과 생성 승인과 파일 검증, 앱 재시작 후 후속 질문을 차례로 확인합니다. 실패 시 설정을 자동 변경하거나 미확인 결과를 성공으로 처리하지 않습니다. 실제 스킬 선택 정책은 기존 Company Agent 하네스가 담당합니다.

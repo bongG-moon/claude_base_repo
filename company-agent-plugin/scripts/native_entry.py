@@ -136,7 +136,11 @@ def main() -> int:
                 from company_agent.skill_workflow import observe
                 from company_agent.paths import user_state_root
                 try:
-                    observe(user_state_root(), cwd, payload)
+                    observation = observe(user_state_root(), cwd, payload)
+                    if observation and observation.get('preparationAdvice'):
+                        target = result.setdefault('hookSpecificOutput', {'hookEventName': 'PostToolUse'})
+                        target['additionalContext'] = '\n'.join(filter(None, [
+                            target.get('additionalContext'), observation['preparationAdvice']]))
                 except Exception:
                     # No fabricated read receipt; a later preflight reports the
                     # missing preparation without turning it into a Stop error.

@@ -102,10 +102,25 @@ body{font-size:16px;line-height:1.7}.report-masthead{max-width:1320px;padding:24
 def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     from .report_styles import CSS as theme_css
     base_css = base_css + '\n' + CSS + '\n' + theme_css + '\n' + data.get('referenceCss', '')
+    has_diagram = any(row.get('diagram') for row in data['sections'])
+    if has_diagram:
+        from . import explanation_diagram, explanation_export
+        base_css += '\n' + explanation_diagram.CSS + '\n' + explanation_export.CSS
+        script += '\n' + explanation_diagram.JS + '\n' + explanation_export.JS
+        script += "\ndocument.body.classList.add('diagram-report-ready');"
+        base_css += '\n.section.has-diagram .section-content{display:block}.section.has-diagram .visual-block{min-width:0}'
+        base_css += '\nbody:not(.diagram-report-ready)[data-view=slides] main>.section{display:block}'
+    google_font = data.get('fontSource') == 'google'
+    font_link = ''
+    if 'fontSource' in data or has_diagram:
+        base_css += '\nbody,button,.explanation-diagram text{font-family:"Noto Sans KR","Malgun Gothic","Segoe UI",sans-serif}'
+    if google_font:
+        font_link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&amp;display=swap">'
     sections = []
     for i, row in enumerate(data["sections"], 1):
         layout = row.get("layout", "dashboard" if row.get("chart") or row.get("kpis") else "table" if row.get("table") else "summary")
-        fragment = f'<section class="section layout-{layout}" id="section-{i}"><span class="page-number">{i:02d} / {len(data["sections"]):02d} · {esc(row.get("eyebrow") or "업무 보고")}</span><h2>{esc(row["title"])}</h2>'
+        diagram_class = ' has-diagram' if row.get('diagram') else ''
+        fragment = f'<section class="section layout-{layout}{diagram_class}" id="section-{i}"><span class="page-number">{i:02d} / {len(data["sections"]):02d} · {esc(row.get("eyebrow") or "업무 보고")}</span><h2>{esc(row["title"])}</h2>'
         if layout == 'cover' and data['style'] in ('immersive-3d','editorial','retro-y2k') and not row.get('image'):
             fragment += '<div class="theme-art" aria-hidden="true"><i></i><i></i><i></i></div>'
         if row.get("takeaway"):
@@ -124,12 +139,20 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
             visuals += table_renderer(row['table']['headers'],row['table']['rows'])
         if row.get('image'):
             im=row['image'];visuals += f'<figure><img src="data:{im["mime"]};base64,{im["data"]}" alt="{esc(im["alt"])}"><figcaption>{esc(im["alt"])}</figcaption></figure>'
+        if row.get('diagram'):
+            visuals += explanation_diagram.render(row['diagram'], i)
+            visuals += explanation_export.controls(i)
         fragment += '<div class="section-content"><div class="copy-block">'+copy+'</div><div class="visual-block">'+visuals+'</div></div>'
         if row.get('source'):
             fragment += f'<p class="section-source">{esc(row["source"])}</p>'
         sections.append(fragment+'</section>')
     digest=base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
     csp=f"default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'sha256-{digest}'; base-uri 'none'; form-action 'none'"
+    if google_font:
+        csp = csp.replace("style-src 'unsafe-inline'", "style-src 'unsafe-inline' https://fonts.googleapis.com") + '; font-src https://fonts.gstatic.com'
+    footer = '인터넷 없이 열리는 업무 보고서 · 원자료와 확인 필요 사항을 함께 검토해 주세요.'
+    if google_font:
+        footer = '본문은 오프라인에서도 열립니다. Google Fonts 연결이 안 되면 PC 글꼴로 표시됩니다.'
     view='slides' if data['mode']=='slides' else 'scroll'
     toggle='<button id="toggle-view" type="button">페이지로 보기</button>' if data['mode']=='both' else ''
-    return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title><style>{base_css}</style></head>'+f'<body data-style="{data["style"]}" data-view="{view}" data-length="{data["length"]}"><header class="report-masthead"><div><div class="report-name">{esc(data["title"])}</div><p class="subtitle">{esc(data["subtitle"])}</p></div><nav aria-label="보고서 보기">{toggle}<button id="print" type="button">인쇄 / PDF 저장</button><span class="slide-controls"><button id="previous" type="button">이전</button> <span id="slide-count" aria-live="polite"></span> <button id="next" type="button">다음</button></span></nav></header><main class="report-main">'+''.join(sections)+'</main><footer>인터넷 없이 열리는 업무 보고서 · 원자료와 확인 필요 사항을 함께 검토해 주세요.</footer><script>'+script+'</script></body></html>')
+    return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title>{font_link}<style>{base_css}</style></head>'+f'<body data-style="{data["style"]}" data-view="{view}" data-length="{data["length"]}"><header class="report-masthead"><div><div class="report-name">{esc(data["title"])}</div><p class="subtitle">{esc(data["subtitle"])}</p></div><nav aria-label="보고서 보기">{toggle}<button id="print" type="button">인쇄 / PDF 저장</button><span class="slide-controls"><button id="previous" type="button">이전</button> <span id="slide-count" aria-live="polite"></span> <button id="next" type="button">다음</button></span></nav></header><main class="report-main">'+''.join(sections)+'</main><footer>'+footer+'</footer><script>'+script+'</script></body></html>')

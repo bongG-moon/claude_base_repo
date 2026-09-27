@@ -5,7 +5,6 @@ from html.parser import HTMLParser
 import json
 from pathlib import Path
 import re
-import runpy
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,8 +44,7 @@ class VisibleText(HTMLParser):
 class GuidePresentationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.pages = [*sorted((ROOT / 'company-agent-plugin/resources/manuals').glob('*.html')),
-                     ROOT / 'company-agent-plugin/resources/first-work.html']
+        cls.pages = sorted((ROOT / 'company-agent-plugin/resources/manuals').glob('*.html'))
         cls.manifest = json.loads((FONT / 'manifest.json').read_text(encoding='utf-8'))
 
     def test_embedded_font_is_small_identical_and_licensed(self):
@@ -79,7 +77,7 @@ class GuidePresentationTests(unittest.TestCase):
                 self.assertFalse({c for c in visible if c.isprintable()} - supported)
 
     def test_tables_keep_headers_and_mobile_labels(self):
-        page = (ROOT / 'docs/Company-Agent-Guide.html').read_text(encoding='utf-8')
+        page = (ROOT / 'docs/Company-Agent-사용자-안내서.html').read_text(encoding='utf-8')
         parser = VisibleText()
         parser.feed(page)
         self.assertGreater(len(parser.cells), 100)
@@ -91,10 +89,10 @@ class GuidePresentationTests(unittest.TestCase):
         self.assertIn('@media print', page)
         self.assertIn('td::before{display:none}', page)
 
-    def test_first_work_rebuild_is_idempotent(self):
-        builder = runpy.run_path(str(ROOT / 'scripts/build-first-work.py'))
-        actual = (ROOT / 'company-agent-plugin/resources/first-work.html').read_text(encoding='utf-8')
-        self.assertEqual(actual, builder['render']())
+    def test_single_reader_is_identical_after_installation(self):
+        self.assertEqual([p.name for p in self.pages], ['Company-Agent-사용자-안내서.html'])
+        self.assertEqual(self.pages[0].read_bytes(), (ROOT/'docs'/self.pages[0].name).read_bytes())
+        self.assertFalse((ROOT/'company-agent-plugin/resources/first-work.html').exists())
 
 
 if __name__ == '__main__':

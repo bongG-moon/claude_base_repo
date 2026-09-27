@@ -78,7 +78,7 @@
     }
     content.append(map,note('범위를 먼저 고른 뒤 기억·지식 또는 업무 구성을 확인하세요. PC에 저장된 자료도 프로젝트 전용일 수 있습니다. 기존 파일·저장소를 자동 이동하거나 합치지 않습니다.'));
     const manuals=el('p');
-    for(const [url,title] of [['/manual/guide','통합 사용 가이드 · 준비물 없이 시작하기']]){const link=el('a',title);link.href=url;link.target='_blank';link.rel='noopener noreferrer';manuals.append(link);}
+    for(const [url,title] of [['/manual/guide','사용자 안내서 · 준비물 없이 시작하기']]){const link=el('a',title);link.href=url;link.target='_blank';link.rel='noopener noreferrer';manuals.append(link);}
     content.append(manuals);
     for(const step of data.course?.steps||[]){
       const c=card(step.title,step.concept);c.append(el('pre',step.prompt),note('확인할 것 · '+step.check));
@@ -188,7 +188,7 @@
     const create=card('스킬·도구 만들기','범위와 할 일을 정하면 요청을 입력창에 넣습니다. 자동 전송·생성하지 않습니다.');
     const scope=storageChoice(create),task=field(create,'재사용할 업무');
     create.append(button('제작 요청을 입력창에 넣기',()=>{if(!scope.value||!task.value.trim())throw new Error('저장 범위와 재사용할 업무를 입력해 주세요.');compose(`${scope.value==='personal'?'개인 전체':'이 프로젝트'} 범위에 저장할 스킬 또는 도구를 만들어줘. 할 일: ${task.value.trim()}. 이미 저장 범위를 선택했으므로 다시 묻지 말고 기존 스킬·도구와 겹치는지 확인해줘. 회사 공통 원본은 변경하지 마. 필요한 기능만 만들고 검증해줘.`);}));content.append(create);
-    const manual=el('a','내 스킬·도구 만들기 실습');manual.href='/manual/guide#onboarding-section-9';manual.target='_blank';manual.rel='noopener noreferrer';content.append(manual);
+    const manual=el('a','사용자 안내서 · 내 스킬·도구 만들기 실습');manual.href='/manual/guide#onboarding-section-9';manual.target='_blank';manual.rel='noopener noreferrer';content.append(manual);
     if(data.harness.brief){content.append(el('h3','이 폴더에만 적용할 업무 지침'));brief();}
   }
   function brief(){

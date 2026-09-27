@@ -1,9 +1,9 @@
 // Commands now live in the unified offline reader, not a second interactive UI.
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
-const html=fs.readFileSync(new URL('../docs/Company-Agent-Guide.html',import.meta.url),'utf8');
-const legacy=fs.readFileSync(new URL('../docs/Claude-Code-필수-사용법.html',import.meta.url),'utf8');
-assert.ok(legacy.includes('Company-Agent-Guide.html#commands'));
+const html=fs.readFileSync(new URL('../docs/Company-Agent-사용자-안내서.html',import.meta.url),'utf8');
+assert.ok(html.includes('id="commands"'));
+assert.ok(!fs.existsSync(new URL('../docs/Claude-Code-필수-사용법.html',import.meta.url)));
 for(const command of ['/context','/compact','/init','/skills','/usage','/permissions','/plan','/copy','/rewind','/company-agent:skills','/company-agent:learning','/company-agent:business-check'])assert.ok(html.includes(command),command);
 for(const key of ['Ctrl+J','Ctrl+O','Ctrl+R','Ctrl+C','Ctrl+D','Ctrl+G','Shift+Tab','Alt+V'])assert.ok(html.includes(key),key);
 assert.ok(html.includes('일반 복사 키로 생각하지 마'));

@@ -137,8 +137,8 @@ extracted corrections, never transcripts or protected source documents.
 
 ## 추가 자료가 필요한 경우
 
-- Getting started: `../../resources/manuals/Company-Agent-Guide.html` or
-  `../../resources/first-work.html`; never preload manuals for routine work.
+- Getting started: `../../resources/manuals/Company-Agent-사용자-안내서.html`;
+  never preload manuals for routine work.
 - Explicit handoff/new-conversation request: `references/handoff.md`.
 - Requested context-size audit: `context audit --project "<absolute path>"`;
   its size hints are not exact model tokens. Do not trim user instructions without

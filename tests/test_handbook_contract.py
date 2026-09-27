@@ -7,14 +7,14 @@ import unittest
 
 ROOT=Path(__file__).resolve().parents[1]
 PLUGIN=ROOT/'company-agent-plugin'
-FILES={'COMPANY_AGENT_HANDBOOK.md':'Company-Agent-Handbook.html',
-       'ONBOARDING_COURSE.md':'Company-Agent-Onboarding.html',
+FILES={'COMPANY_AGENT_HANDBOOK.md':None,
+       'ONBOARDING_COURSE.md':None,
        'USER_GUIDE.md':'Company-Agent-사용자-안내서.html',
-       'CLAUDE_CODE_COMMANDS.md':'Claude-Code-필수-사용법.html',
-       'CLAUDE_CODE_BASICS.md':None}
+       'CLAUDE_CODE_COMMANDS.md':None,
+       'CLAUDE_CODE_BASICS.md':None, 'DESIGN_TERMS.md':None}
 HTMLS=[name for name in FILES.values() if name]
 MARKDOWN=[*FILES, 'README.md']
-GUIDE='Company-Agent-Guide.html'
+GUIDE='Company-Agent-사용자-안내서.html'
 STANDALONE='Company-Agent-사용자-안내서.html'
 
 
@@ -117,33 +117,24 @@ class HandbookTests(unittest.TestCase):
                 self.assertIn("connect-src 'none'",page)
                 self.assertNotRegex(page,r'<(?:script|iframe|object|img)\b')
                 self.assertNotIn('\ufffd',page)
-                if output and output!=STANDALONE:
-                    legacy=(ROOT/'docs'/output).read_text(encoding='utf-8')
-                    self.assertIn('href="'+GUIDE+'#',legacy)
-                    self.assertNotIn('<pre>',legacy)
         ids=re.findall(r'\bid="([^"]+)"',page)
         self.assertEqual(len(ids),len(set(ids)))
         for link in re.findall(r'href="([^"]+)"',page):
             self.assertTrue(link.startswith(('#','https://')),link)
             if link.startswith('#'):
                 self.assertIn(link[1:],ids)
-        for part in ('onboarding','basics','usage','handbook','commands'):
+        for part in ('onboarding','basics','usage','handbook','commands','design'):
             self.assertIn(part,ids)
         self.assertIn('id="onboarding-section-9">8. 개인 스킬',page)
 
     def test_user_guide_is_a_complete_standalone_reader(self):
         canonical=(ROOT/'docs'/GUIDE).read_text(encoding='utf-8')
         page=(ROOT/'docs'/STANDALONE).read_text(encoding='utf-8')
-        # Entire source sections must survive; titles/bookmarks are the only changes.
-        expected=canonical.replace('<title>Company Agent 통합 가이드</title>',
-                                   '<title>Company Agent 사용자 안내서</title>')
-        expected=expected.replace('<h1><span>Company Agent</span> 통합 가이드</h1>',
-                                  '<h1><span>Company Agent</span> 사용자 안내서</h1>')
-        expected=re.sub(r'(<h3 id="usage-section-(\d+)">)',
-                        r'\1<span id="section-\2" aria-hidden="true"></span>',expected)
-        self.assertEqual(expected,page)
-        self.assertEqual(5,len(re.findall(r'<section class="book"',page)))
-        self.assertEqual(43,len(re.findall(r'<h3 id="[\w-]+-section-\d+"',page)))
+        self.assertEqual(canonical,page)
+        self.assertIn('<title>Company Agent 사용자 안내서</title>', page)
+        self.assertEqual(len(FILES),len(re.findall(r'<section class="book"',page)))
+        chapters=sum(len(re.findall(r'^## ',(ROOT/'docs'/source).read_text(encoding='utf-8'),re.M)) for source in FILES)
+        self.assertEqual(chapters,len(re.findall(r'<h3 id="[\w-]+-section-\d+"',page)))
         ids=re.findall(r'\bid="([^"]+)"',page)
         self.assertEqual(len(ids),len(set(ids)))
         for link in re.findall(r'href="([^"]+)"',page):
@@ -165,7 +156,6 @@ class HandbookTests(unittest.TestCase):
             text=(ROOT/'deploy'/builder).read_text(encoding='utf-8')
             for name in [*MARKDOWN,*HTMLS,GUIDE]:
                 self.assertIn(name,text)
-            self.assertIn('AUDIT_HARNESS_2026-09-20.md',text)
             self.assertIn('SKILL_PRIORITY.md',text)
         # Windows PowerShell 5.1 otherwise misreads Korean filenames in source.
         builder=ROOT/'deploy/New-WorkspaceBundle.ps1'
@@ -219,15 +209,14 @@ class HandbookTests(unittest.TestCase):
                         builder.index('$stagePath ='))
 
     def test_onboarding_is_discoverable_without_an_always_on_hook(self):
-        first=(PLUGIN/'resources/first-work.html').read_text(encoding='utf-8')
-        self.assertIn('href="manuals/'+GUIDE+'"',first)
-        self.assertIn('href="manuals/README.md"',first)
+        page=(PLUGIN/'resources/manuals'/GUIDE).read_text(encoding='utf-8')
+        self.assertIn('href="#onboarding-section-2"',page)
+        self.assertFalse((PLUGIN/'resources/first-work.html').exists())
         installer=(ROOT/'deploy/Install-ScopedCompanyAgent.ps1').read_text(encoding='utf-8-sig')
         self.assertIn("resources\\manuals\\"+GUIDE,installer)
-        self.assertIn('resources\\manuals\\README.md',installer)
         self.assertIn('처음이라면 이 파일을 열고',installer)
         self.assertNotIn('onboarding',(PLUGIN/'hooks/hooks.json').read_text(encoding='utf-8').lower())
-        self.assertIn('통합 가이드',(ROOT/'INSTALL_WITH_CLAUDE.md').read_text(encoding='utf-8'))
+        self.assertIn(GUIDE,(ROOT/'INSTALL_WITH_CLAUDE.md').read_text(encoding='utf-8'))
 
     def test_no_materials_course_matches_ui_and_safe_workflow(self):
         course=json.loads((PLUGIN/'resources/onboarding-course.json').read_text(encoding='utf-8'))
@@ -244,7 +233,7 @@ class HandbookTests(unittest.TestCase):
             self.assertIn(phrase,text)
         self.assertNotIn('company-agent:office-reader',text)
         self.assertNotIn('이 범위 읽기 승인',text)
-        self.assertIn(first['prompt'],(PLUGIN/'resources/first-work.html').read_text(encoding='utf-8'))
+        self.assertIn('실습용 가상 자료를 실습_가상자료.md',(PLUGIN/'resources/manuals'/GUIDE).read_text(encoding='utf-8'))
 
     def test_beginner_copy_is_plain_and_excludes_internal_delivery_notes(self):
         page=(ROOT/'docs'/GUIDE).read_text(encoding='utf-8')
@@ -253,7 +242,7 @@ class HandbookTests(unittest.TestCase):
         for phrase in ('실습_가상자료.md','실습_가상실적.pptx','회사 공통','개인 전체','이 프로젝트'):
             self.assertIn(phrase,page)
         for file in [*(ROOT/'docs'/name for name in [*MARKDOWN,*HTMLS,GUIDE]),
-                     PLUGIN/'resources/first-work.html', PLUGIN/'resources/onboarding-course.json']:
+                     PLUGIN/'resources/onboarding-course.json']:
             text=file.read_text(encoding='utf-8')
             for phrase in ('온보딩','내 하네스에서 여는 곳','수정용 원본:',
                            '담당자용 소스 문서','이 원본은 업무 예문만 관리',
@@ -271,6 +260,18 @@ class HandbookTests(unittest.TestCase):
             for file in folder.glob('*'):
                 if file.suffix in ('.py','.json'):
                     self.assertNotIn(GUIDE,file.read_text(encoding='utf-8'),str(file))
+
+    def test_duplicate_readers_and_generators_are_removed(self):
+        retired=('Company-Agent-Guide.html','Company-Agent-Handbook.html',
+                 'Company-Agent-Onboarding.html','Claude-Code-필수-사용법.html')
+        for folder in (ROOT/'docs', PLUGIN/'resources/manuals'):
+            for name in retired:
+                self.assertFalse((folder/name).exists(), str(folder/name))
+        self.assertFalse((ROOT/'scripts/build-first-work.py').exists())
+        generator=(ROOT/'scripts/build-manuals.mjs').read_text(encoding='utf-8')
+        self.assertIn("const output='"+GUIDE+"'",generator)
+        self.assertNotIn('emit(standaloneOutput',generator)
+        self.assertNotIn('emit(b.legacy',generator)
 
     def test_removed_screen_control_is_not_shipped_or_advertised(self):
         for name in ('local_app/computer_use.py', 'docs/CUA_DRIVER_PILOT.md',

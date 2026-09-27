@@ -1,24 +1,25 @@
 # Company Agent 안내서
 
-처음이라면 **[시작하기](ONBOARDING_COURSE.md)**의 가상 자료 실습 하나만 해보세요. 회사 자료나 참고 PPT를 준비하지 않아도 됩니다.
+**[Company Agent 사용자 안내서 열기](Company-Agent-사용자-안내서.html)** — 아래 내용을 한 파일에서 모두 볼 수 있습니다. 처음이라면 안내서의 시작하기에서 가상 자료 실습 하나만 해보세요. 회사 자료나 참고 PPT를 준비하지 않아도 됩니다.
 
-| 궁금한 것 | 읽을 문서 |
+| 궁금한 것 | 안내서에서 바로 보기 |
 | --- | --- |
-| 처음부터 따라 해보고 싶어요 | [시작하기](ONBOARDING_COURSE.md) — 가상 자료, 보고서, 기억 비교, 개인 스킬·도구 실습 |
-| Claude Code가 무엇이고 어떻게 쓰나요? | [Claude Code 기본 사용법](CLAUDE_CODE_BASICS.md) — 작업 폴더, 대화, 승인, 파일, 기억, 완료 확인 |
-| 바로 쓸 요청 예문이 필요해요 | [업무별 사용법](USER_GUIDE.md) — 문서 읽기, HTML·PPT, 회의, 메일 초안, 파일 정리 |
-| 우리 하네스에는 무엇이 들어 있나요? | [하네스 이해하기](COMPANY_AGENT_HANDBOOK.md) — 회사 공통·개인 전체·이 프로젝트, 스킬·후크·자동 학습 |
-| 명령어와 키를 찾아보고 싶어요 | [Claude Code 명령어·단축키](CLAUDE_CODE_COMMANDS.md) — 입력, 중단, 계획, 압축, 이어가기 |
+| 처음부터 따라 해보고 싶어요 | [시작하기](Company-Agent-사용자-안내서.html#onboarding) |
+| Claude Code가 무엇이고 어떻게 쓰나요? | [Claude Code 기본 사용법](Company-Agent-사용자-안내서.html#basics) |
+| 바로 쓸 요청 예문이 필요해요 | [업무별 사용법](Company-Agent-사용자-안내서.html#usage) |
+| 우리 하네스에는 무엇이 들어 있나요? | [하네스 이해하기](Company-Agent-사용자-안내서.html#handbook) |
+| 명령어와 키를 찾아보고 싶어요 | [Claude Code 명령어·단축키](Company-Agent-사용자-안내서.html#commands) |
+| 원하는 디자인을 어떻게 설명하나요? | [디자인 용어 참고](Company-Agent-사용자-안내서.html#design) |
 
 ## 저장 위치와 자동 동작부터 확인하기
 
-- **어디에 저장되나요?** [하네스 이해하기](COMPANY_AGENT_HANDBOOK.md)의 저장 범위 설명에서 회사 공통 / 개인 전체 / 이 프로젝트를 비교하세요. Claude 자체 기억은 Company Agent 기억과 별개입니다.
+- **어디에 저장되나요?** [하네스 이해하기](Company-Agent-사용자-안내서.html#handbook)의 저장 범위 설명에서 회사 공통 / 개인 전체 / 이 프로젝트를 비교하세요. Claude 자체 기억은 Company Agent 기억과 별개입니다.
 - **어떤 기능이 기본으로 동작하나요?** 같은 안내서의 기본 스킬 목록과 후크 표에서 기능, 동작 시점, 실행하지 않는 일을 확인하세요. 설치된 모든 스킬을 매 요청마다 실행하는 것은 아닙니다.
 - **무엇을 자동으로 배우나요?** 같은 안내서의 자동 학습 설명에서 기존 개인 선호·절차의 개선과 새 스킬 생성을 구분하세요. 새 스킬 생성은 별도 요청이나 동의가 필요하며, 회사 공통 원본을 개인 학습으로 바꾸지는 않습니다.
 
 ## 읽는 방법
 
-`.md`는 글로 된 안내서입니다. 메모장으로 읽거나 VS Code의 Markdown 미리보기로 표와 예문을 볼 수 있습니다. 브라우저 화면이 편하면 **[통합 HTML 가이드](Company-Agent-Guide.html)**를 여세요. 필요한 문서만 골라 읽으면 됩니다.
+사용자는 위 HTML만 열면 됩니다. 글 형식이 필요할 때는 같은 내용의 Markdown을 사용할 수 있습니다: [시작하기](ONBOARDING_COURSE.md), [기본 사용법](CLAUDE_CODE_BASICS.md), [업무 예문](USER_GUIDE.md), [하네스](COMPANY_AGENT_HANDBOOK.md), [명령어](CLAUDE_CODE_COMMANDS.md), [디자인 용어](DESIGN_TERMS.md).
 
 AI에게 물어볼 때는 해당 문서만 첨부하고 궁금한 부분을 지정하세요. 안내서 전체를 `CLAUDE.md`나 기억에 복사해 넣을 필요는 없습니다.
 

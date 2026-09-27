@@ -178,18 +178,16 @@ class TestLab(unittest.TestCase):
         self.assertIn("미실행", source)
         self.assertIn("connect-src 'none'", source)
 
-    def test_first_work_is_optional_offline_and_links_to_existing_lab(self):
-        source = (REPO / 'company-agent-plugin/resources/first-work.html').read_text(encoding='utf-8')
-        self.assertEqual(7, source.count('data-copy='))
+    def test_single_user_guide_is_optional_offline_and_linked_to_lab(self):
+        source = (REPO / 'docs/Company-Agent-사용자-안내서.html').read_text(encoding='utf-8')
+        self.assertIn('id="onboarding"', source)
         self.assertIn("connect-src 'none'", source)
-        # Embedded font license comments contain attribution URLs, not requests.
-        runtime_source = re.sub(r'<!--.*?-->', '', source, flags=re.S)
-        for forbidden in ('https://', 'fetch(', 'localStorage', 'XMLHttpRequest'):
-            self.assertNotIn(forbidden, runtime_source)
-        self.assertIn('복사한 예문을 대화창에 붙여 넣고 직접 보내야 업무가 시작됩니다.', source)
-        self.assertIn('아직 실행한 것은 아닙니다.', source)
-        self.assertIn('동의할 때만', source)
-        self.assertIn('00_FIRST_WORK.html', (builder.TEMPLATES / 'dashboard.html').read_text(encoding='utf-8'))
+        self.assertNotRegex(source, r'<(?:script|iframe|img|link)\b')
+        self.assertIn('실습_가상자료.md', source)
+        self.assertIn('개인 전체', source)
+        dashboard = (builder.TEMPLATES / 'dashboard.html').read_text(encoding='utf-8')
+        self.assertIn('Company-Agent-사용자-안내서.html#onboarding', dashboard)
+        self.assertNotIn('00_FIRST_WORK.html', dashboard)
 
 
 if __name__ == "__main__":

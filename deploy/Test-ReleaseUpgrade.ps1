@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)][string] $BundleZip,
     [Parameter(Mandatory = $true)][string] $UpdateBundleZip,
@@ -106,15 +106,23 @@ try {
         'scripts\company_agent\resource_scope.py', 'scripts\company_agent\harness_map.py',
         'scripts\company_agent\harness_map_html.py',
         'scripts\company_agent\company_policy.py', 'scripts\company_agent\skill_decision.py',
+        'scripts\company_agent\skill_host_choice.py',
+        'scripts\company_agent\explanation_diagram.py', 'scripts\company_agent\explanation_export.py',
+        'templates\business\explanation.spec.json',
+        'skills\html-report\references\explanation-diagrams.md',
+        'skills\presentation\references\image-review.md',
         'scripts\company_agent\workflow_evidence.py', 'scripts\company_agent\state.py',
         'scripts\company_agent\learning.py', 'scripts\company_agent\work.py',
         'scripts\company_agent\skill_task_context.py', 'skills\self-learning\SKILL.md',
         'scripts\company_agent\html_reference.py', 'scripts\company_agent\knowledge.py',
         'scripts\Invoke-CompanyAgent.ps1', 'scripts\Confirm-BusinessAction.ps1',
         'skills\html-report\SKILL.md',
-        'resources\first-work.html', 'resources\onboarding-course.json',
-        'resources\manuals\Company-Agent-Handbook.html', 'resources\manuals\Company-Agent-Onboarding.html',
-        'resources\manuals\Company-Agent-Guide.html',
+        'resources\onboarding-course.json',
+        'resources\manuals\Company-Agent-사용자-안내서.html',
+        'resources\manuals\README.md', 'resources\manuals\CLAUDE_CODE_BASICS.md',
+        'resources\manuals\ONBOARDING_COURSE.md', 'resources\manuals\USER_GUIDE.md',
+        'resources\manuals\COMPANY_AGENT_HANDBOOK.md', 'resources\manuals\CLAUDE_CODE_COMMANDS.md',
+        'resources\manuals\DESIGN_TERMS.md',
         'scripts\company_agent\project_bootstrap.py',
         'scripts\company_agent\artifact_delivery.py', 'scripts\company_agent\ppt_html.py',
         'scripts\company_agent\ppt_html_import.py', 'scripts\company_agent\ppt_dom_capture.js',
@@ -125,11 +133,14 @@ try {
         $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
         Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedModule -Algorithm SHA256).Hash) "Updated file was not installed intact: $relative"
     }
-    foreach ($removed in @('skills\office-reader', 'scripts\Read-CompanyOffice.py', 'scripts\Read-CompanyExcel.py',
+    foreach ($removed in @('resources\first-work.html', 'resources\manuals\Company-Agent-Guide.html',
+        'resources\manuals\Company-Agent-Handbook.html', 'resources\manuals\Company-Agent-Onboarding.html',
+        'resources\manuals\Claude-Code-필수-사용법.html',
+        'skills\office-reader', 'scripts\Read-CompanyOffice.py', 'scripts\Read-CompanyExcel.py',
         'scripts\company_agent\office_reader.py', 'scripts\company_agent\office_consent.py',
         'scripts\company_agent\office_progress.py', 'scripts\company_agent\office_pywin32.py',
         'scripts\company_agent\office_structure.py', 'scripts\company_agent\excel_xlwings.py')) {
-        Assert-ReleaseUpgrade (-not (Test-Path -LiteralPath (Join-Path $current[0].installPath $removed))) "Removed reader still exists in the active plugin: $removed"
+        Assert-ReleaseUpgrade (-not (Test-Path -LiteralPath (Join-Path $current[0].installPath $removed))) "Removed legacy material still exists in the active plugin: $removed"
     }
     $debugFile = Join-Path $testRoot 'updated-init.log'
     Push-Location -LiteralPath $project

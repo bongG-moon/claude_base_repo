@@ -14,7 +14,6 @@ To refresh, use an approved Noto Sans KR TTF on the build PC:
 ```powershell
 python -X utf8 scripts/build-manual-font.py --font "<approved Noto Sans KR TTF>"
 node scripts/build-manuals.mjs --modules "<approved node_modules>"
-python -X utf8 scripts/build-first-work.py
 ```
 
 The full source font stays on the build PC. Employees receive the embedded subset
@@ -32,5 +31,5 @@ subset uses the official Google Fonts **Version 2.004-H2** at commit
 
 The builder checks typographic family ID 16 (or legacy family ID 1). This release
 uses `Noto Sans KR Thin` in ID 1 and `Noto Sans KR` in ID 16; that does not change
-the requested 400–700 weight range. After any font or text change, rebuild both
-manuals and first-work, then run glyph-coverage and browser presentation checks.
+the requested 400–700 weight range. After any font or text change, rebuild the
+single user manual, then run glyph-coverage and browser presentation checks.

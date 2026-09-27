@@ -243,6 +243,39 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         root = Path(self.record['userStateRoot'])
         self.assertEqual('html-report', load_session(self.payload['session_id'], root)['skillWorkflow']['selected']['name'])
 
+    def test_host_skill_choice_reaches_native_output_without_changing_policy(self):
+        self.hook('UserPromptSubmit', prompt='HTML 보고서 만들어줘')
+        loaded = self.hook('PostToolUse', tool_name='Skill',
+                          tool_input={'skill': 'artifact-design'}, tool_response={'success': True})
+        self.assertIn('[스킬 선택]', loaded['hookSpecificOutput']['additionalContext'])
+        self.assertIn('artifact-design', loaded['hookSpecificOutput']['additionalContext'])
+        question = '이번 보고서는 어떤 스킬로 만들까요?'
+        self.hook('PostToolUse', tool_name='AskUserQuestion', tool_input={'questions': [
+            {'question': question, 'options': [
+                {'label': 'artifact-design', 'description': '현재 세션 스킬'},
+                {'label': 'company-agent:html-report', 'description': '회사 제작 스킬'}]}]},
+            tool_response={'answers': {question: 'artifact-design'}})
+        self.assertEqual({}, self.hook('PreToolUse', tool_name='Write',
+                                      tool_input={'file_path': str(self.project / 'report.html')}))
+        denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query',
+                           tool_input={'query': 'DELETE FROM employees'})
+        self.assertEqual('deny', denied['hookSpecificOutput']['permissionDecision'])
+        self.assertNotIn('[스킬 선택]', denied['hookSpecificOutput']['permissionDecisionReason'])
+        root = Path(self.record['userStateRoot'])
+        self.assertEqual({}, load_session(self.payload['session_id'], root)['skillWorkflow']['readSkills'])
+
+    def test_skill_hook_checks_known_competitors_before_body_load(self):
+        import re
+        hooks = json.loads((native.PLUGIN / 'hooks/hooks.json').read_text(encoding='utf-8'))
+        self.assertTrue(any(re.fullmatch(entry['matcher'], 'Skill') for entry in hooks['hooks']['PreToolUse']))
+        custom = self.project / '.claude/skills/artifact-design/SKILL.md'
+        atomic_write_text(custom, '---\nname: artifact-design\ndescription: HTML 및 PPT 보고서 제작\n---\n절차\n')
+        self.hook('UserPromptSubmit', prompt='HTML 보고서 만들어줘')
+        for invocation in ('artifact-design', 'company-agent:html-report'):
+            result = self.hook('PreToolUse', tool_name='Skill', tool_input={'skill': invocation})
+            self.assertEqual('deny', result['hookSpecificOutput']['permissionDecision'])
+            self.assertIn('[스킬 선택]', result['hookSpecificOutput']['permissionDecisionReason'])
+
     def test_html_answer_turn_does_not_deadlock_and_choices_execute(self):
         self.hook("SessionStart", source="startup")
         result = self.hook("UserPromptSubmit", prompt="HTML 보고서를 만들어줘")

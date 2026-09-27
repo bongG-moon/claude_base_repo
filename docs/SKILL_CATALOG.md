@@ -2,7 +2,7 @@
 
 현재 소스의 흐름은 **실제 목록 비교 → 관련 본문 로드 → 실행, 관련 스킬이 없으면 일반 실행**입니다. 목록·후보 전달과 실제 Read/Skill 본문 로드는 구분하며, 본문 전달만으로 선택 완료를 기록하지 않습니다.
 
-배포판 [1.4.19](UPDATE_1.4.19.md)에는 2026-09-20 감사에서 보완한 부모·자식 대화 기록 분리도 포함합니다. **기존 Release ZIP이나 설치된 PC는 자동 갱신되지 않습니다.** 최신 재현·검증과 한계는 [하네스 감사 기록](AUDIT_HARNESS_2026-09-20.md), 이전 개선의 배경은 [목록 활용 보완 기록](SKILL_LIST_REVIEW_2026-09-17.md)을 참고하세요.
+배포판 [1.4.19](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/UPDATE_1.4.19.md)에는 2026-09-20 감사에서 보완한 부모·자식 대화 기록 분리도 포함합니다. **기존 Release ZIP이나 설치된 PC는 자동 갱신되지 않습니다.** 최신 재현·검증과 한계는 [하네스 감사 기록](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/AUDIT_HARNESS_2026-09-20.md), 이전 개선의 배경은 [목록 활용 보완 기록](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/SKILL_LIST_REVIEW_2026-09-17.md)을 참고하세요.
 
 ## 사용자에게 달라지는 점
 
@@ -92,9 +92,9 @@ MD는 자동 생성 자료입니다. 수동 편집은 다음 검사에서 덮어
 
 ## 검증 방법
 
-1.4.19에 포함한 부모·자식 기록 분리 회귀와 감사 당시 전체 검사 범위는 [2026-09-20 감사 기록](AUDIT_HARNESS_2026-09-20.md)에 있습니다. 로컬 합성 검사와 실제 사내 모델의 스킬 적용 성공을 구분합니다.
+1.4.19에 포함한 부모·자식 기록 분리 회귀와 감사 당시 전체 검사 범위는 [2026-09-20 감사 기록](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/AUDIT_HARNESS_2026-09-20.md)에 있습니다. 로컬 합성 검사와 실제 사내 모델의 스킬 적용 성공을 구분합니다.
 
-아래는 과거 검증 이력입니다. 2026-09-15 소스 개선의 결과는 [스킬 선택 연결 검증 기록](SKILL_ROUTING_VALIDATION_2026-09-15.md)에 있습니다.
+아래는 과거 검증 이력입니다. 2026-09-15 소스 개선의 결과는 [스킬 선택 연결 검증 기록](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/SKILL_ROUTING_VALIDATION_2026-09-15.md)에 있습니다.
 당시 전체 자동 검사 **610개 통과·제외 0개**. 실제 Claude의 선택 교정과 프로젝트 스킬 적용도 확인했으며,
 사내 문서 읽기·모든 안내의 무출력까지 검증한 것으로 해석하지 않습니다.
 

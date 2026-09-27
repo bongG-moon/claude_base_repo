@@ -448,13 +448,26 @@ class CompanionTests(unittest.TestCase):
         self.assertEqual(self.companion.records(self.item['workspace'])['outcomes'],[])
         self.assertEqual(original.read_text(encoding='utf-8'),'개인 기억 그대로')
 
-    def test_offline_course_matches_shared_source_and_is_idempotent(self):
-        import runpy
-        builder=runpy.run_path(str(ROOT/'scripts/build-first-work.py'))
-        self.assertEqual(builder['render'](),(ROOT/'company-agent-plugin/resources/first-work.html').read_text(encoding='utf-8'))
-        import html
-        for step in course()['steps']:
-            self.assertIn(html.escape(step['prompt']),builder['render']())
+    def test_canonical_guide_and_shared_course_preserve_beginner_workflow(self):
+        source = ROOT / 'company-agent-plugin/resources/onboarding-course.json'
+        expected = json.loads(source.read_text(encoding='utf-8'))
+        with patch.object(self.companion.client, 'call', side_effect=AssertionError('no model call')):
+            self.assertEqual(expected, course())
+            self.assertEqual(expected, self.companion.snapshot(self.item, 'guide')['course'])
+        self.assertEqual(['read', 'report', 'revise', 'remember', 'reuse'], [step['id'] for step in expected['steps']])
+        for step in expected['steps']:
+            for field in ('prompt', 'concept', 'check', 'recovery'):
+                self.assertTrue(step[field].strip(), (step['id'], field))
+        self.assertIn('실습_가상자료.md', expected['steps'][0]['prompt'])
+        self.assertIn('alternativePrompt', expected['steps'][0])
+        canonical = (ROOT / 'docs/Company-Agent-사용자-안내서.html').read_bytes()
+        self.assertEqual(canonical, (ROOT / 'company-agent-plugin/resources/manuals/Company-Agent-사용자-안내서.html').read_bytes())
+        page = canonical.decode('utf-8')
+        for section in ('onboarding', 'basics', 'usage', 'handbook', 'commands'):
+            self.assertIn('id="' + section + '"', page)
+        self.assertIn('실습_가상자료.md', page)
+        self.assertIn('사용자 안내서', page)
+        self.assertNotIn('<script', page.lower())
 
     def test_pending_plan_bound_to_session_and_immutable_duplicate_apply(self):
         from unittest.mock import Mock
