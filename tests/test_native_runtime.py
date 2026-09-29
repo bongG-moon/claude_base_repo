@@ -616,11 +616,16 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         self.assertEqual(0, milestone.returncode, milestone.stderr)
         stopped = self.run_wrapper(["-Mode", "Hook", "-Event", "Stop"], payload)
         self.assertEqual("block", json.loads(stopped.stdout)["decision"])
-        self.assertIn("업무 마무리", json.loads(stopped.stdout)["reason"])
+        reason = json.loads(stopped.stdout)["reason"]
+        self.assertIn("company-agent:self-learning", reason)
         self.assertIn("completionGuide", context)
         self.assertTrue(Path(context["completionGuide"]).is_file())
-        self.assertNotIn("learning review", json.loads(stopped.stdout)["reason"])
-        self.assertLessEqual(len(json.loads(stopped.stdout)["reason"]), 100)
+        self.assertIn("learning review", reason)
+        self.assertIn(session, reason)
+        self.assertIn(state["turnId"], reason)
+        self.assertIn(self.record["userStateRoot"], reason)
+        self.assertIn("--state-root", reason)
+        self.assertLessEqual(len(reason), 2400)
         turn_id = state["turnId"]
         spec_path = Path(self.record["userStateRoot"]) / "tmp" / f"learning-review-{turn_id}.json"
         atomic_write_json(spec_path, {"schemaVersion": 1, "taskType": "native-file-test", "outcome": "success",

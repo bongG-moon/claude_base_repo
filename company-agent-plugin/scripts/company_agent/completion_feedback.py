@@ -1,8 +1,8 @@
-"""Keep native Stop notices short without changing the completion gate.
+"""Localize Stop notices without discarding the model's next action.
 
-The state engine retains the detailed decision and its bounded retry semantics.
-Only the CLI-facing explanation is projected here. The full execution contract
-lives in an on-demand, packaged reference, never in a user-visible command dump.
+The reason is execution feedback, not just a UI label. The state engine emits
+a bounded, self-contained instruction; replacing it with a progress message
+would make the model rediscover the current session, command and guide.
 """
 from __future__ import annotations
 
@@ -25,14 +25,6 @@ def present_stop_feedback(result: dict[str, Any]) -> dict[str, Any]:
         for original, translated in translations.items():
             message = message.replace(original, translated)
         result = {**result, "systemMessage": message}
-    if result.get("decision") != "block":
-        return result
-    detail = str(result.get("reason") or "")
-    if "company-agent:self-learning" in detail:
-        summary = "업무 마무리 내용을 정리하고 있습니다."
-    else:
-        summary = "결과물을 확인하고 있습니다."
-    return {
-        **result,
-        "reason": summary + " 완료 확인 지침에 따라 처리한 뒤 요청하신 결과만 전달하세요.",
-    }
+    # Do not truncate commands or remove context from either verification or
+    # learning feedback. This layer must not claim a check is already running.
+    return result

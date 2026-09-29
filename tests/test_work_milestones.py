@@ -190,6 +190,7 @@ class WorkMilestoneTests(unittest.TestCase):
         turn = self.begin()
         self.activity("Write", file_path="artifact.md")
         self.stop()
+        self.activity("Edit", file_path="artifact.md")
         self.stop()
         self.mark(turn, "cancelled")
         next_turn = self.begin()
@@ -197,13 +198,15 @@ class WorkMilestoneTests(unittest.TestCase):
         state = load_session(self.session, self.root)
         self.assertEqual(0, state["mutationCount"])
         self.assertEqual("unverified", state["unresolvedChanges"][0]["verificationStatus"])
-        self.assertEqual(1, state["unresolvedChanges"][0]["mutationCount"])
+        self.assertEqual(2, state["unresolvedChanges"][0]["mutationCount"])
+        self.assertEqual("bounded_attempts_exhausted_not_resolved", state["unresolvedChanges"][0]["reason"])
 
     def test_completed_exhausted_work_boundary_survives_next_turn_and_can_be_resolved(self):
         from company_agent.work import resolve_unfinished
         turn = self.begin()
         self.activity("Write", file_path="artifact.md")
         self.stop()
+        self.activity("Edit", file_path="artifact.md")
         self.stop()
         old_id = self.mark(turn, "complete")["workId"]
         next_turn = self.begin()
@@ -214,6 +217,82 @@ class WorkMilestoneTests(unittest.TestCase):
         resolved = resolve_unfinished(self.root, self.session, next_turn, old_id)
         self.assertEqual(0, resolved["unresolvedWorkCount"])
         state = load_session(self.session, self.root)
+        self.assertEqual(old_id, state["resolvedChanges"][0]["workId"])
+        self.assertEqual("unverified", state["resolvedChanges"][0]["verificationStatus"])
+
+    def test_no_progress_requires_explicit_closure_and_preserves_prior_changes(self):
+        turn = self.begin()
+        self.activity("Write", file_path="artifact.md")
+        self.assertEqual("block", self.stop()["decision"])
+        self.activity("Read", file_path=".claude/settings.local.json")
+        self.assertNotIn("decision", self.stop())
+        state = load_session(self.session, self.root)
+        self.assertEqual("active", state["work"]["status"])
+        self.assertEqual("no-progress", state["verificationStopReason"])
+        self.assertEqual(1, state["stopRetryCount"])
+        with self.assertRaises(ValueError):
+            self.mark(turn, "active", new=True)
+        old_id = self.mark(turn, "cancelled")["workId"]
+        next_turn = self.begin()
+        self.assertEqual("no-progress", load_session(self.session, self.root)["verificationStopReason"])
+        self.mark(next_turn, "active", new=True)
+        state = load_session(self.session, self.root)
+        self.assertEqual(0, state["mutationCount"])
+        self.assertIsNone(state["verification"])
+        self.assertIsNone(state["verificationStopReason"])
+        self.assertEqual({"workId": old_id, "mutationCount": 1, "verificationStatus": "unverified",
+                          "reason": "no_progress_not_resolved"}, state["unresolvedChanges"][0])
+
+    def test_no_progress_cannot_discard_pending_feedback_on_new_work(self):
+        turn = self.begin()
+        self.mark(turn, "active", spec=self.spec())
+        self.activity("Write", file_path="artifact.md")
+        self.stop()
+        self.stop()
+        self.mark(turn, "complete")
+        with self.assertRaises(ValueError):
+            self.mark(turn, "active", new=True)
+        state = load_session(self.session, self.root)
+        self.assertEqual(1, len(state["work"]["pending"]))
+        self.assertEqual(1, state["mutationCount"])
+        self.assertEqual(0, state["learningAttempts"])
+
+    def test_progress_invalidates_no_progress_marker(self):
+        for progress in ("mutation", "verification"):
+            with self.subTest(progress=progress):
+                self.temp.cleanup()
+                self.temp = tempfile.TemporaryDirectory()
+                self.addCleanup(self.temp.cleanup)
+                self.root = Path(self.temp.name) / "state"
+                turn = self.begin()
+                self.activity("Write", file_path="artifact.md")
+                self.stop()
+                self.stop()
+                self.mark(turn, "complete")
+                if progress == "mutation":
+                    self.activity("Edit", file_path="artifact.md")
+                else:
+                    mark_verified(self.session, "fail", "new check failed", self.root)
+                self.assertIsNone(load_session(self.session, self.root)["verificationStopReason"])
+                self.mark(turn, "complete")
+                with self.assertRaises(ValueError):
+                    self.mark(turn, "active", new=True)
+
+    def test_completed_no_progress_boundary_can_be_resolved_after_new_turn(self):
+        from company_agent.work import resolve_unfinished
+        turn = self.begin()
+        self.activity("Write", file_path="artifact.md")
+        self.stop()
+        self.stop()
+        old_id = self.mark(turn, "complete")["workId"]
+        next_turn = self.begin()
+        self.mark(next_turn, "active", new=True)
+        with self.assertRaises(ValueError):
+            resolve_unfinished(self.root, self.session, next_turn, old_id)
+        mark_verified(self.session, "pass", "actual prior work inspected and repaired", self.root)
+        resolve_unfinished(self.root, self.session, next_turn, old_id)
+        state = load_session(self.session, self.root)
+        self.assertEqual([], state["unresolvedChanges"])
         self.assertEqual(old_id, state["resolvedChanges"][0]["workId"])
         self.assertEqual("unverified", state["resolvedChanges"][0]["verificationStatus"])
 

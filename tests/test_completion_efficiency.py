@@ -1,6 +1,7 @@
 """Read-only preparation must not manufacture a verification continuation."""
 from pathlib import Path
 import sys
+import shlex
 import tempfile
 import unittest
 
@@ -85,6 +86,72 @@ class CompletionEfficiencyTests(unittest.TestCase):
         self.assertEqual(1, state["mutationCount"])
         self.assertIsNone(state["verification"])
         self.assertEqual("block", stop_decision({"session_id": "efficiency"}, self.root)["decision"])
+
+    def test_settings_and_hook_lookup_do_not_count_as_corrective_progress(self):
+        self.activity("python task.py")
+        self.assertEqual("block", stop_decision({"session_id": "efficiency"}, self.root)["decision"])
+        record_activity({"session_id": "efficiency", "tool_name": "Read",
+                         "tool_input": {"file_path": ".claude/settings.local.json"}}, self.root)
+        record_activity({"session_id": "efficiency", "tool_name": "Glob",
+                         "tool_input": {"pattern": "**/hooks/*"}}, self.root)
+        self.activity(r'ls ~/.claude/hooks 2>/dev/null; cat ~/.claude/settings.json 2>/dev/null; cat "C:\Users\2069026\Desktop\하네스_테스트.claude\hooks"/* 2>/dev/null | head -80')
+        state = load_session("efficiency", self.root)
+        self.assertEqual(1, state["mutationCount"])
+        self.assertGreater(state["activityCount"], 1)
+        for payload in ({"session_id": "efficiency", "stop_hook_active": True},
+                        {"session_id": "efficiency"}):
+            self.assertNotIn("decision", stop_decision(payload, self.root))
+        state = load_session("efficiency", self.root)
+        self.assertEqual(1, state["stopRetryCount"])
+        self.assertIsNone(state["verification"])
+
+    def test_reading_with_null_stderr_never_grants_permission_or_hides_writes(self):
+        readonly = ('cat file.txt 2>/dev/null', 'cat *.md 2>/dev/null | head -80',
+                    'pwd; ls -la 2>/dev/null; cat file.txt | head -n 20')
+        for command in readonly:
+            with self.subTest(command=command):
+                self.assertEqual(0, self.activity(command)["mutationCount"])
+                self.assertIsNone(safe_permission({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                    "tool_input": {"command": command}}, self.root))
+        for command in ('cat file.txt > output.txt', 'cat file.txt 2>errors.txt',
+                        'cat file.txt 2>>/dev/null', 'cat file.txt 2>/dev/null; rm file.txt',
+                        'cat $(python task.py) 2>/dev/null', 'cat `python task.py` 2>/dev/null',
+                        'cat file.txt 2>/dev/null | python task.py', 'cat file.txt 2>/dev/null | tee output.txt'):
+            with self.subTest(command=command):
+                before = load_session("efficiency", self.root)["mutationCount"]
+                self.assertEqual(before + 1, self.activity(command)["mutationCount"])
+        state = record_activity({"session_id": "efficiency", "tool_name": "PowerShell",
+            "tool_input": {"command": "cat file.txt 2>/dev/null"}}, self.root)
+        self.assertEqual(before + 2, state["mutationCount"])
+
+    def test_real_result_changes_allow_remaining_bounded_correction(self):
+        self.activity("python task.py")
+        self.assertEqual("block", stop_decision({"session_id": "efficiency"}, self.root)["decision"])
+        record_activity({"session_id": "efficiency", "tool_name": "Edit"}, self.root)
+        self.assertEqual("block", stop_decision({"session_id": "efficiency", "stop_hook_active": True}, self.root)["decision"])
+        record_activity({"session_id": "efficiency", "tool_name": "Edit"}, self.root)
+        self.assertNotIn("decision", stop_decision({"session_id": "efficiency", "stop_hook_active": True}, self.root))
+        self.assertEqual(2, load_session("efficiency", self.root)["stopRetryCount"])
+
+    def test_completion_instruction_is_self_contained_and_distinguishes_missing_receipt(self):
+        from company_agent.native_runtime import cli_command
+        self.activity("python task.py")
+        first = stop_decision({"session_id": "efficiency"}, self.root)["reason"]
+        prefix = cli_command(SCRIPTS.parent)
+        self.assertIn(prefix + " session verify", first)
+        self.assertIn("--state-root " + shlex.quote(str(self.root)), first)
+        self.assertIn('--session "efficiency"', first)
+        self.assertIn("기록이 아직 없습니다", first)
+        self.assertIn("이미 수행한 검사 근거는 재사용", first)
+        self.assertIn("최신 변경 뒤 실제 검사에 성공했을 때만", first)
+        self.assertIn("설정·후크·환경변수·세션을 재탐색하지", first)
+        for status in ("pass", "fail", "partial", "unavailable"):
+            self.assertIn("--status " + status, first)
+        self.assertLess(len(first), len(prefix) + len(str(self.root)) + 900)
+        mark_verified("efficiency", "fail", "actual failed check", self.root)
+        second = stop_decision({"session_id": "efficiency", "stop_hook_active": True}, self.root)["reason"]
+        self.assertIn("실제 결과 검사 실패", second)
+        self.assertNotIn("기록이 아직 없습니다", second)
 
 
 if __name__ == "__main__":

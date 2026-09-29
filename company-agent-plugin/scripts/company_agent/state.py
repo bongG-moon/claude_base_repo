@@ -4,6 +4,7 @@ from contextlib import contextmanager
 import hashlib
 import os
 import re
+import shlex
 import shutil
 import stat
 import sys
@@ -197,6 +198,63 @@ def _known_shell_mutation(command: str) -> bool | None:
     return True if operation in _GIT_WRITES else None
 
 
+def _read_only_shell_observation(command: str, tool_name: str) -> bool:
+    """Recognize bounded Bash inspection only for completion accounting.
+
+    This is not permission or preparation approval. In particular, stderr to
+    /dev/null is not a business write, but substitutions and any other output
+    redirection retain conservative accounting. No command is executed here.
+    """
+    if (tool_name.casefold() != "bash" or not command or len(command) > 4096
+            or any(char in command for char in '\r\n\0$`(){}')):
+        return False
+    try:
+        lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|<>')
+        lexer.whitespace_split = True
+        lexer.commenters = ''
+        words = list(lexer)
+    except ValueError:
+        return False
+    segments: list[list[str]] = [[]]
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word in {';', '&&', '||', '|'}:
+            if not segments[-1]:
+                return False
+            segments.append([])
+        elif words[index:index + 3] == ['2', '>', '/dev/null']:
+            index += 2
+        elif re.fullmatch(r'[;&|<>]+', word):
+            return False
+        else:
+            segments[-1].append(word)
+        index += 1
+    for args in segments:
+        if not args:
+            return False
+        name, flags = args[0], args[1:]
+        if name == 'pwd':
+            if flags:
+                return False
+        elif name == 'ls':
+            if any(flag.startswith('-') and not re.fullmatch(r'-[laAdhF]+|--', flag) for flag in flags):
+                return False
+        elif name == 'cat':
+            if any(flag.startswith('-') and not re.fullmatch(r'-[AbEnsTv]+|--', flag) for flag in flags):
+                return False
+        elif name == 'head':
+            if flags and flags[0] == '-n':
+                if len(flags) < 2 or not re.fullmatch(r'[0-9]{1,6}', flags[1]):
+                    return False
+                flags = flags[2:]
+            if any(flag.startswith('-') and not re.fullmatch(r'-[0-9]{1,6}|--', flag) for flag in flags):
+                return False
+        else:
+            return False
+    return True
+
+
 _THREAD_LOCKS: dict[str, threading.Lock] = {}
 _THREAD_LOCKS_GUARD = threading.Lock()
 _LOCK_TIMEOUT_SECONDS = 10.0
@@ -247,6 +305,7 @@ def _default_session(session_id: str) -> dict[str, Any]:
         "stopRetryCount": 0,
         "sameFailureCount": 0,
         "lastFailureFingerprint": None,
+        "verificationStopReason": None,
         "recentTools": [],
     }
 
@@ -364,7 +423,7 @@ def begin_turn(
             work["reviewRequested"] = False
         outstanding = state.get("mutationCount", 0) and (state.get("verification") or {}).get("status") != "pass"
         obligation = {key: state.get(key) for key in ("mutationCount", "verification", "stopRetryCount",
-                      "sameFailureCount", "lastFailureFingerprint")} if outstanding else {}
+                      "sameFailureCount", "lastFailureFingerprint", "verificationStopReason")} if outstanding else {}
         state.update(
             {
                 "turnId": uuid.uuid4().hex,
@@ -374,11 +433,14 @@ def begin_turn(
                 "learningCompletedAt": None,
                 "learningDeferredReason": None,
                 "learningAttempts": 0,
+                "learningProgressRevision": 0,
+                "lastLearningProgressRevision": None,
                 "usedSkills": [],
                 "learningReadReceipts": {},
                 "taskToolCount": 0,
                 "approvalUnavailable": False,
-                "lastStopActivityCount": None,
+                "lastStopMutationCount": None,
+                "lastStopVerificationRevision": None,
                 "taskFailureCount": 0,
                 "taskVerificationFailures": 0,
                 "turnStartedAt": _now(),
@@ -394,6 +456,7 @@ def begin_turn(
                 "stopRetryCount": 0,
                 "sameFailureCount": 0,
                 "lastFailureFingerprint": None,
+                "verificationStopReason": None,
                 "recentTools": [],
                 "workerExecutions": [],
             }
@@ -975,14 +1038,21 @@ def record_activity(
                 state["verification"]["summary"] = "보호 제한 항목이 있어 상세 검증 설명은 보존하지 않습니다."
         collect_learning = _collect_learning_observations(state, root or user_state_root())
         bookkeeping = approval_timeout
+        learning_progress = False
         if tool_name.casefold().strip() in {"bash", "powershell"}:
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
+            learning_command = _is_own_learning_command(command, session_id, state, root or user_state_root())
+            if learning_command and not not_performed:
+                arguments = _own_cli_arguments(command) or []
+                learning_progress = arguments[:2] in (["learning", "review"], ["learning", "stage"])
             bookkeeping = bookkeeping or (
                 _is_own_verification_command(command, session_id, root or user_state_root())
                 or _is_own_context_audit(command)
-                or _is_own_learning_command(command, session_id, state, root or user_state_root())
+                or learning_command
             )
-        bookkeeping = bookkeeping or _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
+        learning_spec = _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
+        learning_progress = learning_progress or (learning_spec and not failed and not not_performed)
+        bookkeeping = bookkeeping or learning_spec
         bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
         bookkeeping = bookkeeping or (not failed and _is_html_choices_spec_write(tool_name, tool_input, root or user_state_root()))
         bookkeeping = bookkeeping or (not failed and _is_ppt_choices_spec_write(tool_name, tool_input, root or user_state_root()))
@@ -990,7 +1060,7 @@ def record_activity(
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
             from .execution_contract import classify_command, internal_plan_command
             classification = classify_command(command, tool=tool_name)
-            if classification == "read_only":
+            if classification == "read_only" or _read_only_shell_observation(command, tool_name):
                 mutated = False
             if internal_plan_command(command, root or user_state_root()):
                 bookkeeping = True
@@ -1023,6 +1093,8 @@ def record_activity(
                 if state.get("protectionRestricted"):
                     work["pending"] = []
                     work["reviewRequested"] = False
+        if learning_progress:
+            state["learningProgressRevision"] = _safe_nonnegative_int(state.get("learningProgressRevision")) + 1
         event = {"at": at, "tool": tool_name[:120], "success": not failed, "mutation": mutated}
         if tool_name in {"Agent", "Task"}:
             worker = tool_input.get("subagent_type")
@@ -1038,6 +1110,7 @@ def record_activity(
         state["lastActivityAt"] = at
         state["activityCount"] = _safe_nonnegative_int(state.get("activityCount")) + 1
         if mutated:
+            state["verificationStopReason"] = None
             if isinstance(state.get("work"), dict):
                 state["work"]["closed"] = False
             previous_verification = state.get("verification")
@@ -1079,6 +1152,7 @@ def mark_verified(
             "summary": compact_summary,
         }
         state["verificationRevision"] = _safe_nonnegative_int(state.get("verificationRevision")) + 1
+        state["verificationStopReason"] = None
         if status == "pass":
             state["stopRetryCount"] = 0
             state["sameFailureCount"] = 0
@@ -1122,6 +1196,11 @@ def _learning_stop(
     state: dict[str, Any], path: Path, session_id: str, root: Path,
     completion: dict[str, Any],
 ) -> dict[str, Any]:
+    verification = state.get("verification")
+    if isinstance(verification, dict) and verification.get("status") in {"fail", "partial", "unavailable"}:
+        # A read-only task can explicitly record a failed or limited check too.
+        # Zero mutations must not turn that limitation into a learning detour.
+        return completion
     context = learning_context(state)
     # Stopping a response is not completing a business task. No empty review,
     # no continuation for lookups, choices or waiting. Verification is separate.
@@ -1149,21 +1228,29 @@ def _learning_stop(
             "Report the task outcome and any remaining verification failure honestly."
         )
         return {"systemMessage": " ".join(filter(None, [completion.get("systemMessage"), warning]))}
+    if (attempts > 0 and state.get("lastLearningProgressRevision")
+            == _safe_nonnegative_int(state.get("learningProgressRevision"))):
+        # Settings/Skill/status reads cannot make an unfinished review more
+        # complete. Defer quietly; keep pending work and existing verification.
+        state["learningStatus"] = "deferred"
+        state["learningDeferredReason"] = "no-review-progress"
+        atomic_write_json(path, state)
+        return completion
     state["learningAttempts"] = attempts + 1
+    state["lastLearningProgressRevision"] = _safe_nonnegative_int(state.get("learningProgressRevision"))
     atomic_write_json(path, state)
     turn_id = context["turnId"]
     spec_path = _learning_spec_path(root, turn_id)
     from .native_runtime import cli_command
     prefix = cli_command(Path(__file__).resolve().parents[2])
     reason = (
-        "완료 표시된 업무의 새 피드백만 company-agent:self-learning Skill로 조용히 검토하십시오. "
-        "사용자가 '기억해줘'라고 하지 않았어도 적용합니다. 대화 원문·비밀·일회성 업무값은 저장하지 마십시오. "
-        "근거 없는 선호를 확정하거나 검사 실패를 성공으로 바꾸지 마십시오. 학습 accepted/관찰 없음 등 내부 상태를 최종 답변에 나열하지 마십시오. "
-        f'현재 session은 "{safe_session_id(session_id)}", turn은 "{turn_id}"입니다. '
-        f'Skill의 양식에 맞춘 검토 JSON을 "{spec_path}"에 Write로 저장한 뒤, 설치된 CLI로 '
-        f'{prefix} learning review --session "{safe_session_id(session_id)}" --turn "{turn_id}" --spec "{spec_path}"를 실행하십시오. '
-        "검토를 위해 업무 파일을 더 수정하거나 외부 전송을 다시 실행하지 마십시오. "
-        f"학습 처리 기회는 최대 {MAX_LEARNING_CONTINUATIONS}회이며 실패하면 완료했다고 주장하지 마십시오."
+        "완료된 업무의 새 피드백만 company-agent:self-learning Skill로 조용히 검토하세요. "
+        "기존 본문이 문맥에 있으면 재사용하고 원문·비밀·일회성 업무값·추측한 선호는 저장하지 마세요. "
+        f'Skill의 검토 JSON을 "{spec_path}"에 Write한 뒤 아래 현재 대화 명령을 그대로 실행하세요:\n'
+        f'{prefix} learning review --state-root {shlex.quote(str(root.absolute()))} '
+        f'--session "{safe_session_id(session_id)}" --turn "{turn_id}" --spec {shlex.quote(str(spec_path))}\n'
+        "설정·환경변수·세션을 재탐색하거나 업무 변경·외부 전송을 반복하지 마세요. "
+        "진행할 수 없으면 학습을 보류하고 업무 결과를 전달하세요. 내부 기록을 사용자에게 떠넘기거나 학습 성공을 꾸미지 마세요."
     )
     if completion.get("systemMessage"):
         reason = str(completion["systemMessage"]) + " " + reason
@@ -1215,43 +1302,43 @@ def stop_decision(
             and _safe_nonnegative_int(state.get("sameFailureCount"))
             >= MAX_CORRECTIVE_CONTINUATIONS
         ):
-            return _learning_stop(state, path, session_id, root or user_state_root(), _failure_message("same-failure"))
+            return _failure_message("same-failure")
 
         retry_count = _safe_nonnegative_int(state.get("stopRetryCount"))
         if retry_count >= retry_budget:
-            return _learning_stop(state, path, session_id, root or user_state_root(), _failure_message("budget"))
+            return _failure_message("budget")
 
-        if (payload.get("stop_hook_active") is True and retry_count > 0
-                and state.get("lastStopActivityCount") == state.get("activityCount", 0)
-                and state.get("lastStopVerificationRevision") == state.get("verificationRevision", 0)):
-            # Some Claude versions emit no activity hook for a permission
-            # rejection. With no new tool evidence, repeating Stop cannot help.
-            # Do not infer why it stopped, clear changes, or fabricate a pass.
+        if (retry_count > 0
+                and state.get("lastStopMutationCount") == _safe_nonnegative_int(state.get("mutationCount"))
+                and state.get("lastStopVerificationRevision") == _safe_nonnegative_int(state.get("verificationRevision"))):
+            # Reading settings or listing hooks is activity, not progress on
+            # the actual business result. Some hosts also omit stop_hook_active.
+            # Preserve obligations; never call learning or fabricate a pass.
+            if state.get("verificationStopReason") != "no-progress":
+                state["verificationStopReason"] = "no-progress"
+                atomic_write_json(path, state)
             return {"systemMessage": "추가 실행 증거가 없어 반복 보정을 종료합니다. 완료한 결과와 남은 미검증 사항만 간단히 알리세요. 성공 기록을 만들거나 사용자에게 내부 기록 명령 실행을 떠넘기지 마세요."}
 
         # `stop_hook_active` means this is a corrective continuation. It must
         # not disable the second bounded attempt; the persisted counter is the
         # loop guard for both initial and active Stop events.
         state["stopRetryCount"] = retry_count + 1
-        state["lastStopActivityCount"] = state.get("activityCount", 0)
-        state["lastStopVerificationRevision"] = state.get("verificationRevision", 0)
+        state["lastStopMutationCount"] = _safe_nonnegative_int(state.get("mutationCount"))
+        state["lastStopVerificationRevision"] = _safe_nonnegative_int(state.get("verificationRevision"))
         atomic_write_json(path, state)
 
     from .native_runtime import cli_command
     command_prefix = cli_command(Path(__file__).resolve().parents[2])
+    failed_check = isinstance(verification, dict) and verification.get("status") == "fail"
     reason = (
-        "기록된 업무 변경에 대한 결과 확인이 남아 있습니다. 코드면 관련 테스트, 문서면 생성/구조 확인, 파일 이동이면 이동 기록/실제 경로를 확인하십시오. 단순 조회를 코드 검증 실패라고 보고하지 마십시오. 확인 후 다음 명령으로 기록하세요: "
-        f'{command_prefix} session verify --session "{safe_session_id(session_id)}" --status pass --summary "검증 내용". '
-        "검증에 실패하면 status fail로 기록하고 원인을 수정하십시오. "
-        "필수 명령이 승인 대기/거절 또는 환경 제약으로 실행되지 못했다면 검증 실패와 구분해 status unavailable(일부만 확인했으면 partial)을 기록하고 그 작업만 대기하십시오. 승인 없는 대체 실행이나 같은 확인 반복을 하지 마십시오. "
-        "이 기록은 내부 절차입니다. 성공·실패·대기 어느 경우에도 pass/fail/unavailable/partial 기록 등의 상태 보고를 출력하지 마십시오. 원래 요청의 산출물·업무 결과 또는 '실행 승인 대기'처럼 사용자가 해결할 사항만 일상 언어로 전달하십시오. "
-        f"보정 기회는 최대 {MAX_CORRECTIVE_CONTINUATIONS}회이며, 이후에는 실패를 성공으로 표현하지 말고 남은 위험을 명확히 보고하십시오."
+        ("실제 결과 검사 실패가 기록되어 있습니다. 실패한 검사와 수정 범위만 재확인하세요. " if failed_check else
+         "업무 변경의 검증 기록이 아직 없습니다. 이것만으로 결과물 오류를 뜻하지 않습니다. 이미 수행한 검사 근거는 재사용하세요. ")
+        + "필요한 검사만 수행하세요: 코드=관련 테스트, 문서=생성·구조, 파일 이동=실제 경로·이동 기록. "
+        "아래 명령은 최신 변경 뒤 실제 검사에 성공했을 때만 1회 실행하세요. 실패했다면 --status fail, 일부만 확인했으면 --status partial, 승인·환경 제한이면 --status unavailable로 바꾸세요. "
+        "검사하지 않은 결과를 pass로 기록하지 마세요.\n"
+        f'{command_prefix} session verify --state-root {shlex.quote(str((root or user_state_root()).absolute()))} '
+        f'--session "{safe_session_id(session_id)}" --status pass --summary "실제 확인 내용 또는 제한"\n'
+        "설정·후크·환경변수·세션을 재탐색하지 마세요. 기록 명령도 실행할 수 없으면 내부 기록만 보류하고 확인된 결과와 한계를 전달하세요. "
+        "원래 업무·외부 전송을 재실행하거나 승인 거절을 우회하지 마세요. 내부 기록을 사용자에게 떠넘기거나 최종 답변에 중계하지 마세요."
     )
-    if isinstance(verification, dict) and verification.get("status") == "fail":
-        reason += (
-            " 실패한 worker를 resume하지 말고 새 worker에 목표·제약·현재 파일 경로·실패한 검사와 관찰 사실만 2,000자 이내로 전달하십시오. "
-            "실패 대화 전체나 추측은 복사하지 마십시오. 기존 모델 등급을 낮추지 말고 현재 파일부터 재확인하십시오. "
-            "이는 대화 rewind나 파일 rollback이 아닙니다. 메일 발송 등 외부 변경은 실행 여부를 조회하기 전 재실행하지 마십시오. "
-            "새 worker도 남은 동일 재시도 예산을 공유합니다."
-        )
     return {"decision": "block", "reason": reason}

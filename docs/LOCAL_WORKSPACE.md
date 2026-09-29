@@ -20,9 +20,9 @@
 6. **사용 현황:** 현재 요청의 CLI 보고값과 사용자가 선택한 과거 JSONL 분석을 별도로 보여 줍니다. 누락은 ‘미제공’, 사내 모델 비용은 미추정입니다. 같은 메시지의 스트림 기록은 중복 제거하며 CLI 완료값·작업자·로그 합계를 서로 더하지 않습니다. CLI 버전에 따라 완료값이 누적일 수 있어 요청끼리 합산하지 않습니다. 다음 요청의 토큰 알림은 앱을 닫으면 해제되며 강제 비용 한도가 아닙니다.
 7. **준비·결과 확인:** 설치·스킬 발견·지침 분량과 실제 업무 결과를 분리합니다. 사용자 확인 기록에서 실패·중지·차단·미확인을 빼고 성공률을 만들지 않습니다. 모델/평가 시 설치 버전별 관찰 그룹을 표시하되 전체 AI 성능 점수나 인과적 개선 증거라고 주장하지 않습니다. 실제 실행 당시 버전을 입증하지 못하면 평가 시 버전과 구별합니다.
 
-Company Agent의 현재 배포 버전은 **1.4.28**이며 이 문서의 Workspace 실행 코드 버전은 **0.9**입니다. 본인 계정·세션·프로필 확인과 일반 권한 재실행, 한국어 시작 오류 안내 및 단일 사용자 안내서 연결을 포함합니다. [1.4.28 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.28)의 별도 Workspace ZIP 또는 담당자가 제공한 승인 묶음으로 시험합니다. 이번 Workspace 묶음은 안내 버전·링크와 디자인·한국어 작성 설명을 갱신하며 실행 코드는 변경하지 않습니다. 일반 권한 연결 토큰이 없는 관리자 환경의 **WS-33 제한은 여전히 남아 있습니다.** 기본 Office Reader 제거와 가상 보고서 체험은 유지하며 실제 문서 읽기는 설치된 스킬·도구의 지원 범위를 따릅니다.
+Company Agent의 현재 배포 버전은 **1.4.29**이며 이 문서의 Workspace 실행 코드 버전은 **0.9**입니다. 본인 계정·세션·프로필 확인과 일반 권한 재실행, 한국어 시작 오류 안내 및 단일 사용자 안내서 연결을 포함합니다. [1.4.29 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.29)의 별도 Workspace ZIP 또는 담당자가 제공한 승인 묶음으로 시험합니다. 이번 Workspace 묶음은 완료 확인 개선에 맞춘 안내서와 버전 링크만 갱신하며 실행 코드는 변경하지 않습니다. 일반 권한 연결 토큰이 없는 관리자 환경의 **WS-33 제한은 여전히 남아 있습니다.** 기본 Office Reader 제거와 가상 보고서 체험은 유지하며 실제 문서 읽기는 설치된 스킬·도구의 지원 범위를 따릅니다.
 
-[1.4.28 변경 안내](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/UPDATE_1.4.28.md)와 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.28.md)를 확인하세요. 검증 기록의 외부 링크는 인터넷 연결이 필요합니다.
+[1.4.29 변경 안내](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/UPDATE_1.4.29.md)와 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/main/docs/VALIDATION_RELEASE_1.4.29.md)를 확인하세요. 검증 기록의 외부 링크는 인터넷 연결이 필요합니다.
 
 Company Agent와 Workspace는 별도 배포 묶음이며 기존 설치·ZIP에 자동 적용되지 않습니다. 기존 앱을 종료한 뒤 승인된 새 Workspace ZIP을 별도 폴더에 풀어 실행하세요. Company Agent만 업데이트해도 이미 풀어 놓은 Workspace와 그 안의 안내서가 갱신되는 것은 아닙니다. 해당 기능이 없는 설치에서는 안내·일반 Claude 대화를 그대로 유지하고 설치 확인 필요만 표시합니다. UI가 임의로 다른 설치/상태 폴더를 선택하거나 플러그인을 설치하지 않습니다. 기존 memory/knowledge/brief API는 호환을 위해 유지합니다.
 

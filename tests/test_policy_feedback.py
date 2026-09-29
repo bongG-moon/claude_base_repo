@@ -354,16 +354,17 @@ class FeedbackStateTests(unittest.TestCase):
         record_activity({"session_id": session, "tool_name": "Bash", "tool_input": {"command": command + " > result.txt"}}, self.state)
         self.assertEqual(1, load_session(session, self.state)["mutationCount"])
 
-    def test_failed_verification_requests_fresh_worker_without_claiming_rewind(self) -> None:
+    def test_failed_verification_requests_targeted_check_without_forcing_worker(self) -> None:
         session = "fresh-retry"
         begin_turn(session, "LARGE", True, (), self.state)
         record_activity({"session_id": session, "tool_name": "Write"}, self.state)
         mark_verified(session, "fail", "one failing test", self.state)
         result = stop_decision({"session_id": session}, self.state)
         self.assertEqual("block", result["decision"])
-        self.assertIn("새 worker", result["reason"])
-        self.assertIn("2,000자", result["reason"])
-        self.assertIn("rollback이 아닙니다", result["reason"])
+        self.assertIn("실제 결과 검사 실패", result["reason"])
+        self.assertIn("실패한 검사와 수정 범위만", result["reason"])
+        self.assertIn("최신 변경 뒤 실제 검사에 성공했을 때만", result["reason"])
+        self.assertNotIn("새 worker", result["reason"])
         self.assertEqual(1, load_session(session, self.state)["stopRetryCount"])
 
     def test_stop_allows_two_corrective_continuations_even_when_active(self) -> None:
@@ -376,7 +377,7 @@ class FeedbackStateTests(unittest.TestCase):
             {"session_id": "session-loop", "stop_hook_active": False},
             self.state,
         )
-        record_activity({"session_id": "session-loop", "tool_name": "Read"}, self.state)
+        record_activity({"session_id": "session-loop", "tool_name": "Edit"}, self.state)
         second = stop_decision(
             {"session_id": "session-loop", "stop_hook_active": True},
             self.state,

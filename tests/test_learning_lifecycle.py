@@ -101,41 +101,97 @@ class LearningLifecycleTests(unittest.TestCase):
         self.assertEqual(completed, mark_learning_complete(self.session, turn, self.root))
         self.assertEqual({}, self.stop())
 
-    def test_verification_runs_first_and_failure_still_gets_honest_review(self) -> None:
-        turn = self.begin()["turnId"]
+    def test_verification_exhaustion_does_not_chain_learning(self) -> None:
+        self.begin()
         self.activity("Write")
         self.complete_work()
         for _ in range(2):
             result = self.stop()
             self.assertEqual("block", result["decision"])
             self.assertNotIn("company-agent:self-learning", result["reason"])
-            # Each corrective attempt has new evidence. With no execution at
-            # all (for example approval unavailable), Stop now ends early.
-            self.activity("Read")
-        review = self.stop()
-        self.assertEqual("block", review["decision"])
-        self.assertIn("company-agent:self-learning", review["reason"])
-        self.assertIn("Verification did not pass", review["systemMessage"])
-        mark_learning_complete(self.session, turn, self.root)
+            # Only new business changes/checks justify another correction.
+            self.activity("Edit")
         ended = self.stop()
         self.assertNotIn("decision", ended)
         self.assertIn("Verification did not pass", ended["systemMessage"])
         self.assertIsNone(self.state()["verification"])
+        self.assertEqual("pending", self.state()["learningStatus"])
+        self.assertEqual(0, self.state()["learningAttempts"])
+        self.assertTrue(self.state()["work"]["reviewRequested"])
 
     def test_same_failure_exhaustion_never_fabricates_success(self) -> None:
-        turn = self.begin()["turnId"]
+        self.begin()
         self.activity("Write", failed=True)
         for _ in range(2):
             mark_verified(self.session, "fail", "same actual failing assertion", self.root)
         self.complete_work()
-        self.assertEqual("block", self.stop()["decision"])
         before = self.state()
-        mark_learning_complete(self.session, turn, self.root)
         ended = self.stop()
+        self.assertNotIn("decision", ended)
         self.assertIn("same verification failure", ended["systemMessage"])
         self.assertEqual(before["verification"], self.state()["verification"])
         self.assertEqual(2, self.state()["taskVerificationFailures"])
         self.assertEqual(1, self.state()["taskFailureCount"])
+        self.assertEqual(0, self.state()["learningAttempts"])
+        self.assertEqual("pending", self.state()["learningStatus"])
+
+    def test_verification_no_progress_preserves_pending_learning_without_extra_turn(self) -> None:
+        self.begin()
+        self.activity("Write")
+        self.complete_work()
+        self.assertEqual("block", self.stop()["decision"])
+        self.activity("Read", {"file_path": str(self.root / ".claude" / "settings.local.json")})
+        self.assertNotIn("decision", self.stop())
+        state = self.state()
+        self.assertEqual(1, state["stopRetryCount"])
+        self.assertEqual(0, state["learningAttempts"])
+        self.assertEqual("pending", state["learningStatus"])
+        self.assertTrue(state["work"]["reviewRequested"])
+        self.assertIsNone(state["verification"])
+
+    def test_readonly_verification_limit_does_not_chain_learning(self) -> None:
+        for status in ("fail", "partial", "unavailable"):
+            with self.subTest(status=status):
+                self.begin()
+                self.activity("Read", {"file_path": str(self.root / "source.md")})
+                mark_verified(self.session, status, "explicit result check was limited", self.root)
+                self.complete_work()
+                before = self.state()["verification"]
+                self.assertNotIn("decision", self.stop())
+                state = self.state()
+                self.assertEqual(0, state["mutationCount"])
+                self.assertEqual(0, state["learningAttempts"])
+                self.assertEqual("pending", state["learningStatus"])
+                self.assertEqual(before, state["verification"])
+                self.assertTrue(state["work"]["reviewRequested"])
+
+    def test_learning_unrelated_reads_and_status_do_not_open_second_continuation(self) -> None:
+        self.begin()
+        self.activity("Write")
+        mark_verified(self.session, "pass", "actual business check", self.root)
+        self.complete_work()
+        before = self.state()["verification"]
+        self.assertEqual("block", self.stop()["decision"])
+        self.activity("Read", {"file_path": str(self.root / ".claude" / "settings.local.json")})
+        self.activity("Bash", {"command": self.cli(f'learning status --session "{self.session}"')})
+        self.assertNotIn("decision", self.stop())
+        state = self.state()
+        self.assertEqual(1, state["learningAttempts"])
+        self.assertEqual("deferred", state["learningStatus"])
+        self.assertEqual("no-review-progress", state["learningDeferredReason"])
+        self.assertEqual(before, state["verification"])
+        self.assertTrue(state["work"]["reviewRequested"])
+
+    def test_current_review_spec_write_is_real_learning_progress(self) -> None:
+        turn = self.begin()["turnId"]
+        self.complete_work()
+        self.assertEqual("block", self.stop()["decision"])
+        spec = self.root / "tmp" / f"learning-review-{turn}.json"
+        atomic_write_text(spec, '{}')
+        self.activity("Write", {"file_path": str(spec)})
+        self.assertEqual(0, self.state()["mutationCount"])
+        self.assertEqual("block", self.stop()["decision"])
+        self.assertEqual(2, self.state()["learningAttempts"])
 
     def test_learning_failure_is_bounded_separately_from_verification(self) -> None:
         turn = self.begin()["turnId"]

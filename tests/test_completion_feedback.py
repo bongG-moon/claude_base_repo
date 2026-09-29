@@ -47,13 +47,17 @@ class CompletionFeedbackTests(unittest.TestCase):
         self.assertEqual({}, self.stop())
         self.assertEqual(0, load_session(self.session, self.root)["stopRetryCount"])
 
-    def test_pending_change_keeps_gate_but_never_dumps_command_or_ids(self):
+    def test_pending_change_keeps_gate_and_exact_recovery_context(self):
         record_activity({"session_id": self.session, "tool_name": "Write"}, self.root)
         result = self.stop()
         self.assertEqual("block", result["decision"])
-        self.assertLessEqual(len(result["reason"]), 100)
-        for marker in (self.session, str(self.root), "PowerShell", "--session", "--status", "pass/fail"):
-            self.assertNotIn(marker, result["reason"])
+        # A short UI-only message previously erased the only actionable
+        # recovery instruction. Keep one bounded command with current scope.
+        self.assertLessEqual(len(result["reason"]), 2400)
+        for marker in (self.session, str(self.root), "session verify", "--state-root", "--status",
+                       "partial", "unavailable"):
+            self.assertIn(marker, result["reason"])
+        self.assertNotIn("결과물을 확인하고 있습니다.", result["reason"])
         self.assertEqual(1, load_session(self.session, self.root)["stopRetryCount"])
         self.assertIsNone(load_session(self.session, self.root)["verification"])
 
@@ -71,6 +75,19 @@ class CompletionFeedbackTests(unittest.TestCase):
         self.assertIn("미검증", result["systemMessage"])
         self.assertIsNone(load_session(self.session, self.root)["verification"])
 
+    def test_settings_lookup_does_not_restart_native_stop_feedback(self):
+        record_activity({"session_id": self.session, "tool_name": "Write"}, self.root)
+        self.assertEqual("block", self.stop()["decision"])
+        # Synthetic event only: never open the user's settings or hooks.
+        record_activity({"session_id": self.session, "tool_name": "Read",
+                         "tool_input": {"file_path": ".claude/settings.local.json"}}, self.root)
+        result = self.stop(True)
+        self.assertNotIn("decision", result)
+        state = load_session(self.session, self.root)
+        self.assertEqual(1, state["stopRetryCount"])
+        self.assertEqual(1, state["mutationCount"])
+        self.assertIsNone(state["verification"])
+
     def test_unavailable_still_warns_and_does_not_forge_success(self):
         record_activity({"session_id": self.session, "tool_name": "Write"}, self.root)
         mark_verified(self.session, "unavailable", "checker unavailable", self.root)
@@ -81,14 +98,24 @@ class CompletionFeedbackTests(unittest.TestCase):
         self.assertEqual("unavailable", state["verification"]["status"])
         self.assertEqual(1, state["mutationCount"])
 
-    def test_learning_projection_preserves_real_failure_warning(self):
-        decision = {"decision": "block", "reason": "company-agent:self-learning private command details",
+    def test_learning_projection_preserves_next_action_and_warning(self):
+        reason = ('company-agent:self-learning: use current session/turn; '
+                  'company-agent learning review --session current --turn current-turn --spec current.json')
+        decision = {"decision": "block", "reason": reason,
                     "systemMessage": "Verification did not pass"}
         result = present_stop_feedback(decision)
-        self.assertIn("업무 마무리", result["reason"])
-        self.assertNotIn("private", result["reason"])
+        self.assertEqual(reason, result["reason"])
         self.assertEqual(decision["systemMessage"], result["systemMessage"])
-        self.assertIn("private", decision["reason"])
+        self.assertEqual(reason, decision["reason"])
+
+    def test_localization_does_not_change_gate_or_its_next_action(self):
+        decision = {"decision": "block", "reason": "exact next action",
+                    "systemMessage": "Report the unverified changes and the required next action honestly."}
+        result = present_stop_feedback(decision)
+        self.assertEqual("block", result["decision"])
+        self.assertEqual("exact next action", result["reason"])
+        self.assertIn("확인하지 못한 변경", result["systemMessage"])
+        self.assertNotEqual(decision["systemMessage"], result["systemMessage"])
 
     def test_on_demand_guide_is_discoverable_with_safety_and_exact_commands(self):
         with patch.dict(os.environ, {"COMPANY_AGENT_USER_STATE": str(self.root)}):

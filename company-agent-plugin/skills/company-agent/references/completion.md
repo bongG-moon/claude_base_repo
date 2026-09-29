@@ -11,8 +11,10 @@ Use the exact `company_agent_runtime.cliCommand` and `stateRoot`; replace the
 `company-agent` prefix in examples with that full, already-quoted command.
 These and `company_agent_session_id` are injected JSON values, not environment
 variables. Do not use echo, Get-ChildItem Env:, or session-folder searches to
-find them. Use only the current supplied ID; status lookup is optional and
-requires that known ID. If bookkeeping context is absent, still perform the
+find them. Do not inspect settings, hook files or installation directories to
+recover bookkeeping context. Use the current Stop instruction if it supplies
+the exact command and ID; do not reconstruct or rediscover them. Status lookup
+is optional and requires that known ID. If bookkeeping context is absent, still perform the
 available outcome checks and deliver their evidence; defer only the marker or
 learning operation that needs it. Never guess paths/IDs or forge receipts.
 Missing bookkeeping context does not block read-only work, invalidate completed
@@ -45,19 +47,27 @@ report a relevant recording limitation only when needed.
   separately: a passing test suite is not proof of requirements it never tests.
 - After an observed successful check, with valid current context, record:
   `company-agent session verify --session "<id>" --status pass --summary "<short evidence>"`.
+- A missing marker is not a failed outcome check. Reuse the actual check after
+  the latest change and record it once; never regenerate the deliverable,
+  repeat an external action or rerun a completed check only to repair a marker.
 - Record a genuinely failed check with `--status fail`. Permission denial,
   approval waiting or missing capability is `--status unavailable`, or `partial`
   when some checks really ran. Preserve outstanding changes and explain only
   the relevant limitation. Never ask the user to run internal marker commands.
-- A verification failure calls for the smallest repair. Start a fresh worker,
-  not a resume of the failed one, with goal, constraints, current paths, failed
-  check and observations in at most 2,000 characters. Keep the model floor and
+- A verification failure calls for the smallest repair and recheck in the
+  current workflow when possible; it does not require another worker. Only if
+  a separate worker is genuinely needed, start a fresh worker rather than
+  resuming the failed one, with goal, constraints, current paths, failed check
+  and observations in at most 2,000 characters. Keep the model floor and
   remaining retry budget. Inspect current files first. This is not conversation
   rewind or file rollback. Check external-action receipts before any permitted
   retry; do not resend mail because a worker restarted.
 - Maximum two corrective continuations/equivalent failures; do not reset the
   counters, repeat denied commands, delegate around a denial, or claim success
-  when the budget is exhausted. No new evidence means no futile repeat.
+  when the budget is exhausted. Only relevant repairs or new check results
+  justify another correction; reading settings, listing paths or inspecting
+  this guide is not verification progress. No new evidence means no futile
+  repeat.
 
 ## Learn only at a meaningful milestone
 
@@ -78,6 +88,9 @@ Skip already complete/deferred/disabled reviews. No reusable evidence: follow
 the self-learning contract, never manufacture a preference or an empty ritual.
 Never store transcripts, tool outputs, raw mail, credentials or one-time values.
 Learning cannot clear verification failures or repeat external business actions.
+If verification is failed, unavailable, partial or its correction budget has
+ended, leave pending learning for later. Do not add a learning continuation to
+that blocked completion; return the available result and its real limitation.
 
 ## Return to the user's requested result
 

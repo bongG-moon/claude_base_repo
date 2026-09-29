@@ -71,7 +71,8 @@ def checkpoint(root: Path, session_id: str, turn_id: str, status: str, *,
         if new:
             unresolved = state.get("mutationCount", 0) and (state.get("verification") or {}).get("status") != "pass"
             exhausted = state.get("stopRetryCount", 0) >= 2 or state.get("sameFailureCount", 0) >= 2
-            if work.get("pending") or (unresolved and not (exhausted and (work.get("closed") or work.get("status") in {"complete", "cancelled"}))):
+            no_progress = state.get("verificationStopReason") == "no-progress"
+            if work.get("pending") or (unresolved and not ((exhausted or no_progress) and (work.get("closed") or work.get("status") in {"complete", "cancelled"}))):
                 raise ValueError("finish/cancel pending learning and resolve verification before new work")
             if unresolved:
                 history = state.setdefault("unresolvedChanges", [])
@@ -79,9 +80,9 @@ def checkpoint(root: Path, session_id: str, turn_id: str, status: str, *,
                     raise ValueError("unresolved work limit reached; review outstanding changes before new work")
                 history.append({"workId": work["id"], "mutationCount": state["mutationCount"],
                                 "verificationStatus": (state.get("verification") or {}).get("status", "unverified"),
-                                "reason": "bounded_attempts_exhausted_not_resolved"})
+                                "reason": "no_progress_not_resolved" if no_progress else "bounded_attempts_exhausted_not_resolved"})
                 state.update(mutationCount=0, verification=None, stopRetryCount=0, sameFailureCount=0,
-                             lastFailureFingerprint=None)
+                             lastFailureFingerprint=None, verificationStopReason=None)
             work = state["work"] = new_work()
             state.update(taskToolCount=0, taskFailureCount=0, taskVerificationFailures=0, usedSkills=[])
         enabled = _collect_learning_observations(state, root)

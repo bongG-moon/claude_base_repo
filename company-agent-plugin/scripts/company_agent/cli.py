@@ -415,7 +415,10 @@ def cmd_setup_helper(args: argparse.Namespace) -> int:
 def cmd_session_verify(args: argparse.Namespace) -> int:
     state = mark_verified(args.session, args.status, args.summary, _state_root(args))
     _print_json({"ok": True, "verification": state["verification"], "session": state["sessionId"]})
-    return 0 if args.status == "pass" else 1
+    # An honest partial/unavailable receipt was saved successfully. Reporting
+    # it as a tool failure invites pointless retries and does not improve the
+    # business result. A genuinely failed check retains its nonzero contract.
+    return 1 if args.status == "fail" else 0
 
 
 def cmd_session_status(args: argparse.Namespace) -> int:
