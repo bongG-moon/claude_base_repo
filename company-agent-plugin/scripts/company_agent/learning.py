@@ -191,6 +191,16 @@ def _default() -> dict[str, Any]:
                                           "trimmedChanges": 0, "trimmedAssessments": 0}}
 
 
+def _submission_receipt(value: Any) -> dict[str, Any]:
+    if (not isinstance(value, dict) or value.get("captureStatus") not in {"captured", "no_candidates"}
+            or any(type(value.get(key)) is not int or not 0 <= value[key] <= 5
+                   for key in ("capturedCount", "appliedCount", "deferredCount"))
+            or value["appliedCount"] + value["deferredCount"] > value["capturedCount"]
+            or (value["captureStatus"] == "no_candidates") != (value["capturedCount"] == 0)):
+        raise ValueError("invalid learning submission receipt")
+    return {key: value[key] for key in ("captureStatus", "capturedCount", "appliedCount", "deferredCount")}
+
+
 def _load(root: Path) -> dict[str, Any]:
     path = _safe(root / "learning" / "state.json", root)
     if not path.exists():
@@ -217,6 +227,15 @@ def _load(root: Path) -> dict[str, Any]:
             for count in ("failures", "verificationFailures", "toolCount"):
                 if type(review["evidence"][count]) is not int or not 0 <= review["evidence"][count] <= 1_000_000:
                     raise ValueError("invalid learning evidence count")
+            if review.get("mode") == "submit" and review["status"] == "complete":
+                receipt = _submission_receipt(review.get("submission"))
+                outcomes = review.get("observationResults")
+                if (not isinstance(outcomes, list) or len(outcomes) != receipt["capturedCount"]
+                        or any(not isinstance(item, dict) or not isinstance(item.get("id"), str)
+                               or not _HASH.fullmatch(item["id"])
+                               or item.get("status") not in {"active", "observing", "deferred", "rejected"}
+                               for item in outcomes)):
+                    raise ValueError("invalid learning submission outcomes")
         for key, candidate in value["candidates"].items():
             if not _HASH.fullmatch(key) or not isinstance(candidate, dict) or not isinstance(candidate["reviews"], list):
                 raise ValueError("invalid learning candidate row")
@@ -378,6 +397,17 @@ def _evidence(session: dict[str, Any]) -> dict[str, Any]:
             "verificationFailures": count("taskVerificationFailures"),
             "verification": status if status in {"pass", "fail"} else "unknown",
             "verificationSource": "agent_recorded_marker_not_independent_test_execution"}
+
+
+def _submission_sample(session: dict[str, Any], spec: dict[str, Any], turn_id: str) -> tuple[bool, bool]:
+    work, verification = session.get("work") or {}, session.get("verification") or {}
+    verified = (spec["outcome"] == "success" and verification.get("status") == "pass"
+                and verification.get("turnId") == turn_id
+                and verification.get("workId") == work.get("id") and bool(work.get("id")))
+    completed = (work.get("status") == "complete" and work.get("closed") is True
+                 and verification.get("status") not in {"fail", "partial", "unavailable"}
+                 and (not session.get("mutationCount", 0) or verified))
+    return verified, completed or verified
 
 
 def _defer_reason(exc: Exception) -> str:
@@ -656,6 +686,10 @@ def _assess(root: Path, data: dict[str, Any], review: dict[str, Any], spec: dict
             session: dict[str, Any]) -> list[dict[str, Any]]:
     results = []
     for evaluation in spec["evaluations"]:
+        if (review.get("mode") == "submit" and not review.get("sampleReady")
+                and evaluation["verdict"] != "harmful"):
+            results.append({"skillName": evaluation["skillName"], "status": "deferred_evidence"})
+            continue
         try:
             _, _, digest = _read_skill(root, evaluation["skillName"], session)
         except (OSError, ValueError, UnicodeError):
@@ -670,6 +704,7 @@ def _assess(root: Path, data: dict[str, Any], review: dict[str, Any], spec: dict
         if not change:
             continue
         baseline = [r for r in data["reviews"] if r["taskType"] == review["taskType"] and r["id"] != review["id"]
+                    and (r.get("mode") != "submit" or r.get("sampleReady"))
                     and any(u.get("name") == evaluation["skillName"] and u.get("sha256") == change["beforeSha256"]
                             for u in r.get("usedSkills", []))][-20:]
         baseline = list({r.get("workFingerprint", r["id"]): r for r in baseline
@@ -713,7 +748,8 @@ def _assess(root: Path, data: dict[str, Any], review: dict[str, Any], spec: dict
     return results
 
 
-def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, Any], session: dict[str, Any]) -> dict[str, Any]:
+def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, Any], session: dict[str, Any], *,
+                   submission: bool = False) -> dict[str, Any]:
     if not isinstance(turn_id, str) or not turn_id or session.get("turnId") != turn_id:
         raise ValueError("stale or unknown learning turn; submit the current turn only")
     if spec.get("priorFeedback", {}).get("turnId", session.get("previousTurnId")) != session.get("previousTurnId"):
@@ -728,8 +764,6 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
                 "observations": [], "evaluations": []}
     review_id = _hash(session_id + "\0" + turn_id)
     with _locked(root) as data:
-        if session.get("learningDeferredReason") == "late-business-activity":
-            raise ValueError("business activity followed the recorded review; learning remains deferred until the next user turn")
         existing = next((r for r in data["reviews"] if r["id"] == review_id), None)
         if existing:
             # An interrupted first review may predate the session-side identity
@@ -738,13 +772,18 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
                 raise ValueError(f"taskType mismatch for existing review; use taskType '{existing['taskType']}'")
             return {"status": "duplicate" if existing["status"] == "complete" else "deferred",
                     "reviewId": review_id, "originalStatus": existing["status"],
+                    "mode": existing.get("mode", "review"),
+                    "submission": existing.get("submission"),
+                    "observationResults": existing.get("observationResults", []),
                     "changes": [], "assessments": []}
+        if session.get("learningDeferredReason") == "late-business-activity":
+            raise ValueError("business activity followed the recorded review; learning remains deferred until the next user turn")
         if session.get("learningStatus") in {"complete", "completed", "skipped", "disabled"}:
             raise ValueError("learning is already closed for this turn")
         evidence = _evidence(session)
         mutation_count = session.get("mutationCount", 0)
         if (type(mutation_count) is not int or mutation_count < 0
-                or mutation_count > 0 and evidence["verification"] != "pass"
+                or not submission and mutation_count > 0 and evidence["verification"] != "pass"
                 and not (type(session.get("sameFailureCount")) is int and session["sameFailureCount"] >= 2)
                 and not (type(session.get("stopRetryCount")) is int and session["stopRetryCount"] >= 2)):
             raise ValueError("finish the required bounded verification before submitting learning")
@@ -761,6 +800,9 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
         review = {"id": review_id, "sessionFingerprint": _hash(session_id), "turnId": turn_id, "at": _now(),
                   "status": "processing", "taskType": spec["taskType"], "reportedOutcome": spec["outcome"],
                   "summary": spec["summary"], "evidence": _evidence(session), "usedSkills": used}
+        if submission:
+            review["mode"] = "submit"
+            review["sampleReady"] = _submission_sample(session, spec, turn_id)[1]
         if isinstance(session.get("work"), dict):
             review["workFingerprint"] = _hash(session_id + "\0work\0" + session["work"]["id"])
         data["reviews"].append(review)
@@ -796,13 +838,36 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
             # Several corrections/retries in one business task are one sample,
             # even if the model submits them in different user turns.
             choice_id = _hash(session_id + "\0work\0" + session["work"]["id"]) if isinstance(session.get("work"), dict) else review_id
-            if observation["signal"] == "repeated_choice" and choice_id not in candidate.get("choiceReviews", []):
+            work = session.get("work") or {}
+            # A sample is a completed independent work, or an explicitly
+            # successful component checked after its latest mutation. Several
+            # turns within that work still contribute at most one vote.
+            verified_sample, sample_ready = _submission_sample(session, spec, turn_id) if submission else (False, True)
+            if (observation["signal"] == "repeated_choice" and sample_ready
+                    and choice_id not in candidate.get("choiceReviews", [])):
                 candidate["choiceReviews"] = (candidate.get("choiceReviews", []) + [choice_id])[-8:]
             evidence = review["evidence"]
             eligible = (observation["signal"] == "explicit_correction"
                         or observation["signal"] == "repeated_choice" and len(candidate.get("choiceReviews", [])) >= 2
                         or observation["signal"] == "verified_fix" and evidence["verification"] == "pass"
                         and evidence["failures"] + evidence["verificationFailures"] > 0)
+            if submission and candidate["status"] not in {"active", "rejected"}:
+                reason = None
+                if observation["kind"] == "skill" and not verified_sample:
+                    reason = "skill_requires_success_and_current_verification"
+                elif observation["signal"] == "repeated_choice" and not sample_ready:
+                    reason = "independent_work_sample_not_ready"
+                elif observation["signal"] == "verified_fix" and not eligible:
+                    reason = "verified_fix_requires_observed_failure_then_pass"
+                if reason:
+                    candidate.update(status="deferred", reason=reason)
+                    changes.append({"kind": observation["kind"], "key": observation["key"],
+                                    "status": "deferred", "reason": reason})
+                    continue
+                # New relevant evidence can release a previously deferred
+                # sample; failed ownership/version checks below remain pending.
+                candidate["status"] = "observing"
+                candidate.pop("reason", None)
             if not eligible or candidate["status"] in {"active", "rejected"}:
                 changes.append({"kind": observation["kind"], "key": observation["key"], "status": candidate["status"]})
                 continue
@@ -815,9 +880,83 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
                 candidate["reason"] = _defer_reason(exc)
                 changes.append({"kind": observation["kind"], "key": observation["key"], "status": "deferred", "reason": candidate["reason"]})
         review["status"] = "complete"
+        if submission:
+            from .work import observation_id
+            review["observationResults"] = [{"id": observation_id(item), "status": change["status"]}
+                                            for item, change in zip(spec["observations"], changes)]
+            review["submission"] = {
+                "captureStatus": "captured" if spec["observations"] else "no_candidates",
+                "capturedCount": len(spec["observations"]),
+                "appliedCount": sum(c.get("status") == "active" and "id" in c for c in changes),
+                "deferredCount": sum(c.get("status") == "deferred" for c in changes),
+            }
+            data["totals"]["submissions"] = data["totals"].get("submissions", 0) + 1
+            if not spec["observations"]:
+                data["totals"]["emptySubmissions"] = data["totals"].get("emptySubmissions", 0) + 1
         _save(root, data)
         return {"status": "accepted", "reviewId": review_id, "changes": changes, "assessments": assessments,
-                "evidence": review["evidence"], "rawSessionStored": False}
+                "evidence": review["evidence"], "rawSessionStored": False,
+                **({"mode": "submit", "submission": review["submission"],
+                    "observationResults": review["observationResults"]} if submission else {})}
+
+
+def submit_learning(root: Path, session_id: str, turn_id: str, spec: dict[str, Any]) -> dict[str, Any]:
+    """Capture/apply bounded evidence once per turn without closing the work.
+
+    Semantic observations still come from the coordinator, not a Stop hook or
+    another model call. This shares the review ledger and reversible writer.
+    """
+    spec = _validate(spec)
+    _safe(root / "sessions", root)
+    with _locked_session(session_id, root) as (session, path):
+        from .work import capture_finished, merge_observations, task_type
+        if session.get("turnId") != turn_id:
+            raise ValueError("stale or unknown learning turn; submit the current turn only")
+        if not learning_enabled(root) or session.get("protectionRestricted"):
+            return {"status": "disabled", "captureStatus": "not_captured", "capturedCount": 0,
+                    "appliedCount": 0, "deferredCount": 0,
+                    "reason": "protected_session" if session.get("protectionRestricted") else "learning_paused",
+                    "changes": [], "assessments": []}
+        work = session.get("work") or {}
+        identity = task_type(work, spec["taskType"])
+        spec["observations"] = merge_observations(work.get("pending", []), spec["observations"], work.get("processed", []))
+        spec = _validate(spec)
+        evidence_session = _work_evidence(session, work)
+        result = _submit_locked(root, session_id, turn_id, spec, evidence_session, submission=True)
+        if result["status"] in {"accepted", "duplicate"}:
+            # A duplicate can recover a ledger-first write interrupted before
+            # the session receipt. Only observation IDs actually accepted by
+            # that ledger may be consumed; new same-turn input is never applied.
+            receipt = result.get("submission")
+            if result.get("mode") == "submit" and isinstance(receipt, dict):
+                if work:
+                    work["taskType"] = identity
+                capture_finished(session, spec["observations"], result["observationResults"])
+                session["learningSubmission"] = {"turnId": turn_id, "reviewId": result["reviewId"], **receipt}
+                session["learningStatus"] = "complete"
+                session["learningCompletedAt"] = _now()
+                session.pop("learningDeferredReason", None)
+                atomic_write_json(path, session)
+            result.update(receipt or {"captureStatus": "already_reviewed", "capturedCount": 0,
+                                      "appliedCount": 0, "deferredCount": 0})
+            if result["status"] == "duplicate":
+                result.update(captureStatus="already_submitted", capturedCount=0, appliedCount=0)
+        elif result["status"] == "deferred":
+            # Incomplete ledger transactions must not be replayed as successes.
+            result.update(captureStatus="deferred", capturedCount=0, appliedCount=0,
+                          deferredCount=len(spec["observations"]))
+        return result
+
+
+def _work_evidence(session: dict[str, Any], work: dict[str, Any]) -> dict[str, Any]:
+    evidence = dict(session)
+    if work:
+        evidence["taskToolCount"] = max(session.get("taskToolCount", 0), work.get("toolCount", 0))
+        evidence["taskFailureCount"] = max(session.get("taskFailureCount", 0), work.get("failures", 0))
+        evidence["taskVerificationFailures"] = max(session.get("taskVerificationFailures", 0), work.get("verificationFailures", 0))
+        evidence["usedSkills"] = list({item["name"]: item for item in
+            work.get("usedSkills", []) + session.get("usedSkills", [])}.values())[-8:]
+    return evidence
 
 
 def submit_review(root: Path, session_id: str, turn_id: str, spec: dict[str, Any]) -> dict[str, Any]:
@@ -843,13 +982,7 @@ def submit_review(root: Path, session_id: str, turn_id: str, spec: dict[str, Any
         spec["observations"] = merge_observations(work.get("pending", []), spec["observations"], work.get("processed", []))
         # Revalidate persisted candidates too; local state is not trusted input.
         spec = _validate(spec)
-        evidence_session = dict(session)
-        if work:
-            evidence_session["taskToolCount"] = max(session.get("taskToolCount", 0), work.get("toolCount", 0))
-            evidence_session["taskFailureCount"] = max(session.get("taskFailureCount", 0), work.get("failures", 0))
-            evidence_session["taskVerificationFailures"] = max(session.get("taskVerificationFailures", 0), work.get("verificationFailures", 0))
-            evidence_session["usedSkills"] = list({item["name"]: item for item in
-                work.get("usedSkills", []) + session.get("usedSkills", [])}.values())[-8:]
+        evidence_session = _work_evidence(session, work)
         # A caller that discovers no reusable evidence creates no empty ledger
         # row. Still require current identity and completed verification.
         if (not spec["observations"] and not spec["evaluations"] and not spec.get("priorFeedback")
@@ -866,7 +999,8 @@ def submit_review(root: Path, session_id: str, turn_id: str, spec: dict[str, Any
                 work["taskType"] = identity
             session["learningStatus"] = "complete"
             session["learningCompletedAt"] = _now()
-            review_finished(session, spec["observations"])
+            if result.get("mode") != "submit":
+                review_finished(session, spec["observations"])
             atomic_write_json(path, session)
         elif result["status"] == "deferred":
             if work:
@@ -911,7 +1045,21 @@ def learning_status(root: Path, *, session: dict[str, Any] | None = None) -> dic
                 if not any(item["id"] == change["id"] for item in relevant):
                     relevant.append(_change_summary(change))
     from .work import task_type
+    from .memory_delivery import memory_delivery_status
+    receipt = (session or {}).get("learningSubmission")
+    current_submission = {"captureStatus": "not_submitted" if (session or {}).get("turnId") else "not_observable"}
+    if (isinstance(receipt, dict) and receipt.get("turnId") == (session or {}).get("turnId")
+            and receipt.get("turnId")):
+        try:
+            if not isinstance(receipt.get("reviewId"), str) or not _HASH.fullmatch(receipt["reviewId"]):
+                raise ValueError("invalid review receipt identity")
+            current_submission = {"turnId": receipt["turnId"], "reviewId": receipt["reviewId"],
+                                  **_submission_receipt(receipt)}
+        except ValueError:
+            current_submission = {"captureStatus": "not_observable"}
     return {"enabled": learning_enabled(root), "schemaVersion": 1, "totals": data["totals"],
+            "currentSubmission": current_submission,
+            "memoryDelivery": memory_delivery_status(session),
             "workTaskType": task_type((session or {}).get("work") or {}),
             "retainedReviews": len(data["reviews"]), "candidateCount": len(data["candidates"]),
             "activeChanges": sum(c["status"] == "active" for c in data["changes"]),
@@ -920,7 +1068,8 @@ def learning_status(root: Path, *, session: dict[str, Any] | None = None) -> dic
                                   "userChoiceTurns": len(c.get("choiceReviews", [])),
                                   "status": c["status"], "reason": c.get("reason")}
                                  for c in sorted(data["candidates"].values(), key=lambda c: c.get("lastSeen", ""))[-10:]],
-            "recentReviews": [{key: r[key] for key in ("taskType", "summary", "reportedOutcome", "evidence", "status")}
+            "recentReviews": [{**{key: r[key] for key in ("taskType", "summary", "reportedOutcome", "evidence", "status")},
+                               "mode": r.get("mode", "review"), "submission": r.get("submission")}
                               for r in data["reviews"][-5:]],
             "recentChanges": [_change_summary(c) for c in data["changes"][-10:]],
             "relevantChanges": relevant[:13],

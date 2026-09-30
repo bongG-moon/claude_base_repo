@@ -97,6 +97,8 @@ try {
     $entries = @((Read-CompanyAgentJson -Path (Join-Path $config 'plugins\installed_plugins.json')).plugins.'company-agent@company-agent-local')
     $current = @($entries | Where-Object { $_.scope -eq 'user' -and $_.version -eq $newVersion })
     Assert-ReleaseUpgrade ($current.Count -eq 1) 'Native Claude registry did not select the new version'
+    # These hashes compare only the updated cache with the update ZIP. The
+    # baseline release need not contain newly added learning runtime files.
     foreach ($relative in @(
         'scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py',
         'scripts\company_agent\execution_contract.py', 'scripts\company_agent\native_runtime.py',
@@ -113,7 +115,11 @@ try {
         'skills\presentation\references\image-review.md',
         'scripts\company_agent\workflow_evidence.py', 'scripts\company_agent\state.py',
         'scripts\company_agent\learning.py', 'scripts\company_agent\work.py',
+        'scripts\company_agent\cli.py', 'scripts\company_agent\memory.py',
+        'scripts\company_agent\memory_delivery.py', 'scripts\model_route_hook.py',
         'scripts\company_agent\skill_task_context.py', 'skills\self-learning\SKILL.md',
+        'skills\self-learning\references\review-schema.md', 'commands\learning.md',
+        'skills\personal-memory\SKILL.md', 'skills\company-agent\references\completion.md',
         'scripts\company_agent\html_reference.py', 'scripts\company_agent\knowledge.py',
         'scripts\Invoke-CompanyAgent.ps1', 'scripts\Confirm-BusinessAction.ps1',
         'skills\html-report\SKILL.md',

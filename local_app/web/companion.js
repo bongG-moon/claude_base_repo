@@ -125,12 +125,16 @@
     more('memory',mem);
     (mem.warnings||[]).forEach(x=>content.append(note(x)));if(mem.limited)content.append(note('표시 한도에 도달했습니다. 전체 항목이 아닐 수 있습니다.'));
     const learn=data.harness.learning, c=card('업무 중 학습 관리','대상은 내 선호와 제한된 개인 스킬 점검 영역입니다. 공통 자료·프로젝트 CLAUDE.md를 자동 수정하지 않습니다. 끄더라도 기존 자료는 보존합니다.');
-    c.append(note(learn.scopeNotice||'현재 설치 범위에서 학습합니다.'),note('업무 피드백 수집 → 업무 완료·검증 → 짧은 선호/스킬 점검 항목 개선 → 다음 사용 결과 확인. 모델 자체 훈련이나 종료 후 백그라운드 작업은 아닙니다.'));
+    c.append(note(learn.scopeNotice||'현재 설치 범위에서 학습합니다.'),note('재사용할 교정이 있을 때만 한 번 제출합니다. 지속적인 선호는 업무 중에도, 절차 개선은 실제 검증 후 조건에 맞을 때 반영합니다. 매 답변마다 학습하거나 학습 때문에 종료를 지연하지 않습니다.'));
     if(learn.activeInstallation===false){c.append(note('이 범위는 현재 명시적인 저장용입니다. 자동 학습 설정은 '+learn.scopeLabel+'에서 확인하세요.'));content.append(c);return;}
     if(typeof learn.enabled==='boolean')c.append(button(learn.enabled?'자동 학습 끄기':'자동 학습 켜기',async()=>{if(!confirm('기존 자료를 보존하고 자동 학습을 '+(learn.enabled?'끌까요?':'켤까요?')))return;await action({action:'learning',enabled:!learn.enabled,confirmed:true});await load();}));
     else c.append(note(learn.notice||'학습 상태 미확인'));
-    for(const change of learn.recentChanges||[]){const row=el('div',null,'companion-row');row.append(note(`${change.id} · ${change.status||'기록됨'}`),button('이 변경 되돌리기',async()=>{if(!confirm('선택한 학습 변경을 되돌릴까요? 이후 직접 편집한 내용은 보존합니다.'))return;await action({action:'rollback',changeId:change.id,confirmed:true});await load();}));c.append(row);}content.append(c);
-    for(const candidate of learn.recentCandidates||[]){const d=el('details');d.append(el('summary','학습 후보 · '+candidate.title+' · '+candidate.status),el('pre',candidate.body),note('후보 기록만으로 업무에 적용된 것은 아닙니다.'));c.append(d);}
+    const learningLabels={active:'실제 반영',observing:'근거 수집 중',deferred:'보류',rejected:'적용 제외',rolled_back:'되돌림',superseded:'새 기준으로 대체'};
+    if(learn.totals?.reviews===0)c.append(note('아직 접수한 학습 내역이 없습니다. 훅 실행 횟수는 학습 건수가 아닙니다.'));
+    for(const review of learn.recentReviews||[]){const receipt=review.submission;if(!receipt)continue;const d=el('details');d.append(el('summary',receipt.captureStatus==='no_candidates'?'접수했지만 새 후보 없음':`후보 ${receipt.capturedCount}개 접수 · 새 반영 ${receipt.appliedCount}개 · 보류 ${receipt.deferredCount}개`),note(review.summary||'학습 접수 내역'));c.append(d);}
+    for(const change of learn.recentChanges||[]){const row=el('div',null,'companion-row');row.append(note(`${change.title||change.id} · ${learningLabels[change.status]||'기록됨'}`),button('이 변경 되돌리기',async()=>{if(!confirm('선택한 학습 변경을 되돌릴까요? 이후 직접 편집한 내용은 보존합니다.'))return;await action({action:'rollback',changeId:change.id,confirmed:true});await load();}));c.append(row);}content.append(c);
+    for(const candidate of learn.recentCandidates||[]){const d=el('details');d.append(el('summary','학습 후보 · '+candidate.title+' · '+(learningLabels[candidate.status]||'상태 확인 필요')),el('pre',candidate.body),note('후보 기록만으로 업무에 적용된 것은 아닙니다.'));c.append(d);}
+    c.append(note('기억이 다음 모델 입력에 포함됐는지는 현재 대화에서 /company-agent:learning으로 확인할 수 있습니다. 입력에 포함된 기록은 실제 답변에 적용됐다는 증거와 다릅니다.'));
   }
   function knowledgeForm(item=null){
     const c=card(item?'내 업무 지식 검토·수정':'내 업무 지식 초안 만들기','내 기억에만 저장합니다. 공통 기억 반영이나 외부 전송은 하지 않습니다.');

@@ -474,7 +474,10 @@ def learning_context(state: dict[str, Any]) -> dict[str, Any] | None:
     previous = state.get("previousTurnId")
     from .work import context as work_context
     return {
-        "policy": "work-milestone",
+        "policy": "evidence-triggered",
+        "submission": "learning submit",
+        "maxSubmissionsPerTurn": 1,
+        "stopContinuation": False,
         "work": work_context(state),
         "turnId": turn_id,
         "previousTurnId": previous if isinstance(previous, str) and _TURN_ID_RE.fullmatch(previous) else None,
@@ -740,7 +743,10 @@ def _is_learning_spec_write(tool_name: str, tool_input: dict[str, Any], state: d
     if tool_name.casefold().strip() != "write":
         return False
     turn_id = state.get("turnId")
-    if not isinstance(turn_id, str) or not _TURN_ID_RE.fullmatch(turn_id) or state.get("learningStatus") != "pending":
+    submission = state.get("learningSubmission") or {}
+    current_submission = isinstance(submission, dict) and submission.get("turnId") == turn_id
+    if (not isinstance(turn_id, str) or not _TURN_ID_RE.fullmatch(turn_id)
+            or (state.get("learningStatus") != "pending" and not current_submission)):
         return False
     value = tool_input.get("file_path")
     if not isinstance(value, str):
@@ -860,7 +866,7 @@ def _is_own_learning_command(command: str, session_id: str, state: dict[str, Any
             return False
     if arguments == ["learning", "status"] or arguments == ["learning", "status", "--session", safe_session_id(session_id)]:
         return True
-    if len(arguments) != 8 or arguments[0] != "learning" or arguments[1] not in {"review", "stage"}:
+    if len(arguments) != 8 or arguments[0] != "learning" or arguments[1] not in {"review", "stage", "submit"}:
         return False
     fields: dict[str, str] = {}
     for index in range(2, len(arguments), 2):
@@ -1044,7 +1050,7 @@ def record_activity(
             learning_command = _is_own_learning_command(command, session_id, state, root or user_state_root())
             if learning_command and not not_performed:
                 arguments = _own_cli_arguments(command) or []
-                learning_progress = arguments[:2] in (["learning", "review"], ["learning", "stage"])
+                learning_progress = arguments[:2] in (["learning", "review"], ["learning", "stage"], ["learning", "submit"])
             bookkeeping = bookkeeping or (
                 _is_own_verification_command(command, session_id, root or user_state_root())
                 or _is_own_context_audit(command)
@@ -1076,7 +1082,12 @@ def record_activity(
             state["taskToolCount"] = _safe_nonnegative_int(state.get("taskToolCount")) + 1
             if failed:
                 state["taskFailureCount"] = _safe_nonnegative_int(state.get("taskFailureCount")) + 1
-            if state.get("learningStatus") == "complete":
+            submitted = state.get("learningSubmission") or {}
+            if (state.get("learningStatus") == "complete"
+                    and (not isinstance(submitted, dict) or submitted.get("turnId") != state.get("turnId"))):
+                # Legacy milestone reviews describe an outcome snapshot. A new
+                # submit captures a lesson, not work completion: subsequent work
+                # cannot undo that receipt or grant another submission budget.
                 state["learningStatus"] = "deferred"
                 state["learningDeferredReason"] = "late-business-activity"
             if not failed and not payload.get("agent_id"):
@@ -1149,6 +1160,8 @@ def mark_verified(
         state["verification"] = {
             "status": status,
             "at": _now(),
+            "turnId": state.get("turnId"),
+            "workId": (state.get("work") or {}).get("id"),
             "summary": compact_summary,
         }
         state["verificationRevision"] = _safe_nonnegative_int(state.get("verificationRevision")) + 1
@@ -1196,65 +1209,11 @@ def _learning_stop(
     state: dict[str, Any], path: Path, session_id: str, root: Path,
     completion: dict[str, Any],
 ) -> dict[str, Any]:
-    verification = state.get("verification")
-    if isinstance(verification, dict) and verification.get("status") in {"fail", "partial", "unavailable"}:
-        # A read-only task can explicitly record a failed or limited check too.
-        # Zero mutations must not turn that limitation into a learning detour.
-        return completion
-    context = learning_context(state)
-    # Stopping a response is not completing a business task. No empty review,
-    # no continuation for lookups, choices or waiting. Verification is separate.
-    work = state.get("work") or {}
-    if work.get("status") != "complete" or not work.get("reviewRequested"):
-        return completion
-    if context and context["status"] == "deferred" and state.get("learningDeferredReason") == "late-business-activity":
-        return completion
-    if not context or context["status"] != "pending":
-        return completion
-    from .learning import learning_enabled
-
-    if not learning_enabled(root):
-        state["learningStatus"] = "disabled"
-        atomic_write_json(path, state)
-        return completion
-    attempts = _safe_nonnegative_int(state.get("learningAttempts"))
-    if attempts >= MAX_LEARNING_CONTINUATIONS:
-        state["learningStatus"] = "deferred"
-        state["learningDeferredReason"] = "attempts-exhausted"
-        atomic_write_json(path, state)
-        warning = (
-            "Company Agent could not finish this turn's automatic learning after two attempts. "
-            "The review is deferred; do not claim that memory or skills were improved. "
-            "Report the task outcome and any remaining verification failure honestly."
-        )
-        return {"systemMessage": " ".join(filter(None, [completion.get("systemMessage"), warning]))}
-    if (attempts > 0 and state.get("lastLearningProgressRevision")
-            == _safe_nonnegative_int(state.get("learningProgressRevision"))):
-        # Settings/Skill/status reads cannot make an unfinished review more
-        # complete. Defer quietly; keep pending work and existing verification.
-        state["learningStatus"] = "deferred"
-        state["learningDeferredReason"] = "no-review-progress"
-        atomic_write_json(path, state)
-        return completion
-    state["learningAttempts"] = attempts + 1
-    state["lastLearningProgressRevision"] = _safe_nonnegative_int(state.get("learningProgressRevision"))
-    atomic_write_json(path, state)
-    turn_id = context["turnId"]
-    spec_path = _learning_spec_path(root, turn_id)
-    from .native_runtime import cli_command
-    prefix = cli_command(Path(__file__).resolve().parents[2])
-    reason = (
-        "완료된 업무의 새 피드백만 company-agent:self-learning Skill로 조용히 검토하세요. "
-        "기존 본문이 문맥에 있으면 재사용하고 원문·비밀·일회성 업무값·추측한 선호는 저장하지 마세요. "
-        f'Skill의 검토 JSON을 "{spec_path}"에 Write한 뒤 아래 현재 대화 명령을 그대로 실행하세요:\n'
-        f'{prefix} learning review --state-root {shlex.quote(str(root.absolute()))} '
-        f'--session "{safe_session_id(session_id)}" --turn "{turn_id}" --spec {shlex.quote(str(spec_path))}\n'
-        "설정·환경변수·세션을 재탐색하거나 업무 변경·외부 전송을 반복하지 마세요. "
-        "진행할 수 없으면 학습을 보류하고 업무 결과를 전달하세요. 내부 기록을 사용자에게 떠넘기거나 학습 성공을 꾸미지 마세요."
-    )
-    if completion.get("systemMessage"):
-        reason = str(completion["systemMessage"]) + " " + reason
-    return {**completion, "decision": "block", "reason": reason}
+    # Stop is not a semantic learning trigger. Never prolong an otherwise
+    # finished answer to elicit candidates, even for a legacy review checkpoint.
+    # Keep pending candidates and business verification untouched. A real later
+    # correction/check can submit once with current context; Stop cannot infer it.
+    return completion
 
 
 def stop_decision(

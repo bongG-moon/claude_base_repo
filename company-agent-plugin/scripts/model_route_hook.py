@@ -26,6 +26,7 @@ def _safe_default(reason: str) -> RouteDecision:
 
 def main() -> int:
     personal_memory_context = ""
+    memory_retrieval = "unavailable"
     sanitized_session_id: str | None = None
     learning_metadata: dict | None = None
     try:
@@ -45,6 +46,7 @@ def main() -> int:
                 memories = search_scoped_memory(user_state_root(), Path(payload.get('cwd') or Path.cwd()),
                                                 prompt_text, limit=MAX_MEMORY_RESULTS)
                 personal_memory_context = render_memory_context(memories)
+                memory_retrieval = "ok"
             except (OSError, UnicodeError, ValueError, TypeError, json.JSONDecodeError):
                 # Corrupt/unreadable memory is ignored. Routing must remain
                 # available and unsafe memory must never enter model context.
@@ -75,10 +77,13 @@ def main() -> int:
         session_id=sanitized_session_id,
         personal_memory_context=personal_memory_context,
     )
+    envelope = json.loads(output["hookSpecificOutput"]["additionalContext"])
+    # Internal handoff to native_entry; removed before the final prompt. A
+    # failed search must not be reported as a successful empty search.
+    envelope["company_agent_memory_retrieval"] = memory_retrieval
     if learning_metadata:
-        envelope = json.loads(output["hookSpecificOutput"]["additionalContext"])
         envelope["company_agent_learning"] = learning_metadata
-        output["hookSpecificOutput"]["additionalContext"] = json.dumps(envelope, ensure_ascii=True, separators=(",", ":"))
+    output["hookSpecificOutput"]["additionalContext"] = json.dumps(envelope, ensure_ascii=True, separators=(",", ":"))
     json.dump(
         output,
         sys.stdout,

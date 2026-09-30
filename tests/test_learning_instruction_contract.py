@@ -1,4 +1,4 @@
-"""Keep memory instructions aligned with milestone learning and real CLI syntax."""
+"""Keep learning instructions aligned with unified submission and real CLI syntax."""
 from pathlib import Path
 import sys
 import unittest
@@ -12,18 +12,48 @@ class LearningInstructionContractTests(unittest.TestCase):
     def text(self, name):
         return (ROOT / "company-agent-plugin" / "skills" / name).read_text(encoding="utf-8")
 
-    def test_memory_and_learning_agree_on_milestone_boundary(self):
+    def test_memory_and_learning_agree_on_durable_preference_boundary(self):
         memory = self.text("personal-memory/SKILL.md")
         learning = self.text("self-learning/SKILL.md")
         self.assertIn("ordinary correction during unfinished work", memory.lower())
-        self.assertIn("not an immediate-memory request", memory)
-        self.assertIn("Ordinary\ncorrections during unfinished work use staging", learning)
+        self.assertIn("not automatically durable", memory)
+        self.assertIn("learning submit", memory)
+        self.assertIn("may be applied while work is active", memory)
+        self.assertIn("may be submitted while work is active", learning)
+        self.assertIn("unclear directions apply only to the current task", learning)
         self.assertIn("explicit durable-memory request", memory.lower())
         self.assertNotIn("or corrects an interaction preference", memory)
 
+    def test_unified_submit_is_short_and_not_a_discovery_ritual(self):
+        learning = self.text("self-learning/SKILL.md")
+        self.assertLessEqual(len(learning.splitlines()), 90)
+        for marker in ("learning submit --session", "company_agent_learning.turnId",
+                       "<stateRoot>/tmp/learning-review-<turnId>.json",
+                       "No status/stage/checkpoint prerequisite", "learning-only Stop continuation",
+                       "No submission is not", "provided-to-model"):
+            self.assertIn(marker, learning)
+        for obsolete in ("learning stage --session", "learning review --session",
+                         "work checkpoint --session", "learning status --session"):
+            self.assertNotIn(obsolete, learning)
+
+    def test_condensed_runtime_keeps_evidence_trigger_and_no_stop_restart(self):
+        source = (ROOT / "company-agent-plugin" / "scripts" / "company_agent" / "native_runtime.py").read_text(encoding="utf-8")
+        self.assertIn("검증된 절차 근거가 있을 때만 self-learning의 learning submit 한 번", source)
+        self.assertIn("검증된 재사용 근거가 있을 때만 learning submit 한 번", source)
+        self.assertEqual(2, source.count("선행 조회·빈 회고·학습용 Stop 재개"))
+        self.assertNotIn("학습은 업무 이정표에서만", source)
+
+    def test_schema_keeps_observation_separate_from_application(self):
+        schema = self.text("self-learning/references/review-schema.md")
+        for marker in ("actually fully", "actual verification pass", "observed failure",
+                       "never fabricate", "no_candidates", "never submitting",
+                       "only an active change", "not-observable"):
+            self.assertIn(marker, schema)
+
     def test_repeated_choice_requires_independent_work_not_turns(self):
         schema = self.text("self-learning/references/review-schema.md")
-        self.assertIn("independent completed work units", schema)
+        self.assertIn("two independent work units", schema)
+        self.assertIn("actual current-turn verification", schema)
         self.assertIn("unit are not independent evidence", schema)
         self.assertNotIn("need evidence on separate user turns", schema)
 
@@ -45,9 +75,10 @@ class LearningInstructionContractTests(unittest.TestCase):
         self.assertIn("Use Write", memory)
         self.assertIn("shell redirection", memory)
 
-    def test_real_work_feedback_guards_and_checkpoint_order(self):
+    def test_real_work_feedback_guards_do_not_require_checkpoint_ritual(self):
         learning = self.text("self-learning/SKILL.md")
-        self.assertIn("BEFORE writing/submitting the review spec", learning)
+        self.assertIn("submitting never declares the business work complete", learning)
+        self.assertIn("actual relevant verification", learning)
         html = self.text("html-report/SKILL.md")
         self.assertIn("Read", html)
         main = self.text("company-agent/SKILL.md")

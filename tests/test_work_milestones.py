@@ -59,7 +59,7 @@ class WorkMilestoneTests(unittest.TestCase):
         self.assertEqual({}, self.stop())
         second = self.begin()
         self.assertEqual(work_id, self.mark(second, "complete")["workId"])
-        self.assertIn("-Mode Cli learning review", self.stop()["reason"])
+        self.assertEqual({}, self.stop())
         result = submit_review(self.root, self.session, second, self.spec(observations=False))
         self.assertEqual("accepted", result["status"])
         self.assertTrue(search_memory(self.root, "Report"))
@@ -86,7 +86,7 @@ class WorkMilestoneTests(unittest.TestCase):
             self.mark(next_turn, "active", new=True)
         mark_verified(self.session, "pass", "artifact opened and contents checked", self.root)
         self.mark(next_turn, "complete", learn=True)
-        self.assertIn("self-learning", self.stop()["reason"])
+        self.assertEqual({}, self.stop())
 
     def test_not_applicable_readonly_is_not_fail(self):
         self.begin()

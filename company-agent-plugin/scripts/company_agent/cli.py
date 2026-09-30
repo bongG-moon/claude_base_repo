@@ -276,7 +276,7 @@ def cmd_memory_compact(args: argparse.Namespace) -> int:
 
 
 def cmd_learning(args: argparse.Namespace) -> int:
-    from .learning import learning_status, rollback_change, set_learning_enabled, submit_review
+    from .learning import learning_status, rollback_change, set_learning_enabled, submit_learning, submit_review
     root = _state_root(args)
     operation = args.learning_command
     if operation == "status":
@@ -322,6 +322,8 @@ def cmd_learning(args: argparse.Namespace) -> int:
             if operation == "stage":
                 from .work import checkpoint
                 result = checkpoint(root, args.session, args.turn, "active", spec=spec)
+            elif operation == "submit":
+                result = submit_learning(root, args.session, args.turn, spec)
             else:
                 result = submit_review(root, args.session, args.turn, spec)
         except (OSError, ValueError) as exc:
@@ -350,7 +352,9 @@ def cmd_learning(args: argparse.Namespace) -> int:
         if submission_error is not None:
             _print_json({"ok": False, "error": submission_error, "stagingCleanup": cleanup,
                          "needsSpecRewrite": cleanup == "removed",
-                         "nextAction": "Check learning status and the completed work checkpoint before retrying. Rewrite a removed spec only within the existing review budget; do not rerun business work."})
+                         "nextAction": ("Correct only the reported input problem and rewrite the removed current-turn spec if needed. No status/checkpoint or business rerun is required; defer if evidence is unavailable."
+                                        if operation == "submit" else
+                                        "Check learning status and the completed work checkpoint before retrying. Rewrite a removed spec only within the existing review budget; do not rerun business work.")})
             return 1
         result["stagingCleanup"] = cleanup
     _print_json(result)
@@ -773,10 +777,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     learning = subparsers.add_parser("learning", help="Automatic personal learning review, observations, effects, and reversible changes.")
     learning_sub = learning.add_subparsers(dest="learning_command", required=True)
-    for operation in ("review", "stage", "status", "pause", "resume", "rollback"):
+    for operation in ("submit", "review", "stage", "status", "pause", "resume", "rollback"):
         action = learning_sub.add_parser(operation)
         _add_state_argument(action)
-        if operation in {"review", "stage"}:
+        if operation in {"submit", "review", "stage"}:
             action.add_argument("--session", required=True)
             action.add_argument("--turn", required=True)
             action.add_argument("--spec", required=True)

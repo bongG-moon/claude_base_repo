@@ -2,7 +2,9 @@
 
 현재 소스의 흐름은 **실제 목록 비교 → 관련 본문 로드 → 실행, 관련 스킬이 없으면 일반 실행**입니다. 목록·후보 전달과 실제 Read/Skill 본문 로드는 구분하며, 본문 전달만으로 선택 완료를 기록하지 않습니다.
 
-최신 변경·검증 범위는 [1.4.29 변경 안내](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.29/docs/UPDATE_1.4.29.md)와 [배포 검증](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.29/docs/VALIDATION_RELEASE_1.4.29.md)을 참고하세요. **기존 Release ZIP이나 설치된 PC는 자동 갱신되지 않습니다.** [2026-09-20 감사](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.28/docs/AUDIT_HARNESS_2026-09-20.md)와 [이전 목록 활용 개선](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.28/docs/SKILL_LIST_REVIEW_2026-09-17.md)은 당시 구현의 배경 기록입니다. 위 기록은 설치 ZIP 밖에 보관하므로 열려면 인터넷 연결이 필요합니다.
+최신 변경·검증 범위는 [1.4.30 변경 안내](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.30/docs/UPDATE_1.4.30.md)와 [배포 검증](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.30/docs/VALIDATION_RELEASE_1.4.30.md)을 참고하세요. **기존 Release ZIP이나 설치된 PC는 자동 갱신되지 않습니다.** [2026-09-20 감사](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.28/docs/AUDIT_HARNESS_2026-09-20.md)와 [이전 목록 활용 개선](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.28/docs/SKILL_LIST_REVIEW_2026-09-17.md)은 당시 구현의 배경 기록입니다. 위 기록은 설치 ZIP 밖에 보관하므로 열려면 인터넷 연결이 필요합니다.
+
+1.4.30은 재사용할 교정이 있을 때만 한 번 접수하는 개인 학습과 상태 안내를 정리합니다. 목록 조회가 학습을 시작하거나 학습 지침이 업무 스킬 선택을 대신하지 않습니다. 기존 출처 비교·중복 선택·실제 본문 로드 확인은 유지하며 새 스킬이나 분류 모델을 추가하지 않습니다. 실제 사내 HCP의 선택·학습 준수와 속도 효과는 미검증입니다.
 
 ## 사용자에게 달라지는 점
 

@@ -69,28 +69,29 @@ report a relevant recording limitation only when needed.
   this guide is not verification progress. No new evidence means no futile
   repeat.
 
-## Learn only at a meaningful milestone
+## Learning must not prolong completion
 
-A Stop reminder never creates permission to finish an unfinished task or start
-an empty review. For a genuinely completed work with pending reusable feedback
-or an eligible next-use assessment, read `../../self-learning/SKILL.md` and its
-required schema reference. Run `company-agent learning status --session "<id>"`
-only with a known current ID to get the turn and milestone status. Missing
-context defers learning; do not search for or invent IDs or a replacement state.
+Stop never starts a learning-only continuation or creates permission to mark
+unfinished work complete. Only a durable explicit correction, independent
+repeated choice, verified reusable fix or observed next-use assessment warrants
+the self-learning procedure. No evidence means no review call, not a fake lesson.
+An explicit durable preference may be submitted while work is active; procedural
+application needs the exact personal Skill's full-load and relevant verification
+evidence. Capturing a candidate does not mean applying it or completing the work.
 
-Only a successfully completed checkpoint may be reviewed. If a Stop reminder
-already requested that review, inspect its pending status instead of making a
-new work or resetting the checkpoint. Write the distilled spec with Write to
-`<stateRoot>/tmp/learning-review-<turnId>.json`, then run
-`company-agent learning review --session "<id>" --turn "<turnId>" --spec "<path>"`.
-Never use a bare `learning` executable. Keep the fixed review-attempt budget.
-Skip already complete/deferred/disabled reviews. No reusable evidence: follow
-the self-learning contract, never manufacture a preference or an empty ritual.
-Never store transcripts, tool outputs, raw mail, credentials or one-time values.
-Learning cannot clear verification failures or repeat external business actions.
-If verification is failed, unavailable, partial or its correction budget has
-ended, leave pending learning for later. Do not add a learning continuation to
-that blocked completion; return the available result and its real limitation.
+With exact injected session, turn and runtime context, read
+`../../self-learning/SKILL.md` and its schema reference when needed. Use Write at
+`<stateRoot>/tmp/learning-review-<turnId>.json`, then one
+`company-agent learning submit --session "<id>" --turn "<turnId>" --spec "<path>"`.
+No status/stage/checkpoint prerequisite; never rediscover context, invent an ID,
+use a bare learning executable, or reset work just to submit. The engine owns
+eligibility/deduplication. Accepted, candidate and applied are different states.
+Missing context or insufficient evidence defers learning without invalidating
+the available business result. Never store transcripts, tool outputs, raw mail,
+credentials or one-time values. Never repeat a completed action for bookkeeping.
+If checks fail, are unavailable/partial, or their correction budget is exhausted,
+preserve pending learning and return the real result/limitation. Do not append
+another learning pass to blocked completion or replay an accepted submission.
 
 ## Return to the user's requested result
 
@@ -105,8 +106,8 @@ Never regenerate or loop to clean leftovers, use broad deletion, or disable the
 guard. If the user later requests another cleanup, use artifact-cleanup with the
 same workFile; it is not a general filesystem deletion command.
 
-Do not narrate check markers, checkpoint/review calls, pass/fail labels, accepted
-reviews, no-observation receipts, or this procedure in progress/final text.
+Do not narrate check markers, learning submissions, pass/fail labels, accepted
+submissions, no-observation receipts, or this procedure in progress/final text.
 After the bounded internal work, deliver the original requested answer/file.
 Keep actual failures, excluded protected content and needed approval visible in
 plain language. Detailed checks are appropriate when the user explicitly asks.

@@ -611,35 +611,30 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         self.assertEqual("pass", state["verification"]["status"])
         stopped = self.run_wrapper(["-Mode", "Hook", "-Event", "Stop"], payload)
         self.assertEqual({}, json.loads(stopped.stdout))
-        milestone = self.run_wrapper(["-Mode", "Cli", "work", "checkpoint", "--session", session,
-                                      "--turn", state["turnId"], "--status", "complete", "--learn", "yes"])
-        self.assertEqual(0, milestone.returncode, milestone.stderr)
-        stopped = self.run_wrapper(["-Mode", "Hook", "-Event", "Stop"], payload)
-        self.assertEqual("block", json.loads(stopped.stdout)["decision"])
-        reason = json.loads(stopped.stdout)["reason"]
-        self.assertIn("company-agent:self-learning", reason)
+        # A durable preference is captured without status/stage/checkpoint and
+        # without pretending this active business work has completed.
+        self.assertEqual("active", state["work"]["status"])
         self.assertIn("completionGuide", context)
         self.assertTrue(Path(context["completionGuide"]).is_file())
-        self.assertIn("learning review", reason)
-        self.assertIn(session, reason)
-        self.assertIn(state["turnId"], reason)
-        self.assertIn(self.record["userStateRoot"], reason)
-        self.assertIn("--state-root", reason)
-        self.assertLessEqual(len(reason), 2400)
+        self.assertEqual(0, load_session(session, Path(self.record["userStateRoot"]))["learningAttempts"])
         turn_id = state["turnId"]
         spec_path = Path(self.record["userStateRoot"]) / "tmp" / f"learning-review-{turn_id}.json"
         atomic_write_json(spec_path, {"schemaVersion": 1, "taskType": "native-file-test", "outcome": "success",
-                                     "summary": "한글 검증 결과를 확인함", "observations": [], "evaluations": []})
+                                     "summary": "장기 보고 형식 교정을 확인함", "observations": [
+                                         {"kind": "preference", "key": "report-order", "signal": "explicit_correction",
+                                          "title": "보고서 순서", "body": "보고서는 결론부터 간단하게 정리한다."}
+                                     ], "evaluations": []})
         staging = self.run_wrapper(["-Mode", "Hook", "-Event", "PostToolUse"], {
             **payload, "tool_name": "Write", "tool_input": {"file_path": str(spec_path), "content": "DO-NOT-STORE-JSON-INPUT"},
         })
         self.assertEqual(0, staging.returncode, staging.stderr)
-        reviewed = self.run_wrapper(["-Mode", "Cli", "learning", "review", "--session", session,
+        reviewed = self.run_wrapper(["-Mode", "Cli", "learning", "submit", "--session", session,
                                      "--turn", turn_id, "--spec", str(spec_path)])
         self.assertEqual(0, reviewed.returncode, reviewed.stderr)
-        self.assertEqual("skipped", json.loads(reviewed.stdout)["status"])
-        self.assertFalse((Path(self.record["userStateRoot"]) / "learning" / "state.json").exists())
-        review_command = cli_command(self.plugin) + f' learning review --session {session} --turn {turn_id} --spec "{spec_path}"'
+        self.assertEqual("accepted", json.loads(reviewed.stdout)["status"])
+        self.assertEqual(1, json.loads(reviewed.stdout)["appliedCount"])
+        self.assertTrue((Path(self.record["userStateRoot"]) / "learning" / "state.json").exists())
+        review_command = cli_command(self.plugin) + f' learning submit --session {session} --turn {turn_id} --spec "{spec_path}"'
         review_activity = self.run_wrapper(["-Mode", "Hook", "-Event", "PostToolUse"], {
             **payload, "tool_name": "PowerShell", "tool_input": {"command": review_command},
         })
@@ -648,12 +643,21 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         self.assertEqual({}, json.loads(closed.stdout))
         state = load_session(session, Path(self.record["userStateRoot"]))
         self.assertEqual("complete", state["learningStatus"])
+        self.assertEqual("active", state["work"]["status"])
         self.assertEqual("pass", state["verification"]["status"])
         self.assertNotIn("DO-NOT-STORE", json.dumps(state))
         failed = self.run_wrapper(["-Mode", "Cli", "session", "verify", "--session", session,
                                    "--status", "fail", "--summary", "한글 검증 실패"])
         self.assertEqual(1, failed.returncode, failed.stderr)
         self.assertEqual("fail", json.loads(failed.stdout)["verification"]["status"])
+        next_payload = {"session_id": "next-memory-session", "cwd": str(self.project), "prompt": "보고서를 정리해줘"}
+        routed = self.run_wrapper(["-Mode", "Hook", "-Event", "UserPromptSubmit"], next_payload)
+        self.assertEqual(0, routed.returncode, routed.stderr)
+        final_context = json.loads(routed.stdout)["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("보고서는 결론부터", final_context)
+        delivered = load_session(next_payload["session_id"], Path(self.record["userStateRoot"]))["lastMemoryDelivery"]
+        self.assertEqual("output-produced", delivered["status"])
+        self.assertEqual("not-observable", delivered["modelApplied"])
 
     def test_native_wrapper_is_inactive_outside_registered_project(self) -> None:
         result = self.run_wrapper(["-Mode", "Hook", "-Event", "SessionStart"], {

@@ -120,6 +120,24 @@ def review_finished(state: dict, observations: list) -> None:
     work.update(toolCount=0, failures=0, verificationFailures=0, usedSkills=[])
 
 
+def capture_finished(state: dict, observations: list, outcomes: list) -> None:
+    """Keep evidence-deferred lessons, without inferring business completion."""
+    work = state.get("work")
+    if not isinstance(work, dict):
+        return
+    statuses = {item["id"]: item["status"] for item in outcomes}
+    accepted = [item for item in observations if observation_id(item) in statuses]
+    accepted_ids = {observation_id(item) for item in accepted}
+    consumed = [observation_id(item) for item in accepted if statuses[observation_id(item)] != "deferred"]
+    pending = [item for item in accepted if statuses[observation_id(item)] == "deferred"]
+    # IDs absent from an idempotent replay were never accepted. Preserve any
+    # existing pending record instead of consuming newly supplied same-turn text.
+    untouched = [item for item in work.get("pending", []) if observation_id(item) not in accepted_ids]
+    work["processed"] = list(dict.fromkeys(work.get("processed", []) + consumed))[-64:]
+    work["pending"] = merge_observations(untouched, pending, work["processed"])
+    work["reviewRequested"] = False
+
+
 def context(state: dict) -> dict:
     work = state.get("work") or {}
     return {"id": work.get("id"), "status": work.get("status", "active"), "taskType": task_type(work),

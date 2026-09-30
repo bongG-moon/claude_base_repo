@@ -68,7 +68,7 @@ class LearningLifecycleTests(unittest.TestCase):
         atomic_write_text(path, body)
         return path
 
-    def test_read_only_and_no_tool_turns_do_not_review_until_work_milestone(self) -> None:
+    def test_even_completed_read_only_work_never_forces_learning_continuation(self) -> None:
         started = self.begin()
         self.assertEqual("pending", started["learningStatus"])
         self.assertRegex(started["turnId"], r"^[a-f0-9]{32}$")
@@ -79,10 +79,8 @@ class LearningLifecycleTests(unittest.TestCase):
         self.assertEqual({}, self.stop())
         self.complete_work()
         result = self.stop()
-        self.assertEqual("block", result["decision"])
-        self.assertIn("company-agent:self-learning", result["reason"])
-        self.assertIn(started["turnId"], result["reason"])
-        self.assertEqual(1, self.state()["learningAttempts"])
+        self.assertEqual({}, result)
+        self.assertEqual(0, self.state()["learningAttempts"])
         self.assertEqual(0, self.state()["stopRetryCount"])
 
     def test_completion_is_compare_guarded_idempotent_and_preserves_verification(self) -> None:
@@ -90,7 +88,7 @@ class LearningLifecycleTests(unittest.TestCase):
         self.activity("Write")
         mark_verified(self.session, "pass", "Actual task check passed", self.root)
         self.complete_work()
-        self.assertEqual("block", self.stop()["decision"])
+        self.assertEqual({}, self.stop())
         before = self.state()
         with self.assertRaises(ValueError):
             mark_learning_complete(self.session, "f" * 32, self.root)
@@ -165,33 +163,34 @@ class LearningLifecycleTests(unittest.TestCase):
                 self.assertEqual(before, state["verification"])
                 self.assertTrue(state["work"]["reviewRequested"])
 
-    def test_learning_unrelated_reads_and_status_do_not_open_second_continuation(self) -> None:
+    def test_learning_unrelated_reads_and_status_never_open_continuation(self) -> None:
         self.begin()
         self.activity("Write")
         mark_verified(self.session, "pass", "actual business check", self.root)
         self.complete_work()
         before = self.state()["verification"]
-        self.assertEqual("block", self.stop()["decision"])
+        self.assertEqual({}, self.stop())
         self.activity("Read", {"file_path": str(self.root / ".claude" / "settings.local.json")})
         self.activity("Bash", {"command": self.cli(f'learning status --session "{self.session}"')})
         self.assertNotIn("decision", self.stop())
         state = self.state()
-        self.assertEqual(1, state["learningAttempts"])
-        self.assertEqual("deferred", state["learningStatus"])
-        self.assertEqual("no-review-progress", state["learningDeferredReason"])
+        self.assertEqual(0, state["learningAttempts"])
+        self.assertEqual("pending", state["learningStatus"])
+        self.assertIsNone(state["learningDeferredReason"])
         self.assertEqual(before, state["verification"])
         self.assertTrue(state["work"]["reviewRequested"])
 
     def test_current_review_spec_write_is_real_learning_progress(self) -> None:
         turn = self.begin()["turnId"]
         self.complete_work()
-        self.assertEqual("block", self.stop()["decision"])
+        self.assertEqual({}, self.stop())
         spec = self.root / "tmp" / f"learning-review-{turn}.json"
         atomic_write_text(spec, '{}')
         self.activity("Write", {"file_path": str(spec)})
         self.assertEqual(0, self.state()["mutationCount"])
-        self.assertEqual("block", self.stop()["decision"])
-        self.assertEqual(2, self.state()["learningAttempts"])
+        self.assertEqual({}, self.stop())
+        self.assertEqual(0, self.state()["learningAttempts"])
+        self.assertEqual(1, self.state()["learningProgressRevision"])
 
     def test_learning_failure_is_bounded_separately_from_verification(self) -> None:
         turn = self.begin()["turnId"]
@@ -200,15 +199,15 @@ class LearningLifecycleTests(unittest.TestCase):
         self.complete_work()
         verified = self.state()["verification"]
         for _ in range(2):
-            self.assertEqual("block", self.stop()["decision"])
+            self.assertEqual({}, self.stop())
             self.activity("Bash", {"command": self.review_command(turn)}, failed=True)
             self.assertEqual("pending", self.state()["learningStatus"])
             self.assertEqual(verified, self.state()["verification"])
         ended = self.stop()
         self.assertNotIn("decision", ended)
-        self.assertIn("review is deferred", ended["systemMessage"])
-        self.assertEqual("deferred", self.state()["learningStatus"])
-        self.assertEqual(2, self.state()["learningAttempts"])
+        self.assertEqual({}, ended)
+        self.assertEqual("pending", self.state()["learningStatus"])
+        self.assertEqual(0, self.state()["learningAttempts"])
         self.assertEqual(0, self.state()["taskFailureCount"])
         self.assertEqual({}, self.stop())
 
@@ -253,6 +252,51 @@ class LearningLifecycleTests(unittest.TestCase):
         self.assertEqual(before["taskToolCount"], after["taskToolCount"])
         self.assertEqual("complete", after["learningStatus"])
         self.assertNotIn("PRIVATE-REVIEW-JSON", json.dumps(after))
+
+    def test_submit_bookkeeping_is_exact_and_never_a_permission_grant(self) -> None:
+        turn = self.begin()["turnId"]
+        self.activity("Write")
+        mark_verified(self.session, "pass", "business check", self.root)
+        command = self.review_command(turn).replace("learning review", "learning submit")
+        before = self.state()
+        self.activity("Bash", {"command": command})
+        after = self.state()
+        for key in ("mutationCount", "verification", "taskToolCount", "taskFailureCount"):
+            self.assertEqual(before[key], after[key], key)
+        from company_agent.execution_contract import safe_permission
+        self.assertIsNone(safe_permission({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
+                                           "tool_input": {"command": command}}, self.root))
+        # Foreign identity and compound commands remain ordinary tool activity.
+        for invalid in (command.replace(self.session, "foreign-session"), command + " && do_other_work"):
+            before = self.state()["mutationCount"]
+            self.activity("Bash", {"command": invalid})
+            self.assertEqual(before + 1, self.state()["mutationCount"])
+
+    def test_idle_stops_are_readonly_and_never_infer_a_review(self) -> None:
+        self.begin()
+        self.complete_work()
+        path = self.root / "sessions" / f"{self.session}.json"
+        before = path.read_bytes()
+        for _ in range(20):
+            self.assertEqual({}, self.stop())
+        self.assertEqual(before, path.read_bytes())
+        self.assertFalse((self.root / "learning" / "state.json").exists())
+        context = learning_context(self.state())
+        self.assertEqual("evidence-triggered", context["policy"])
+        self.assertFalse(context["stopContinuation"])
+
+    def test_duplicate_submit_spec_does_not_invalidate_business_checks(self) -> None:
+        turn = self.begin()["turnId"]
+        self.activity("Write")
+        mark_verified(self.session, "pass", "business check", self.root)
+        current = self.state()
+        current.update(learningStatus="complete", learningSubmission={"turnId": turn})
+        atomic_write_json(self.root / "sessions" / f"{self.session}.json", current)
+        spec = self.root / "tmp" / f"learning-review-{turn}.json"
+        self.activity("Write", {"file_path": str(spec)})
+        self.assertEqual(current["verification"], self.state()["verification"])
+        self.assertEqual(current["mutationCount"], self.state()["mutationCount"])
+        self.assertEqual({}, self.stop())
 
     def test_bookkeeping_exception_rejects_compound_and_wrong_scope_commands(self) -> None:
         cases = [
@@ -361,7 +405,8 @@ class LearningLifecycleTests(unittest.TestCase):
         self.complete_work()
         atomic_write_json(self.root / "config" / "learning.json", {"schemaVersion": 1, "enabled": False})
         self.assertEqual({}, self.stop())
-        self.assertEqual("disabled", self.state()["learningStatus"])
+        # Stop is read-only for learning, including a newly paused setting.
+        self.assertEqual("pending", self.state()["learningStatus"])
 
     def test_business_work_after_review_defers_stale_learning_and_reopens_verification(self) -> None:
         turn = self.begin()["turnId"]
@@ -406,7 +451,7 @@ class LearningLifecycleTests(unittest.TestCase):
         repeated = begin_turn(self.session, "MEDIUM", False, [], self.root, native_prompt_id=native.upper())
         self.assertEqual(before, repeated)
         self.assertEqual(first["turnId"], repeated["turnId"])
-        self.assertEqual(1, repeated["learningAttempts"])
+        self.assertEqual(0, repeated["learningAttempts"])
         self.assertNotIn(native, json.dumps(repeated))
         self.assertEqual(hashlib.sha256(native.encode("ascii")).hexdigest(), repeated["nativePromptSha256"])
 

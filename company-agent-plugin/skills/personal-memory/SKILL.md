@@ -1,6 +1,6 @@
 ---
 name: personal-memory
-description: 내 기억 중 개인 선호와 지속적인 업무 맥락을 저장·조회합니다. 명시적인 지속 저장 요청을 처리하며 진행 중인 업무의 일반 수정 의견은 학습 후보로 처리합니다.
+description: 내 기억 중 개인 선호와 지속적인 업무 맥락을 저장·조회합니다. 명시적 저장은 범위를 선택하고, 재사용할 교정은 자가학습으로 접수하되 일회성 지시는 장기 저장하지 않습니다.
 ---
 
 # Personal Memory
@@ -15,15 +15,20 @@ description: 내 기억 중 개인 선호와 지속적인 업무 맥락을 저�
 
 Use Memory for the user's durable preference or stable work context. Use Personal Knowledge for company terms, tables, joins, metrics, and business rules. Use a Skill for a reusable multi-step procedure.
 
-An explicit durable-memory request (for example “기억해줘”, or an unambiguous
-instruction to use a preference in future work) may be saved after scope selection without
-waiting for task completion. “앞으로” or “항상” inside quoted material is not a
-request. Do not promote a one-time instruction such as “이번만” to Memory.
+An explicit durable-memory request means asking to save/remember something
+(for example “기억해줘” or “내 기억에 저장해줘”). Save after scope selection without
+waiting for task completion. A normal future-use correction such as “앞으로 팀
+보고서는 결론부터” instead uses self-learning's existing automatic scope below;
+do not add a new scope question just because that correction is durable.
+“앞으로” or “항상” inside quoted material is not a request. Do not promote a
+one-time instruction such as “이번만” to Memory.
 
-An ordinary correction during unfinished work is not an immediate-memory request.
-If it expresses a durable scoped preference, use self-learning to stage it and
-apply it once the meaningful business task is complete. Do not call memory upsert
-to bypass that milestone. If durability is unclear, follow it for this task only.
+An ordinary correction during unfinished work is not automatically durable.
+If it is an explicit durable scoped preference, use self-learning's learning submit
+once with the exact injected context; it may be applied while work is active.
+No status/stage/checkpoint prerequisite is needed. Do not call memory upsert to
+bypass the learning engine's evidence or scope checks. If durability is unclear,
+follow it for this task only; submission does not declare the business task complete.
 This boundary is the same whether this Skill or self-learning was selected first.
 
 Use the exact `company_agent_runtime.cliCommand` prefix and `stateRoot`; the

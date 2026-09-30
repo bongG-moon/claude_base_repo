@@ -257,7 +257,7 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     # Neither form performs a save or creates a completion obligation.
     if args[-1:] == ["--help"] and head in {
         ("memory", "search"), ("memory", "upsert"), ("session", "verify"),
-        ("work", "checkpoint"), ("learning", "stage"), ("learning", "review"),
+        ("work", "checkpoint"), ("learning", "stage"), ("learning", "review"), ("learning", "submit"),
         ("business", "eml-read"), ("business", "files-plan"),
         ("business", "ppt-choices"), ("business", "html-choices"),
         ("business", "ppt"), ("business", "ppt-design-preview"),

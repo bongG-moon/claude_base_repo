@@ -100,7 +100,7 @@ class CompletionFeedbackTests(unittest.TestCase):
 
     def test_learning_projection_preserves_next_action_and_warning(self):
         reason = ('company-agent:self-learning: use current session/turn; '
-                  'company-agent learning review --session current --turn current-turn --spec current.json')
+                  'company-agent learning submit --session current --turn current-turn --spec current.json')
         decision = {"decision": "block", "reason": reason,
                     "systemMessage": "Verification did not pass"}
         result = present_stop_feedback(decision)
@@ -123,7 +123,7 @@ class CompletionFeedbackTests(unittest.TestCase):
         guide = Path(context["completionGuide"])
         self.assertTrue(guide.is_file())
         body = guide.read_text(encoding="utf-8")
-        for marker in ("cliCommand", "company_agent_session_id", "session verify", "learning review",
+        for marker in ("cliCommand", "company_agent_session_id", "session verify", "learning submit",
                        "unavailable", "partial", "2,000", "not conversation", "transcripts"):
             self.assertIn(marker, body)
         self.assertRegex(context["instructions"], r"Read completionGuide|변경한 업무만 completionGuide를 읽고")
