@@ -11,6 +11,9 @@ description: 지속적인 명시적 교정·독립된 반복 선택·검증된 �
 회사 배포본·프로젝트 CLAUDE.md·User 설치의 별도 프로젝트 자산으로 자동 승격하거나 이동하지 않습니다.
 명시적인 새 기억·스킬 저장은 personal-memory/asset-factory의 범위 선택을 따릅니다.
 그 선택은 자동 학습 설정을 바꾸지 않습니다. 이미 허용한 안전한 자동 업데이트마다 다시 승인받지 마세요.
+기존 기억의 내용 교정은 personal-memory에서 원래 범위·ID를 유지한 조건부 수정으로 처리합니다.
+새 프로젝트 전용 선호도 그 범위의 명시 기억으로 저장하며 개인 전체 자동학습으로 바꾸지 않습니다.
+현재 learning submit은 관찰별 저장 범위 변경이나 임의 기존 기억 ID 수정을 지원하지 않습니다.
 
 ## Learn only when there is evidence
 
@@ -76,4 +79,9 @@ session folders, env or transcripts, invent IDs, change roots, or run discovery 
 `/company-agent:learning` supports status, pause/resume and rollback of an identified automatic change.
 Status is on demand, not an automatic prerequisite. Pause preserves existing Memory/Skills and their use.
 Rollback preserves manual edits and does not undo business files, mail, DB writes or other plugins.
+For preferences, rollback means deactivate this learned preference, not restore its
+previous text. For Skills, it restores only the engine-owned checklist block.
+An explicit memory edit uses personal-memory's same-scope revision restore instead;
+do not claim it is in the automatic-learning ledger. When interpreting scope or
+undo, use the actual receipt; a missing observed scope is not proof of personal-wide storage.
 For prior-feedback links, version receipts and checklist-update limits, use the schema reference.

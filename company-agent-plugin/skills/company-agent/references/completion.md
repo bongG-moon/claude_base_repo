@@ -38,6 +38,11 @@ report a relevant recording limitation only when needed.
 - Read-only lookup, choices and internal catalogue maintenance need no invented
   code test or empty success marker. An outstanding earlier change still needs
   its own evidence; a new read does not clear it.
+- A trusted memory upsert/restore receipt with `persisted-content-verified`
+  checks only that memory item. Report its resolved scope without a Markdown
+  reread or session verify call solely for the same save. Do not reinterpret
+  legacy private-owner metadata as usage scope. Other unfinished changes still
+  need their own outcome checks and existing verification marker.
 - Code changes need relevant tests/static checks. Documents need actual content
   and source-constraint checks. File moves need receipts and actual paths.
   Seeing a filename is not proof of correct content.

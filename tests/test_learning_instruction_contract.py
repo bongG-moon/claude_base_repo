@@ -15,14 +15,25 @@ class LearningInstructionContractTests(unittest.TestCase):
     def test_memory_and_learning_agree_on_durable_preference_boundary(self):
         memory = self.text("personal-memory/SKILL.md")
         learning = self.text("self-learning/SKILL.md")
-        self.assertIn("ordinary correction during unfinished work", memory.lower())
-        self.assertIn("not automatically durable", memory)
+        self.assertIn('Choose by the affected resource', memory)
+        self.assertIn('An existing saved fact: keep its exact ID and storageScope', memory)
+        self.assertIn('A new project-only durable fact', memory)
+        self.assertIn('A one-time or unclear correction', memory)
+        self.assertIn('follow it for this task only. Do not save it.', memory)
         self.assertIn("learning submit", memory)
-        self.assertIn("may be applied while work is active", memory)
+        self.assertIn('same ID and scope, not `learning rollback`', memory)
         self.assertIn("may be submitted while work is active", learning)
         self.assertIn("unclear directions apply only to the current task", learning)
         self.assertIn("explicit durable-memory request", memory.lower())
         self.assertNotIn("or corrects an interaction preference", memory)
+
+    def test_memory_receipt_and_revision_restore_do_not_require_a_stop_ritual(self):
+        memory = self.text('personal-memory/SKILL.md')
+        for marker in ('persisted-content-verified', 'storageScope', '--expected-revision',
+                       '--expected-sha256', 'memory history --id', 'memory restore --id',
+                       'never verifies an unfinished report', 'Missing snapshots mean not restored'):
+            self.assertIn(marker, memory)
+        self.assertNotIn('Read back the generated Markdown', memory)
 
     def test_unified_submit_is_short_and_not_a_discovery_ritual(self):
         learning = self.text("self-learning/SKILL.md")

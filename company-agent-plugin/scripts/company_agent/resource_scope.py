@@ -13,6 +13,14 @@ from pathlib import Path
 LABELS = {'personal': '개인 전체', 'project': '이 프로젝트'}
 
 
+def scope_metadata(selection: str, project: Path | None = None) -> dict:
+    """Application scope is resolved from its store, never legacy owner metadata."""
+    if selection not in LABELS or (selection == 'project' and project is None):
+        raise ValueError('기억의 실제 저장 범위와 현재 프로젝트를 확인해 주세요.')
+    return {'storageScope': selection, 'scopeLabel': LABELS[selection],
+            'projectRoot': str(safe(project)) if selection == 'project' else None}
+
+
 def safe(path: Path) -> Path:
     from .skill_registry import _no_reparse
     path = path.absolute()

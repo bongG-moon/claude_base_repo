@@ -59,6 +59,35 @@ def _hash(value: bytes | str) -> str:
     return hashlib.sha256(value.encode("utf-8") if isinstance(value, str) else value).hexdigest()
 
 
+def _storage_receipt(root: Path) -> dict[str, Any]:
+    """Describe the selected store without probing registrations or guessing scope."""
+    configured = os.environ.get("COMPANY_AGENT_USER_STATE")
+    bound = bool(configured and Path(configured).expanduser().absolute() == root.absolute())
+    scope = {"User": "personal", "Project": "project"}.get(os.environ.get("COMPANY_AGENT_SCOPE")) if bound else None
+    return {"stateRoot": str(root.absolute()), "storageScope": scope or "not_observable",
+            "scopeBasis": "runtime-state-root" if scope else "unbound-state-root",
+            "scopeLabel": {"personal": "개인 전체", "project": "이 프로젝트"}.get(scope, "선택된 학습 저장소 · 적용 범위 미확인")}
+
+
+def _change_target_receipt(change: dict[str, Any]) -> dict[str, Any]:
+    """Ledger identity, not a fresh observation of the current target file."""
+    preference = change["kind"] == "preference"
+    return {"historySource": "automatic_learning",
+            "rollbackOperation": "deactivate_preference" if preference else "restore_owned_checklist",
+            "rollbackRestoresPreviousContent": not preference,
+            **({"memoryId": change["memoryId"], "recordedAfterSha256": change["afterSha256"],
+                "currentRevisionChecked": False} if preference else {"skillName": change["skillName"]})}
+
+
+def _rollback_receipt(root: Path, change: dict[str, Any], *, changed: bool, effect: str) -> dict[str, Any]:
+    target = _change_target_receipt(change)
+    return {"id": change["id"], "status": change["status"], "changed": changed,
+            **target, "operation": target["rollbackOperation"], "effect": effect,
+            "previousContentRestored": changed and change["kind"] == "skill",
+            "storage": _storage_receipt(root),
+            **({"resultSha256": change["rollbackSha256"]} if changed else {})}
+
+
 def _bounded_text(value: Any, limit: int, label: str) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > limit:
         raise ValueError(f"{label} must be nonempty text of at most {limit} characters")
@@ -610,7 +639,8 @@ def _commit_change(root: Path, data: dict[str, Any], review: dict[str, Any], obs
             old["status"] = "superseded"
     change["status"] = "active"
     _save(root, data)
-    return {"id": identifier, "kind": change["kind"], "title": change["title"], "status": "active"}
+    return {"id": identifier, "kind": change["kind"], "title": change["title"], "status": "active",
+            **_change_target_receipt(change)}
 
 
 def _restore_previous_skill_owner(data: dict[str, Any], change: dict[str, Any], rendered: str) -> None:
@@ -629,7 +659,7 @@ def _restore_previous_skill_owner(data: dict[str, Any], change: dict[str, Any], 
 
 def _rollback(root: Path, data: dict[str, Any], change: dict[str, Any], reason: str) -> dict[str, Any]:
     if change["status"] != "active":
-        return {"id": change["id"], "status": change["status"], "changed": False}
+        return _rollback_receipt(root, change, changed=False, effect="no_change")
     path = _target(root, change)
     try:
         current = _read(path, root)
@@ -663,11 +693,12 @@ def _rollback(root: Path, data: dict[str, Any], change: dict[str, Any], reason: 
             if candidate.get("changeId") == change["id"]:
                 candidate["status"] = "rejected"
         _restore_previous_skill_owner(data, change, rendered)
-        return {"id": change["id"], "status": "rolled_back", "changed": True}
+        return _rollback_receipt(root, change, changed=True,
+                                 effect="preference_deactivated" if change["kind"] == "preference" else "owned_checklist_restored")
     except (OSError, UnicodeError, ValueError):
         change["status"] = "blocked_conflict"
         change["rollbackReason"] = "manual_or_newer_revision_preserved"
-        return {"id": change["id"], "status": "blocked_conflict", "changed": False}
+        return _rollback_receipt(root, change, changed=False, effect="conflict_preserved")
 
 
 def rollback_change(root: Path, change_id: str) -> dict[str, Any]:
@@ -916,13 +947,14 @@ def submit_learning(root: Path, session_id: str, turn_id: str, spec: dict[str, A
             return {"status": "disabled", "captureStatus": "not_captured", "capturedCount": 0,
                     "appliedCount": 0, "deferredCount": 0,
                     "reason": "protected_session" if session.get("protectionRestricted") else "learning_paused",
-                    "changes": [], "assessments": []}
+                    "changes": [], "assessments": [], "storage": _storage_receipt(root)}
         work = session.get("work") or {}
         identity = task_type(work, spec["taskType"])
         spec["observations"] = merge_observations(work.get("pending", []), spec["observations"], work.get("processed", []))
         spec = _validate(spec)
         evidence_session = _work_evidence(session, work)
         result = _submit_locked(root, session_id, turn_id, spec, evidence_session, submission=True)
+        result["storage"] = _storage_receipt(root)
         if result["status"] in {"accepted", "duplicate"}:
             # A duplicate can recover a ledger-first write interrupted before
             # the session receipt. Only observation IDs actually accepted by
@@ -1016,8 +1048,7 @@ def _change_summary(change: dict[str, Any]) -> dict[str, Any]:
     if change["kind"] == "skill":
         result.update({"skillName": change["skillName"],
                        "sha256": change.get("currentSha256", change["afterSha256"])})
-    else:
-        result["memoryId"] = change["memoryId"]
+    result.update(_change_target_receipt(change))
     return result
 
 
@@ -1058,6 +1089,7 @@ def learning_status(root: Path, *, session: dict[str, Any] | None = None) -> dic
         except ValueError:
             current_submission = {"captureStatus": "not_observable"}
     return {"enabled": learning_enabled(root), "schemaVersion": 1, "totals": data["totals"],
+            "storage": _storage_receipt(root),
             "currentSubmission": current_submission,
             "memoryDelivery": memory_delivery_status(session),
             "workTaskType": task_type((session or {}).get("work") or {}),

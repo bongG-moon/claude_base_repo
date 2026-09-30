@@ -25,14 +25,24 @@ User request: $ARGUMENTS
    review/application is paused, not deleted. Explicit "기억해줘" still uses personal-memory.
 3. If the user explicitly requests resuming, run `company-agent learning resume`.
    Explain that subsequent turns resume review; past full transcripts are not scanned.
-4. For an undo request, identify the exact automatic change from status. Ask only if the
+4. For an undo request, first distinguish automatic learning from an explicit Memory
+   edit. Reuse an exact change receipt already in this conversation; use status only
+   when the requested automatic change is not already identified. Ask only if the
    target is ambiguous, using up to three short options. Then run
    `company-agent learning rollback --change "<exact change ID>"`.
-   Report the returned outcome. A manual edit or hash conflict must not be overwritten.
+   Report `operation`, `effect`, `changed` and `previousContentRestored` from the result.
+   A manual edit or hash conflict must not be overwritten.
    A preference undo deactivates the current automatic entry (it does not
    reactivate an older preference); a Skill undo restores its previous owned
    checklist section. Explain that distinction before calling either restored.
    This does not undo business files, mail, DB, company rules, or another plugin.
+   To restore a prior explicitly edited Memory, use personal-memory's `memory history`
+   and conditional `memory restore` for the same ID and storage scope instead. Reuse
+   the prior revision receipt when available. Never put a Memory change ID into
+   `learning rollback` or claim an automatic preference was restored after deactivation.
+   Learning-ledger backups are not Memory revision backups: `memory restore` can use
+   only a version returned by that item's Memory history. If none exists, explain the
+   limit instead of copying historical text into a new automatic preference.
 5. If the user asks to forget a preference, distinguish deactivating the current learned
    entry from deleting all historical records. Use a targeted rollback for an active
    automatic change; don't delete the learning directory or unrelated personal memory.
@@ -41,6 +51,11 @@ Scope belongs to the currently selected User/Project state. Do not silently copy
 preferences between installations. Safety/credentials and current user requests
 always outrank learned text. Never promise an independent correctness proof from
 model-supplied judgments or a statistical improvement from a single example.
+The returned `storage` describes that selected state. `not_observable` means the
+runtime scope binding is unavailable, not that the Memory is absent or mis-saved.
+Do not infer scope from legacy `scope: personal` frontmatter. Change listings expose
+`recordedAfterSha256` as historical identity with `currentRevisionChecked: false`,
+not a freshly verified current hash for a conditional Memory update.
 
 These are on-demand controls, not prerequisites for normal automatic learning.
 Eligible feedback uses self-learning's single `learning submit` with the exact

@@ -96,6 +96,16 @@ def frame_size(value=None):
 def prepare(spec, template=None):
     """Shared normalization and composition for HTML and editable PPT export."""
     from .report_facts import FactError
+    if not isinstance(spec, dict):
+        raise artifacts.ArtifactError('invalid_spec', '작업 내용은 JSON 객체로 전달해 주세요.')
+    # Import/preserve routes must not bypass the shared per-page contract.
+    # Reject before reading a source or taking the HTML import fast path.
+    if 'contentOrder' in spec or 'contentLayout' in spec:
+        raise artifacts.ArtifactError('invalid_content_layout', 'contentOrder와 contentLayout은 전체 문서가 아닌 각 sections/slides 항목 안에 지정하세요.')
+    ordered = any(isinstance(row,dict) and ('contentOrder' in row or 'contentLayout' in row)
+                  for row in (spec.get('sections',spec.get('slides',[])) or []))
+    if ordered and (spec.get('htmlSource') or spec.get('referenceMode') == 'preserve'):
+        raise artifacts.ArtifactError('content_layout_unsupported','HTML 원본 변환·기존 개체 유지에는 contentOrder를 추가하지 않습니다. 실제 승인할 원본 배치를 수정해 주세요.')
     for key in ('slides', 'sections'):
         rows = spec.get(key)
         if isinstance(rows, list) and any(isinstance(row, dict) and 'diagram' in row for row in rows):
@@ -329,12 +339,18 @@ def create_draft(spec, output, template=None, *, require_choices=True):
                 raise artifacts.ArtifactError('template_engine_unavailable','기존 양식의 개체 배치를 확인할 라이브러리가 없습니다. 자동 설치하지 않습니다.')
             data['presentationPlan'] = ppt_workflow.fill_template(data, None, native_template, spec.get('templateSlides'), html_only=True)
         document = render(data, preserve=preserve)
+        from .content_layout import check_plan, LayoutError
+        try:
+            layout_check = check_plan(data) if not preserve else {'status':'not-requested'}
+        except LayoutError as exc:
+            raise artifacts.ArtifactError('layout_validation_failed', str(exc)) from None
         if digest != ppt_workflow.design_digest(spec, template):
             raise artifacts.ArtifactError('design_review_changed','HTML 초안 준비 중 참고 자료가 변경되었습니다. 다시 확인해 주세요.')
         output = _write(document, output)
         return {'ok':True,'status':'created','outputPath':str(output),'previewOnly':True,'stage':'design_confirm',
                 'slides':len(data['sections']),'outline':[row['title'] for row in data['sections']],
                 'engine':'offline-html','offline':True,'officeStarted':False,
+                'contentLayoutValidation':layout_check,
                 'designReview':{'specSha256':digest,'previewPath':str(output.resolve()),
                                 'previewSha256':hashlib.sha256(output.read_bytes()).hexdigest(),'confirmed':False},
                 'validation':{'arithmetic':arithmetic,'visualReview':'required','nativePptValidation':'after-approval'},
@@ -360,7 +376,7 @@ def save_template(spec, output, template=None):
         plan = data['presentationPlan']
         metadata = {'schema':SCHEMA,'layoutVersion':1,'presentationTheme':plan['theme'],
                     'presentationFont':plan['font'],'presentationFrame':{'width':plan['width'],'height':plan['height']}}
-        scene_layout=bool(spec.get('htmlSource') or any('elements' in r for r in data['sections']))
+        scene_layout=bool(spec.get('htmlSource') or any('elements' in r or 'contentOrder' in r for r in data['sections']))
         # Deliberately never retain original values, captions, references or images.
         sample = {**metadata,'title':'PPT 대표 양식', 'slides':[
             {'title':'발표 제목','body':'발표의 목적과 핵심 내용을 입력합니다.'},
@@ -369,7 +385,13 @@ def save_template(spec, output, template=None):
             {'title':'상세 내용','table':{'headers':['항목','내용','상태'],'rows':[['예시 A','확인할 내용','검토'],['예시 B','후속 조치','예정']]}}]}
         if scene_layout:
             from .ppt_scene import template_layouts
-            metadata.update(layoutVersion=2,layouts=template_layouts(plan))
+            from copy import deepcopy
+            template_plan = deepcopy(plan)
+            for row, page in zip(data['sections'], template_plan['pages']):
+                for e in page['elements']:
+                    if e['kind'] in ('table','chart') and e['kind'] not in e:
+                        e[e['kind']] = deepcopy(row[e['kind']])
+            metadata.update(layoutVersion=2,layouts=template_layouts(template_plan))
             sample={**metadata,'title':'PPT 대표 양식','slides':[{'title':f'배치 {i+1}','elements':p['elements'],'background':p.get('background','FFFFFF')} for i,p in enumerate(metadata['layouts'])]}
         sample_data, _, _, _, _ = prepare(sample)
         document = render(sample_data, metadata=metadata)

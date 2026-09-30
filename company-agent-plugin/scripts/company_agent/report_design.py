@@ -116,6 +116,11 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
         base_css += '\nbody,button,.explanation-diagram text{font-family:"Noto Sans KR","Malgun Gothic","Segoe UI",sans-serif}'
     if google_font:
         font_link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&amp;display=swap">'
+    if any('contentOrder' in row for row in data['sections']):
+        # Structural preference wins over a preset's split/grid styling on all
+        # viewport sizes and print. DOM order is also the reading/tab order.
+        base_css += '\nbody[data-style] .section .section-content[data-content-layout="vertical"]{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:18px}'
+        base_css += '\nbody[data-style] .section [data-content-layout="vertical"]>[data-content-block]{min-width:0;width:100%;order:0!important;grid-column:auto!important}'
     sections = []
     for i, row in enumerate(data["sections"], 1):
         layout = row.get("layout", "dashboard" if row.get("chart") or row.get("kpis") else "table" if row.get("table") else "summary")
@@ -127,22 +132,32 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
             fragment += f'<p class="takeaway">{esc(row["takeaway"])}</p>'
         if row.get("kpis"):
             fragment += '<div class="kpis">'+''.join(f'<div class="kpi"><div class="kpi-label">{esc(k["label"])}</div><div class="kpi-value">{esc(k["display"])}<span class="kpi-unit">{esc(k["unit"])}</span></div><div class="kpi-note">{esc(k["note"])}</div></div>' for k in row['kpis'])+'</div>'
-        copy = f'<p class="text">{esc(row["body"])}</p>' if row['body'] else ''
+        blocks = {}
+        if row['body']:
+            blocks['body'] = f'<p class="text">{esc(row["body"])}</p>'
         if row['bullets']:
-            copy += '<ul class="text">'+''.join(f'<li>{esc(v)}</li>' for v in row['bullets'])+'</ul>'
-        visuals = ''
+            blocks['bullets'] = '<ul class="text">'+''.join(f'<li>{esc(v)}</li>' for v in row['bullets'])+'</ul>'
         if row.get('chart'):
             chart = row['chart']
-            visuals += svg_chart(chart, i)
-            visuals += '<details class="chart-values"><summary>차트 수치 원자료 펼치기</summary>'+table_renderer(['항목']+[s['name'] for s in chart['series']], [[cat]+[s['values'][n] for s in chart['series']] for n, cat in enumerate(chart['categories'])], '차트 원자료')+'</details>'
+            blocks['chart'] = svg_chart(chart, i)
+            blocks['chart'] += '<details class="chart-values"><summary>차트 수치 원자료 펼치기</summary>'+table_renderer(['항목']+[s['name'] for s in chart['series']], [[cat]+[s['values'][n] for s in chart['series']] for n, cat in enumerate(chart['categories'])], '차트 원자료')+'</details>'
         if row.get('table'):
-            visuals += table_renderer(row['table']['headers'],row['table']['rows'])
+            blocks['table'] = table_renderer(row['table']['headers'],row['table']['rows'])
         if row.get('image'):
-            im=row['image'];visuals += f'<figure><img src="data:{im["mime"]};base64,{im["data"]}" alt="{esc(im["alt"])}"><figcaption>{esc(im["alt"])}</figcaption></figure>'
+            im=row['image'];blocks['image'] = f'<figure><img src="data:{im["mime"]};base64,{im["data"]}" alt="{esc(im["alt"])}"><figcaption>{esc(im["alt"])}</figcaption></figure>'
         if row.get('diagram'):
-            visuals += explanation_diagram.render(row['diagram'], i)
-            visuals += explanation_export.controls(i)
-        fragment += '<div class="section-content"><div class="copy-block">'+copy+'</div><div class="visual-block">'+visuals+'</div></div>'
+            blocks['diagram'] = explanation_diagram.render(row['diagram'], i)
+            blocks['diagram'] += explanation_export.controls(i)
+        if 'contentOrder' in row:
+            fragment += '<div class="section-content" data-content-layout="vertical">'
+            for key in row['contentOrder']:
+                kind = 'copy-block' if key in ('body', 'bullets') else 'visual-block'
+                fragment += f'<div class="{kind}" data-content-block="{key}">'+blocks[key]+'</div>'
+            fragment += '</div>'
+        else:
+            copy = blocks.get('body','') + blocks.get('bullets','')
+            visuals = ''.join(blocks.get(k,'') for k in ('chart','table','image','diagram'))
+            fragment += '<div class="section-content"><div class="copy-block">'+copy+'</div><div class="visual-block">'+visuals+'</div></div>'
         if row.get('source'):
             fragment += f'<p class="section-source">{esc(row["source"])}</p>'
         sections.append(fragment+'</section>')

@@ -52,6 +52,12 @@ prerequisites. Do not perform a status lookup merely to start a submission.
   single smallest necessary procedural lesson before submitting.
 - Do not add unknown fields, transcripts, arbitrary file paths or command text.
   Session/turn IDs are command arguments, not part of this spec.
+  `storageScope`, `targetMemoryId`, and `targetRoot` are not supported observation
+  fields. Automatic learning stays in the current installation stateRoot. To correct
+  an existing explicitly saved Memory, use personal-memory's conditional upsert with
+  its existing ID and original personal/project scope; do not turn it into a new
+  automatic preference. Project-specific requests must not be broadened to the
+  User installation's personal scope. Cross-store automatic learning is not implemented.
 
 Repeated-choice observations need evidence from two independent work units, each
 explicitly complete or supported by outcome success and actual current-turn verification
@@ -85,8 +91,9 @@ dynamic execution need the correct native invocation; Read cannot replace that
 execution. No common plugins, project-generator files, executable scripts or policy
 are automatic targets. Keep only a bounded checklist lesson, not invented code.
 One smallest combined Skill observation avoids claiming all distinct corrections
-were retained. The same scoped key replaces its owned item, including A → B → A;
-different scopes remain separate. Manual edits, ambiguous legacy items or version
+were retained. The same key replaces its owned item within the current installation
+stateRoot, including A → B → A; other storage destinations are not automatic targets.
+Manual edits, ambiguous legacy items or version
 conflicts are deferred rather than overwritten or repaired through direct edits.
 
 Evaluate only actual later use of the exact changed version, with observed behavior
@@ -106,6 +113,23 @@ duplicate submissions just to make every count positive.
 An already-active unchanged item has no new application and may have appliedCount zero.
 Insufficient evidence can remain in work.pending for a later meaningful submission;
 the engine merges it without making the model run stage/checkpoint/status first.
+
+`storage` gives the selected stateRoot and its runtime-bound personal/project scope.
+Without an exact runtime binding, storageScope is `not_observable`; do not guess a
+different store or inspect settings to make the field positive. Newly applied changes
+and status listings return their automatic-learning history source, Memory ID and
+`recordedAfterSha256`. This is the recorded historical hash, not a current-file check
+(`currentRevisionChecked: false`) and not permission to overwrite a later revision.
+
+Preference rollback returns `operation: deactivate_preference`,
+`effect: preference_deactivated`, and `previousContentRestored: false` after a change.
+It never restores the prior preference body. Skill rollback instead restores only its
+owned checklist section (`restore_owned_checklist`). `no_change` and
+`conflict_preserved` must not be reported as a new successful restoration.
+For a user's explicit previous-Memory-content restoration, personal-memory can use
+`memory restore` only when `memory history` retains that exact revision, with the
+current revision/hash and original scope. Automatic learning's internal beforeContent
+is not a Memory-history entry; never promise that restore is available without one.
 
 Status is an on-demand user control. With an exact injected current session,
 `learning status --session "<id>"` can include currentSubmission and that session's

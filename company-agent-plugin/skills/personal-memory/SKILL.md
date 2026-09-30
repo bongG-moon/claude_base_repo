@@ -17,35 +17,54 @@ Use Memory for the user's durable preference or stable work context. Use Persona
 
 An explicit durable-memory request means asking to save/remember something
 (for example “기억해줘” or “내 기억에 저장해줘”). Save after scope selection without
-waiting for task completion. A normal future-use correction such as “앞으로 팀
-보고서는 결론부터” instead uses self-learning's existing automatic scope below;
-do not add a new scope question just because that correction is durable.
+waiting for task completion. A new future-use correction such as “앞으로 팀
+보고서는 결론부터”, when it matches the existing automatic scope, uses self-learning;
+do not add a scope question just because it is durable. Existing or project-only
+facts follow the boundary below.
 “앞으로” or “항상” inside quoted material is not a request. Do not promote a
 one-time instruction such as “이번만” to Memory.
 
-An ordinary correction during unfinished work is not automatically durable.
-If it is an explicit durable scoped preference, use self-learning's learning submit
-once with the exact injected context; it may be applied while work is active.
-No status/stage/checkpoint prerequisite is needed. Do not call memory upsert to
-bypass the learning engine's evidence or scope checks. If durability is unclear,
-follow it for this task only; submission does not declare the business task complete.
-This boundary is the same whether this Skill or self-learning was selected first.
+Choose by the affected resource, not by the word "correction":
+- An existing saved fact: keep its exact ID and storageScope, use conditional
+  memory upsert below. This is an explicit memory edit, not an automatic-learning event.
+- A new project-only durable fact or an explicit save: use this scoped memory flow.
+  Never submit a project-only request into a User installation's personal-wide learning store.
+- A new reusable correction within the existing automatic scope: use self-learning
+  learning submit once; no status/stage/checkpoint prerequisite.
+- A one-time or unclear correction: follow it for this task only. Do not save it.
+Do not bypass a learning deferral by copying its candidate into Memory. A genuine
+user-directed edit of an existing fact is a separate operation, not such a fallback.
 
 Use the exact `company_agent_runtime.cliCommand` prefix and `stateRoot`; the
 `company-agent` examples below are argument examples, not instructions to guess a
 bare command or executable. Preserve the runtime prefix quoting and arguments.
 
-1. Use Write to create a small JSON spec at `<stateRoot>/tmp/memory-<unique-id>.json`, containing only `kind`, `id` when updating, `title`, `body`, `reason`, and `source`. Do not use a workspace file, shell redirection, `/tmp`, `/dev/stdin`, or an inline shell payload. Use a new unique name rather than overwriting a previous staging file.
-2. Never include a prompt, transcript, tool input/output, email body, query result, credential, or sensitive business row.
+1. Search existing Memory with `company-agent memory search "<query>" --state-root "<stateRoot>"` (positional query, not `--query`). Reuse an already available current result. For the same fact, keep its exact `id`, `storageScope`, `revision` and `sha256`; do not create a contradictory copy. If scopes differ, keep both and clarify which item changes.
+2. Use Write once to create a small JSON spec at `<stateRoot>/tmp/memory-<unique-id>.json`, containing only `kind`, `id` when updating, `title`, `body`, `reason`, and `source`. Use `preference`, `work_context`, or `convention` as kind. Do not use a workspace file, shell redirection, `/tmp`, `/dev/stdin`, or an inline shell payload. Use a new unique name rather than overwriting a previous staging file.
+3. Never include a prompt, transcript, tool input/output, email body, query result, credential, or sensitive business row.
    - `title` and `body` must contain only the distilled durable fact.
    - Do not copy the user's sentence verbatim when a shorter semantic summary is possible.
    - Do not place raw material in `reason`; it is an audit classification, not a note field.
-3. Use `preference`, `work_context`, or `convention` as the kind.
-   Search existing Memory first with `company-agent memory search "<query>" --state-root "<stateRoot>"` and reuse its exact `id` when correcting the same fact. The query is a positional argument, not a `--query` option. Do not create a second contradictory active preference. If two scopes differ, keep both and make the scope explicit; do not infer which fact is obsolete.
-4. Run `company-agent memory upsert --spec "<spec.json>" --state-root "<stateRoot>"`.
-5. Read back the generated Markdown and briefly state what will be remembered.
-   If a verification continuation follows, keep that same user-facing result;
-   do not replace it with "검증 완료", "pass로 기록", or a session-status report.
+4. Run `company-agent memory upsert --spec "<spec.json>" --state-root "<stateRoot>"` with the scope flags above. For an existing item also pass `--expected-revision <revision> --expected-sha256 <sha256>` from that exact result. On conflict, preserve the newer item; do not guess or drop those conditions to force a write.
+5. A successful `verification.status=persisted-content-verified` response already checks the saved content. State the actual `scopeLabel` and what will be remembered once. Use returned `revision`, `sha256` and `changeId` for later correction/undo; do not expose internal IDs unless useful. `changed:false` means already saved, not another update.
+   Do not reread raw Markdown to reinterpret scope or call session verify merely for this checked memory write. Legacy `scope: personal` means private ownership, NOT personal-wide application; the receipt/search `storageScope` identifies usage. This check covers only this memory item and never verifies an unfinished report or other earlier change.
+
+## Undo only the requested change
+
+For "방금 기억 수정 전으로 돌려줘", use the same ID and scope, not `learning rollback`.
+Read `memory history --id <id>` only when a previous revision is needed; it returns
+bounded versions and the current revision/hash. Then run `memory restore --id <id>
+--revision <target> --expected-revision <current> --expected-sha256 <current hash>`
+with the same state/scope/project flags. It creates a new revision with the earlier
+content; it never deletes later history. Ask once if multiple memories/revisions
+could match, or if the item changed since the requested edit. Do not silently adopt
+a newer hash to undo someone else's edit. Missing snapshots mean not restored.
+Only a backup with matching recorded integrity is automatically restorable.
+An old backup without that evidence remains available but is not verified; do
+not recreate its integrity record. The user may review its content and request
+a separate conditional memory edit. Local hashes are not authenticity signatures.
+Automatic preference `learning rollback` only stops applying that learned preference;
+it does not restore the previous preference. Do not mix these two meanings.
 
 If search is denied, report that existing Memory could not be checked; do not
 claim upsert was attempted or denied. If upsert is denied, say it was not saved.

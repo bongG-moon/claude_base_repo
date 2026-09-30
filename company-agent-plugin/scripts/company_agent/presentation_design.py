@@ -39,6 +39,8 @@ def prepare(spec, data):
         row['takeaway'] = bind(_text(raw.get('takeaway', ''), 160))
         row['source'] = bind(_text(raw.get('source', ''), 180))
         if 'elements' in raw:
+            if 'contentOrder' in row:
+                raise DesignError('자유 배치 elements에는 contentOrder를 섞지 마세요. 승인할 elements 좌표에서 본문 순서를 직접 지정하세요.')
             if any(raw.get(k) for k in ('body','bullets','image','chart','table','kpis')):
                 raise DesignError('자유 배치 elements와 자동 본문 배치를 한 장에 섞지 마세요. 모든 내용을 elements에 담아 주세요.')
             from copy import deepcopy
@@ -50,6 +52,8 @@ def prepare(spec, data):
             from .ppt_scene import ink
             row['background']=ink(raw.get('background','FFFFFF'),{})
         if raw.get('imageLayout') == 'full-slide':
+            if 'contentOrder' in row:
+                raise DesignError('전체 화면 이미지와 contentOrder를 함께 지정하지 마세요.')
             if any(raw.get(k) for k in ('body','bullets','chart','table','kpis')) or not row.get('image'):
                 raise DesignError('전체 화면 이미지는 image만 있는 장에서 사용합니다. 텍스트 편집 가능 슬라이드로 설명하지 마세요.')
             row['imageLayout'] = 'full-slide'
@@ -117,6 +121,58 @@ def _lines(text, width, size):
     return sum(max(1, math.ceil(sum(1 if unicodedata.east_asian_width(c) in 'WF' else .56 for c in line) / capacity)) for line in text.split('\n'))
 
 
+def _table_metrics(table, width):
+    rows = [table['headers'], *table['rows']]
+    weights = [min(3.5, max(1, max(sum(1 if unicodedata.east_asian_width(c) in 'WF' else .56 for c in r[j]) for r in rows)/9)) for j in range(len(table['headers']))]
+    widths = [width*v/sum(weights) for v in weights]
+    heights = [max(36, max(_lines(cell, widths[j], 16) for j, cell in enumerate(r))*21+16) for r in rows]
+    return widths, heights
+
+
+def _vertical(row, number, x, y, width, bottom, elements, text):
+    gap = 18.
+    specs = []
+    for name in row['contentOrder']:
+        entry = {'name': name}
+        if name in ('body', 'bullets'):
+            value = row['body'] if name == 'body' else '\n\n'.join(row['bullets'])
+            entry.update(value=value, h=_lines(value, width, 18)*18*1.27+4)
+        elif name == 'table':
+            widths, heights = _table_metrics(row['table'], width)
+            entry.update(h=sum(heights), columnWidths=widths, rowHeights=heights)
+        elif name in ('chart', 'image'):
+            entry['h'] = 180. + (31. if name == 'chart' and row['chart'].get('title') else 0.)
+        else:
+            raise DesignError('이 본문 항목은 PPT의 세로 배치로 만들 수 없습니다. 지원되는 배치를 확인해 주세요.')
+        specs.append(entry)
+    required = sum(e['h'] for e in specs) + gap*(len(specs)-1)
+    if required > bottom-y+.01:
+        raise DesignError(f'{number}장에 요청한 본문 순서를 읽기 좋은 크기로 담을 수 없습니다. 설명을 줄이거나 장을 나눌지 확인해 주세요. 옆 배치·글자 축소로 바꾸지 않았습니다.')
+    flexible = sum(e['name'] in ('chart','image') for e in specs)
+    extra = (bottom-y-required)/flexible if flexible else 0.
+    blocks = []
+    for entry in specs:
+        name, h = entry['name'], entry['h']
+        if name in ('chart','image'):
+            h += extra
+        first = len(elements)
+        if name in ('body','bullets'):
+            text(entry['value'], x, y, width, h)
+        elif name == 'table':
+            elements.append(dict(kind='table', x=x, y=y, w=width, h=h, size=16,
+                                 columnWidths=entry['columnWidths'], rowHeights=entry['rowHeights']))
+        elif name == 'image':
+            elements.append(dict(kind='image', x=x, y=y, w=width, h=h, fit=row.get('imageFit','contain')))
+        else:
+            title = row['chart'].get('title','')
+            if title:
+                text(title, x, y, width, 27, 15, 'muted', True)
+            elements.append(dict(kind='chart', x=x, y=y+(31 if title else 0), w=width, h=h-(31 if title else 0)))
+        blocks.append(dict(name=name, y=y, h=h, elementIndices=list(range(first,len(elements)))))
+        y += h+gap
+    return blocks
+
+
 def plan(data, width=960., height=540.):
     if not (600 <= width <= 1800 and 400 <= height <= 1100 and 1.25 <= width / height <= 2.1):
         raise DesignError("이 양식의 화면 비율은 자동 배치를 지원하지 않습니다. 4:3 또는 16:9 양식을 선택해 주세요.")
@@ -154,6 +210,10 @@ def plan(data, width=960., height=540.):
                 text(kpi['label'] + (' · '+kpi['unit'] if kpi['unit'] else ''), x, top, kpi_w-16, 26, 15, 'muted')
                 text(kpi['value'], x, top+28, kpi_w-16, 57, 38, 'accent', True)
             top += 103
+        if 'contentOrder' in row:
+            blocks = _vertical(row, number, margin, top, usable, bottom, elements, text)
+            pages.append({'elements': elements, 'contentBlocks': blocks})
+            continue
         visuals = [k for k in ('chart', 'table', 'image') if row.get(k)]
         prose = '\n\n'.join(([row['body']] if row['body'] else []) + row['bullets'])
         if len(visuals) > 2 or (len(visuals) == 2 and prose):
@@ -176,11 +236,8 @@ def plan(data, width=960., height=540.):
                 element['fit'] = row.get('imageFit','contain')
             if kind == 'table':
                 table = row['table']
-                all_rows = [table['headers'], *table['rows']]
                 # Give longer text columns more space, within a bounded weight.
-                weights = [min(3.5, max(1, max(sum(1 if unicodedata.east_asian_width(c) in 'WF' else .56 for c in r[j]) for r in all_rows)/9)) for j in range(len(table['headers']))]
-                widths = [w*v/sum(weights) for v in weights]
-                heights = [max(36, max(_lines(cell, widths[j], 16) for j, cell in enumerate(r))*21+16) for r in all_rows]
+                widths, heights = _table_metrics(table, w)
                 if sum(heights) > h:
                     raise DesignError(f"{number}장 표를 읽기 좋은 크기로 담을 수 없습니다. 행·열을 나누어 주세요.")
                 element.update(h=sum(heights), columnWidths=widths, rowHeights=heights, size=16)

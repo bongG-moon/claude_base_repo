@@ -178,12 +178,18 @@ def template_layouts(plan):
                 slot += 1
                 e['text'] = '예시'
             elif e['kind']=='chart':
-                c=e['chart']; c['categories']=[f'항목 {i+1}' for i in range(len(c['categories']))]
-                for i,s in enumerate(c['series']):
-                    s.update(name=f'계열 {i+1}',values=[100+i*10]*len(c['categories']))
+                c=e['chart']
+                # Rebuild, do not mutate the original payload: auto-layout
+                # charts also contain business titles, and future metadata or
+                # series fields must not leak into the hidden template JSON.
+                e['chart']={'type':c['type'],
+                            'categories':[f'항목 {i+1}' for i in range(len(c['categories']))],
+                            'series':[{'name':f'계열 {i+1}', 'values':[100+i*10]*len(c['categories'])}
+                                      for i in range(len(c['series']))]}
             elif e['kind']=='table':
-                t=e['table']; t['headers']=[f'열 {i+1}' for i in range(len(t['headers']))]
-                t['rows']=[['예시']*len(t['headers']) for _ in t['rows']]
+                t=e['table']
+                e['table']={'headers':[f'열 {i+1}' for i in range(len(t['headers']))],
+                            'rows':[['예시']*len(t['headers']) for _ in t['rows']]}
             result.append(e)
         pages.append({'elements':result,'textSlots':slot,'background':page.get('background','FFFFFF')})
     return pages

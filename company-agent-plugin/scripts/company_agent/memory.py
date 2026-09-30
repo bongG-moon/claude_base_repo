@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import stat
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -45,6 +46,55 @@ MAX_MEMORY_RESULT_BODY_CHARS = 1_000
 MAX_MEMORY_CONTEXT_ITEM_CHARS = 700
 MAX_MEMORY_CONTEXT_CHARS = 4_000
 MAX_MEMORY_FILE_BYTES = 32_768
+
+
+class MemoryConflict(ValueError):
+    """A stale or missing revision must never overwrite a newer memory."""
+
+    def __init__(self, code: str, message: str):
+        super().__init__(message)
+        self.code = code
+
+
+def _memory_layout(root: Path) -> dict[str, Path]:
+    from .resource_scope import safe
+    safe(root)
+    for relative in ('memory/items', 'memory/versions', 'memory/index/catalog.json',
+                     'memory/write.lock', 'ledger/memory.jsonl', 'config/user.json'):
+        safe(root / relative)
+    return ensure_user_layout(root)
+
+
+@contextmanager
+def _memory_locked(root: Path):
+    from .state import _interprocess_lock, _thread_lock_for
+    from .resource_scope import safe
+    lock = safe(root / 'memory/write.lock')
+    with _thread_lock_for(lock), _interprocess_lock(lock):
+        yield
+
+
+def _document_sha256(document: MarkdownDocument) -> str:
+    return hashlib.sha256(document.raw.encode('utf-8')).hexdigest()
+
+
+def _memory_receipt(path: Path, item_root: Path, *, changed: bool, operation: str,
+                    expected_text: str | None = None, restored_from: int | None = None) -> dict[str, Any]:
+    document = _read_memory_document(path, item_root)
+    if expected_text is not None and document.raw != expected_text:
+        raise MemoryConflict('memory_write_not_verified', '기억 저장 결과가 일치하지 않습니다. 다시 쓰지 말고 현재 내용을 확인하세요.')
+    sha256 = _document_sha256(document)
+    identifier = document.metadata['id']
+    revision = document.metadata.get('revision', 1)
+    result = {'ok': True, 'path': str(path), 'id': identifier, 'memoryId': identifier,
+              'revision': revision, 'sha256': sha256, 'changed': changed,
+              'status': document.metadata.get('status'), 'operation': operation,
+              'verification': {'status': 'persisted-content-verified', 'scope': 'memory-item-only'},
+              'changeId': hashlib.sha256(f'{path.absolute()}\0{revision}\0{sha256}'.encode('utf-8')).hexdigest()[:32]}
+    if restored_from is not None:
+        result['restoredFrom'] = restored_from
+    return result
+
 
 MEMORY_CONTEXT_BEGIN = "<company-agent-personal-memory-data>"
 MEMORY_CONTEXT_END = "</company-agent-personal-memory-data>"
@@ -89,10 +139,12 @@ def _contains_raw_artifact(value: str) -> bool:
 
 def _safe_memory_path(path: Path, item_root: Path) -> bool:
     try:
+        from .resource_scope import safe
+        safe(path)
         return (not path.is_symlink()
                 and not getattr(path, "is_junction", lambda: False)()
                 and path.resolve().parent == item_root.resolve())
-    except OSError:
+    except (OSError, ValueError):
         return False
 
 
@@ -108,7 +160,7 @@ def _read_memory_document(path: Path, item_root: Path) -> MarkdownDocument:
         raw_bytes = stream.read(MAX_MEMORY_FILE_BYTES + 1)
     if len(raw_bytes) > MAX_MEMORY_FILE_BYTES:
         raise ValueError("memory file exceeds the bounded read limit")
-    raw = raw_bytes.decode("utf-8-sig")
+    raw = raw_bytes.decode("utf-8")
     metadata, body = parse_frontmatter_text(raw, str(path))
     return MarkdownDocument(path=path, metadata=metadata, body=body, raw=raw)
 
@@ -215,7 +267,20 @@ def _rebuild_index(root: Path) -> Path:
     return root / "memory" / "index" / "catalog.json"
 
 
-def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
+def upsert_memory(spec: dict[str, Any], root: Path, *, expected_revision: int | None = None,
+                  expected_sha256: str | None = None, require_expected: bool = False,
+                  receipt: bool = False) -> Path | dict[str, Any]:
+    """Write once and verify inside the command; legacy internal callers keep Path results."""
+    _memory_layout(root)
+    with _memory_locked(root):
+        result = _upsert_memory(spec, root, expected_revision=expected_revision,
+                                expected_sha256=expected_sha256, require_expected=require_expected)
+    return result if receipt else Path(result['path'])
+
+
+def _upsert_memory(spec: dict[str, Any], root: Path, *, expected_revision: int | None = None,
+                   expected_sha256: str | None = None, require_expected: bool = False,
+                   operation: str = 'upsert', restored_from: int | None = None) -> dict[str, Any]:
     if not isinstance(spec, dict):
         raise ValueError("memory spec must be an object")
     leaked_keys = sorted(set(_find_forbidden_fields(spec)))
@@ -248,9 +313,9 @@ def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
     if not SOURCE_PATTERN.fullmatch(source):
         raise ValueError("memory source must be a compact source code")
 
-    layout = ensure_user_layout(root)
+    layout = _memory_layout(root)
     identifier = str(spec.get("id") or f"memory.{kind}.{auto_title_slug(title)}")
-    if not MEMORY_ID_PATTERN.fullmatch(identifier):
+    if not MEMORY_ID_PATTERN.fullmatch(identifier) or len(identifier) > 160:
         raise ValueError("invalid memory id")
     path = layout["memory_items"] / f"{_slug(identifier)}.md"
     if not spec.get("id") and not path.exists():
@@ -270,7 +335,12 @@ def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
     old = None
     if path.exists():
         old = _read_memory_document(path, layout["memory_items"])
+        if (old.metadata.get('id') != identifier or type(old.metadata.get('revision', 1)) is not int
+                or old.metadata.get('revision', 1) < 1):
+            raise ValueError('memory identity or revision is invalid; existing file preserved')
         revision = int(old.metadata.get("revision", 0)) + 1
+    elif expected_revision is not None or expected_sha256 is not None:
+        raise MemoryConflict('memory_revision_conflict', '수정하려던 기억이 없습니다. 다른 위치에 새로 만들지 않았습니다.')
 
     user = load_json(layout["config"] / "user.json", {}) or {}
     metadata = {
@@ -293,23 +363,46 @@ def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
         normalized_body = body.replace("\r\n", "\n").replace("\r", "\n").strip()
         if previous_metadata == next_metadata and old.body.strip() == normalized_body:
             _rebuild_index(root)
-            return path
+            return _memory_receipt(path, layout['memory_items'], changed=False,
+                                   operation=operation, expected_text=old.raw, restored_from=restored_from)
+        if require_expected and (expected_revision is None or expected_sha256 is None):
+            raise MemoryConflict('memory_expected_revision_required',
+                                 '기존 기억 수정에는 조회 결과의 revision과 sha256이 필요합니다. 원본은 변경하지 않았습니다.')
+        if (expected_revision is not None and (type(expected_revision) is not int or
+                                              expected_revision != old.metadata.get('revision', 1))
+                or expected_sha256 is not None and expected_sha256 != _document_sha256(old)):
+            raise MemoryConflict('memory_revision_conflict',
+                                 '조회 이후 기억이 변경되었습니다. 최신 내용을 확인하세요. 기존 내용은 보존했습니다.')
         snapshot = layout["memory_versions"] / datetime.now().strftime("%Y%m%d-%H%M%S-%f") / path.name
+        from .resource_scope import safe
+        safe(snapshot)
         snapshot.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(path, snapshot)
+        snapshot_receipt = safe(snapshot.with_suffix('.receipt.json'))
+        atomic_write_json(snapshot_receipt, {'schemaVersion': 1, 'memoryId': identifier,
+                                           'revision': old.metadata.get('revision', 1),
+                                           'sha256': _document_sha256(old)})
+        # Also catch an external editor between the initial read and our write.
+        current = _read_memory_document(path, layout['memory_items'])
+        if _document_sha256(current) != _document_sha256(old):
+            raise MemoryConflict('memory_revision_conflict', '저장 중 다른 수정이 감지되었습니다. 현재 내용을 보존했습니다.')
     atomic_write_text(path, rendered)
+    result = _memory_receipt(path, layout['memory_items'], changed=True, operation=operation,
+                             expected_text=rendered, restored_from=restored_from)
     ledger = layout["ledger"] / "memory.jsonl"
     with ledger.open("a", encoding="utf-8", newline="\n") as stream:
         stream.write(
             json.dumps(
                 {
                     "at": _now(),
-                    "action": "create" if revision == 1 else "update",
+                    "action": 'restore' if restored_from is not None else "create" if revision == 1 else "update",
                     "memoryId": identifier,
                     "revision": revision,
                     # Free-form reasons can accidentally contain the original
                     # prompt. Persist only the bounded source classification.
                     "reason": source,
+                    "changeId": result['changeId'],
+                    **({'restoredFrom': restored_from} if restored_from is not None else {}),
                 },
                 ensure_ascii=False,
                 sort_keys=True,
@@ -317,7 +410,7 @@ def upsert_memory(spec: dict[str, Any], root: Path) -> Path:
             + "\n"
         )
     _rebuild_index(root)
-    return path
+    return result
 
 
 def _memory_limit(limit: int) -> int:
@@ -366,6 +459,7 @@ def _search_memory_scored(root: Path, query: str, limit: int) -> list[tuple[int,
                     "body": _compact_text(body, MAX_MEMORY_RESULT_BODY_CHARS),
                     "status": "active",
                     "revision": metadata.get("revision", 1),
+                    "sha256": _document_sha256(document),
                     "content_hash": _content_fingerprint(str(metadata["kind"]), title, body),
                 },
             )
@@ -383,14 +477,17 @@ def _search_memory_scored(root: Path, query: str, limit: int) -> list[tuple[int,
     return selected
 
 
-def search_memory(root: Path, query: str, limit: int = 10) -> list[dict[str, Any]]:
+def search_memory(root: Path, query: str, limit: int = 10, *,
+                  storage_scope: str | None = None, project_root: Path | None = None) -> list[dict[str, Any]]:
     """Return compact active memories relevant to query without retaining it."""
-    return [item for _, item in _search_memory_scored(root, query, limit)]
+    from .resource_scope import scope_metadata
+    scope = scope_metadata(storage_scope, project_root) if storage_scope else {}
+    return [{**item, **scope} for _, item in _search_memory_scored(root, query, limit)]
 
 
 def search_scoped_memory(root: Path, project: Path, query: str, limit: int = MAX_MEMORY_RESULTS) -> list[dict[str, Any]]:
     """Current project + personal, within the existing total context budget."""
-    from .resource_scope import readable_roots
+    from .resource_scope import readable_roots, scope_metadata
     bounded_limit = _memory_limit(limit)
     if not bounded_limit:
         return []
@@ -399,7 +496,7 @@ def search_scoped_memory(root: Path, project: Path, query: str, limit: int = MAX
         if not (folder / 'memory/items').is_dir():
             continue
         for score, item in _search_memory_scored(folder, query, bounded_limit):
-            candidates.append((score, priority, {**item, 'storageScope': scope}))
+            candidates.append((score, priority, {**item, **scope_metadata(scope, project)}))
     results, seen = [], set()
     # Relevant personal facts beat unrelated project defaults; equal matches
     # retain project precedence. Scores never enter the prompt or saved memory.

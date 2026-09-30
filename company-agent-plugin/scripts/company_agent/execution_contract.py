@@ -256,7 +256,7 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     # Exact help calls must be handled before missing-storage-scope questions.
     # Neither form performs a save or creates a completion obligation.
     if args[-1:] == ["--help"] and head in {
-        ("memory", "search"), ("memory", "upsert"), ("session", "verify"),
+        ("memory", "search"), ("memory", "upsert"), ("memory", "history"), ("memory", "restore"), ("session", "verify"),
         ("work", "checkpoint"), ("learning", "stage"), ("learning", "review"), ("learning", "submit"),
         ("business", "eml-read"), ("business", "files-plan"),
         ("business", "ppt-choices"), ("business", "html-choices"),
@@ -270,6 +270,13 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         # or creating state. A question must not create a false Stop obligation.
         fields = _fields(args[2:], {'--spec', '--state-root', '--project-root', '--base'}, {'--spec'})
         return 'read_only' if fields is not None else 'unknown'
+    if head == ('memory', 'history'):
+        fields = _fields(args[2:], {'--id', '--limit', '--state-root', '--storage-scope', '--project-root'}, {'--id'})
+        if (fields is not None and re.fullmatch(r'[a-z0-9][a-z0-9._-]{0,159}', fields['--id'])
+                and fields.get('--storage-scope', 'personal') in {'personal', 'project'}
+                and ('--limit' not in fields or re.fullmatch(r'[1-9][0-9]{0,2}', fields['--limit']))):
+            return 'read_only'
+        return 'unknown'
     if head in {("memory", "search"), ("knowledge", "search")} and len(args) >= 3 and not args[2].startswith("-"):
         allowed = {"--limit", "--state-root", "--storage-scope", "--project-root"}
         if head[0] == 'knowledge':

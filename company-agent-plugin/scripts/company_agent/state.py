@@ -1062,6 +1062,16 @@ def record_activity(
         bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
         bookkeeping = bookkeeping or (not failed and _is_html_choices_spec_write(tool_name, tool_input, root or user_state_root()))
         bookkeeping = bookkeeping or (not failed and _is_ppt_choices_spec_write(tool_name, tool_input, root or user_state_root()))
+        # The memory writer checks its exact persisted item. Observe that
+        # receipt locally; never mark unrelated business mutations verified.
+        from .memory_activity import spec_write as memory_spec_write, checked_change as checked_memory_change
+        memory_receipt = None
+        if not failed and not not_performed:
+            bookkeeping = bookkeeping or memory_spec_write(tool_name, tool_input, root or user_state_root())
+            memory_receipt = checked_memory_change(payload, root or user_state_root())
+            if memory_receipt is not None:
+                bookkeeping = True
+                state['lastVerifiedMemory'] = memory_receipt
         if tool_name.casefold().strip() in {"bash", "powershell"}:
             command = str(tool_input.get("command") or tool_input.get("cmd") or "")
             from .execution_contract import classify_command, internal_plan_command
@@ -1107,6 +1117,8 @@ def record_activity(
         if learning_progress:
             state["learningProgressRevision"] = _safe_nonnegative_int(state.get("learningProgressRevision")) + 1
         event = {"at": at, "tool": tool_name[:120], "success": not failed, "mutation": mutated}
+        if memory_receipt is not None:
+            event['checkedChange'] = 'memory-item'
         if tool_name in {"Agent", "Task"}:
             worker = tool_input.get("subagent_type")
             if worker in {"company-agent:small-worker", "company-agent:medium-worker", "company-agent:large-worker"}:

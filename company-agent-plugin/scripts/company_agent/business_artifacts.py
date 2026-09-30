@@ -143,6 +143,8 @@ def _check_content_scope(spec):
 def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
     if not isinstance(spec, dict):
         raise ArtifactError("invalid_spec", "작업 내용은 JSON 객체로 전달해 주세요.")
+    if 'contentOrder' in spec or 'contentLayout' in spec:
+        raise ArtifactError('invalid_content_layout', 'contentOrder와 contentLayout은 전체 문서가 아닌 각 sections/slides 항목 안에 지정하세요.')
     _check_content_scope(spec)
     style = spec.get("style", "minimalism")
     aliases = {"글래스모피즘": "glassmorphism", "브루탈리즘": "brutalism", "뉴모피즘": "neumorphism",
@@ -212,6 +214,11 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
         if "diagram" in row:
             from .explanation_diagram import normalize
             section["diagram"] = normalize(row["diagram"])
+        from .content_layout import normalize as normalize_layout, LayoutError
+        try:
+            normalize_layout(row, section)
+        except LayoutError as exc:
+            raise ArtifactError('invalid_content_layout', str(exc)) from None
         result["sections"].append(section)
     if len(json.dumps(result, ensure_ascii=True)) > 32 * 1024 * 1024:
         raise ArtifactError("spec_too_large", "전체 자료가 너무 큽니다. 보고서를 나누어 주세요.")
@@ -369,6 +376,11 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
         except FactError as exc:
             raise ArtifactError("numeric_validation_failed", str(exc)) from None
         document = render(data, _CSS, _JS, _html_table)
+        from .content_layout import check_html, LayoutError
+        try:
+            layout_check = check_html(document, data['sections'])
+        except LayoutError as exc:
+            raise ArtifactError('layout_validation_failed', str(exc)) from None
         if template_preview and reference:
             document = document.replace('<head>', '<head><meta name="company-agent-template-sha256" content="'+reference['sha256']+'">', 1)
         with tempfile.TemporaryDirectory(prefix="company-report-") as temp:
@@ -377,6 +389,7 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
             _publish(draft, output)
         return {"ok": True, "status": "created", "outputPath": str(output), "style": data["style"], "mode": data["mode"],
                 "sections": len(data["sections"]), "offline": data.get("fontSource") != "google", "validation": validation,
+                "contentLayoutValidation": layout_check,
                 "templateReference": reference,
                 "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."] + (reference['warnings'] if reference else [])
                 + (["Google Fonts 사용 시 글꼴 서비스로 연결합니다. 연결 불가 시 PC 글꼴로 표시하며 본문은 오프라인에서도 열립니다."] if data.get("fontSource") == "google" else [])}
@@ -608,6 +621,11 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
             structure = inspect_template(draft)
             if not structure["ok"] or structure["slideCount"] != len(data["sections"]):
                 raise ArtifactError("ppt_validation_failed", "생성한 PPT의 구조 검증에 실패해 결과물을 저장하지 않았습니다.", "unknown")
+            from .content_layout import check_ppt, LayoutError
+            try:
+                layout_check = check_ppt(draft, data) if not preserve else {'status':'not-requested'}
+            except LayoutError as exc:
+                raise ArtifactError('layout_validation_failed', str(exc)) from None
             # Rendering refusal is reported as partial, never retried through an alternate capture path.
             try:
                 quality = ppt_workflow.quality(draft)
@@ -653,6 +671,7 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
                 warnings.append(visual.get("message", "이미지 미리보기를 만들지 못했습니다."))
             return {"ok": True, "status": "created" if visual.get("ok") and quality.get('status') == 'checked' else "partial", "outputPath": str(output),
                     "engine": engine, "slides": len(data["sections"]), "editability": native,
+                    "contentLayoutValidation": layout_check,
                     "validation": {"structure": "passed", "render": visual, "visualReview": "required",
                                    "arithmetic": arithmetic, "quality":quality, "layout": 'template-slots-preserved' if preserve else "bounded-plan-checked-not-visual-proof"},
                     "previews": previews, "warnings": warnings}

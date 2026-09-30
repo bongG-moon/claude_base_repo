@@ -253,11 +253,51 @@ def cmd_asset_run_tool(args: argparse.Namespace) -> int:
 def cmd_memory_upsert(args: argparse.Namespace) -> int:
     if _storage_choice_missing(args):
         return 0
-    with Path(args.spec).open("r", encoding="utf-8-sig") as stream:
-        spec = json.load(stream)
-    path = upsert_memory(spec, _state_root(args))
-    _print_json({"ok": True, "path": str(path)})
+    from .memory import MAX_MEMORY_FILE_BYTES
+    with Path(args.spec).open('rb') as stream:
+        raw = stream.read(MAX_MEMORY_FILE_BYTES + 1)
+    if len(raw) > MAX_MEMORY_FILE_BYTES:
+        raise ValueError('기억 저장 명세가 너무 큽니다. 원문이 아닌 짧은 기억만 저장하세요.')
+    spec = json.loads(raw.decode('utf-8-sig'))
+    return _memory_mutation(args, lambda: upsert_memory(
+        spec, _state_root(args), expected_revision=args.expected_revision,
+        expected_sha256=args.expected_sha256, require_expected=True, receipt=True))
+
+
+def _memory_scope(args: argparse.Namespace) -> dict:
+    from .resource_scope import scope_metadata
+    project = Path(args.project_root or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd())
+    return scope_metadata(args.storage_scope, project)
+
+
+def _memory_mutation(args: argparse.Namespace, apply) -> int:
+    from .memory import MemoryConflict
+    try:
+        result = apply()
+    except MemoryConflict as exc:
+        uncertain = exc.code == 'memory_write_not_verified'
+        _print_json({'ok': False, 'status': 'unverified' if uncertain else 'conflict', 'code': exc.code,
+                     'message': str(exc), 'changed': None if uncertain else False, **_memory_scope(args)})
+        return 1
+    _print_json({**result, **_memory_scope(args)})
     return 0
+
+
+def cmd_memory_history(args: argparse.Namespace) -> int:
+    if _storage_choice_missing(args):
+        return 0
+    from .memory_history import memory_history
+    _print_json({**memory_history(_state_root(args), args.id, args.limit), **_memory_scope(args)})
+    return 0
+
+
+def cmd_memory_restore(args: argparse.Namespace) -> int:
+    if _storage_choice_missing(args):
+        return 0
+    from .memory_history import restore_memory
+    return _memory_mutation(args, lambda: restore_memory(
+        _state_root(args), args.id, args.revision,
+        expected_revision=args.expected_revision, expected_sha256=args.expected_sha256))
 
 
 def cmd_memory_search(args: argparse.Namespace) -> int:
@@ -265,8 +305,12 @@ def cmd_memory_search(args: argparse.Namespace) -> int:
         from .memory import search_scoped_memory
         results = search_scoped_memory(_state_root(args), Path(args.project_root or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd()), args.query, args.limit)
     else:
-        results = search_memory(_state_root(args), args.query, args.limit)
-    _print_json({"query": args.query, "count": len(results), "results": results})
+        results = search_memory(_state_root(args), args.query, args.limit,
+                                storage_scope=args.storage_scope,
+                                project_root=Path(args.project_root or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd()))
+    _print_json({'ok': True, 'operation': 'search', 'changed': False,
+                 "query": args.query, "count": len(results), "results": results,
+                 **(_memory_scope(args) if args.storage_scope else {})})
     return 0
 
 
@@ -765,6 +809,8 @@ def build_parser() -> argparse.ArgumentParser:
     memory_upsert = memory_sub.add_parser("upsert")
     _add_state_argument(memory_upsert)
     memory_upsert.add_argument("--spec", required=True)
+    memory_upsert.add_argument('--expected-revision', type=int, help='기존 기억 수정 시 조회한 revision')
+    memory_upsert.add_argument('--expected-sha256', help='기존 기억 수정 시 조회한 sha256')
     memory_upsert.set_defaults(func=cmd_memory_upsert)
     memory_search = memory_sub.add_parser("search")
     _add_state_argument(memory_search)
@@ -774,6 +820,18 @@ def build_parser() -> argparse.ArgumentParser:
     memory_compact = memory_sub.add_parser("compact", help="Rebuild a deduplicated index without changing source memories.")
     _add_state_argument(memory_compact)
     memory_compact.set_defaults(func=cmd_memory_compact)
+    memory_history = memory_sub.add_parser('history', help='기억 ID의 이전 revision을 제한된 범위에서 조회합니다.')
+    _add_state_argument(memory_history)
+    memory_history.add_argument('--id', required=True)
+    memory_history.add_argument('--limit', type=int, default=10)
+    memory_history.set_defaults(func=cmd_memory_history)
+    memory_restore = memory_sub.add_parser('restore', help='선택한 기존 기억의 이전 내용을 새 revision으로 복원합니다.')
+    _add_state_argument(memory_restore)
+    memory_restore.add_argument('--id', required=True)
+    memory_restore.add_argument('--revision', type=int, required=True)
+    memory_restore.add_argument('--expected-revision', type=int, required=True)
+    memory_restore.add_argument('--expected-sha256', required=True)
+    memory_restore.set_defaults(func=cmd_memory_restore)
 
     learning = subparsers.add_parser("learning", help="Automatic personal learning review, observations, effects, and reversible changes.")
     learning_sub = learning.add_subparsers(dest="learning_command", required=True)
@@ -838,7 +896,7 @@ def build_parser() -> argparse.ArgumentParser:
     workspace.set_defaults(func=cmd_workspace)
     # Selection never accepts a browser/model supplied destination path. Existing
     # state-root remains the installation/session root, not a second scope flag.
-    for action in (upsert, create, memory_upsert, memory_search, memory_compact,
+    for action in (upsert, create, memory_upsert, memory_search, memory_compact, memory_history, memory_restore,
                    test_tool, test_mcp, activate, activate_tool, sync_mcp, run_tool, rebind_mcp,
                    search, build, export, reconcile):
         action.add_argument('--storage-scope', choices=('personal', 'project'))
