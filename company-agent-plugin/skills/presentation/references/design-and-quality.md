@@ -80,6 +80,10 @@ facts의 op는 value/sum/ratio/difference/percent_change. table/chart 위치는
 expected를 지정하면 계산값과 대조한다. 중복 집계가 있으면
 `"checks":[{"left":"monthlyTotal","right":"teamTotal"}]`로 총계를 비교한다.
 요약·제목·표에는 `{{fact:id}}`를 사용한다. 이전 요약 문서의 총계를 재사용하지 않는다.
+이름·단위까지 맞춰야 하면 `{{fact:id.label}}`, `{{fact:id.unit}}`, `{{fact:id.valueWithUnit}}`를 쓴다.
+선택 필드 `period`를 정의한 지표는 `{{fact:id.period}}`로 기간을 재사용하며, 정의 없이 기간을 참조하면 중단한다.
+제목·본문·표·차트 제목/항목/범례에 적용된다. 금액과 비율은 열 또는 단위를 구분하고, 정정 시 기간·분모도 대조한다.
+이 기능은 선언값을 재사용할 뿐 자유문장의 의미나 실제 원본의 지표·단위 일치를 자동 판정하지 않는다.
 원자료 파일 두 개가 같은 내용의 대체본이면 둘을 중복 집계하지 않는다.
 
 색상을 확인했다면 presentationTheme에 title/accent/text/muted/background/tint

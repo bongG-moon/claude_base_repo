@@ -119,6 +119,8 @@ try {
         'scripts\company_agent\memory_delivery.py', 'scripts\model_route_hook.py',
         'scripts\company_agent\memory_activity.py', 'scripts\company_agent\memory_history.py',
         'scripts\company_agent\content_layout.py', 'scripts\company_agent\execution_contract.py',
+        'scripts\company_agent\completion_readonly.py', 'scripts\company_agent\report_facts.py',
+        'scripts\company_agent\business_artifacts.py', 'scripts\company_agent\presentation_design.py',
         'scripts\company_agent\skill_task_context.py', 'skills\self-learning\SKILL.md',
         'skills\self-learning\references\review-schema.md', 'commands\learning.md',
         'skills\personal-memory\SKILL.md', 'skills\company-agent\references\completion.md',

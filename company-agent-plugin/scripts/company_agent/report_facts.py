@@ -90,6 +90,12 @@ def resolve(spec: dict, sections: list[dict]) -> tuple[dict, dict]:
         if not isinstance(label, str) or len(label) > 200 or not isinstance(unit, str) or len(unit) > 30:
             raise FactError("지표 이름과 단위를 짧은 글자로 지정해 주세요.")
         facts[key] = {"number": calculated, "display": f"{rounded:,.{digits}f}", "label": label, "unit": unit}
+        if "period" in row:
+            period = row["period"]
+            if (not isinstance(period, str) or not period.strip() or len(period) > 100
+                    or any(ord(c) < 32 for c in period)):
+                raise FactError("지표의 기준 기간을 비어 있지 않은 짧은 글자로 지정해 주세요.")
+            facts[key]["period"] = period
     checks = spec.get("checks", [])
     if not isinstance(checks, list) or len(checks) > 128:
         raise FactError("수치 대조 항목은 128개 이하로 지정해 주세요.")
@@ -99,16 +105,32 @@ def resolve(spec: dict, sections: list[dict]) -> tuple[dict, dict]:
         if facts[check["left"]]["number"] != facts[check["right"]]["number"]:
             raise FactError("표·차트·총계의 수치가 일치하지 않습니다. 결과물을 만들기 전에 수정해 주세요.")
     return facts, {"arithmetic": "checked" if facts else "not_provided", "facts": len(facts), "crossChecks": len(checks),
-                   "sourceAccuracy": "not_verified", "freeTextClaims": "not_verified", "visual": "not_verified"}
+                   "sourceAccuracy": "not_verified", "freeTextClaims": "not_verified", "visual": "not_verified",
+                   "metricMeaning": "not_verified"}
 
 
 def bind(text: str, facts: dict) -> str:
+    """Reuse declared metadata, not infer or validate the meaning of free prose.
+
+    Legacy ``{{fact:id}}`` remains numeric only. Metadata substitution is one
+    pass: a label containing another binding is never evaluated recursively.
+    Renderers remain responsible for HTML/XML escaping of the plain text.
+    """
     def replace(match):
-        key = match.group(1)
+        key, field = match.group(1), match.group(2)
         if key not in facts:
             raise FactError("본문이 참조한 공통 수치를 찾을 수 없습니다.")
-        return facts[key]["display"]
-    result = re.sub(r"\{\{fact:([a-zA-Z][a-zA-Z0-9_-]{0,63})\}\}", replace, text)
+        fact = facts[key]
+        if field is None:
+            return fact["display"]
+        if field == "valueWithUnit":
+            return fact["display"] + fact["unit"]
+        if field in ("label", "unit", "period"):
+            if field not in fact:
+                raise FactError("기간을 참조한 공통 수치에 period를 먼저 지정해 주세요.")
+            return fact[field]
+        raise FactError("수치 참조 필드는 label, unit, valueWithUnit, period만 지원합니다.")
+    result = re.sub(r"\{\{fact:([a-zA-Z][a-zA-Z0-9_-]{0,63})(?:\.([a-zA-Z]+))?\}\}", replace, text)
     if "{{fact:" in result:
         raise FactError("본문 수치 참조 형식을 확인해 주세요.")
     return result

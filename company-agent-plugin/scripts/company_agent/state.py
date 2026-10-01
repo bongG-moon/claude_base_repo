@@ -199,60 +199,9 @@ def _known_shell_mutation(command: str) -> bool | None:
 
 
 def _read_only_shell_observation(command: str, tool_name: str) -> bool:
-    """Recognize bounded Bash inspection only for completion accounting.
-
-    This is not permission or preparation approval. In particular, stderr to
-    /dev/null is not a business write, but substitutions and any other output
-    redirection retain conservative accounting. No command is executed here.
-    """
-    if (tool_name.casefold() != "bash" or not command or len(command) > 4096
-            or any(char in command for char in '\r\n\0$`(){}')):
-        return False
-    try:
-        lexer = shlex.shlex(command, posix=True, punctuation_chars=';&|<>')
-        lexer.whitespace_split = True
-        lexer.commenters = ''
-        words = list(lexer)
-    except ValueError:
-        return False
-    segments: list[list[str]] = [[]]
-    index = 0
-    while index < len(words):
-        word = words[index]
-        if word in {';', '&&', '||', '|'}:
-            if not segments[-1]:
-                return False
-            segments.append([])
-        elif words[index:index + 3] == ['2', '>', '/dev/null']:
-            index += 2
-        elif re.fullmatch(r'[;&|<>]+', word):
-            return False
-        else:
-            segments[-1].append(word)
-        index += 1
-    for args in segments:
-        if not args:
-            return False
-        name, flags = args[0], args[1:]
-        if name == 'pwd':
-            if flags:
-                return False
-        elif name == 'ls':
-            if any(flag.startswith('-') and not re.fullmatch(r'-[laAdhF]+|--', flag) for flag in flags):
-                return False
-        elif name == 'cat':
-            if any(flag.startswith('-') and not re.fullmatch(r'-[AbEnsTv]+|--', flag) for flag in flags):
-                return False
-        elif name == 'head':
-            if flags and flags[0] == '-n':
-                if len(flags) < 2 or not re.fullmatch(r'[0-9]{1,6}', flags[1]):
-                    return False
-                flags = flags[2:]
-            if any(flag.startswith('-') and not re.fullmatch(r'-[0-9]{1,6}|--', flag) for flag in flags):
-                return False
-        else:
-            return False
-    return True
+    """Completion accounting only; never an execution permission decision."""
+    from .completion_readonly import is_read_only_observation
+    return is_read_only_observation(command, tool_name)
 
 
 _THREAD_LOCKS: dict[str, threading.Lock] = {}

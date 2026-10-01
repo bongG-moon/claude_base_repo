@@ -75,6 +75,9 @@ def prepare(spec, data):
                                 'unit': _text(fact['unit'], 12)})
         if 'chart' in row:
             row['chart']['title'] = bind(_text(raw['chart'].get('title', ''), 90))
+            row['chart']['categories'] = [bind(value) for value in row['chart']['categories']]
+            for series in row['chart']['series']:
+                series['name'] = bind(series['name'])
             if len(row['chart']['categories']) > 12 or len(row['chart']['series']) > 4:
                 raise DesignError("PPT 차트는 항목 12개·계열 4개 이하로 나누어 주세요.")
             if any(len(s) > 22 for s in row['chart']['categories']) or any(len(s['name']) > 24 for s in row['chart']['series']):

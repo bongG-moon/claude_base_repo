@@ -38,6 +38,9 @@ report a relevant recording limitation only when needed.
 - Read-only lookup, choices and internal catalogue maintenance need no invented
   code test or empty success marker. An outstanding earlier change still needs
   its own evidence; a new read does not clear it.
+  Prefer bounded Read/Glob/Grep for inspection. A recognized shell lookup only
+  avoids a false change record; it grants no execution permission. Do not run
+  session verify solely for a successful lookup or repeat it for reassurance.
 - A trusted memory upsert/restore receipt with `persisted-content-verified`
   checks only that memory item. Report its resolved scope without a Markdown
   reread or session verify call solely for the same save. Do not reinterpret

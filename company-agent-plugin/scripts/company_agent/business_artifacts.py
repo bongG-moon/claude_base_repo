@@ -359,9 +359,13 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
                     row[field] = bind(row[field], facts)
                 row["bullets"] = [bind(value, facts) for value in row["bullets"]]
                 if "table" in row:
+                    row["table"]["headers"] = [bind(value, facts) for value in row["table"]["headers"]]
                     row["table"]["rows"] = [[bind(v, facts) for v in cells] for cells in row["table"]["rows"]]
                 if "chart" in row:
                     row["chart"]["title"] = bind(_text(raw["chart"].get("title", "지표 비교"), 300), facts)
+                    row["chart"]["categories"] = [bind(value, facts) for value in row["chart"]["categories"]]
+                    for series in row["chart"]["series"]:
+                        series["name"] = bind(series["name"], facts)
                 kpis = raw.get("kpis", [])
                 if not isinstance(kpis, list) or len(kpis) > 6:
                     raise ArtifactError("invalid_kpi", "한 페이지의 핵심 지표는 6개 이하로 구성해 주세요.")
@@ -370,7 +374,10 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
                     if not isinstance(kpi, dict) or not isinstance(kpi.get("fact"), str) or kpi["fact"] not in facts:
                         raise ArtifactError("invalid_kpi", "핵심 지표는 계산된 공통 수치를 참조해야 합니다.")
                     fact = facts[kpi["fact"]]
-                    row["kpis"].append({"label": _text(kpi.get("label", fact["label"]), 200),
+                    # Declared fact metadata is literal. Only an explicit label
+                    # template is bound; never evaluate a token inside a label.
+                    label = bind(_text(kpi["label"], 200), facts) if "label" in kpi else _text(fact["label"], 200)
+                    row["kpis"].append({"label": label,
                                         "display": fact["display"], "unit": fact["unit"],
                                         "note": bind(_text(kpi.get("note", ""), 500), facts)})
         except FactError as exc:
