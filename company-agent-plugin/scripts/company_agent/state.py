@@ -388,6 +388,7 @@ def begin_turn(
                 "learningReadReceipts": {},
                 "taskToolCount": 0,
                 "approvalUnavailable": False,
+                "pendingInput": None,
                 "lastStopMutationCount": None,
                 "lastStopVerificationRevision": None,
                 "taskFailureCount": 0,
@@ -945,6 +946,53 @@ def _native_action_not_performed(payload: dict[str, Any]) -> bool:
             and "The action was NOT performed" in error)
 
 
+def _html_choice_wait(payload: dict[str, Any], root: Path) -> bool:
+    """Observe an exact metadata helper's wait, never arbitrary assistant text.
+
+    This only suspends the current turn's completion check. It does not verify
+    older changes, authorize a tool, or reset a retry budget.
+    """
+    import json
+
+    if (payload.get('hook_event_name') != 'PostToolUse' or payload.get('agent_id')
+            or payload.get('tool_name') not in {'Bash', 'PowerShell'}):
+        return False
+    inputs = payload.get('tool_input')
+    response = payload.get('tool_response')
+    if not isinstance(inputs, dict) or not isinstance(response, dict):
+        return False
+    if response.get('interrupted') is True or any(
+            key in response and (type(response[key]) is not int or response[key] != 0)
+            for key in ('exitCode', 'exit_code')):
+        return False
+    from .execution_contract import _trusted_arguments, _fields, _same
+    args = _trusted_arguments(inputs.get('command') or inputs.get('cmd') or '')
+    if not args or args[:2] != ['business', 'html-choices']:
+        return False
+    fields = _fields(args[2:], {'--spec', '--state-root'})
+    if fields is None or ('--state-root' in fields and not _same(fields['--state-root'], root)):
+        return False
+    stdout = response.get('stdout')
+    if not isinstance(stdout, str) or len(stdout) > 32_768:
+        return False
+    def unique_object(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError('duplicate choice result field')
+            result[key] = value
+        return result
+    try:
+        result = json.loads(stdout, object_pairs_hook=unique_object)
+    except (ValueError, RecursionError):
+        return False
+    return (isinstance(result, dict) and result.get('ok') is False
+            and result.get('status') == 'input_required'
+            and result.get('code') == 'report_choices_required'
+            and result.get('stage') == 'design_detail' and result.get('missing') == ['style']
+            and result.get('waitForUser') is True)
+
+
 def record_activity(
     payload: dict[str, Any],
     root: Path | None = None,
@@ -1065,6 +1113,13 @@ def record_activity(
                     work["reviewRequested"] = False
         if learning_progress:
             state["learningProgressRevision"] = _safe_nonnegative_int(state.get("learningProgressRevision")) + 1
+        # A later tool event clears the earlier wait unless it reports the same
+        # exact waiting helper again. Merely reading files is not a fresh wait.
+        state['pendingInput'] = None
+        if not failed and not not_performed and not mutated and _html_choice_wait(payload, root or user_state_root()):
+            state['pendingInput'] = {'kind': 'html-report-style', 'turn': state.get('turnId'),
+                'mutationCount': _safe_nonnegative_int(state.get('mutationCount')),
+                'verificationRevision': _safe_nonnegative_int(state.get('verificationRevision'))}
         event = {"at": at, "tool": tool_name[:120], "success": not failed, "mutation": mutated}
         if memory_receipt is not None:
             event['checkedChange'] = 'memory-item'
@@ -1202,6 +1257,14 @@ def stop_decision(
             return {}
         if state.get("approvalUnavailable"):
             return {"systemMessage": "승인되지 않아 실행하지 못한 항목과 이미 변경한 것 중 미검증 내용을 간단히 알리고 가능한 결과를 전달하세요. 같은 작업이나 학습 기록을 반복 요청하지 마세요."}
+        pending = state.get('pendingInput')
+        if (isinstance(pending, dict) and pending.get('kind') == 'html-report-style'
+                and state.get('turnId') and pending.get('turn') == state.get('turnId')
+                and pending.get('mutationCount') == _safe_nonnegative_int(state.get('mutationCount'))
+                and pending.get('verificationRevision') == _safe_nonnegative_int(state.get('verificationRevision'))):
+            # The user must choose before more work is possible. Preserve all
+            # previous completion obligations and the two-correction ceiling.
+            return {}
         if _safe_nonnegative_int(state.get("mutationCount")) == 0:
             return _learning_stop(state, path, session_id, root or user_state_root(), {})
         verification = state.get("verification")

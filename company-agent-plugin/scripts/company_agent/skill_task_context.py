@@ -212,7 +212,9 @@ def _positive_text(text: str) -> str:
     # Exclusions / references to another workflow are not positive capabilities.
     # Registry descriptions are capped at 600 chars. Keep every capability in
     # that metadata while still bounding callers that pass a user prompt.
-    return ' '.join(s for s in re.split(r'[.!?]\s+', text.casefold()[:2000])
+    # Keep sentence boundaries: an unrelated later usage clause must not erase
+    # an earlier asset-authoring capability in _lifecycle_features.
+    return '. '.join(s for s in re.split(r'[.!?]\s+', text.casefold()[:2000])
                     if not re.search(r'아닙|제외|용도입니다|않습니다|\bnot for\b|\binstead\b', s)
                     and not re.search(r'^(?:참고|저장한).{0,140}(?:양식|캡처).{0,30}(?:제작|만들)', s))
 
@@ -308,9 +310,16 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
     ranked = []
     preferences = inventory.get('effectivePreferences', {'skills': {}, 'sourceOrder': []})
     for name, candidates in groups.items():
-        resolution = _resolution(name, candidates, preferences)
         named = [x for x in candidates if x.get('invocation') in explicit or
                  (not x.get('explicitOnly') and (x.get('invocation') in named_selection or x['name'] in named_selection))]
+        # Supporting guidance is not an alternative business workflow. Keep it
+        # available for explicit invocation and leave actual body-load checks
+        # unchanged; metadata alone never authorizes its execution.
+        if not named:
+            candidates = [x for x in candidates if x.get('role') != 'support']
+        if not candidates:
+            continue
+        resolution = _resolution(name, candidates, preferences)
         if len(named) == 1:
             options, status = named, 'explicit'
         elif resolution.get('selectedId') and resolution['status'] != 'stale-choice':

@@ -99,9 +99,31 @@ body{font-size:16px;line-height:1.7}.report-masthead{max-width:1320px;padding:24
 """
 
 
+SHORT_SCROLL_CSS = """
+/* Compact spacing, never truncate source content or shrink body text. */
+body[data-style][data-length=short][data-view=scroll] .report-main{gap:16px}
+body[data-style][data-length=short][data-view=scroll] .section{padding-top:24px;padding-bottom:24px;min-height:0}
+body[data-style][data-length=short][data-view=scroll] .layout-cover{padding-right:52px}
+body[data-style][data-length=short][data-view=scroll] .theme-art{display:none}
+body[data-style][data-length=short][data-view=scroll] .section h2{font-size:clamp(24px,2.6vw,32px);max-width:none;margin-top:0;margin-bottom:12px}
+body[data-style][data-length=short][data-view=scroll] .page-number{margin-bottom:8px}
+body[data-style][data-length=short][data-view=scroll] .kpis{margin-top:16px;margin-bottom:16px}
+body[data-style][data-length=short][data-view=scroll] .takeaway{margin-bottom:16px}
+@media(max-width:760px){body[data-style][data-length=short][data-view=scroll] .layout-cover{padding-right:22px}}
+@media print{
+body[data-style][data-length=short][data-view=scroll] .section{padding:14px 18px}
+body[data-style][data-length=short][data-view=scroll] .section h2{font-size:22px}
+body[data-style][data-length=short][data-view=scroll] .table-wrap{margin:12px 0}
+body[data-style][data-length=short][data-view=scroll] :is(th,td){padding:8px 10px}
+}
+"""
+
+
 def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     from .report_styles import CSS as theme_css
     base_css = base_css + '\n' + CSS + '\n' + theme_css + '\n' + data.get('referenceCss', '')
+    if data['length'] == 'short' and data['mode'] == 'scroll' and not data.get('referenceCss'):
+        base_css += '\n' + SHORT_SCROLL_CSS
     has_diagram = any(row.get('diagram') for row in data['sections'])
     if has_diagram:
         from . import explanation_diagram, explanation_export

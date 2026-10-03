@@ -180,6 +180,25 @@ def cmd_asset_validate(args: argparse.Namespace) -> int:
     return 0 if result["ok"] else 1
 
 
+def cmd_asset_web_plan(args: argparse.Namespace) -> int:
+    from .browser_workflow import MAX_SPEC_BYTES, plan_web_workflow
+    spec = {}
+    if args.spec:
+        try:
+            with Path(args.spec).open("rb") as stream:
+                raw = stream.read(MAX_SPEC_BYTES + 1)
+        except OSError:
+            raise ValueError("웹 업무 설명 파일을 읽을 수 없습니다. 지정한 파일 위치와 읽기 권한을 확인해 주세요.") from None
+        if len(raw) > MAX_SPEC_BYTES:
+            raise ValueError("웹 업무 설명 파일은 64KB 이내로 지정해 주세요.")
+        try:
+            spec = json.loads(raw.decode("utf-8-sig"))
+        except (ValueError, UnicodeError, RecursionError):
+            raise ValueError("웹 업무 설명 파일을 UTF-8 JSON으로 확인해 주세요. 인증값은 넣지 마세요.") from None
+    _print_json(plan_web_workflow(spec))
+    return 0
+
+
 def cmd_asset_check_skill(args: argparse.Namespace) -> int:
     from .skill_tool_dependencies import check_skill_dependencies
     project = Path(args.project_root or os.environ.get("COMPANY_AGENT_CWD") or Path.cwd())
@@ -744,6 +763,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     asset = subparsers.add_parser("asset", help="Create and validate personal Skills, script tools, and MCP servers.")
     asset_sub = asset.add_subparsers(dest="asset_command", required=True)
+    web_plan = asset_sub.add_parser("web-plan", help="웹 업무 스킬의 다음 단계 안내. 브라우저 실행·연결·저장 없이 설명만 검사합니다.")
+    web_plan.add_argument("--spec", help="비밀값 없는 업무 설명 JSON. 생략하면 필요한 질문만 표시합니다.")
+    web_plan.set_defaults(func=cmd_asset_web_plan)
     create = asset_sub.add_parser("create")
     _add_state_argument(create)
     create.add_argument("--spec", required=True)

@@ -55,6 +55,14 @@ def choices(spec, template=None, *, for_preview=False):
             return _choice_error('$', 'PPT 제작 조건은 JSON 객체로 지정해 주세요.', expected='JSON object')
         if template is not None and not isinstance(template, (str, Path)):
             return _choice_error('template', '참고 양식은 파일 경로로 지정해 주세요.', expected='PPTX or HTML path')
+        # A missing preference is not an unanswered design questionnaire.
+        # Explicit reference/saved requests still require their actual source.
+        spec = dict(spec)
+        if 'creationMode' not in spec:
+            spec['creationMode'] = ('reference' if template or spec.get('referenceImages')
+                                    or spec.get('htmlSource') or 'referenceMode' in spec else 'new')
+        if spec['creationMode'] == 'new':
+            spec.setdefault('designPreset', 'business')
         for key, allowed in (('creationMode', ('new','reference','saved')),
                              ('referenceMode', ('style','preserve')),
                              ('designPreset', tuple(DESIGNS))):
@@ -81,10 +89,6 @@ def choices(spec, template=None, *, for_preview=False):
         if spec.get('creationMode') == 'new' and (template or images or html_source or 'referenceMode' in spec):
             return _choice_error('creationMode', '새 디자인 제작과 기존 양식 유지 조건이 함께 지정되었습니다. 제작 방식을 확인해 주세요.')
         result = {'ok':False,'status':'input_required','preservedChoices':known,'waitForUser':True}
-        if 'creationMode' not in spec:
-            return {**result,'stage':'method','missing':['creationMode'],
-                    'question':'어떤 방식으로 PPT를 만들까요?',
-                    'options':['내용에 맞춰 새 디자인으로 만들기','참고 슬라이드 캡처 2~3장 또는 기존 PPT 첨부','저장한 HTML 대표 양식으로 만들기']}
         if spec['creationMode'] != 'new':
             if not template and not images and not html_source:
                 return {**result,'stage':'reference_file','missing':['template'],
@@ -101,11 +105,6 @@ def choices(spec, template=None, *, for_preview=False):
         missing = [key for key in ('purpose','audience','slideCount') if key not in spec]
         if missing:
             return {**result,'stage':'brief','missing':missing,'question':'아직 알려주지 않은 목적·대상·장수만 알려 주세요.'}
-        if spec['creationMode'] == 'new' and 'designPreset' not in spec:
-            return {**result,'stage':'design','missing':['designPreset'],
-                    'question':'새 PPT의 디자인을 선택해 주세요. 기존 PPT를 참고하는 방식으로 바꿀 수도 있습니다.',
-                    'designOptions':[{'id':key,'label':name,'description':description} for key,(name,description,_) in DESIGNS.items()],
-                    'referenceOption':'참고 캡처·PPT 첨부로 변경'}
         if for_preview:
             return {'ok':True,'status':'preview_ready','stage':'preview_ready','selection':known}
         review = spec.get('designReview')

@@ -70,13 +70,33 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertEqual(1, record_activity(event, self.root)['mutationCount'])
         self.assertEqual('block', stop_decision({'session_id': 'dependency-check'}, self.root)['decision'])
 
-    def test_exact_help_precedes_scope_question_without_granting_permission(self):
+    def test_exact_help_precedes_scope_question_with_narrow_metadata_permission(self):
         cmd = f'{self.cli} memory upsert --help'
         self.assertEqual('read_only', classify_command(cmd))
-        self.assertIsNone(self.permission(cmd))
+        self.assertEqual({'behavior': 'allow'}, self.permission(cmd))
         for suffix in (' > help.txt', '; echo changed', ' --unexpected value'):
             self.assertEqual('unknown', classify_command(cmd + suffix))
             self.assertIsNone(self.permission(cmd + suffix))
+
+    def test_top_help_accepts_only_exact_installed_runtime_pending_permission(self):
+        for suffix in ('--help', 'business html-choices --help', 'business doctor --help'):
+            cmd = f'{self.cli} {suffix}'
+            self.assertEqual('read_only', classify_command(cmd))
+            self.assertEqual({'behavior': 'allow'}, self.permission(cmd))
+            self.assertIsNone(self.permission(cmd, hook_event_name='PreToolUse'))
+            self.assertIsNone(self.permission(cmd, tool_name='PowerShell'))
+            self.assertIsNone(self.permission(cmd, tool_input={'command': cmd, 'run_in_background': True}))
+            for extra in (' 2>&1 | head -30', ' > help.txt', '; whoami', ' --help',
+                          f' --state-root "{self.root}"', ' --spec missing.json'):
+                self.assertIsNone(self.permission(cmd + extra), extra)
+        for command in (
+            f'python "{SCRIPTS / "harness_cli.py"}" --help',
+            f'"{sys.executable}" "{self.root / "harness_cli.py"}" --help',
+            f'"{sys.executable}" -c "print(1)" --help',
+            f'"{SCRIPTS.parent / "bin/company-agent.cmd"}" --help',
+            f'{self.cli} unknown --help', f'{self.cli} business mail-send --help',
+        ):
+            self.assertIsNone(self.permission(command), command)
 
     def test_harness_map_query_is_readonly_but_html_export_is_not(self):
         cmd = f'{self.cli} context map --project "{self.root}" --session current-123'

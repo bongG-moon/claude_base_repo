@@ -25,6 +25,7 @@ from company_agent.asset_factory import (  # noqa: E402
 from company_agent import asset_factory as assets  # noqa: E402
 from company_agent.paths import ensure_user_layout  # noqa: E402
 from company_agent.cli import build_parser  # noqa: E402
+from company_agent.mcp_execution import prepare_execution_bundle, bundle_evidence
 
 
 class AssetFactoryTests(unittest.TestCase):
@@ -251,8 +252,11 @@ class AssetFactoryTests(unittest.TestCase):
         with mock.patch.object(assets.sys, "executable", old_command):
             path = create_asset({"type": "mcp", "name": "previous-mcp", "description": "Previous runtime fixture",
                                  "reviewed_capabilities": ["third-party-import"]}, self.state)
+            source_hash = assets._asset_content_hash(path, "asset.json")
+            _, bundle = prepare_execution_bundle(self.state, path, "previous-mcp", assets._load_manifest(path, "asset.json"),
+                                                 {"assetHash": source_hash})
             receipt = assets._write_receipt(ensure_user_layout(self.state), path, "mcp-protocol", "mcp", "previous-mcp",
-                                            assets._asset_content_hash(path, "asset.json"), {"fixture": True})
+                                            source_hash, {"fixture": True, **bundle_evidence(bundle)})
             activate_mcp(self.state, "previous-mcp", receipt)
         return path, receipt, old_command
 
@@ -267,7 +271,9 @@ class AssetFactoryTests(unittest.TestCase):
             renewed = rebind_mcp_runtime(self.state, "previous-mcp", timeout=7)
         current_command = str(Path(sys.executable).resolve())
         self.assertEqual(current_command, probe.call_args.args[0])
-        self.assertEqual([str((path / "server.py").resolve())], probe.call_args.args[1])
+        self.assertEqual(1, len(probe.call_args.args[1]))
+        self.assertEqual("server.pyz", Path(probe.call_args.args[1][0]).name)
+        self.assertEqual(probe.call_args.args[2], Path(probe.call_args.args[1][0]).parent)
         self.assertEqual(7, probe.call_args.args[3])
         self.assertNotEqual(old_receipt, renewed)
         manifest = json.loads((path / "asset.json").read_text(encoding="utf-8"))

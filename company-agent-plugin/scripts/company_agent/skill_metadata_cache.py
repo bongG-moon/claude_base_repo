@@ -55,9 +55,10 @@ class SkillMetadataCache:
             stamp = old.get('checkedAt')
             valid = (old.get('signature') == before and type(stamp) in (float, int)
                      and 0 <= self.now - stamp < MAX_AGE_SECONDS and isinstance(meta, dict)
-                     and set(meta) == {'name', 'description', 'invalid', 'explicitOnly', 'sha256'}
+                     and set(meta) == {'name', 'description', 'invalid', 'explicitOnly', 'role', 'sha256'}
                      and isinstance(meta.get('description'), str) and len(meta['description']) <= 600
                      and type(meta.get('invalid')) is bool and type(meta.get('explicitOnly')) is bool
+                     and meta.get('role') in ('workflow', 'support')
                      and isinstance(meta.get('sha256'), str) and len(meta['sha256']) == 64
                      and all(c in '0123456789abcdef' for c in meta['sha256']))
             if valid:
@@ -73,6 +74,7 @@ class SkillMetadataCache:
         name, description, invalid = _metadata(raw, path.parent.name)
         meta = {'name': name, 'description': description, 'invalid': invalid,
                 'explicitOnly': _frontmatter_field(raw, 'disable-model-invocation').casefold() == 'true',
+                'role': 'support' if _frontmatter_field(raw, 'company-agent-role') == 'support' else 'workflow',
                 'sha256': hashlib.sha256(raw).hexdigest()}
         if self.signature(path) != before:
             raise ValueError('Skill changed during discovery; retry on the next request')

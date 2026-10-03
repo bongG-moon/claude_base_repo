@@ -41,6 +41,12 @@ def _binding(root: Path, definition: dict) -> dict:
         raise ValueError("Required MCP has no validation key: " + server)
     _, receipt = _verify_receipt({"root": root, "config": root / "config"}, path,
                                 manifest.get("validationReceipt", ""), "mcp-protocol", "mcp", server, "asset.json")
+    from .mcp_execution import execution_definition, verify_bundle_evidence, read_execution_bundle
+    execution = execution_definition(root, server, manifest)
+    executable = Path(execution["args"][0])
+    if not executable.is_file():
+        raise ValueError("Required MCP has no frozen execution bundle; activate it again")
+    verify_bundle_evidence(receipt, read_execution_bundle(execution))
     schemas = receipt.get("details", {}).get("toolSchemas", {})
     if any(t not in schemas for t in definition["tools"]):
         raise ValueError("Required tools are missing from validated schemas; re-test MCP: " + server)
@@ -112,7 +118,10 @@ def check_skill_dependencies(root: Path, name: str, project: Path | None = None)
                 raise ValueError("Tool source or schema changed; re-test and review this skill binding")
             path = root / "mcp/servers" / expected["server"]
             manifest = load_json(path / "asset.json")
-            desired = {"type": "stdio", "command": manifest["command"], "args": manifest["args"]}
+            from .mcp_execution import execution_definition
+            desired = execution_definition(root, expected["server"], manifest)
+            if not Path(desired["args"][0]).is_file():
+                raise ValueError("Required MCP has no frozen execution bundle; activate it again")
             registry = load_json(root / "mcp/registry.json", {})
             if not isinstance(registry, dict) or not isinstance(registry.get("mcpServers", {}), dict):
                 raise ValueError("Active MCP registry must contain a server object")

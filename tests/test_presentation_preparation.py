@@ -85,13 +85,14 @@ class PresentationPreparationTests(unittest.TestCase):
             file.write_bytes(b'\xef\xbb\xbf{}')
             self.assertTrue(validator('Edit', {'file_path': str(file)}, self.root))
 
-    def test_preparation_and_exact_help_are_readonly_not_auto_approved(self):
+    def test_preparation_is_readonly_and_only_exact_help_is_auto_approved(self):
         for leaf in ('ppt-choices', 'html-choices'):
             for suffix in ('', ' --help', f' --state-root "{self.root}"'):
                 command = f'{self.cli} business {leaf}{suffix}'
                 self.assertEqual('read_only', classify_command(command))
-                self.assertIsNone(safe_permission({'hook_event_name': 'PermissionRequest',
-                    'tool_name': 'Bash', 'tool_input': {'command': command}}, self.root))
+                permission = safe_permission({'hook_event_name': 'PermissionRequest',
+                    'tool_name': 'Bash', 'tool_input': {'command': command}}, self.root)
+                self.assertEqual({'behavior': 'allow'} if suffix == ' --help' else None, permission)
                 for extra in (' > result.json', '; echo changed', ' --bogus value'):
                     self.assertEqual('unknown', classify_command(command + extra))
         for leaf in ('ppt', 'ppt-design-preview', 'html', 'artifact-start', 'artifact-publish'):

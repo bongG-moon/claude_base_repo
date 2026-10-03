@@ -176,6 +176,123 @@ def _vertical(row, number, x, y, width, bottom, elements, text):
     return blocks
 
 
+def _structured(row, number, width, height, elements, text):
+    """Answer-first layouts using primitives supported by both native exporters."""
+    margin, usable, gap = width*.05, width*.90, 28.
+    bottom = height-48
+    layout = row['layout']
+    text(row.get('eyebrow', ''), margin, 12, usable, 20, 11, 'muted')
+    title_lines = _lines(row['title'], usable, 30)
+    if title_lines > 2:
+        raise DesignError(f'{number}장 결론 제목이 두 줄보다 깁니다. 뜻을 유지해 줄이거나 장을 나누어 주세요.')
+    title_y = 37. if row.get('eyebrow') else 24.
+    title_h = title_lines*30*1.27+4
+    text(row['title'], margin, title_y, usable, title_h, 30, 'title', True)
+    top = title_y+title_h+20
+    text(row.get('source', ''), margin, height-31, usable-45, 22, 10, 'muted')
+    text(f'{number:02d}', width-margin-30, height-31, 30, 22, 10, 'muted')
+    takeaway = row.get('takeaway', '')
+    if takeaway:
+        takeaway_h = _lines(takeaway, usable, 18)*18*1.27+4
+        if layout in ('evidence', 'actions'):
+            text(takeaway, margin, bottom-takeaway_h, usable, takeaway_h, 18, 'accent', True)
+            bottom -= takeaway_h+20
+        else:
+            text(takeaway, margin, top, usable, takeaway_h, 18, 'accent', True)
+            top += takeaway_h+20
+    if row.get('kpis'):
+        kpi_w = usable/len(row['kpis'])
+        for index, kpi in enumerate(row['kpis']):
+            x = margin+index*kpi_w
+            text(kpi['label']+(' · '+kpi['unit'] if kpi['unit'] else ''), x, top, kpi_w-16, 26, 15, 'muted')
+            text(kpi['value'], x, top+28, kpi_w-16, 57, 38, 'accent', True)
+        top += 103
+    if top > bottom:
+        raise DesignError(f'{number}장 제목·요약·지표가 본문 영역보다 큽니다. 내용을 줄이거나 장을 나누어 주세요.')
+    visuals = [k for k in ('chart', 'table', 'image') if row.get(k)]
+    prose = '\n\n'.join(([row['body']] if row['body'] else [])+row['bullets'])
+    if not visuals and not prose and not row.get('kpis'):
+        raise DesignError(f'{number}장에 제목 외의 핵심 내용이 없습니다.')
+    if len(visuals) > 2 or (len(visuals) == 2 and prose and layout != 'comparison'):
+        raise DesignError(f'{number}장에 근거와 설명이 너무 많습니다. 비교 구성으로 바꾸거나 장을 나누어 주세요.')
+
+    def visual(kind, x, y, w, h):
+        if h <= 0:
+            raise DesignError(f'{number}장 근거 영역이 부족합니다. 설명을 줄이거나 장을 나누어 주세요.')
+        e = dict(kind=kind, x=x, y=y, w=w, h=h)
+        if kind == 'table':
+            widths, heights = _table_metrics(row['table'], w)
+            if sum(heights) > h:
+                raise DesignError(f'{number}장 표를 읽기 좋은 크기로 담을 수 없습니다. 행·열을 나누어 주세요.')
+            e.update(h=sum(heights), columnWidths=widths, rowHeights=heights, size=16)
+        elif kind == 'chart':
+            title = row['chart'].get('title', '')
+            if w < 260 or h-(31 if title else 0) < 180:
+                raise DesignError(f'{number}장 차트 공간이 작습니다. 지표나 설명을 다른 장으로 옮겨 주세요.')
+            if title:
+                text(title, x, y, w, 27, 15, 'muted', True)
+                e.update(y=y+31, h=h-31)
+        else:
+            e['fit'] = row.get('imageFit', 'contain')
+        elements.append(e)
+        return e['h']+(31 if kind == 'chart' and row['chart'].get('title') else 0)
+
+    # An action table spans the page so owners/status text keeps readable width.
+    if layout == 'actions':
+        if len(visuals) > 1:
+            raise DesignError(f'{number}장 실행안의 표·차트는 한 개씩 나누어 주세요.')
+        prose_h = _lines(prose, usable, 18)*18*1.27+4 if prose else 0
+        if visuals:
+            used = visual(visuals[0], margin, top, usable, bottom-top-(prose_h+20 if prose else 0))
+            top += used+20
+        text(prose, margin, top, usable, bottom-top, 18)
+        return
+    # Two compared exhibits may share a conclusion underneath, never dropped.
+    if layout == 'comparison' and len(visuals) == 2:
+        prose_h = _lines(prose, usable, 18)*18*1.27+4 if prose else 0
+        h = bottom-top-(prose_h+20 if prose else 0)
+        for index, kind in enumerate(visuals):
+            visual(kind, margin+index*(usable+gap)/2, top, (usable-gap)/2, h)
+        text(prose, margin, bottom-prose_h, usable, prose_h, 18)
+        return
+    if visuals:
+        if len(visuals) == 2:
+            for index, kind in enumerate(visuals):
+                visual(kind, margin+index*(usable+gap)/2, top, (usable-gap)/2, bottom-top)
+        elif prose:
+            fraction = {'summary':.58, 'evidence':.70, 'comparison':.50}[layout]
+            w = (usable-gap)*fraction
+            visual(visuals[0], margin, top, w, bottom-top)
+            text(prose, margin+w+gap, top, usable-w-gap, bottom-top, 18)
+        else:
+            visual(visuals[0], margin, top, usable, bottom-top)
+        return
+    if layout == 'summary':
+        if row['body']:
+            h = _lines(row['body'], usable, 22)*22*1.27+4
+            if h > bottom-top:
+                raise DesignError(f'{number}장 핵심 요약이 너무 깁니다. 뜻을 유지해 줄이거나 장을 나누어 주세요.')
+            text(row['body'], margin, top, usable, h, 22)
+            top += h+24
+        columns = min(len(row['bullets']), 3) if len(row['bullets']) <= 3 else 2
+        if columns:
+            per_column = math.ceil(len(row['bullets'])/columns)
+            w = (usable-gap*(columns-1))/columns
+            for index in range(columns):
+                values = row['bullets'][index*per_column:(index+1)*per_column]
+                text('\n\n'.join(values), margin+index*(w+gap), top, w, bottom-top, 18)
+    elif layout == 'comparison' and row['bullets']:
+        if row['body']:
+            columns = [row['body'], '\n\n'.join(row['bullets'])]
+        else:
+            split = math.ceil(len(row['bullets'])/2)
+            columns = ['\n\n'.join(row['bullets'][:split]), '\n\n'.join(row['bullets'][split:])]
+        for index, value in enumerate(columns):
+            text(value, margin+index*(usable+gap)/2, top, (usable-gap)/2, bottom-top, 18)
+    else:
+        text(prose, margin, top, usable, bottom-top, 21)
+
+
 def plan(data, width=960., height=540.):
     if not (600 <= width <= 1800 and 400 <= height <= 1100 and 1.25 <= width / height <= 2.1):
         raise DesignError("이 양식의 화면 비율은 자동 배치를 지원하지 않습니다. 4:3 또는 16:9 양식을 선택해 주세요.")
@@ -199,6 +316,14 @@ def plan(data, width=960., height=540.):
             if _lines(value, w, size) * size * 1.27 + 4 > h:
                 raise DesignError(f"{number}장 글자가 배치 공간보다 많습니다. 문장을 줄이거나 장을 나누어 주세요.")
             elements.append(dict(kind='text', text=value, x=x, y=y, w=w, h=h, size=size, color=color, bold=bold))
+
+        if row.get('layout', 'auto') != 'auto' and 'contentOrder' not in row:
+            _structured(row, number, width, height, elements, text)
+            for e in elements:
+                if min(e['x'], e['y']) < 0 or e['x']+e['w'] > width+.01 or e['y']+e['h'] > height+.01:
+                    raise DesignError('슬라이드 영역을 벗어나는 배치를 저장하지 않았습니다.')
+            pages.append({'elements': elements})
+            continue
 
         text(row.get('eyebrow', ''), margin, 12, usable, 20, 11, 'muted')
         text(row['title'], margin, 37, usable, 48, 30, 'title', True)

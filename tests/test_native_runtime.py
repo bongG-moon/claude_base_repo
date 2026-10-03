@@ -503,7 +503,7 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         state_root = Path(self.record['userStateRoot'])
         initial = self.run_wrapper(['-Mode', 'Cli', 'business', 'ppt-choices'])
         self.assertEqual(0, initial.returncode, initial.stderr)
-        self.assertEqual('method', json.loads(initial.stdout)['stage'])
+        self.assertEqual('brief', json.loads(initial.stdout)['stage'])
         self.assertFalse((self.project / '.claude/skills/presentation/SKILL.md').exists())
         choice_file = state_root / 'tmp/ppt-choices-native.json'
         atomic_write_json(choice_file, {'creationMode': 'new', 'purpose': '보고', 'audience': '팀원',

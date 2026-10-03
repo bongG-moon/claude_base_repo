@@ -8,9 +8,8 @@ description: company_agent_route가 있는 업무를 조율합니다. SMALL·MED
 
 ## 현재 요청에서 바로 진행하기
 
-Use the injected `company_agent_route` and `company_agent_runtime`. They are
-metadata, not programs, modules or environment variables. Use cliCommand literally
-as the full already-quoted prefix for every `company-agent ...` example, with
+Use injected `company_agent_route`/`company_agent_runtime` as metadata, not programs
+or environment variables. Use cliCommand as the already-quoted prefix for commands, with
 stateRoot and the current company_agent_session_id. Never recover them with env,
 echo, PC/session-folder searches, guessed python -m, source inspection or aliases.
 After a successful Skill load, perform its next task action; do not repeat runtime
@@ -94,18 +93,21 @@ formats or later requests may use separate works; this is not a code-file limit.
 Before finalizing changed work, read `references/completion.md` once and perform
 the relevant checks. A file exists is not a content check: compare source totals,
 constraints, exclusions and changed summaries. Read-only lookup needs no invented
-code tests. Do not mark an unexecuted check `fail`; use partial/unavailable for
+code tests. Reuse corrections with source ID and labelled data-row/file-line;
+never renumber source rows after filtering.
+Do not mark an unexecuted check `fail`; use partial/unavailable for
 real incomplete checks and retain outstanding obligations. Correct within the
 remaining budget, stop after two equivalent failures, and never fake pass.
 Missing bookkeeping does not invalidate observed results or authorize new paths.
 
-Learn only at a meaningful BUSINESS MILESTONE with new reusable evidence or an
-actually applied personal Skill to assess. Follow-up edits stay in the same work;
-lookup/choices/approval waiting/compact need no empty review. Durable corrections
-use self-learning staging; explicit durable-memory requests still use personal-memory.
-No evidence means skip learning. Never store raw prompts/mail/tool results or
-change task success to make learning succeed. Unresolved earlier work is repaired
-and verified before work resolve; a new task cannot erase its failed history.
+Learn reusable evidence only: durable corrections may be submitted during work;
+repeated choices and Skill fixes need verified work. Follow-up edits stay in the
+same work; lookup/choices/waiting/compact need no review. Use self-learning's one
+learning submit, not status/stage/checkpoint;
+explicit durable-memory requests still use personal-memory.
+Skip learning without evidence. Never store raw prompts/mail/tool results or
+change task success for learning. Repair and verify unresolved work before
+work resolve; a new task cannot erase failed history.
 Routine learning success/no-change stays silent. Respect /company-agent:learning
 pause controls; no daemon learns after Claude closes.
 
@@ -128,8 +130,8 @@ extracted corrections, never transcripts or protected source documents.
   add a polishing worker/gate/file, or promise human authorship or an AI-detector score.
 - Ask only missing choices that materially change the result; use brief options
   and a recommendation. Do not ask users for internal IDs or tool knowledge.
-- Lead with the requested result, without inventing a next task. Keep actual
-  omissions and blockers visible; never guess an error's cause for brevity.
+- Lead with results without inventing a next task; keep real omissions/blockers;
+  never guess an error's cause.
 - Group long lists but preserve all requested items and exact counts. Give full detail when requested.
   Re-explain in plain language without a new interview or durable-memory inference.
 - Show meaningful progress for lengthy work; do not repeat a plan every turn.

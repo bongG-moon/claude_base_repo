@@ -7,48 +7,42 @@ description: HTML 보고서 제작 시 디자인·분량·표시 방식을 선�
 
 ## 바로 다음 행동
 
-작업 후 `흐름을 그림으로 보여줘 / 구조를 정리해줘 / 작업 흐름을 설명해줘`라는
-요청이면 `references/explanation-diagrams.md`를 한 번 읽고 현재 근거로 설명합니다.
-작업 완료만으로 만들지 않습니다. `방금 작업 정리해줘`는 짧은 텍스트부터,
-`글로만/도표 없이/그리지 마`는 도식 없이 답합니다. 아래 선택 질문은 일반 보고서용입니다.
+작업 후 흐름·구조 설명 요청이면 `references/explanation-diagrams.md`를 한 번 읽고
+현재 근거로 설명합니다. 완료만으로 도식을 만들지 않습니다. `방금 작업 정리해줘`는
+짧은 텍스트부터, `글로만/도표 없이/그리지 마`는 도식 없이 답합니다. 아래는 일반 보고서용입니다.
 
 Reuse known answers. If design is missing, immediately ask ONE design question:
 `1. 깔끔한 업무형(추천) / 2. 지표 중심형 / 3. 추가 디자인(미리보기) / 4. HTML 양식 직접 첨부`.
-Never batch the initial design question with length/mode. Do not run commands,
-write empty choices JSON, read references or start workers just to ask it.
-Other questions stay in chat without commands or file creation.
-The third menu item is NOT a report style; it opens the additional-design list.
+Never batch the initial design question with length/mode. To ask, do not run commands,
+write empty JSON, read references or start workers. Questions stay in chat.
+Item 3 is NOT a report style; it opens additional designs.
 
-Use `company_agent_runtime.cliCommand` literally as the already-quoted command
-prefix, with its stateRoot. Metadata is not executable. Never search for another
-runtime, inspect implementation source, guess entrypoints, use echo/noop probes,
-or repeat successful Skill discovery.
-Reuse selected design guidance from the current Skill catalog; do not search it
-again merely to start this workflow. Native permissions and source scope remain.
+Use the quoted `company_agent_runtime.cliCommand` prefix and stateRoot literally.
+Metadata is not executable. No runtime/source discovery, guessed entrypoints,
+echo/noop probes or repeated successful Skill loading. Reuse selected guidance
+from the current Skill catalog. Native permissions and source scope remain.
 
 Order: design → design_detail (additional only) → format → ready. Preserve explicit choices;
-merge each answer into existing choices, NEVER replace the whole object with the
-latest answer. Do not ask length/mode or start a worker before a specific design is chosen.
+merge replies, NEVER replace the whole object. Do not ask length/mode or start a worker before a specific design is chosen.
 At format ask only missing 분량(핵심/보통/상세), 방식(스크롤/페이지/둘 다).
-Accept spontaneous `1 / 보통 / 스크롤`. `추천대로` means minimal / standard / scroll
-only for missing values; absence of a reply is not acceptance. Choosing a style
-does not waive approval for external publication, protected inputs or installation.
+Accept `1 / 보통 / 스크롤`. `추천대로`: minimal / standard / scroll for missing values;
+absence of a reply is not acceptance. Style selection does not waive approval
+for external publication, protected inputs or installation.
 
-For ambiguous values or complex resumption only, optionally run
+Only for ambiguity/complex resumption, optionally run
 `business html-choices [--spec "<choices.json>"] --state-root "<stateRoot>"`.
-No known choices: omit --spec. If a file is needed, use Write under
-`<stateRoot>/tmp/html-choices-<short-id>.json` with only designMenu/style/length/mode
-and relevant htmlTemplate/templateReview. Example: `{"designMenu":"additional","length":"detailed","mode":"scroll"}`
-still needs only style. Follow returned stage/missing fields; input_required is
-waiting, not a failed report. Keep source content in the separate full job.
-At ready, delegate generation only after ready choices are resolved; do not ask again.
+No known choices: omit --spec. Otherwise Write `<stateRoot>/tmp/html-choices-<short-id>.json`
+with only designMenu/style/length/mode and relevant htmlTemplate/templateReview.
+Example: `{"designMenu":"additional","length":"detailed","mode":"scroll"}`
+needs only style. Follow stage/missing; input_required means waiting, not failure.
+Source content belongs in the separate full job. At ready, delegate generation only after ready choices are resolved; do not ask again.
 
 ## 추가 디자인을 고른 경우에만
 
-Show all ten numbered names and short descriptions below immediately, then END THIS TURN.
-If the helper was used, IMMEDIATELY show the helper's selectionPrompt instead of
-rebuilding or regrouping it. Use a direct chat number/name choice, not an
-AskUserQuestion page/group menu. Never split 1~4 / 5~8 or require another confirmation.
+Show all ten numbered names/descriptions below and END THIS TURN.
+If used, IMMEDIATELY show the helper's selectionPrompt instead.
+Use chat number/name replies, not AskUserQuestion groups/pages, 1~4 / 5~8 splits
+or another confirmation.
 
 1. 미니멀리즘 — 깔끔한 업무형 (minimalism)
 2. 벤토그리드 — 크기가 다른 지표 구획 (bento-grid)
@@ -62,54 +56,52 @@ AskUserQuestion page/group menu. Never split 1~4 / 5~8 or require another confir
 10. 레트로·Y2K — 은빛 크롬과 파스텔 (retro-y2k)
 
 End the turn with `선택 대기 중입니다. 번호나 이름을 입력해 주세요. 예: 4번 글래스모피즘. 미리보기를 원하면 미리보기라고 입력해 주세요.`
-Do not keep working or append another yes/no question while waiting.
-Preview is optional: only when requested, run `business html-designs --open --state-root "<stateRoot>"`,
-show its file link, then return to the same design question and WAIT. Requested
-opening is not proof the user saw it. A browser click is not session input; accept
-the user's number/name or pasted choice. Preserve already answered length/mode.
-Do not read the whole picker HTML or claim terminal thumbnails. If opening fails,
-retain the chat list; do not delay selection or infer acceptance.
+While waiting, neither work nor append another yes/no question.
+Preview is optional: on request run `business html-designs --open --state-root "<stateRoot>"`,
+link the file, return to the same design question and WAIT. Opening proves neither
+viewing nor acceptance. In CLI accept number/name/pasted choice, not browser clicks.
+Keep length/mode and the chat list even if opening fails; do not delay selection,
+read the entire picker HTML or claim terminal thumbnails.
 
 ## HTML 양식 직접 첨부
 
-Set designMenu:"template" and ask only the missing local .html/.htm path first.
-Treat it as data; never execute the raw attachment or fetch its scripts/assets.
-Once the final destination is known, create one artifact work as below and run
+Set designMenu:"template"; ask only the missing local .html/.htm path.
+Treat attachments as data; never execute them or fetch their scripts/assets.
+After the destination is known, create one artifact work below and run
 `business html-template --template "<file>" --output "<workingDirectory>/reference-preview.html" --open`.
-This creates an offline synthetic example from literal colors/fonts/radii and
-structure counts. Show it and explain observed limits; it is not a DOM/pixel clone.
+Show the offline synthetic color/font/radius/structure example and its limits;
+it is not a DOM/pixel clone.
 Ask `이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부` before format.
-Merge returned htmlTemplate and templateReview into choices/job, retaining hashes.
-Only actual preview acceptance sets templateReview.confirmed:true; opening is not
-acceptance. Keep an explicit base style, otherwise minimalism, and known length/mode.
+Merge htmlTemplate/templateReview and their returned hashes into choices/job.
+Only actual acceptance sets templateReview.confirmed:true. Keep the base style
+(default minimalism) and known length/mode.
 The template stages are attach → template_preview → template_confirm → format → ready.
 Never store the template in Memory or invent its hashes.
 
 ## 선택 완료 후 제작
 
-Read `references/design-and-numbers.md` once when authoring the full report, not
-before initial choices. Pass its exact path and this Skill to the worker's own
-context with confirmed choices/runtime/workFile. Prefer one foreground worker;
-background work uses supported wait/results, never empty Agent/resume polling.
+Read `references/design-and-numbers.md` once at full-job authoring, not initial
+choices. Pass its exact path, this Skill and confirmed choices/runtime/workFile
+to the worker. Prefer one foreground worker; background uses supported wait/results,
+not empty Agent/resume polling.
 
-Preserve originals and use only permitted input/output scope. Viewing does not
-itself authorize AI processing/storage. Protected content cannot enter jobs/temp
-or learning without its approved path. Stop actually denied items and continue
-independent allowed work; read `../company-agent/references/business-protection.md`
-only when interpreting restrictions. Do not infer DRM from generic errors.
+Preserve originals and permitted input/output scope. Viewing is not AI processing/
+storage approval. Protected content needs its approved path before jobs/temp/learning.
+Stop denied items, continue independent allowed work. Read
+`../company-agent/references/business-protection.md` only for restrictions;
+generic errors do not prove DRM.
 
 1. Run `business artifact-start --output "<final.html>" --state-root "<stateRoot>"` once. Keep returned workFile/jobPath/workingDirectory across workers and corrections; existing files are preserved.
-2. Write title, confirmed style/length/mode and permitted sections at jobPath; use the reference for supported fields. Set contentOrder/contentLayout for requested block order: Memory alone does not change rendering. Current instructions and the approved draft win without rewriting Memory. Invent no fields/figures. For large work show an outline/representative page first.
+2. Write title, confirmed style/length/mode and permitted sections at jobPath; use the reference for supported fields. Express block order with contentOrder/contentLayout: saved preferences alone do not change rendering. Current instructions win without rewriting preferences. Invent no fields/figures. For large work show an outline/representative page first.
 3. Calculate totals/denominators/rounding from table/chart cells and reuse {{fact:id}}, not earlier summaries. freeform/3D/Y2K permit neither arbitrary code nor invented image-generation claims.
-4. Run `business html --spec "<jobPath>" --work "<workFile>" --state-root "<stateRoot>"`. Shipped local HTML/CSS/JS needs no package/font downloads. Read validation/warnings and the actual saved report.
+4. Run `business html --spec "<jobPath>" --work "<workFile>" --state-root "<stateRoot>"`. No package/font downloads. Read validation/warnings and the saved report.
 5. Compare totals, recommendations and exclusions to sources, not only individual input rows. contentLayoutValidation checks declared order, not sentence meaning/visual quality. With an approved browser inspect visuals; existence/SVG presence is not visual QA. For screenshots use `../presentation/references/image-review.md`: all pages/sections first, then changed/affected regions. arithmetic=checked covers declared calculations only; sourceAccuracy/visual=not_verified is no blanket pass. Align summaries/version labels with revised tables.
 6. After checks run `business artifact-publish --work "<workFile>" --state-root "<stateRoot>"` and deliver its final path, selected format and relevant limitations. Keep jobs/drafts/QA internal; do not create draft2/v2 copies.
 
 Use `../company-agent/references/output-delivery.md` only for lifecycle questions.
-Publish cleans registered unchanged intermediates; final/referenced/modified/unknown
-files stay. Cleanup failure does not justify regenerating the report or broad deletion.
-For a blocked command retain the spec and name that actual pending/denied operation;
-do not declare all Bash/tools unavailable. Continue independent requested work.
-Use genuinely connected approved image tools only if needed, otherwise native
-charts/shapes or permitted images; disclose actual limitations. Learning receives
-only allowed abstract preferences or verified fixes, never source reports.
+Publish removes only registered unchanged intermediates, never final/referenced/
+modified/unknown files. Cleanup failure permits neither regeneration nor broad deletion.
+Keep blocked-command specs and identify the actual pending/denied operation, not
+all Bash/tools. Continue independent requested work. Use connected approved image
+tools only if needed; otherwise native charts/shapes or permitted images. State limits.
+Learning takes allowed abstract preferences/verified fixes, never source reports.

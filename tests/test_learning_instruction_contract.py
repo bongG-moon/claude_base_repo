@@ -94,6 +94,9 @@ class LearningInstructionContractTests(unittest.TestCase):
         self.assertIn("Read", html)
         main = self.text("company-agent/SKILL.md")
         self.assertIn("file exists is not a content check", main)
+        self.assertIn("durable corrections may be submitted during work", main)
+        self.assertIn("learning submit, not status/stage/checkpoint", main)
+        self.assertNotIn("self-learning staging", main)
         self.assertIn("Approval", (ROOT / "company-agent-plugin" / "scripts" / "company_agent" / "native_runtime.py").read_text(encoding="utf-8"))
         self.assertIn("Do not mark an unexecuted check `fail`", main)
 

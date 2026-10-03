@@ -429,6 +429,9 @@ def _create_mcp(layout: dict[str, Path], name: str, description: str, spec: dict
     previous = load_json(destination / "asset.json", {}) if destination.exists() else {}
     if previous and previous.get("format") != requested_format:
         raise ValueError("Existing MCP format is preserved; migrate explicitly to a new asset name")
+    if previous:
+        from .native_mcp import reject_direct_source_registration
+        reject_direct_source_registration(layout["root"], name, destination / "server.py")
     if requested_format == FORMAT:
         if "server_code" in spec:
             raise ValueError("Platform MCP uses tools_code, not server_code")
@@ -997,12 +1000,17 @@ def validate_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path
         raise ValueError("Platform MCP requires approved mcp>=1.28,<2; no packages were installed")
 
     asset_hash = _asset_content_hash(server_root, "asset.json")
+    from .mcp_execution import prepare_execution_bundle, bundle_evidence
+    _, bundle = prepare_execution_bundle(layout["root"], server_root, name, manifest, {"assetHash": asset_hash})
     with tempfile.TemporaryDirectory(prefix=f"company-agent-mcp-{name}-", dir=str(layout["tmp"])) as run_dir:
+        execution = Path(run_dir) / "server.pyz"
+        execution.write_bytes(bundle)
         options = {"business_cases": cases} if cases is not None else {}
-        details = asyncio.run(_probe_mcp(manifest["command"], list(manifest["args"]), Path(run_dir), timeout, **options))
+        details = asyncio.run(_probe_mcp(manifest["command"], [str(execution)], Path(run_dir), timeout, **options))
     if _asset_content_hash(server_root, "asset.json") != asset_hash:
         raise ValueError("MCP server modified its own validated asset files")
-    details.update({"mcpSdkVersion": installed_version, "requirement": manifest["mcpRequirement"], "timeoutSeconds": timeout})
+    details.update({"mcpSdkVersion": installed_version, "requirement": manifest["mcpRequirement"],
+                    "timeoutSeconds": timeout, **bundle_evidence(bundle)})
     return _write_receipt(layout, server_root, "mcp-protocol", "mcp", name, asset_hash, details)
 
 
@@ -1044,9 +1052,13 @@ def rebind_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path:
     if manifest.get("format") == FORMAT and _parse_version(installed_version) < (1, 28, 0):
         raise ValueError("Platform MCP requires approved mcp>=1.28,<2; no packages were installed")
     original_hash = previous_receipt["assetHash"]
+    from .mcp_execution import prepare_execution_bundle, bundle_evidence
+    _, bundle = prepare_execution_bundle(layout["root"], server_root, name, manifest, previous_receipt)
     with tempfile.TemporaryDirectory(prefix=f"company-agent-mcp-rebind-{name}-", dir=str(layout["tmp"])) as run_dir:
+        execution = Path(run_dir) / "server.pyz"
+        execution.write_bytes(bundle)
         options = {"business_cases": cases} if cases is not None else {}
-        details = asyncio.run(_probe_mcp(current_command, [str(entrypoint)], Path(run_dir), timeout, **options))
+        details = asyncio.run(_probe_mcp(current_command, [str(execution)], Path(run_dir), timeout, **options))
 
     def require_unchanged() -> None:
         if manifest_path.read_bytes() != original_bytes or _asset_content_hash(server_root, "asset.json") != original_hash:
@@ -1059,7 +1071,7 @@ def rebind_mcp_runtime(state_root: Path, name: str, timeout: int = 30) -> Path:
     updated.pop("activatedAt", None)
     updated.pop("validationReceipt", None)
     details.update({"mcpSdkVersion": installed_version, "requirement": manifest["mcpRequirement"],
-                    "timeoutSeconds": timeout, "runtimeRebind": transition})
+                    "timeoutSeconds": timeout, "runtimeRebind": transition, **bundle_evidence(bundle)})
     # Stage the signed receipt first. Until the one atomic manifest replacement,
     # it is inert (its hash does not match the old asset). A failed probe/receipt
     # write therefore cannot invalidate the previously active asset or registry.
@@ -1087,20 +1099,35 @@ def activate_mcp(state_root: Path, name: str, validation_receipt: str | Path) ->
     registry = load_json(registry_path, {"mcpServers": {}}) or {"mcpServers": {}}
     if not isinstance(registry, dict) or not isinstance(registry.get("mcpServers", {}), dict):
         raise ValueError("personal MCP registry is invalid")
-    registry.setdefault("mcpServers", {})[name] = {
-        "type": "stdio", "command": str(Path(sys.executable).resolve()), "args": [str(entrypoint)],
-    }
-    atomic_write_json(registry_path, registry)
+    from .mcp_execution import prepare_execution_bundle, publish_execution_bundle, verify_bundle_evidence
+    definition, bundle = prepare_execution_bundle(
+        layout["root"], server_root, name, manifest, receipt
+    )
+    verify_bundle_evidence(receipt, bundle)
+    # Publish registered executable bytes LAST. A failed metadata write must not
+    # switch an existing registration to a new version after reporting failure.
+    metadata = (registry_path, server_root / "asset.json", _registry_path(layout))
+    previous = [load_json(path, {"mcpServers": {}}) for path in metadata]
+    registry.setdefault("mcpServers", {})[name] = definition
     manifest["status"] = "active"
     manifest["activatedAt"] = _now()
     manifest["validationReceipt"] = receipt_path.name
-    atomic_write_json(server_root / "asset.json", manifest)
     assets_registry = _load_registry(layout)
     for item in assets_registry.get("assets", []):
         if item.get("type") == "mcp" and item.get("name") == name:
             item["status"] = "active"
             item["activatedAt"] = manifest["activatedAt"]
-    atomic_write_json(_registry_path(layout), assets_registry)
+    written = []
+    try:
+        for path, value in zip(metadata, (registry, manifest, assets_registry)):
+            atomic_write_json(path, value)
+            written.append(path)
+        publish_execution_bundle(layout["root"], name, definition, bundle)
+    except Exception:
+        for path, value in reversed(list(zip(metadata, previous))):
+            if path in written:
+                atomic_write_json(path, value)
+        raise
     return registry_path
 
 

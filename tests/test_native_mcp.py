@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT / "company-agent-plugin" / "scripts"))
 from company_agent import asset_factory as assets  # noqa: E402
 from company_agent import native_mcp as native  # noqa: E402
 from company_agent.paths import atomic_write_json, ensure_user_layout, load_json  # noqa: E402
+from company_agent.mcp_execution import prepare_execution_bundle, bundle_evidence
 
 
 class NativeMcpTests(unittest.TestCase):
@@ -38,8 +39,11 @@ class NativeMcpTests(unittest.TestCase):
         layout = ensure_user_layout(self.state)
         # Fixture receipt stands in for the separate MCP protocol validator.
         # No server is run by native config registration.
+        source_hash = assets._asset_content_hash(self.asset, "asset.json")
+        _, bundle = prepare_execution_bundle(self.state, self.asset, self.name, load_json(self.asset / "asset.json"),
+                                             {"assetHash": source_hash})
         receipt = assets._write_receipt(layout, self.asset, "mcp-protocol", "mcp", self.name,
-                                        assets._asset_content_hash(self.asset, "asset.json"), {"fixture": True})
+                                        source_hash, {"fixture": True, **bundle_evidence(bundle)})
         assets.activate_mcp(self.state, self.name, receipt)
         self.desired = load_json(self.state / "mcp" / "registry.json")["mcpServers"][self.name]
 

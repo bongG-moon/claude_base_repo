@@ -63,7 +63,9 @@ class GuidePresentationTests(unittest.TestCase):
                 self.assertIn('SIL OPEN FONT LICENSE Version 1.1', page)
                 self.assertNotIn('fonts.googleapis.com', page)
                 self.assertNotIn('fonts.gstatic.com', page)
-                self.assertLess(len(page.encode('utf-8')), 400_000)
+                # The standalone reader now includes web-workflow practice.
+                # Keep the complete offline guide (including its font) <450 KB.
+                self.assertLess(len(page.encode('utf-8')), 450_000)
 
     def test_all_visible_characters_are_covered_and_markdown_is_rendered(self):
         supported = set(self.manifest['characters'])

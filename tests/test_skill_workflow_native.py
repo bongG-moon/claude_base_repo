@@ -66,7 +66,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.hook('PostToolUse',tool_name='Write',tool_input={'file_path':str(spec),'content':content},tool_response={'success':True})
         result=self.run_wrapper(['-Mode','Cli','business','ppt-choices','--spec',str(spec),'--state-root',str(root)])
         self.assertEqual(0,result.returncode,result.stderr)
-        self.assertEqual('design',json.loads(result.stdout)['stage'])
+        self.assertEqual('design_preview',json.loads(result.stdout)['stage'])
         self.assertEqual(0,load_session(self.payload['session_id'],root)['mutationCount'])
         self.assertEqual({},self.hook('Stop'))
 

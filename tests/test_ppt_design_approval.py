@@ -26,8 +26,9 @@ class PptDesignApprovalTests(unittest.TestCase):
         with patch.object(artifacts,'_office',side_effect=AssertionError('HTML draft must not start Office')):
             return artifacts.create_ppt(job or self.job,self.root/'representative.html',require_choices=True,preview_only=True)
 
-    def test_new_mode_does_not_skip_design_or_confirmation(self):
-        self.assertEqual('design',flow.choices(self.job)['stage'])
+    def test_default_design_does_not_skip_preview_or_confirmation(self):
+        self.assertEqual('design_preview',flow.choices(self.job)['stage'])
+        self.assertEqual('business',flow.choices(self.job)['preservedChoices']['designPreset'])
         self.job['designPreset']='monochrome'
         self.assertEqual('design_preview',flow.choices(self.job)['stage'])
         preview=self.preview()

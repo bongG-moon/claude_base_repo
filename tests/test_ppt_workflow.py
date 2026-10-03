@@ -17,13 +17,41 @@ class PptWorkflowTests(unittest.TestCase):
         return {'creationMode':'new','purpose':'보고','audience':'부서장',
                 'slideCount':2,'designPreset':'business'}
 
-    def test_empty_choices_starts_method_without_requiring_a_file_or_content(self):
+    def test_empty_choices_uses_defaults_and_asks_only_for_missing_brief(self):
         result=flow.choices({})
-        self.assertEqual('method',result['stage'])
+        self.assertEqual('brief',result['stage'])
         self.assertEqual('input_required',result['status'])
-        self.assertEqual(['creationMode'],result['missing'])
+        self.assertEqual(['purpose','audience','slideCount'],result['missing'])
         self.assertTrue(result['waitForUser'])
-        self.assertEqual({},result['preservedChoices'])
+        self.assertEqual({'creationMode':'new','designPreset':'business'},result['preservedChoices'])
+
+    def test_missing_method_and_design_advance_without_changing_input(self):
+        spec={'purpose':'보고','audience':'부서장','slideCount':1,
+              'slides':[{'title':'확인 결과','body':'원자료 확인 필요'}]}
+        result=flow.choices(spec)
+        self.assertEqual('design_preview',result['stage'])
+        self.assertEqual('create_html_preview',result['nextAction'])
+        self.assertFalse(result['waitForUser'])
+        self.assertEqual('business',result['preservedChoices']['designPreset'])
+        self.assertNotIn('creationMode',spec)
+        self.assertNotIn('designPreset',spec)
+        self.assertNotIn('designReview',spec)
+
+    def test_explicit_style_and_reference_intent_are_preserved(self):
+        brief={'purpose':'보고','audience':'부서장','slideCount':1}
+        for preset in ('monochrome','warm'):
+            result=flow.choices({**brief,'designPreset':preset})
+            self.assertEqual(preset,result['preservedChoices']['designPreset'])
+        for mode in ('reference','saved'):
+            result=flow.choices({**brief,'creationMode':mode})
+            self.assertEqual('reference_file',result['stage'])
+            self.assertEqual(mode,result['preservedChoices']['creationMode'])
+        result=flow.choices(brief,'confirmed.pptx')
+        self.assertEqual('reference_scope',result['stage'])
+        self.assertEqual('reference',result['preservedChoices']['creationMode'])
+        self.assertNotIn('designPreset',result['preservedChoices'])
+        result=flow.choices(brief,'confirmed.html')
+        self.assertEqual('design_preview',result['stage'])
 
     def test_invalid_choice_identifies_exact_field_and_allowed_values(self):
         for field,value,allowed in (
@@ -102,7 +130,7 @@ class PptWorkflowTests(unittest.TestCase):
 
     def test_questions_are_sequential_and_keep_known_brief(self):
         spec={'purpose':'보고','audience':'부서장','slideCount':2}
-        self.assertEqual('method',flow.choices(spec)['stage'])
+        self.assertEqual('design_preview',flow.choices(spec)['stage'])
         spec['creationMode']='reference'
         self.assertEqual('reference_file',flow.choices(spec)['stage'])
         self.assertEqual('reference_scope',flow.choices(spec,'confirmed.pptx')['stage'])
@@ -125,7 +153,7 @@ class PptWorkflowTests(unittest.TestCase):
                               'business','ppt','--spec',str(spec),'--output',str(folder/'not-created.pptx'),
                               '--state-root',str(folder/'state')],capture_output=True,text=True,timeout=15)
             self.assertEqual(0,p.returncode,p.stderr)
-            self.assertEqual('method',json.loads(p.stdout)['stage'])
+            self.assertEqual('brief',json.loads(p.stdout)['stage'])
             self.assertFalse((folder/'not-created.pptx').exists())
             self.assertFalse((folder/'state').exists())
 

@@ -7,10 +7,11 @@ description: 부서장 보고·실적 발표·제안 PPT를 만듭니다. 초안
 
 ## 바로 다음 행동
 
-Read the request and reuse known answers. For a new/rebuilt deck with no method
-chosen, immediately ask ONE Korean question: `새 디자인 / 참고 캡처·기존 PPT 첨부 /
-저장한 HTML 대표 양식`. Do not run a command, write empty JSON, load references,
-or delegate just to ask this first question. Questions-only requests stay in chat.
+Reuse known answers. Without a reference or design choice, default to
+creationMode:new/designPreset:business and draft HTML once the brief is known.
+Do not ask about omitted method/design fields. Preserve explicit styles,
+references and saved-template requests. If asked, show choices in chat;
+do not run commands or write empty JSON for questions-only requests.
 Reading/summarizing an existing document does not need slide-design questions.
 Picture-only resizing goes directly to `references/native-layout.md`; it needs
 no new-design questionnaire or HTML approval.
@@ -23,8 +24,8 @@ successful load. Reuse selected design guidance and current source preferences.
 Only if exact runtime context is missing, report that missing context; never
 substitute another installation. Native permissions still apply.
 
-Follow the next missing stage: method → reference_file/reference_scope if needed
-→ brief → design (new only) → design_preview → design_confirm → ready.
+Follow the next missing stage: reference_file/reference_scope if needed → brief
+→ design_preview → design_confirm → ready.
 Ask only that stage; merge answers without discarding known values.
 
 - Reference: accept 1–3 images (suggest cover/body/table), PPTX, or saved HTML.
@@ -33,9 +34,9 @@ Ask only that stage; merge answers without discarding known values.
   For PPTX ask `분위기 참고 / 기존 배치 유지`. Saved HTML uses `--template` and
   needs no PPTX preserve question. Existing static HTML uses `htmlSource` below.
 - Brief: ask only missing purpose, audience and slide count.
-- New design: offer `깔끔한 업무 보고형 / 흑백 간결형 / 따뜻한 설명형` and the
-  option to provide a reference. Map to business / monochrome / warm. `추천대로`
-  can choose business, but never approves unseen slides or silently changes count.
+- New design defaults to `깔끔한 업무 보고형` (business). When the user requests
+  alternatives, offer `흑백 간결형` (monochrome), `따뜻한 설명형` (warm), or a
+  reference. A default or `추천대로` never approves unseen slides or changes count.
 - If rules are unclear or a saved flow needs reconstruction, use the optional
   `business ppt-choices [--spec "<choices.json>"] [--template "<confirmed path>"] --state-root "<stateRoot>"`.
   With no known choices, omit --spec; do not create an empty file. Read

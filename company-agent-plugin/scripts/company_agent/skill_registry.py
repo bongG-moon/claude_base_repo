@@ -431,6 +431,7 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
                     return
                 name, description, invalid = metadata['name'], metadata['description'], metadata['invalid']
                 body_hash, explicit_only = metadata['sha256'], metadata['explicitOnly']
+                role = metadata['role']
             else:
                 raw = _read(file, MAX_SKILL_BYTES)
                 if raw is None:
@@ -438,6 +439,7 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
                 name, description, invalid = _metadata(raw, file.parent.name)
                 body_hash = hashlib.sha256(raw).hexdigest()
                 explicit_only = _frontmatter_field(raw, 'disable-model-invocation').casefold() == 'true'
+                role = 'support' if _frontmatter_field(raw, 'company-agent-role') == 'support' else 'workflow'
             if invalid:
                 _warn(warnings, f"Invalid declared skill name; using its folder name: {file}")
             relative = file.relative_to(logical_root).as_posix().casefold()
@@ -448,7 +450,7 @@ def inventory_skills(state_root: Path, *, project_root: Path | None = None,
                          "path": str(file), "description": description,
                          "invocation": invocation,
                          "sha256": body_hash, "incoming": incoming,
-                         "explicitOnly": explicit_only}
+                         "explicitOnly": explicit_only, "role": role}
             if candidate_id not in candidates or incoming:
                 candidates[candidate_id] = candidate
         except (OSError, ValueError, UnicodeError) as exc:

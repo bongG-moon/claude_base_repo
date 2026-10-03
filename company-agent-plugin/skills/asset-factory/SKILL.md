@@ -19,6 +19,7 @@ description: 개인 스킬·스크립트·도구(tool)·MCP를 만들고 수정�
 ## 필요한 절차만 읽기
 
 - 스킬 작성·수정: `references/authoring.md`.
+- 크롬 등 웹페이지의 반복 조회를 스킬로 만들기: `references/web-workflow.md`만 먼저 읽습니다. 웹 개발 용어 대신 사이트·가져올 항목·결과로 질문합니다. 단순 웹 조회나 HTML 제작 요청은 이 제작 절차를 시작하지 않습니다.
 - 새 도구/MCP 제작·연결 또는 스킬에서 MCP 재사용: `references/platform-tools.md`.
 - 전사 제출·HTTP 호환성 확인: `../platform-mcp-builder/references/platform-contract.md`.
 - 기존 Script Tool/일반 stdio MCP 유지보수 또는 그 형식을 명시 요청: `references/legacy-assets.md`.

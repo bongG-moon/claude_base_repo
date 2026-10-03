@@ -216,6 +216,7 @@ header,footer{max-width:1160px;margin:auto;padding:24px}header h1{margin:0 0 10p
 .ppt-main{max-width:1160px;margin:auto;padding:0 24px 24px}.ppt-page{container-type:inline-size;margin:0 0 24px;overflow:auto;border:1px solid #d7dfe8;box-shadow:0 6px 25px #17324d12}
 .ppt-slide{position:relative;aspect-ratio:var(--pw)/var(--ph);background:var(--paper);color:var(--ink);font-family:var(--font);overflow:hidden}
 .ppt-element{position:absolute;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.15;padding:2px 0}
+.ppt-element[data-kind="table"]{padding:0}
 .ppt-table{width:100%;border-collapse:collapse;table-layout:fixed;white-space:normal}.ppt-table th,.ppt-table td{padding:4px 6px;vertical-align:middle;border-bottom:1px solid var(--line);line-height:1.15}
 .ppt-table th{background:var(--title);color:var(--paper);font-weight:700}.ppt-table tr:nth-child(2n){background:var(--line)}
 .ppt-element figure{margin:0;width:100%;height:100%;display:flex;flex-direction:column}.ppt-element figcaption{display:none}.report-chart{width:100%;height:calc(100% - 22px);flex:1;min-height:0;overflow:visible}
@@ -376,7 +377,8 @@ def save_template(spec, output, template=None):
         plan = data['presentationPlan']
         metadata = {'schema':SCHEMA,'layoutVersion':1,'presentationTheme':plan['theme'],
                     'presentationFont':plan['font'],'presentationFrame':{'width':plan['width'],'height':plan['height']}}
-        scene_layout=bool(spec.get('htmlSource') or any('elements' in r or 'contentOrder' in r for r in data['sections']))
+        scene_layout=bool(spec.get('htmlSource') or any('elements' in r or 'contentOrder' in r
+                          or r.get('layout', 'auto') != 'auto' for r in data['sections']))
         # Deliberately never retain original values, captions, references or images.
         sample = {**metadata,'title':'PPT 대표 양식', 'slides':[
             {'title':'발표 제목','body':'발표의 목적과 핵심 내용을 입력합니다.'},

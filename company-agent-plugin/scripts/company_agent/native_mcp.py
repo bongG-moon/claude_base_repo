@@ -159,6 +159,30 @@ def registration_status(name: str, desired: dict, project: Path) -> str:
     return "registered" if actual == desired else "conflict"
 
 
+def reject_direct_source_registration(state_root: Path, name: str, entrypoint: Path) -> None:
+    """Never overwrite a legacy source file still referenced by a registration."""
+    definitions = [_server_map(_read_object(state_root / "mcp/registry.json")).get(name)]
+    if os.environ.get("COMPANY_AGENT_SCOPE") in {"User", "Project"}:
+        document = _read_object(_config_file())
+        definitions.append(_server_map(document).get(name))
+        projects = document.get("projects", {})
+        if not isinstance(projects, dict):
+            raise ValueError("Native Claude projects configuration must be a JSON object.")
+        definitions.extend(_server_map(item).get(name) for item in projects.values() if isinstance(item, dict))
+        project = Path(os.environ.get("COMPANY_AGENT_PROJECT_ROOT") or Path.cwd())
+        for parent in [project, *project.parents]:
+            definitions.append(_server_map(_read_object(parent / ".mcp.json")).get(name))
+    for definition in definitions:
+        if isinstance(definition, dict) and isinstance(definition.get("args"), list):
+            if any(isinstance(value, str) and Path(value).is_absolute() and Path(value).resolve() == entrypoint.resolve()
+                   for value in definition["args"]):
+                raise ValueError(
+                    "This MCP still has a legacy direct-source registration; its source was preserved. "
+                    "Re-test and explicitly activate the unchanged MCP to create its frozen execution bundle, "
+                    "then reconcile only this MCP's native registration with asset sync-mcp before editing."
+                )
+
+
 def sync_native_mcp(state_root: Path, name: str, *, storage_scope: str | None = None,
                     project_root: Path | None = None) -> dict[str, Any]:
     _validate_name(name)
@@ -191,8 +215,12 @@ def sync_native_mcp(state_root: Path, name: str, *, storage_scope: str | None = 
     validation = validate_asset(server_root)
     if not validation["ok"]:
         raise ValueError("Personal MCP validation failed; validate and activate it again before native registration.")
-    _verify_receipt(layout, server_root, manifest.get("validationReceipt", ""), "mcp-protocol", "mcp", name, "asset.json")
-    desired = {"type": "stdio", "command": manifest["command"], "args": [str(entrypoint)]}
+    _, receipt = _verify_receipt(layout, server_root, manifest.get("validationReceipt", ""), "mcp-protocol", "mcp", name, "asset.json")
+    from .mcp_execution import execution_definition, verify_bundle_evidence, read_execution_bundle
+    desired = execution_definition(state_root, name, manifest)
+    if not Path(desired["args"][0]).is_file():
+        raise ValueError("Activate this MCP again to create its frozen execution bundle before native registration.")
+    verify_bundle_evidence(receipt, read_execution_bundle(desired))
     if _server_map(_read_object(layout["mcp"] / "registry.json")).get(name) != desired:
         raise ValueError("Personal MCP registry differs from the validated asset; activate it again before native registration.")
 
@@ -216,6 +244,12 @@ def sync_native_mcp(state_root: Path, name: str, *, storage_scope: str | None = 
         if not isinstance(owned, dict) or owned.get("configHash") != _fingerprint(current):
             raise ValueError("An existing native MCP entry is unowned or changed. It was preserved; choose a new personal name or resolve the entry in Claude.")
         if current != desired:
+            if current == {"type": "stdio", "command": manifest["command"], "args": [str(entrypoint)]}:
+                raise ValueError(
+                    "This owned MCP still directly references editable source; settings were preserved. "
+                    f"Remove only personal MCP '{name}' from Claude's '{scope}' scope, then run "
+                    f"company-agent asset sync-mcp --name {name} and restart Claude."
+                )
             transition = manifest.get("runtimeRebind", {})
             if (isinstance(transition, dict) and transition.get("currentCommand") == desired["command"]
                     and isinstance(transition.get("previousCommand"), str)

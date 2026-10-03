@@ -22,6 +22,8 @@ artifact-publish로 전달한다. 원래 초안에 `--template`을 사용했다�
 
 생성되는 HTML 한 파일에는 가상 예시와 검증 가능한 디자인 메타데이터가 들어간다.
 기본 자동 배치는 3장 예시와 색상·글꼴·페이지 규격·공통 배치 버전을 저장한다.
+요약·근거·비교·실행안(summary/evidence/comparison/actions)을 지정한 배치는
+장별 표·차트·텍스트 위치를 저장하고 새 내용으로 재사용한다.
 HTML 직접 변환/자유 배치는 장별 카드·그림자·태그·텍스트 위치도 저장한다.
 실제 업무 본문·수치·파일 경로·캡처·
 원본 PPT·승인 기록은 넣지 않는다. 글자/표/차트는 가상 값, 그림은 빈 사각형으로 바꾼다.
@@ -34,7 +36,7 @@ HTML 직접 변환/자유 배치는 장별 카드·그림자·태그·텍스트 
 business ppt-design-preview --spec "새-job.json" --template "대표-양식.html" --work "<새 작업의 workFile>"
 ```
 
-자유 배치 양식은 `business ppt-analyze --template "대표-양식.html"`로 장별 슬롯 수를
+장별 위치를 저장한 양식은 `business ppt-analyze --template "대표-양식.html"`로 슬롯 수를
 확인한다. 새 slides에 `layoutIndex:1`(1부터), `texts:[...]`를 넣고 빈 슬롯은 빈 문자열로
 지정한다. 표/차트 슬롯이 있으면 charts/tables 배열에 새 데이터를 지정한다. 개수 불일치는
 내용을 생략하지 않고 중단한다. 직접 elements를 지정해서 새 배치로 조정할 수도 있다.

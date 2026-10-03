@@ -1,6 +1,7 @@
 # PPT 선택값과 재개
 
-단순 첫 질문은 SKILL 본문에서 바로 묻는다. 이 문서는 선택 규칙이 모호하거나
+참고 양식과 별도 디자인 지정이 없으면 new/business로 진행한다. 목적·대상·장수 중
+모르는 것만 묻고, 디자인 선택 화면은 사용자가 원할 때 보여준다. 이 문서는 선택 규칙이 모호하거나
 기존 작업을 재개할 때만 읽는다. 다른 SKILL이나 참조를 연쇄로 다시 읽지 않는다.
 
 명령은 전달된 `company_agent_runtime.cliCommand` 전체 문자열 뒤에 붙인다.
@@ -14,7 +15,7 @@ business ppt-choices --spec "<choices.json>" --state-root "<stateRoot>"
 실제로 지정된 양식이 있으면 `--template "<PPTX 또는 저장한 대표 HTML 경로>"`를 붙인다.
 선택값을 파일로 유지할 필요가 있을 때만 Write로
 `<stateRoot>/tmp/ppt-choices-<short-id>.json`을 만든다. 다음은 형식 예시이며
-사용자의 알려진 값만 넣는다. 예시 내용을 사용자 답변으로 간주하지 않는다.
+사용자의 알려진 값과 적용한 기본값만 넣는다. 예시 목적·장수를 사용자 답변으로 간주하지 않는다.
 
 ```json
 {"creationMode":"new","purpose":"실적 보고","audience":"부서장","slideCount":5,"designPreset":"business"}
@@ -33,6 +34,8 @@ slideCount, designPreset(새 디자인)이다. 참고 이미지는 referenceImag
 PNG/JPEG 경로 1–3개로 유지한다. 캡처와 저장 HTML은 style이며 preserve는 PPTX용이다.
 기존 정적 HTML은 htmlSource:{path,selector?,viewportWidth?}를 유지한다.
 slides/referenceImages/다른 --template과 섞지 않는다.
+helper도 양식이 없으면 new/business를 적용한다. 실제 참고 파일이 있으면 reference로
+진행하며, 명시한 reference/saved 요청의 파일이 없을 때는 첨부를 기다린다.
 
 입력값은 누적해서 합친다. 새 답변 하나 때문에 기존 선택·referenceImages·htmlSource·
 designReview를 지우지 않는다. helper의 selection은 선택값이며 전체 job이나

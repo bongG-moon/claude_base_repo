@@ -2,7 +2,7 @@
 
 Unknown syntax retains the caller's conservative mutation/permission handling.
 Only ``safe_permission`` may answer a native PermissionRequest, and it supports
-two metadata operations through this exact running Python, not general shells.
+fixed metadata/help operations through this exact running Python, not general shells.
 Never call it from PreToolUse: explicit native/managed deny rules must prevail.
 """
 from __future__ import annotations
@@ -231,6 +231,22 @@ def discovery_command(command: str, *, tool: str = 'Bash') -> bool:
     return True
 
 
+def _help_arguments(args: list[str]) -> bool:
+    # Only argparse help with no other values. In particular --help beside a
+    # spec/state override or followed by another operation is not this contract.
+    return args == ['--help'] or (len(args) == 3 and args[-1] == '--help' and tuple(args[:2]) in {
+        ('memory', 'search'), ('memory', 'upsert'), ('memory', 'history'), ('memory', 'restore'), ('session', 'verify'),
+        ('work', 'checkpoint'), ('learning', 'stage'), ('learning', 'review'), ('learning', 'submit'),
+        ('business', 'doctor'), ('business', 'mail-capabilities'), ('business', 'html-designs'),
+        ('business', 'eml-read'), ('business', 'files-plan'),
+        ('business', 'ppt-choices'), ('business', 'html-choices'),
+        ('business', 'ppt'), ('business', 'ppt-design-preview'),
+        ('business', 'ppt-template'), ('business', 'html'),
+        ('business', 'artifact-start'), ('business', 'artifact-publish'),
+        ('asset', 'web-plan'),
+    })
+
+
 def classify_command(command: str, *, tool: str = 'Bash') -> str:
     """Return read_only/internal/mutation/unknown for exact known invocations.
 
@@ -253,17 +269,11 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     if head == ("asset", "check-skill"):
         fields = _fields(args[2:], {"--name", "--state-root", "--project-root"}, {"--name"})
         return "read_only" if fields is not None and re.fullmatch(r"[a-z][a-z0-9-]{1,62}", fields["--name"]) else "unknown"
+    if head == ("asset", "web-plan") and args[2:] != ['--help']:
+        return "read_only" if _fields(args[2:], {"--spec"}) is not None else "unknown"
     # Exact help calls must be handled before missing-storage-scope questions.
     # Neither form performs a save or creates a completion obligation.
-    if args[-1:] == ["--help"] and head in {
-        ("memory", "search"), ("memory", "upsert"), ("memory", "history"), ("memory", "restore"), ("session", "verify"),
-        ("work", "checkpoint"), ("learning", "stage"), ("learning", "review"), ("learning", "submit"),
-        ("business", "eml-read"), ("business", "files-plan"),
-        ("business", "ppt-choices"), ("business", "html-choices"),
-        ("business", "ppt"), ("business", "ppt-design-preview"),
-        ("business", "ppt-template"), ("business", "html"),
-        ("business", "artifact-start"), ("business", "artifact-publish"),
-    } and len(args) == 3:
+    if _help_arguments(args):
         return "read_only"
     if head in {('memory', 'upsert'), ('knowledge', 'upsert'), ('asset', 'create')} and '--storage-scope' not in args:
         # These commands now return needs_scope_choice before opening the spec
@@ -368,6 +378,8 @@ def safe_permission(payload: dict[str, Any], root: Path) -> dict[str, str] | Non
     if not words or not _same(words[0], Path(sys.executable)):
         return None
     args = _trusted_arguments(command)
+    if args and _help_arguments(args):
+        return {"behavior": "allow"}
     if not args or tuple(args[:2]) not in {("business", "doctor"), ("business", "mail-capabilities")}:
         return None
     fields = _fields(args[2:], {"--state-root"})

@@ -1,14 +1,17 @@
 """Small instruction/UI contracts; browser/live probes validate actual behavior separately."""
 from pathlib import Path
+import sys
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT/'company-agent-plugin/scripts'))
+from company_agent.ppt_workflow import choices
 
 
 class NoviceInstructionContractTests(unittest.TestCase):
     def test_first_choice_has_no_reference_or_shell_preparation_gate(self):
         folder = ROOT / 'company-agent-plugin/skills'
-        for name in ('presentation', 'html-report'):
+        for name in ('html-report',):
             with self.subTest(name=name):
                 source = (folder / name / 'SKILL.md').read_text(encoding='utf-8')
                 start = source.split('## 바로 다음 행동', 1)[1]
@@ -22,7 +25,8 @@ class NoviceInstructionContractTests(unittest.TestCase):
 
     def test_ppt_keeps_html_approval_editability_and_originals(self):
         source = (ROOT / 'company-agent-plugin/skills/presentation/SKILL.md').read_text(encoding='utf-8')
-        for text in ('Preserve originals', 'ALL requested slides', 'business ppt-design-preview',
+        for text in ('creationMode:new', 'designPreset:business', 'Preserve explicit styles',
+                     'Preserve originals', 'ALL requested slides', 'business ppt-design-preview',
                      'confirmed:true ONLY after actual approval', 'native editable text/tables/charts',
                      'same workFile', 'do not create draft2/v2 copies',
                      'Actual permission denials are never retried', 'only standard drafting reference'):
@@ -31,6 +35,16 @@ class NoviceInstructionContractTests(unittest.TestCase):
         quality = (ROOT / 'company-agent-plugin/skills/presentation/references/design-and-quality.md').read_text(encoding='utf-8')
         self.assertIn('공통 양식이 바뀌거나 영향 범위가 불명확하면 모든 장을 다시 확인한다.', quality)
         self.assertLess(source.index('business ppt-design-preview'), source.index('business ppt --spec'))
+        job={'purpose':'보고','audience':'팀장','slideCount':1,'slides':[{'title':'검증 결과','body':'추가 확인 필요'}]}
+        result=choices(job)
+        self.assertEqual('create_html_preview',result['nextAction'])
+        self.assertFalse(result['waitForUser'])
+        self.assertFalse(result['ok'])  # Defaults prepare a draft, not final-generation approval.
+        self.assertEqual('business',result['preservedChoices']['designPreset'])
+        job['designReview']={'specSha256':'0'*64,'previewSha256':'0'*64,
+                             'previewPath':str(ROOT/'draft.html'),'confirmed':False}
+        self.assertEqual('design_confirm',choices(job)['stage'])
+        self.assertTrue(choices(job)['waitForUser'])
 
     def test_html_choices_are_plain_and_have_an_easy_default(self):
         source = (ROOT / "company-agent-plugin/skills/html-report/SKILL.md").read_text(encoding="utf-8")

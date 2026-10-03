@@ -656,6 +656,13 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
             '제공된 스킬 목록의 용도를 비교해 관련 본문만 불러오세요. 없으면 일반 실행하고, 같은 역할이 겹치면 사용자에게 물으세요. '
             '목록이 보이지 않을 때만 skillSelection.catalog.path를 Read합니다. 이 안내는 실행 차단이나 권한 오류가 아닙니다.'}}
     reason = '[스킬 확인] 아직 실행하지 않았습니다. 권한 오류가 아닙니다. '
+    if route.get('readSkills', {}).get(target['id']) == target['sha256']:
+        # Body knowledge and current host/native invocation readiness differ.
+        # Explain a fresh-load requirement without claiming that no read exists.
+        if plan.get('reason') == 'host-loading-rules':
+            reason += '같은 본문을 읽은 기록은 있지만 현재 로드 권한 규칙에 따른 이번 요청의 로드 확인이 필요합니다. '
+        elif native_required:
+            reason += '같은 본문을 읽은 기록은 있지만 이번 요청의 native 호출 확인이 필요합니다. '
     from .skill_task_context import load_target
     load = load_target(target, data['skills'])
     if native_required and load.get('tool') != 'Skill':
