@@ -244,6 +244,34 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         root = Path(self.record['userStateRoot'])
         self.assertEqual('html-report', load_session(self.payload['session_id'], root)['skillWorkflow']['selected']['name'])
 
+    def test_named_company_skill_and_help_recover_through_real_windows_hook(self):
+        atomic_write_text(self.project / '.claude/skills/writing-skills/SKILL.md',
+                          '---\nname: writing-skills\ndescription: 개인 스킬·스크립트·도구·MCP를 만들고 수정·검증하는 제작 스킬입니다.\n---\n# 가상 제작 절차\n')
+        with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(self.root / 'isolated-claude')}):
+            result = self.hook('UserPromptSubmit', prompt='크롬 스킬을 만들자')
+            runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+            self.assertEqual('choose', runtime['skillExecution']['mode'])
+            for operation in ('choose', 'route'):
+                command = runtime['cliCommand'] + f' skill {operation} --help'
+                self.assertEqual({}, self.hook('PreToolUse', tool_name='Bash', tool_input={'command': command}))
+                help_result = self.run_wrapper(['-Mode', 'Cli', 'skill', operation, '--help'])
+                self.assertEqual(0, help_result.returncode, help_result.stderr)
+                self.assertIn('usage:', help_result.stdout)
+            result = self.hook('UserPromptSubmit', prompt=
+                               '회사 asset-factory로 크롬 스킬을 만들자. https://lol.ps/ 를 크롬 디버깅 도구로 열고, 팝업이 있으면 닫아줘.')
+            runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+            self.assertEqual('asset-factory', runtime['skillExecution']['name'])
+            self.assertEqual('company', runtime['skillExecution']['source'])
+            self.assertEqual('load', runtime['skillExecution']['mode'])
+            self.assertEqual({}, self.hook('PreToolUse', tool_name='Skill', tool_input={'skill': 'company-agent:asset-factory'}))
+            self.hook('PostToolUse', tool_name='Skill', tool_input={'skill': 'company-agent:asset-factory'},
+                      tool_response={'success': True})
+            # Preflight only: no browser is launched or page accessed in this test.
+            self.assertEqual({}, self.hook('PreToolUse', tool_name='mcp__chrome-devtools__navigate_page',
+                                          tool_input={'url': 'https://lol.ps/'}))
+            denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query': 'DELETE FROM employees'})
+            self.assertEqual('deny', denied['hookSpecificOutput']['permissionDecision'])
+
     def test_host_skill_choice_reaches_native_output_without_changing_policy(self):
         self.hook('UserPromptSubmit', prompt='HTML 보고서 만들어줘')
         loaded = self.hook('PostToolUse', tool_name='Skill',
@@ -251,11 +279,17 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertIn('[스킬 선택]', loaded['hookSpecificOutput']['additionalContext'])
         self.assertIn('artifact-design', loaded['hookSpecificOutput']['additionalContext'])
         question = '이번 보고서는 어떤 스킬로 만들까요?'
-        self.hook('PostToolUse', tool_name='AskUserQuestion', tool_input={'questions': [
+        inputs = {'questions': [
             {'question': question, 'options': [
                 {'label': 'artifact-design', 'description': '현재 세션 스킬'},
-                {'label': 'company-agent:html-report', 'description': '회사 제작 스킬'}]}]},
-            tool_response={'answers': {question: 'artifact-design'}})
+                {'label': 'company-agent:html-report', 'description': '회사 제작 스킬'}]}]}
+        self.assertEqual({}, self.hook('PreToolUse', tool_name='AskUserQuestion',
+                                      tool_use_id='host-choice-1', tool_input=inputs))
+        # SDK/Workspace supplies actual UI answers in updatedInput, not in the
+        # model's original call. The native wrapper must preserve this binding.
+        answered = {**inputs, 'answers': {question: 'artifact-design'}}
+        self.hook('PostToolUse', tool_name='AskUserQuestion', tool_use_id='host-choice-1',
+                  tool_input=answered, tool_response=answered)
         self.assertEqual({}, self.hook('PreToolUse', tool_name='Write',
                                       tool_input={'file_path': str(self.project / 'report.html')}))
         denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query',
@@ -276,6 +310,23 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
             result = self.hook('PreToolUse', tool_name='Skill', tool_input={'skill': invocation})
             self.assertEqual('deny', result['hookSpecificOutput']['permissionDecision'])
             self.assertIn('[스킬 선택]', result['hookSpecificOutput']['permissionDecisionReason'])
+
+    def test_cancelled_skill_question_does_not_count_as_failed_work(self):
+        self.hook('UserPromptSubmit', prompt='HTML 보고서 만들어줘')
+        self.hook('PostToolUse', tool_name='Skill', tool_input={'skill': 'artifact-design'},
+                  tool_response={'success': True})
+        inputs = {'questions': [{'question': '어떤 스킬로 만들까요?', 'options': [
+            {'label': 'artifact-design'}, {'label': 'company-agent:html-report'}]}]}
+        self.hook('PreToolUse', tool_name='AskUserQuestion', tool_use_id='cancel-1', tool_input=inputs)
+        root = Path(self.record['userStateRoot'])
+        before = load_session(self.payload['session_id'], root)
+        self.assertEqual({}, self.hook('PostToolUseFailure', tool_name='AskUserQuestion',
+                         tool_use_id='cancel-1', tool_input=inputs, error='사용자가 취소했습니다', is_interrupt=True))
+        after = load_session(self.payload['session_id'], root)
+        for key in ('taskToolCount', 'taskFailureCount', 'mutationCount', 'learningStatus', 'work'):
+            self.assertEqual(before.get(key), after.get(key), key)
+        self.assertFalse(after['skillWorkflow']['hostChoice']['selected'])
+        self.assertTrue(all(item['consumed'] for item in after['skillQuestionReceipts']['calls'].values()))
 
     def test_html_answer_turn_does_not_deadlock_and_choices_execute(self):
         self.hook("SessionStart", source="startup")

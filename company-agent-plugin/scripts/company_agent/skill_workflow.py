@@ -162,6 +162,7 @@ def _compact_continuation(old: dict, route: dict, root: Path, project: Path) -> 
         # all successful Read/Skill/native receipts remain cleared.
         route['explicit'] = old.get('explicit', [])[:8]
         route['namedSkillChoices'] = old.get('namedSkillChoices', [])[:8]
+        route['namedSkillRequests'] = old.get('namedSkillRequests', [])[:8]
         route['turnChoices'] = {item['name'].casefold(): item['id']} if old.get('turnChoices', {}).get(item['name'].casefold()) == item['id'] else {}
         route['executionPlan'] = plan
         route['reviewProtocol'] = 1
@@ -200,8 +201,11 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
             chosen = route.get('requestChoice', {}) if same else {}
             carry_pending = bool(pending and _choice_continuation(prompt, pending.get('names', []), pending=True))
             carry_chosen = bool(chosen and _choice_continuation(prompt, [chosen.get('name', '')], pending=False))
+            from .skill_task_context import named_requests
+            if any('sources' in request for request in named_requests(prompt)):
+                carry_chosen = False  # A new named source replaces the previous turn's choice.
             route.update(turn=turn, selected=None, fallback=None, turnChoices={}, taskCandidates=[], executionPlan={},
-                         preparationCaution='', namedSkillChoices=[], turnLoads={}, nativeLoads={})
+                         preparationCaution='', namedSkillChoices=[], namedSkillRequests=[], turnLoads={}, nativeLoads={})
             route.pop('choiceAnswer', None)
             route.pop('requiredChoiceIds', None)
             route.pop('pendingChoice', None)
@@ -240,8 +244,9 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
             route['preparationCaution'] = _preparation_caution(prompt)
             # An explicitly named host-only Skill can be respected after its
             # native success. This is not slash invocation of manual-only files.
-            from .skill_task_context import named_choices
-            route['namedSkillChoices'] = named_choices(prompt)
+            from .skill_task_context import named_requests
+            route['namedSkillRequests'] = named_requests(prompt)
+            route['namedSkillChoices'] = list(dict.fromkeys(x['name'] for x in route['namedSkillRequests']))
         continuation = _compact_continuation(old, route, root, project) if compact and continuing else None
         state["skillWorkflow"] = route
         atomic_write_json(path, state)
@@ -257,15 +262,20 @@ def prepare(root: Path, project: Path, session_id: str, catalog: dict, *, prompt
 def _allowed(item: dict, data: dict, route: dict) -> bool:
     if route.get('turnChoices', {}).get(item['name'].casefold()) == item['id']:
         return True  # User's current-request choice, never a persistent preference.
+    named = route.get('namedSkillChoices', [])
+    from .skill_task_context import matches_named
+    requests = route.get('namedSkillRequests') or [{'name': name} for name in named]
+    references_name = any(str(request.get('name', '')).casefold() == item['name'].casefold() for request in requests)
+    if references_name and not any(matches_named(item, request) for request in requests):
+        return False  # An explicit source must not fall back to a saved other source.
     invocation = str(item.get("invocation", "")).lstrip("/")
     explicit = route.get("explicit", [])
     # A fully qualified invocation identifies a candidate only if unique.
     matches = [x for x in data["skills"] if str(x.get("invocation", "")).lstrip("/") == invocation]
     if invocation and invocation in explicit and len(matches) == 1:
         return True
-    named = route.get('namedSkillChoices', [])
-    if not item.get('explicitOnly') and (invocation in named or item['name'] in named):
-        named_matches = [x for x in data['skills'] if x.get('invocation') in named or x['name'] in named]
+    if not item.get('explicitOnly') and any(matches_named(item, request) for request in requests):
+        named_matches = [x for x in data['skills'] if any(matches_named(x, request) for request in requests)]
         if len(named_matches) == 1:
             return True
     candidates = [x for x in data["skills"] if x["name"].casefold() == item["name"].casefold()]
@@ -374,8 +384,24 @@ def _observe_choice(route: dict, data: dict, inputs: dict, response: Any) -> Non
     _apply_choice(route, item, data, raw)
 
 
+def prepare_question(root: Path, payload: dict, language_result: dict) -> None:
+    """Record a pending choice before host UI answers are added to tool input."""
+    if (_subagent_context(payload) or not payload.get('session_id')
+            or payload.get('tool_name') != 'AskUserQuestion'
+            or payload.get('hook_event_name') != 'PreToolUse'):
+        return
+    from . import skill_question_receipts
+    with _locked_session(str(payload['session_id']), root) as (state, path):
+        route = state.get('skillWorkflow')
+        if isinstance(route, dict) and not _stale_native_prompt(payload, state):
+            if skill_question_receipts.prepare(state, route, payload, language_result):
+                atomic_write_json(path, state)
+
+
 def observe(root: Path, project: Path, payload: dict) -> dict | None:
-    if payload.get("hook_event_name") != "PostToolUse":
+    if (payload.get("hook_event_name") != "PostToolUse"
+            and not (payload.get('hook_event_name') == 'PostToolUseFailure'
+                     and payload.get('tool_name') == 'AskUserQuestion')):
         return
     if _subagent_context(payload):
         # Worker reads do not expose a body to the coordinator. Do not replace
@@ -388,6 +414,27 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
         if not route or _stale_native_prompt(payload, state):
             return
         inputs = payload.get('tool_input') or {}
+        if payload['tool_name'] == 'AskUserQuestion':
+            from . import skill_question_receipts
+            try:
+                inputs = skill_question_receipts.consume(state, route, payload)
+                if inputs is None:
+                    return
+                data = _snapshot(root, project, route)
+                response = payload.get('tool_response')
+                host_answer = skill_host_choice.observe_answer(route, data, inputs, response)
+                if host_answer and host_answer['kind'] == 'local':
+                    item = next(x for x in data['skills'] if x['id'] == host_answer['id'])
+                    _apply_choice(route, item, data, _current(item, route))
+                    route.pop('hostChoice', None)
+                elif not host_answer:
+                    _observe_choice(route, data, inputs, response)
+            finally:
+                # One write under the same lock, including failures/cancellation
+                # and catalogue errors. Never store the question/answer text.
+                if skill_question_receipts.KEY in state or inputs is not None:
+                    atomic_write_json(path, state)
+            return  # Answer receipt is not a Skill load or learning evidence.
         if payload['tool_name'] == 'Read':
             value = inputs.get('file_path')
             if (isinstance(value, str) and Path(value).is_absolute()
@@ -405,18 +452,7 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
         except (OSError, ValueError):
             note('catalog-unavailable')
             raise
-        inputs = payload.get("tool_input") or {}
         response = payload.get("tool_response")
-        if payload['tool_name'] == 'AskUserQuestion':
-            host_answer = skill_host_choice.observe_answer(route, data, inputs, response)
-            if host_answer and host_answer['kind'] == 'local':
-                item = next(x for x in data['skills'] if x['id'] == host_answer['id'])
-                _apply_choice(route, item, data, _current(item, route))
-                route.pop('hostChoice', None)
-            elif not host_answer:
-                _observe_choice(route, data, inputs, response)
-            atomic_write_json(path, state)
-            return  # Answer receipt is not a Skill load or learning evidence.
         if payload["tool_name"] == "Read":
             value = inputs.get("file_path")
             if not isinstance(value, str) or not Path(value).is_absolute():
@@ -652,8 +688,9 @@ def _list_review_checkpoint(route: dict, data: dict, *, recovery: Callable[[], s
         except (OSError, ValueError):
             return {}
         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
-                'permissionDecisionReason': '[스킬 선택] 같은 업무의 경쟁 후보가 있습니다. 한국어로 출처·차이를 물은 뒤 '
-                '현재 요청의 skill choose로 답변을 기록하고 반환된 load를 따르세요. 목록·본문 읽기나 재시도는 선택을 대신하지 않습니다. '
+                'permissionDecisionReason': '[스킬 선택] 같은 업무의 후보가 겹칩니다. AskUserQuestion으로 이름·출처·차이를 '
+                '한국어로 한 번 물으세요. 실제 답변은 자동 기록되므로 선택한 스킬을 불러오면 됩니다. '
+                '목록·본문 재읽기는 선택을 대신하지 않습니다. '
                 + (recovery() if recovery else '')}}
     target = None
     support_target = False
@@ -739,7 +776,7 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
         return _fallback_guidance(_fallback_command(root, session_id, state, tool), tool)
 
     if tool in {"Bash", "PowerShell"}:
-        from .execution_contract import _trusted_arguments, _skill_lookup, classify_command, _words, _fields, _same
+        from .execution_contract import _trusted_arguments, _skill_lookup, classify_command, _words, _fields, _same, skill_help_command
         from .state import _is_own_verification_command, _is_own_work_command, _is_own_learning_command
         inputs = payload.get("tool_input") or {}
         command = str(inputs.get("command") or inputs.get("cmd") or "")
@@ -762,7 +799,7 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
         if (args and tuple(args[:2]) in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities")}
                 and classify_command(command) == "read_only"):
             return {}
-        if (internal_command(command, session_id, state, root)
+        if (skill_help_command(command) or internal_command(command, session_id, state, root)
                 or (args and len(args) > 1 and args[0] == "skill" and _skill_lookup(args[1:]))
                 or (args and len(args) > 1 and args[0] == "skill" and args[1] in {"prefer", "prefer-incoming", "order", "reset"})
                 or _is_own_verification_command(command, session_id, root)

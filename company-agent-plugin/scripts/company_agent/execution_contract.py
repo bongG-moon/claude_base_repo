@@ -247,6 +247,24 @@ def _help_arguments(args: list[str]) -> bool:
     })
 
 
+def _skill_help_arguments(args: list[str]) -> bool:
+    """Pure recovery/discovery help only, without arguments or side effects."""
+    return args == ['skill', '--help'] or (
+        len(args) == 3 and args[0] == 'skill' and args[-1] == '--help'
+        and args[1] in {'choose', 'route', 'list', 'inventory', 'conflicts', 'search', 'resolve'}
+    )
+
+
+def skill_help_command(command: str) -> bool:
+    """Recognize trusted Skill help for preparation, never grant permission.
+
+    Keep this separate from ``_help_arguments``: adding a preparation exception
+    must not extend the native PermissionRequest allow list.
+    """
+    args = _trusted_arguments(command)
+    return bool(args and _skill_help_arguments(args))
+
+
 def classify_command(command: str, *, tool: str = 'Bash') -> str:
     """Return read_only/internal/mutation/unknown for exact known invocations.
 
@@ -265,7 +283,7 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         fields = _fields(args[2:], {"--id", "--project", "--state-root"}, {"--id", "--project"})
         return "read_only" if fields is not None and re.fullmatch(r"[a-f0-9]{32}", fields["--id"]) else "unknown"
     if len(args) >= 2 and args[0] == "skill":
-        return "read_only" if _skill_lookup(args[1:]) else "unknown"
+        return "read_only" if _skill_help_arguments(args) or _skill_lookup(args[1:]) else "unknown"
     if head == ("asset", "check-skill"):
         fields = _fields(args[2:], {"--name", "--state-root", "--project-root"}, {"--name"})
         return "read_only" if fields is not None and re.fullmatch(r"[a-z][a-z0-9-]{1,62}", fields["--name"]) else "unknown"

@@ -147,8 +147,8 @@ class SelectionContractTests(unittest.TestCase):
     def test_named_answer_and_same_skill_continuation_preserve_current_choice(self):
         file, _, _ = self.overlap()
         context, _ = self.output('개인 team-report로 진행해줘')
-        self.assertEqual('choose', context['skillExecution']['mode'])
-        self.pick(file)
+        self.assertEqual('load', context['skillExecution']['mode'])
+        self.assertNotIn('choiceIds', self.state()['skillWorkflow']['executionPlan'])
         self.f.read(file)
         context, _ = self.output('그 스킬로 계속 진행해줘')
         self.assertEqual('team-report', context['skillExecution']['name'])

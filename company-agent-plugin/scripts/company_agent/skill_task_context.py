@@ -25,8 +25,8 @@ TASK_SKILL_RULE = (
     '이름·출처·차이를 한국어로 보여주고 하나를 물으세요. 도구가 없으면 질문 후 답변을 기다리세요. '
     '사용자 대신 선택하지 말고 /company-agent:skills 실행을 사용자에게 떠넘기지 마세요. '
     '질문 옵션에는 후보의 정확한 이름·출처를 넣으세요. AskUserQuestion의 실제 답변은 자동 기록되므로 선택한 load로 진행하세요. '
-    '일반채팅 답변은 정확한 이름·출처를 받아 cliCommand 뒤에 skill choose --session SESSION --turn TURN --candidate ID로 '
-    '이번 요청의 선택을 확인한 뒤 반환된 load를 따르세요. 관찰하지 못한 질문 순서의 번호는 추측하지 마세요. '
+    '일반채팅도 정확한 이름·출처가 skillExecution에 반영됐으면 바로 load를 따르세요. 기록이 필요한 경우만 '
+    'cliCommand 뒤에 skill choose --session SESSION --turn TURN --candidate ID를 사용하세요. 질문 순서의 번호는 추측하지 마세요. '
     '호출 불가 안내가 있으면 반복하지 말고 알려주세요. '
     '일반 본문의 이미 읽은 동일 내용만 재사용하세요. '
     '기본값·프로젝트 우선 설정 저장은 별도 요청이 있을 때만 합니다. '
@@ -49,24 +49,78 @@ def load_target(item: dict, items: list[dict], invocation_counts=None) -> dict:
     return {'tool': 'Read', 'file_path': item.get('path', '')}
 
 
-def named_choices(prompt: str) -> list[str]:
-    """Explicit skill-use phrases, not arbitrary occurrences of a skill name."""
-    text = prompt[:2000]
-    names = []
-    for match in re.finditer(r'(?<![A-Za-z0-9:_-])([A-Za-z][A-Za-z0-9:_-]{0,159})\s+'
-                             r'(스킬|skill\b)', text, re.I):
-        before, after = text[max(0, match.start()-45):match.start()], text[match.end():match.end()+60]
-        clause = re.split(r'[.!?;\n,]', after)[0]
-        if re.search(r'(?:쓰|사용|적용|호출|선택|만들|작성|제작|읽|요약|진행|하)[가-힣\s]{0,8}지\s*(?:마|말|않)|'
-                     r'쓰지|사용\s*(?:안|금지)|설명|비교|무엇|뭐|\b(?:not|never|avoid)\b', clause, re.I):
+_SOURCES = {
+    '회사': ('company', 'corporate'), '회사 공통': ('company', 'corporate'), '전사': ('company', 'corporate'),
+    'company': ('company',), 'corporate': ('corporate',),
+    '개인': ('user', 'personal'), '내': ('user', 'personal'),
+    'user': ('user',), 'personal': ('personal',),
+    '프로젝트': ('project',), '이 프로젝트': ('project',), 'project': ('project',),
+    '플러그인': ('plugin',), 'plugin': ('plugin',),
+}
+_SOURCE_PATTERN = '|'.join(re.escape(value) for value in sorted(_SOURCES, key=len, reverse=True))
+_SKILL_NAME = r'[A-Za-z][A-Za-z0-9:_-]{0,159}'
+
+
+def named_requests(prompt: str) -> list[dict]:
+    """Bounded direct-use intent and optional source, not semantic classification.
+
+    A hyphenated/namespaced name can omit '스킬'. Ordinary program names such
+    as Python/Chrome need a skill marker or source, so tool use is not routed
+    as a missing Skill. Quoted examples and prohibited uses are not choices.
+    """
+    text = re.sub(r'```[\s\S]*?(?:```|$)|(?m:^\s*>[^\n]*)', ' ', prompt[:2000])
+    def unquote(match):
+        value = match.group()[1:-1]
+        return value if re.fullmatch(_SKILL_NAME, value) else ' '
+    text = re.sub(r'''`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![A-Za-z])'[^'\n]*'(?![A-Za-z])''', unquote, text)
+    requests = []
+    for match in re.finditer(r'(?<![A-Za-z0-9:_-])(' + _SKILL_NAME + r')', text):
+        name = match.group(1)
+        if name.casefold() in _SOURCES:
+            continue  # "company 스킬로 계속" names a scope, not a Skill.
+        before = text[max(0, match.start()-60):match.start()]
+        after = text[match.end():match.end()+100]
+        source = re.search(r'(?:^|\s)(' + _SOURCE_PATTERN + r')\s*$', before, re.I)
+        suffix = re.match(r'\s*\((' + _SOURCE_PATTERN + r')\)\s*', after, re.I)
+        if suffix:
+            after = after[suffix.end():]
+        marker = re.match(r'\s*(?:스킬|skill\b)', after, re.I)
+        if marker:
+            after = after[marker.end():]
+        if not (marker or source or suffix or '-' in name or ':' in name):
             continue
-        korean = re.match(r'(?:로|으로)\s*.{0,24}?(?:해줘|해주세요|진행|사용|적용|호출|만들|작성|제작|읽|요약)|'
+        clause = re.split(r'[.!?;\n,]', after)[0].lstrip()
+        if re.match(r'(?:으로|로|을|를)?\s*(?:말고|대신|아니|안\s)', clause):
+            continue
+        if re.search(r'(?:쓰|사용|적용|호출|선택|만들|작성|제작|읽|요약|진행|하)[가-힣\s]{0,8}지\s*(?:마|말|않)|'
+                     r'쓰지|사용\s*(?:안|금지)|설명|비교|무엇|뭐|\b(?:not|never|avoid|explain|compare)\b', clause, re.I):
+            continue
+        korean = re.match(r'(?:으로|로)\s*.{0,40}?(?:해줘|해주세요|진행|사용|적용|호출|만들|작성|제작|읽|요약)|'
                           r'(?:을|를)?\s*(?:사용|적용|호출|선택|진행)(?:해|하|할)', clause)
-        english = (re.search(r'\b(?:use|using|invoke|run)\s+(?:the\s+)?$', before, re.I)
-                   and not re.search(r"\b(?:not|never|avoid|don't)\b", before, re.I))
-        if korean or english:
-            names.append(match.group(1))
-    return names[:8]
+        english_before = before[:source.start()] + ' ' if source else before
+        english = (re.search(r'\b(?:use|using|invoke|run)\s+(?:the\s+)?$', english_before, re.I)
+                   and not re.search(r"\b(?:not|never|avoid|don't|explain|compare|how|whether|should|could|would|can)\b", english_before, re.I))
+        if not (korean or english):
+            continue
+        scopes = [set(_SOURCES[s.group(1).casefold()]) for s in (source, suffix) if s]
+        request = {'name': name}
+        if scopes:
+            request['sources'] = sorted(set.intersection(*scopes))
+        if request not in requests:
+            requests.append(request)
+        if len(requests) == 8:
+            break
+    return requests
+
+
+def named_choices(prompt: str) -> list[str]:
+    return list(dict.fromkeys(request['name'] for request in named_requests(prompt)))
+
+
+def matches_named(item: dict, request: dict) -> bool:
+    name = str(request.get('name', '')).casefold()
+    return bool(name and name in {str(item.get('name', '')).casefold(), str(item.get('invocation', '')).casefold()}
+                and ('sources' not in request or item.get('source') in request['sources']))
 
 
 def skill_brief(runtime: dict) -> str:
@@ -296,7 +350,7 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
     items = [x for x in inventory.get('skills', []) if not x.get('incoming')]
     invocation_counts = Counter(x.get('invocation') for x in items)
     explicit = re.findall(r'(?<!\S)/([A-Za-z0-9][A-Za-z0-9:_-]{0,159})(?=\s|$)', prompt)
-    named_selection = named_choices(prompt)
+    named_selection = named_requests(prompt)
     words = re.findall(r'[a-z0-9_-]{2,}|[가-힣]{2,}', prompt[:2000].casefold())[:64]
     # Korean particles are not whitespace-delimited. Bigrams are weak search
     # evidence only; never a decision to execute a workflow.
@@ -331,10 +385,11 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
     for item in items:
         groups[item['name'].casefold()].append(item)
     ranked = []
+    named_ambiguities = []
     preferences = inventory.get('effectivePreferences', {'skills': {}, 'sourceOrder': []})
     for name, candidates in groups.items():
         named = [x for x in candidates if x.get('invocation') in explicit or
-                 (not x.get('explicitOnly') and (x.get('invocation') in named_selection or x['name'] in named_selection))]
+                 (not x.get('explicitOnly') and any(matches_named(x, request) for request in named_selection))]
         # Supporting guidance is not an alternative business workflow. Keep it
         # available for explicit invocation and leave actual body-load checks
         # unchanged; metadata alone never authorizes its execution.
@@ -342,14 +397,16 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
             candidates = [x for x in candidates if x.get('role') != 'support']
         if not candidates:
             continue
-        resolution = _resolution(name, candidates, preferences)
+        resolution = _resolution(name, named or candidates, preferences)
         if len(named) == 1:
             options, status = named, 'explicit'
         elif resolution.get('selectedId') and resolution['status'] != 'stale-choice':
-            options = [x for x in candidates if x['id'] == resolution['selectedId']]
-            status = resolution['status']
+            options = [x for x in (named or candidates) if x['id'] == resolution['selectedId']]
+            status = 'explicit' if named else resolution['status']
         else:
-            options, status = candidates, resolution['status']
+            options, status = named or candidates, resolution['status']
+            if len(named) > 1:
+                named_ambiguities.extend(x['id'] for x in named)
         eligible = [x for x in options if not x.get('explicitOnly') or x.get('invocation') in explicit]
         rank = max((score(x) for x in eligible), default=0)
         if not eligible or (not rank and not named):
@@ -398,6 +455,8 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
              if row.get('invocation') in explicit]
     if 1 < len(exact) <= 8:
         result['competingIds'] = exact
+    if 1 < len(named_ambiguities) <= 8 and set(named_ambiguities) <= emitted:
+        result['competingIds'] = named_ambiguities
     if len(json.dumps(result, ensure_ascii=False, separators=(',', ':'))) > MAX_TASK_SKILL_CHARS:
         result.pop('competingIds', None)  # Oversized ambiguity stays inspection-only.
         result.pop('strongIds', None)

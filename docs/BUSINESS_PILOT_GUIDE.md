@@ -1,8 +1,8 @@
 # Company Agent 업무팩 시범 사용 안내
 
-업무 시범 안내 · 배포 대상 1.4.35
+업무 시범 안내 · 배포 대상 1.4.36
 
-**적용 범위:** 이 안내서는 1.4.35를 기준으로 설명합니다. 반복 준비와 안내 비용을 줄이고 변경 없는 지식 목록을 재사용합니다. 기존 PPT·HTML·웹 업무 기능, 지표 참조·기억 범위·개인 설정은 유지하며 새 후크·외부 모델·학습용 Stop 반복은 추가하지 않습니다. 실제 사내 HCP의 정확도·체감 속도·토큰 효과는 미검증입니다. 기존 Release·ZIP·설치된 PC는 자동으로 바뀌지 않습니다. [변경 내용](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.35/docs/UPDATE_1.4.35.md)과 [검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.35/docs/VALIDATION_RELEASE_1.4.35.md)를 참고하세요.
+**적용 범위:** 이 안내서는 1.4.36을 기준으로 설명합니다. 이름·출처를 지정하거나 선택창에서 고른 스킬을 존중하고, 선택 대기 때문에 도움말 조회까지 막히던 흐름을 개선했습니다. 기존 후크·컨텍스트 준비 최적화, PPT·HTML·웹 업무 기능, 기억 범위·개인 설정은 유지합니다. 추가 분류 모델·상주 작업자·학습용 Stop 반복은 없습니다. 실제 사내 HCP의 정확도·체감 속도·토큰 효과는 미검증입니다. 기존 Release·ZIP·설치된 PC는 자동으로 바뀌지 않습니다. [변경 내용](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.36/docs/UPDATE_1.4.36.md)과 [검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.36/docs/VALIDATION_RELEASE_1.4.36.md)를 참고하세요.
 
 이 안내서는 코딩을 하지 않는 직원이 **파일 정리, 메일 확인, HTML 보고서, PPT 만들기**를 시작하는 방법을 설명합니다. Claude에 하고 싶은 일을 말하면 필요한 것만 질문하고, 준비된 도구로 진행하는 방식입니다.
 

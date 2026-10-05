@@ -101,6 +101,7 @@ try {
     # baseline release need not contain newly added learning runtime files.
     foreach ($relative in @(
         'scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py',
+        'scripts\company_agent\skill_question_receipts.py', 'hooks\hooks.json',
         'scripts\company_agent\execution_contract.py', 'scripts\company_agent\native_runtime.py',
         'scripts\native_entry.py',
         'scripts\company_agent\business.py',

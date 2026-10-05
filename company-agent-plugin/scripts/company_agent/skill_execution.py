@@ -108,7 +108,11 @@ def prepare_execution(runtime: dict) -> tuple[dict, str]:
     # never a Skill body load or acknowledgement by the native host/model.
     runtime['_guidanceDelivery'] = route.get('guidanceDelivery')
     requested = route.get('explicit', []) + route.get('namedSkillChoices', [])
-    if any(not any(x.get('invocation') == name or x.get('name') == name for x in data['skills']) for name in requested):
+    from .skill_task_context import matches_named
+    if any(not any(matches_named(item, request) for item in data['skills'])
+           for request in route.get('namedSkillRequests', [])):
+        return {'mode': 'inspect', 'reason': 'explicit-skill-outside-catalog'}, ''
+    if any(not any(matches_named(x, {'name': name}) for x in data['skills']) for name in requested):
         # A user-named host Skill may exist outside the local catalogue. Never
         # substitute a keyword hit as a mandatory workflow in its place.
         return {'mode': 'inspect', 'reason': 'explicit-skill-outside-catalog'}, ''
@@ -183,6 +187,14 @@ def record_execution(runtime: dict, execution: dict) -> None:
                     or route.get('turn') != state.get('turnId')):
                 return
             route['executionPlan'] = execution
+            # A verified explicit user request is already a choice. Remember
+            # its identity for "그 스킬로 계속"; never fabricate a body receipt.
+            from .skill_task_context import matches_named
+            if (execution.get('mode') in {'load', 'reuse'} and execution.get('id')
+                    and (execution.get('invocation') in route.get('explicit', [])
+                         or any(matches_named(execution, request) for request in route.get('namedSkillRequests', [])))):
+                route['requestChoice'] = {'id': execution['id'], 'name': execution['name']}
+                route.setdefault('turnChoices', {})[execution['name'].casefold()] = execution['id']
             guidance = runtime.get('guidance', {})
             guidance = guidance if isinstance(guidance, dict) else {}
             revision = guidance.get('revision')

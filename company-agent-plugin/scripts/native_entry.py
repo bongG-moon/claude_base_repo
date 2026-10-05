@@ -76,6 +76,8 @@ def main() -> int:
             from company_agent.user_language import question_preflight
             payload['hook_event_name'] = event
             result = question_preflight(user_state_root(), payload)
+            from company_agent.skill_workflow import prepare_question
+            prepare_question(user_state_root(), payload, result)
             print(json.dumps(result, ensure_ascii=True))
             return 0
         if event == "SessionStart":
@@ -94,6 +96,16 @@ def main() -> int:
                 result = preparation
             else:
                 result = worker_runtime_input(plugin, cwd, payload)
+        elif event == 'PostToolUseFailure' and payload.get('tool_name') == 'AskUserQuestion':
+            # A dismissed question is not failed business work or learning
+            # evidence. Retire its binding without generic failure notices.
+            from company_agent.skill_workflow import observe
+            payload['hook_event_name'] = event
+            try:
+                observe(user_state_root(), cwd, payload)
+            except Exception:
+                pass  # Never fabricate a selection from a failed question.
+            result = {}
         else:
             handlers = {
                 "UserPromptSubmit": "model_route_hook",

@@ -30,6 +30,23 @@ class SkillDiscoveryTests(unittest.TestCase):
                          'COMPANY_AGENT_KNOWLEDGE_BASE': '', 'CLAUDE_CONFIG_DIR': str(self.claude)})
         env.start()
         self.addCleanup(env.stop)
+        # The native loading policy also scans project ancestors and Windows
+        # managed settings. Keep this fixture independent of the real profile
+        # while preserving settings deliberately created inside the fixture.
+        from company_agent import skill_registry
+        read_json = skill_registry._json_read
+        fixture_root = self.root.resolve()
+
+        def fixture_json_read(path):
+            file = Path(path)
+            if (file.name in {'settings.json', 'settings.local.json', 'managed-settings.json'}
+                    and not file.resolve().is_relative_to(fixture_root)):
+                return {}
+            return read_json(path)
+
+        settings = patch.object(skill_registry, '_json_read', side_effect=fixture_json_read)
+        settings.start()
+        self.addCleanup(settings.stop)
         self.sid = 'discovery-test'
 
     def context(self, prompt='HTML 보고서 만들어줘', source=''):
