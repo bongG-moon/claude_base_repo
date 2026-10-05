@@ -230,8 +230,75 @@ class TaskSkillContextTests(unittest.TestCase):
 
     def test_using_skill_for_business_creation_is_not_asset_creation(self):
         for prompt in ('스킬로 HTML 보고서 만들어줘', '스킬을 사용해서 HTML 보고서 만들어줘',
-                       'Create an HTML report using the available skill'):
+                       'Create an HTML report using the available skill',
+                       'Use the existing tool to create an HTML report'):
             self.assertEqual(({'html'}, {'make'}), _features(prompt), prompt)
+
+    def test_browser_request_with_coordinated_prohibitions_does_not_require_asset_factory(self):
+        prompt = (
+            '먼저 현재 제공되는 브라우저 자동화 도구의 실제 이름과 사용 가능한 기능만 확인해줘. '
+            'local-computer-use와 별개로 웹 구조를 관찰하고 요소를 조작할 수 있는 도구가 있으면 그 도구로 '
+            'file:///C:/Users/qkekt/Desktop/Company-Agent-%EC%A2%85%ED%95%A9%EC%8B%A4%EC%8A%B5-1.3.0/'
+            '%EC%8B%A4%EC%8A%B5%EC%9E%90%EB%A3%8C/'
+            '%EA%B5%90%EC%9C%A1%EC%8B%A0%EC%B2%AD-%EC%97%B0%EC%8A%B5%EC%82%AC%EC%9D%B4%ED%8A%B8.html만 열어줘. '
+            '실제 페이지에 보이는 회차·상태 요소를 관찰한 뒤 A와 신청을 선택하고, 적용된 값과 표시된 표를 다시 읽어 알려줘. '
+            '없는 도구 이름을 만들거나 화면 MCP로 조용히 대체하지 마. 연결이 없으면 미실행 사유만 보고해줘. '
+            '브라우저 설정·디버깅 포트·확장·전역 MCP 등록을 변경하거나 설치하지 마. '
+            'API·인증 정보 추출과 개발자 도구 실행도 하지 마. 이 포털은 file URL의 로컬 HTML이야. '
+            '현재 도구가 file URL을 지원하지 않으면 미실행 또는 확인 불가로 알리고, '
+            '보안 설정 변경·서버 설치·다른 자동화 경로로 우회하지 마.'
+        )
+        actual = inventory_skills(self.f.state, project_root=self.f.project, claude_root=self.f.claude,
+                                  plugin_root=PLUGIN)
+        asset = next(item for item in actual['skills'] if item['name'] == 'asset-factory')
+        hints, decision = self.decision(actual, prompt)
+        self.assertNotIn('assets', _features(prompt)[0])
+        self.assertNotIn(asset['id'], hints.get('strongIds', []))
+        self.assertNotEqual(asset['id'], decision.candidate_id)
+        self.assertEqual('review', decision.mode)
+        self.assertFalse(hints.get('strongIds'))
+        self.assertIsNone(decision.candidate_id)  # No forced HTML creation either.
+
+    def test_prohibited_asset_lifecycle_is_not_a_positive_request(self):
+        inventory = self.metadata(asset_factory='개인 스킬·스크립트·도구·MCP를 만들고 수정합니다.',
+                                  setup='새 도구와 MCP를 설치하고 등록합니다.')
+        for prompt in (
+            '없는 도구 이름을 만들거나 화면 MCP로 조용히 대체하지 마.',
+            '도구를 만들거나, MCP를 등록하지 마세요.',
+            '도구를 만들거나 설치하지는 마세요.',
+            'MCP를 설치하지 않고 기존 도구로 확인해줘.',
+            '브라우저 설정·디버깅 포트·확장·전역 MCP 등록을 변경하거나 설치하지 마.',
+            '도구를 설치하거나 설정을 수정하지 말아줘.',
+            'Do not create tools or register MCP.',
+            "Don't install tools or modify MCP settings.",
+            'No tool creation or MCP registration.',
+            'Never build a new tool or install an MCP.',
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertNotIn('assets', _features(prompt)[0])
+                hints, decision = self.decision(inventory, prompt)
+                self.assertNotIn('strongIds', hints)
+                self.assertNotEqual('load', decision.mode)
+
+    def test_positive_asset_creation_survives_separate_install_prohibitions(self):
+        inventory = self.metadata(asset_factory='개인 스킬·스크립트·도구·MCP를 만들고 수정합니다.',
+                                  setup='새 도구와 MCP를 설치하고 등록합니다.')
+        for prompt in (
+            '새 도구를 만들어줘. 기존 MCP를 설치하거나 설정을 수정하지 마.',
+            '새 도구를 만들어줘, 기존 MCP를 설치하거나 설정을 수정하지 마.',
+            '기존 MCP를 설치하거나 설정을 수정하지 마. 새 도구를 만들어줘.',
+            'MCP를 설치하지 말고 새 도구를 만들어줘.',
+            '새 도구를 만들고 기존 MCP는 설치하지 마.',
+            '새 도구를 만들고 설치하지는 마세요.',
+            'MCP를 설치하지 않고 새 도구를 만들어줘.',
+            'Create a new tool. Do not install or register MCP.',
+            "Create a new tool, don't install or register MCP.",
+            'Do not install MCP, but create a new tool.',
+        ):
+            with self.subTest(prompt=prompt):
+                self.assertEqual(({'assets'}, {'make'}), _features(prompt))
+                _, decision = self.decision(inventory, prompt)
+                self.assertEqual('asset_factory', decision.candidate_id)
 
     def test_multi_capability_alternatives_are_same_role_before_display_truncation(self):
         for domain in ('HTML', 'Excel'):

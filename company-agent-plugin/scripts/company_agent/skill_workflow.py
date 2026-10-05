@@ -11,9 +11,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
-from typing import Any
+import shlex
+import sys
+from typing import Any, Callable
 
 from .paths import atomic_write_json
 from .execution_contract import discovery_command as _discovery_command
@@ -584,7 +587,47 @@ def _review_observed(route: dict, status: str) -> None:
         checkpoint['status'] = status
 
 
-def _list_review_checkpoint(route: dict, data: dict) -> dict:
+def _fallback_command(root: Path, session_id: str, state: dict, tool: str) -> str | None:
+    """Build a literal, current-turn recovery command, never a permission grant.
+
+    Only used when a definite prerequisite redirects execution. No subprocess,
+    model call, configuration scan, or extra prompt-time metadata is needed.
+    Validate with the same parser that will recognize the recovery on retry.
+    """
+    scripts = Path(__file__).resolve().parents[1]
+    if os.name == 'nt':
+        from .execution_contract import _powershell
+        shell = _powershell()
+        if shell is None:
+            return None
+        prefix = [shell.as_posix(), '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass',
+                  '-File', (scripts / 'Invoke-CompanyAgent.ps1').as_posix(), '-Mode', 'Cli']
+    else:
+        prefix = [sys.executable, '-B', str(scripts / 'harness_cli.py')]
+    arguments = ['skill', 'route', '--state-root', root.resolve().as_posix(),
+                 '--session', safe_session_id(session_id), '--turn', str(state.get('turnId') or ''),
+                 '--fallback', 'no-relevant-skill']
+    tokens = prefix + arguments
+    if tool == 'PowerShell':
+        # POSIX 'O'"'"'Brien' is NOT a PowerShell argument. Double quotes
+        # preserve apostrophes; the contract rejects expansion/shell syntax.
+        if any('"' in value for value in tokens):
+            return None
+        command = '& ' + ' '.join('"' + value + '"' for value in tokens)
+    else:
+        command = ' '.join(shlex.quote(value) for value in tokens)
+    return command if internal_command(command, session_id, state, root) else None
+
+
+def _fallback_guidance(command: str | None, tool: str) -> str:
+    if not command:
+        return '무관한 후보라면 제외 명령을 안전하게 구성하지 못했으므로 그 제한만 알리세요. 세션·경로를 추측하지 마세요. '
+    action = json.dumps({'tool': 'PowerShell' if tool == 'PowerShell' else 'Bash',
+                         'command': command}, ensure_ascii=False, separators=(',', ':'))
+    return '후보가 무관하면 제공된 목록의 용도를 비교한 뒤 다음 현재 요청 전용 명령을 그대로 실행하세요: ' + action + ' '
+
+
+def _list_review_checkpoint(route: dict, data: dict, *, recovery: Callable[[], str] | None = None) -> dict:
     """Require a definite task's body, not just any earlier list/body receipt.
 
     Ambiguous or unmatched requests retain advisory discovery. This checks the
@@ -611,7 +654,7 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                 'permissionDecisionReason': '[스킬 선택] 같은 업무의 경쟁 후보가 있습니다. 한국어로 출처·차이를 물은 뒤 '
                 '현재 요청의 skill choose로 답변을 기록하고 반환된 load를 따르세요. 목록·본문 읽기나 재시도는 선택을 대신하지 않습니다. '
-                '후보가 모두 무관하다면 목록 비교 후 skill route --fallback no-relevant-skill로 제외하세요.'}}
+                + (recovery() if recovery else '')}}
     target = None
     support_target = False
     native_required = False
@@ -673,8 +716,7 @@ def _list_review_checkpoint(route: dict, data: dict) -> dict:
         reason += f'{action}로 이번 작업의 본문을 먼저 불러오세요. '
         if native_required:
             reason += 'native 실행 조건은 정확한 Skill 호출 성공만 인정하며 Read로 대체할 수 없습니다. '
-    reason += ('무관한 후보라면 목록 비교 후 현재 요청의 skill route --fallback no-relevant-skill로 제외하세요. '
-               '로드 실패는 같은 실행을 재시도하지 말고 알려주세요.')
+    reason += (recovery() if recovery else '') + '로드 실패는 같은 실행을 재시도하지 말고 알려주세요.'
     return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                                   'permissionDecisionReason': reason}}
 
@@ -693,12 +735,27 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
             and plan.get('mode') == 'general'):
         return {}  # No mandatory Skill/selection receipt for a general task.
     tool = payload.get("tool_name", "")
+    def recovery():
+        return _fallback_guidance(_fallback_command(root, session_id, state, tool), tool)
+
     if tool in {"Bash", "PowerShell"}:
-        from .execution_contract import _trusted_arguments, _skill_lookup, classify_command, _words
+        from .execution_contract import _trusted_arguments, _skill_lookup, classify_command, _words, _fields, _same
         from .state import _is_own_verification_command, _is_own_work_command, _is_own_learning_command
         inputs = payload.get("tool_input") or {}
         command = str(inputs.get("command") or inputs.get("cmd") or "")
         args = _trusted_arguments(command)
+        if args and args[:2] == ['skill', 'route']:
+            fields = _fields(args[2:], {'--session', '--turn', '--fallback', '--state-root'},
+                             {'--session', '--fallback'})
+            # A missing turn is a malformed recovery, not a request to load the
+            # very Skill being excluded. Do not execute/rewrite it or accept a
+            # wrong session/root/turn; return the complete current contract.
+            if (fields and '--turn' not in fields and fields['--session'] == safe_session_id(session_id)
+                    and fields['--fallback'] == 'no-relevant-skill'
+                    and ('--state-root' not in fields or _same(fields['--state-root'], root))):
+                return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
+                        'permissionDecisionReason': '[스킬 제외] 요청 식별자(--turn)가 빠져 아직 실행하지 않았습니다. '
+                        + recovery()}}
         words = _words(command)
         if words in (["pwd"], ["git", "status"], ["git", "status", "--short"]):
             return {}
@@ -724,13 +781,13 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
             # Resolve known competitors before loading a full body. Other Skills
             # may be support or host-only; never invent their availability/role.
             if ids.intersection(plan.get('choiceIds', [])):
-                return _list_review_checkpoint(route, data)
+                return _list_review_checkpoint(route, data, recovery=recovery)
             host_check = skill_host_choice.checkpoint(route, data)
             if host_check and plan.get('id') in ids:
                 return host_check
             return {}
         if route.get('reviewProtocol') == 1:
-            return _list_review_checkpoint(route, data)
+            return _list_review_checkpoint(route, data, recovery=recovery)
         if not (route.get("indexRead") or route.get('indexDelivered')) and not (route.get('selected') and route.get('indexDelivery')):
             if route.get('indexDelivery', {}).get('mode') == 'pages':
                 reason = '전달된 skillIndex의 출처별 목록과 필요한 상세 페이지를 비교하고 선택한 SKILL.md만 읽으세요. 전체 목록 재읽기는 필수가 아닙니다.'

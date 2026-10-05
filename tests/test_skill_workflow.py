@@ -322,6 +322,58 @@ class SkillWorkflowTests(unittest.TestCase):
         self.assertEqual(0, state["mutationCount"])
         self.assertEqual(0, state.get("taskToolCount", 0))
 
+    def test_complete_fallback_is_literal_current_turn_and_narrow(self):
+        from company_agent.skill_workflow import _fallback_command, internal_command
+        from company_agent.execution_contract import _trusted_arguments
+        state = load_session(self.sid, self.state)
+        for tool in ('Bash', 'PowerShell'):
+            command = _fallback_command(self.state, self.sid, state, tool)
+            self.assertIsNotNone(command)
+            args = _trusted_arguments(command)
+            self.assertEqual(self.turn, args[args.index('--turn') + 1])
+            self.assertEqual(self.sid, args[args.index('--session') + 1])
+            self.assertEqual({}, self.execution(tool, command=command))
+            for broken in (command.replace(self.turn, 'old-turn'),
+                           command.replace(self.sid, 'another-session'),
+                           command + ' ; echo unsafe',
+                           command + ' --extra value'):
+                self.assertFalse(internal_command(broken, self.sid, state, self.state))
+
+    def test_missing_turn_gets_repair_not_an_unrelated_skill_load(self):
+        from company_agent.skill_workflow import _fallback_command
+        from company_agent.execution_contract import _trusted_arguments
+        state = load_session(self.sid, self.state)
+        command = _fallback_command(self.state, self.sid, state, 'PowerShell')
+        incomplete = command.replace(' "--turn" "' + self.turn + '"', '')
+        for tool in ('Bash', 'PowerShell'):
+            result = self.execution(tool, command=incomplete)['hookSpecificOutput']
+            self.assertEqual('deny', result['permissionDecision'])
+            reason = result['permissionDecisionReason']
+            self.assertIn('--turn', reason)
+            self.assertNotIn('본문을 먼저', reason)
+            action, _ = json.JSONDecoder().raw_decode(reason[reason.index('{"tool":'):])
+            self.assertEqual(tool, action['tool'])
+            self.assertIn(self.turn, _trusted_arguments(action['command']))
+            self.assertEqual({}, self.execution(tool, command=action['command']))
+        self.assertEqual(state, load_session(self.sid, self.state))
+
+    def test_untrusted_or_foreign_recovery_is_not_repaired_or_exempted(self):
+        for command in ('company-agent skill route --fallback no-relevant-skill',
+                        f'python unknown.py skill route --session {self.sid} --fallback no-relevant-skill',
+                        f'"{sys.executable}" -B "{SCRIPTS / "harness_cli.py"}" skill route '
+                        '--session someone-else --fallback no-relevant-skill'):
+            result = self.execution('PowerShell', command=command)
+            self.assertNotIn('[스킬 제외]', json.dumps(result, ensure_ascii=False))
+
+    def test_normal_prepared_work_does_not_construct_recovery(self):
+        self.read_index()
+        self.read(self.reader)
+        state = load_session(self.sid, self.state)
+        state['skillWorkflow']['reviewProtocol'] = 1
+        atomic_write_json(self.state / 'sessions' / (self.sid + '.json'), state)
+        with patch('company_agent.skill_workflow._fallback_command', side_effect=AssertionError('unnecessary recovery')):
+            self.assertEqual({}, self.execution())
+
 
 if __name__ == "__main__":
     unittest.main()

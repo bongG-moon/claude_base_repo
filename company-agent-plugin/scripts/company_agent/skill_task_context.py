@@ -178,6 +178,25 @@ _LIFECYCLE_BEFORE = {
 }
 
 
+def _negated_lifecycle_action(clause: str, start: int) -> bool:
+    """Reject a prohibited action, not other requested work in the sentence.
+
+    Korean alternatives share a trailing prohibition ("만들거나 ... 하지 마").
+    A positive "만들고 ..." clause or completed request ends that scope. English negative
+    scope runs forward until punctuation or an explicit contrast/next step.
+    This remains a bounded retrieval hint, not an authorization parser.
+    """
+    before = re.split(r'[,;:]|\b(?:but|then)\b', clause[:start])[-1]
+    if re.search(r"\b(?:do\s+not|don['’]t|never|avoid|without|no(?:\s+need\s+to)?|not)\b", before):
+        return True
+    after = re.split(r'(?:줘|주세요|주십시오)(?=\s|[,;:]|$)', clause[start:], maxsplit=1)[0]
+    positive_join = re.match(r'[가-힣]*(?:고|며)\s+(?!싶|있)', after)
+    if positive_join and not re.search(r'거나|지(?:는|도)?\s*(?:말|않)', positive_join.group()):
+        return False  # "만들고 ... 설치하지 마" requests creation, not installation.
+    return bool(re.search(r'지(?:는|도)?\s*(?:마(?:세요|십시오)?|말(?:고|아(?:줘|주세요)?)?|않(?:고|도록|게))'
+                          r'(?=\s|[,;:]|$)|(?:제작|생성|설치|등록|수정)\s*금지', after))
+
+
 def _lifecycle_features(text: str) -> tuple[set, set] | None:
     """Distinguish managing an asset from executing the work it describes.
 
@@ -192,15 +211,19 @@ def _lifecycle_features(text: str) -> tuple[set, set] | None:
             # using a Skill to create a report is not creating the Skill.
             if (re.match(r'(?:로|으로)\b|(?:로|으로)\s', after)
                     or re.search(r'사용|활용|이용|통해|\busing\b|\bwith\b', after)
-                    or re.search(r'\b(?:using|with)\b[^,.;]{0,45}$', before)):
+                    or re.search(r'\b(?:use|using|with)\b[^,.;]{0,45}$', before)):
                 continue
-            found = {action for action, pattern in _LIFECYCLE.items() if re.search(pattern, after)}
+            found = {action for action, pattern in _LIFECYCLE.items()
+                     if any(not _negated_lifecycle_action(clause, asset.end() + match.start())
+                            for match in re.finditer(pattern, after))}
             if not found:
                 # English commands put the verb before the object. Korean
                 # words before the object usually describe the Skill's work
                 # ('HTML을 제작하는 스킬을 설치'), not its lifecycle action.
                 found = {action for action, pattern in _LIFECYCLE_BEFORE.items()
-                         if re.search('(?:' + pattern + r').{0,45}$', before)}
+                         if any(len(before) - match.end() <= 45
+                                and not _negated_lifecycle_action(clause, max(0, asset.start() - 60) + match.start())
+                                for match in re.finditer(pattern, before))}
             if found:
                 # Reading/content words modify the asset to be installed;
                 # they must not route the request to a document reader.

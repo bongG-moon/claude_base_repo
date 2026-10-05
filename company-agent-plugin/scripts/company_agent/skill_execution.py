@@ -104,6 +104,9 @@ def prepare_execution(runtime: dict) -> tuple[dict, str]:
         data = _snapshot(root, project, route)
     except (OSError, ValueError, TypeError, KeyError):
         return {'mode': 'inspect', 'reason': 'catalog-unavailable'}, ''
+    # Share the existing session read. This is only prior hook output evidence,
+    # never a Skill body load or acknowledgement by the native host/model.
+    runtime['_guidanceDelivery'] = route.get('guidanceDelivery')
     requested = route.get('explicit', []) + route.get('namedSkillChoices', [])
     if any(not any(x.get('invocation') == name or x.get('name') == name for x in data['skills']) for name in requested):
         # A user-named host Skill may exist outside the local catalogue. Never
@@ -180,6 +183,16 @@ def record_execution(runtime: dict, execution: dict) -> None:
                     or route.get('turn') != state.get('turnId')):
                 return
             route['executionPlan'] = execution
+            guidance = runtime.get('guidance', {})
+            guidance = guidance if isinstance(guidance, dict) else {}
+            revision = guidance.get('revision')
+            if (guidance.get('mode') in {'full', 'reuse'} and isinstance(revision, str)
+                    and re.fullmatch(r'[a-f0-9]{64}', revision)):
+                # Stored only after the final context has passed its budget.
+                # Workflow restoration/project/catalog changes discard this
+                # derived receipt with the existing workflow reset.
+                route['guidanceDelivery'] = {'revision': revision,
+                                             'evidence': 'output-produced-not-host-acknowledged'}
             if execution.get('choiceIds'):
                 route['pendingChoice'] = {'ids': execution['choiceIds'], 'names': execution.get('choiceNames', [])}
                 route['requiredChoiceIds'] = execution['choiceIds']

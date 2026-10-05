@@ -97,15 +97,19 @@ def _ignored(path: Path, root: Path) -> bool:
 
 
 def discover_documents(root: Path | None) -> tuple[list[MarkdownDocument], list[KnowledgeIssue]]:
+    from .knowledge_cache import SourceSnapshot
+    snapshot = SourceSnapshot()
+    if root is not None:
+        snapshot.capture(root)
+    return _snapshot_documents(snapshot)
+
+
+def _snapshot_documents(snapshot) -> tuple[list[MarkdownDocument], list[KnowledgeIssue]]:
     documents: list[MarkdownDocument] = []
-    issues: list[KnowledgeIssue] = []
-    if root is None or not root.exists():
-        return documents, issues
-    for path in sorted(root.rglob("*.md")):
-        if _ignored(path, root):
-            continue
+    issues = [KnowledgeIssue('error', 'invalid_markdown', message, path)
+              for message, path in snapshot.errors]
+    for path, raw in sorted(snapshot.texts.items()):
         try:
-            raw = path.read_text(encoding="utf-8-sig")
             if not raw.startswith("---"):
                 continue
             metadata, body = parse_frontmatter_text(raw, str(path))
@@ -342,14 +346,18 @@ def read_pack_version(root: Path | None) -> str:
     return str(metadata.get("version", root.name))
 
 
-def compose_catalog(base_root: Path | None, personal_root: Path | None) -> tuple[dict[str, Any], list[KnowledgeIssue]]:
+def compose_catalog(base_root: Path | None, personal_root: Path | None, *,
+                    _discovered=None, _pack_version=None) -> tuple[dict[str, Any], list[KnowledgeIssue]]:
     roots = [root for root in (base_root, personal_root) if root is not None]
     discovered: list[MarkdownDocument] = []
     parse_issues: list[KnowledgeIssue] = []
-    for root in roots:
-        found, problems = discover_documents(root)
-        discovered.extend(found)
-        parse_issues.extend(problems)
+    if _discovered is None:
+        for root in roots:
+            found, problems = discover_documents(root)
+            discovered.extend(found)
+            parse_issues.extend(problems)
+    else:
+        discovered, parse_issues = _discovered
 
     # Draft/example/deprecated documents are authoring artifacts, not runtime
     # knowledge. They remain visible to the explicit validate command, but do
@@ -377,7 +385,7 @@ def compose_catalog(base_root: Path | None, personal_root: Path | None) -> tuple
         identifier = str(metadata.get("id", ""))
         if metadata.get("kind") == "knowledge_overlay" and metadata.get("extends"):
             overlays.setdefault(str(metadata["extends"]), []).append(document)
-        elif personal_root is not None and personal_root in document.path.parents:
+        elif personal_root is not None and personal_root.absolute() in document.path.parents:
             personal_docs[identifier] = document
         else:
             base_docs[identifier] = document
@@ -430,19 +438,26 @@ def compose_catalog(base_root: Path | None, personal_root: Path | None) -> tuple
     catalog = {
         "schemaVersion": 1,
         "generatedAt": utc_now(),
-        "corporatePackVersion": read_pack_version(base_root),
+        "corporatePackVersion": read_pack_version(base_root) if _pack_version is None else _pack_version,
         "entries": entries,
         "detachedOverlays": sorted(detached),
     }
     return catalog, issues
 
 
-def build_index(base_root: Path | None, personal_root: Path | None, output_root: Path) -> tuple[dict[str, Any], list[KnowledgeIssue]]:
-    catalog, issues = compose_catalog(base_root, personal_root)
+def build_index(base_root: Path | None, personal_root: Path | None, output_root: Path, *,
+                _discovered=None, _pack_version=None, _source_current=None) -> tuple[dict[str, Any], list[KnowledgeIssue]]:
+    catalog, issues = compose_catalog(base_root, personal_root,
+                                     _discovered=_discovered, _pack_version=_pack_version)
+    if _source_current is not None and not _source_current():
+        issues.append(KnowledgeIssue('error', 'source_changed',
+                                    'Knowledge sources changed during startup; retry discovery.'))
     errors = [issue for issue in issues if issue.level == "error"]
     if errors:
         return catalog, issues
 
+    from .skill_registry import _no_reparse
+    _no_reparse(output_root)
     output_root.mkdir(parents=True, exist_ok=True)
     atomic_write_json(output_root / "catalog.json", catalog)
     tsv_lines = ["id\tkind\ttitle\taliases\tsource\tpath\toverlay_count"]
@@ -602,11 +617,30 @@ def upsert_personal(spec: dict[str, Any], state_root: Path, base_root: Path | No
 
 def reconcile_overlays(state_root: Path, base_root: Path, apply_safe: bool = False) -> dict[str, Any]:
     layout = ensure_user_layout(state_root)
-    base_documents, _ = discover_documents(base_root)
+    snapshot = None
+    if apply_safe:
+        from .knowledge_cache import SourceSnapshot, cached_report, save_report
+        snapshot = SourceSnapshot()
+        snapshot.capture(base_root)
+        snapshot.capture(layout['knowledge'])
+        pack_version, pack_hash = snapshot.pack(base_root)
+        revision = snapshot.revision(base_root, layout['knowledge'], pack_hash)
+        previous = cached_report(layout['index'], revision) if not snapshot.errors else None
+        if previous is not None and snapshot.current():
+            return previous
+        documents, parse_issues = _snapshot_documents(snapshot)
+        if not snapshot.current():
+            parse_issues.append(KnowledgeIssue('error', 'source_changed',
+                                               'Knowledge sources changed during startup; retry discovery.'))
+        base_documents = [item for item in documents if base_root.absolute() in item.path.parents]
+        overlay_documents = [item for item in documents if layout['overlays'].absolute() in item.path.parents]
+    else:
+        base_documents, _ = discover_documents(base_root)
+        overlay_documents, _ = discover_documents(layout['overlays'])
+        pack_version = read_pack_version(base_root)
     bases = {str(item.metadata.get("id")): item for item in base_documents if _is_active(item)}
-    overlay_documents, _ = discover_documents(layout["overlays"])
     overlay_documents = [item for item in overlay_documents if _is_active(item)]
-    report: dict[str, Any] = {"baseVersion": read_pack_version(base_root), "compatible": [], "rebased": [], "conflicts": [], "detached": []}
+    report: dict[str, Any] = {"baseVersion": pack_version, "compatible": [], "rebased": [], "conflicts": [], "detached": []}
 
     for overlay in overlay_documents:
         metadata = dict(overlay.metadata)
@@ -623,15 +657,27 @@ def reconcile_overlays(state_root: Path, base_root: Path, apply_safe: bool = Fal
         previous_contract_hash = metadata.get("base_contract_hash")
         if metadata.get("mode") == "extend" and previous_contract_hash == current_contract_hash:
             if apply_safe:
+                if not snapshot.current():
+                    parse_issues.append(KnowledgeIssue('error', 'source_changed',
+                                                       'Knowledge sources changed before overlay reconciliation.'))
+                    continue
                 timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
-                snapshot = layout["versions"] / timestamp / overlay.path.name
-                snapshot.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(overlay.path, snapshot)
+                backup = layout["versions"] / timestamp / overlay.path.name
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(overlay.path, backup)
                 metadata["base_content_hash"] = current_hash
                 metadata["base_contract_hash"] = current_contract_hash
-                metadata["base_pack_version"] = read_pack_version(base_root)
+                metadata["base_pack_version"] = pack_version
                 metadata["updated_at"] = utc_now()
-                atomic_write_text(overlay.path, dump_frontmatter(metadata, overlay.body))
+                rendered = dump_frontmatter(metadata, overlay.body)
+                atomic_write_text(overlay.path, rendered)
+                updated_meta, updated_body = parse_frontmatter_text(rendered, str(overlay.path))
+                replacement = MarkdownDocument(path=overlay.path, metadata=updated_meta,
+                                               body=updated_body, raw=rendered)
+                documents = [replacement if item.path == overlay.path else item for item in documents]
+                from .knowledge_cache import signature
+                snapshot.texts[overlay.path] = rendered
+                snapshot.stamps[overlay.path] = signature(overlay.path)
                 report["rebased"].append(str(metadata.get("id")))
             else:
                 report["compatible"].append(str(metadata.get("id")))
@@ -657,9 +703,16 @@ def reconcile_overlays(state_root: Path, base_root: Path, apply_safe: bool = Fal
     if apply_safe:
         # This reconciliation owns the rebuild. Callers consume its diagnostics
         # instead of immediately rebuilding the same index a second time.
-        _, issues = build_index(base_root, layout["knowledge"], layout["index"])
+        catalog, issues = build_index(base_root, layout["knowledge"], layout["index"],
+                                      _discovered=(documents, parse_issues), _pack_version=pack_version,
+                                      _source_current=snapshot.current)
         report['indexIssues'] = [asdict(issue) for issue in issues]
     atomic_write_json(layout["conflicts"] / "report.json", report)
+    # A rebase changes source bytes; take a fresh snapshot on the next startup
+    # rather than replaying a prior run's "rebased" action from the cache.
+    if (snapshot is not None and not report['rebased'] and not report['conflicts'] and not report['indexIssues']
+            and snapshot.current()):
+        save_report(layout['index'], revision, report, catalog)
     return report
 
 

@@ -5,6 +5,7 @@ import json
 import os
 from pathlib import Path
 import shutil
+import subprocess
 import unittest
 from unittest.mock import patch
 
@@ -345,6 +346,61 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertNotIn('permissionDecision', result.get('hookSpecificOutput', {}))
         denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query': 'DELETE FROM employees'})
         self.assertEqual('deny', denied['hookSpecificOutput']['permissionDecision'])
+
+    def test_fallback_from_denial_runs_through_real_wrapper_without_loading_candidate(self):
+        # Exercise spaces, Korean and apostrophes through the actual shell,
+        # not just the internal parser's argv reconstruction.
+        quoted_plugin = self.root / "O'Brien 한글 plugin"
+        self.plugin.rename(quoted_plugin)
+        self.plugin = quoted_plugin
+        self.record = self.register('project', 'Project', self.project,
+                                    userStateRoot=str(self.root / "O'Brien 한글 state"))
+        result = self.hook('UserPromptSubmit', prompt='HTML 보고서를 만들어줘')
+        runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        self.read(Path(runtime['skillSelection']['catalog']['path']))
+        denied = self.hook('PreToolUse', tool_name='PowerShell', tool_input={'command': 'python report.py'})
+        reason = denied['hookSpecificOutput']['permissionDecisionReason']
+        # First JSON is the suggested Skill, second is a ready-to-run recovery.
+        marker = '{"tool":"PowerShell","command":'
+        action, _ = json.JSONDecoder().raw_decode(reason[reason.index(marker):])
+        self.assertEqual({}, self.hook('PreToolUse', tool_name='PowerShell', tool_input={'command': action['command']}))
+        from company_agent.state import _literal_command_words
+        words = _literal_command_words(action['command'])
+        arguments = words[words.index('Cli') + 1:]
+        self.assertIn(runtime['skillWorkflow']['turn'], arguments)
+        env = os.environ.copy()
+        env.pop('CLAUDE_ENV_FILE', None)
+        completed = subprocess.run([shutil.which('powershell.exe'), '-NoLogo', '-NoProfile',
+                                    '-Command', action['command']], cwd=self.project, env=env,
+                                   text=True, encoding='utf-8', capture_output=True, timeout=30,
+                                   creationflags=subprocess.CREATE_NO_WINDOW)
+        self.assertEqual(0, completed.returncode, completed.stderr)
+        self.assertEqual('no-relevant-skill', json.loads(completed.stdout)['fallback'])
+        self.assertEqual({}, self.hook('PreToolUse', tool_name='mcp__playwright__browser_navigate',
+                                      tool_input={'url': 'file:///synthetic-practice.html'}))
+        root = Path(self.record['userStateRoot'])
+        state = load_session(self.payload['session_id'], root)
+        self.assertIsNone(state['skillWorkflow']['selected'])
+        self.assertEqual(0, state['mutationCount'])
+        # The bookkeeping exception never grants native/browser/DB permission.
+        denied = self.hook('PreToolUse', tool_name='mcp__corp-db-read__query', tool_input={'query': 'DELETE FROM employees'})
+        self.assertEqual('deny', denied['hookSpecificOutput']['permissionDecision'])
+
+    def test_browser_usage_with_coordinated_prohibitions_does_not_force_asset_creation(self):
+        self.hook('UserPromptSubmit', prompt=(
+            '현재 제공되는 브라우저 자동화 도구의 실제 이름과 기능만 확인해줘. '
+            '웹 구조를 관찰하는 도구로 file:///C:/practice/교육신청.html만 열어줘. '
+            '실제 회차와 상태를 관찰한 뒤 A와 신청을 선택하고 표를 다시 읽어줘. '
+            '없는 도구 이름을 만들거나 화면 MCP로 조용히 대체하지 마. '
+            '브라우저 설정·디버깅 포트·확장·전역 MCP 등록을 변경하거나 설치하지 마. '
+            '이 포털은 file URL의 로컬 HTML이야. '
+            'file URL 미지원이면 미실행으로 알리고 보안 설정 변경·서버 설치·다른 경로로 우회하지 마.'))
+        state = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))
+        plan = state['skillWorkflow']['executionPlan']
+        self.assertNotEqual('asset-factory', plan.get('name'))
+        result = self.hook('PreToolUse', tool_name='mcp__playwright__browser_navigate',
+                           tool_input={'url': 'file:///C:/practice/교육신청.html'})
+        self.assertNotIn('permissionDecision', result.get('hookSpecificOutput', {}))
 
     def test_regex_failure_delivers_bounded_recovery_not_an_encoding_diagnosis(self):
         self.hook('UserPromptSubmit', prompt='문자열 검색 코드를 실행해줘')

@@ -23,6 +23,20 @@ class ExecutionContractTests(unittest.TestCase):
     def tearDown(self) -> None:
         self.temp.cleanup()
 
+    def test_unrelated_shell_names_do_not_search_runtime_paths(self):
+        from company_agent.state import _own_cli_arguments
+        with patch('company_agent.state.shutil.which', side_effect=AssertionError('Unrelated commands need no runtime PATH lookup')):
+            for command in ('pwd', 'git status --short', 'rg --files', './python.exe arbitrary.py'):
+                with self.subTest(command=command):
+                    self.assertIsNone(_own_cli_arguments(command))
+
+    def test_absolute_unknown_runtime_remains_untrusted(self):
+        from company_agent.state import _known_runtime
+        untrusted = self.root / 'python.exe'
+        with patch('company_agent.state.shutil.which', return_value=sys.executable) as resolve:
+            self.assertFalse(_known_runtime(str(untrusted), {'python', 'python.exe'}))
+            self.assertTrue(resolve.called)
+
     def permission(self, command: str, **extra: object) -> dict | None:
         payload = {"hook_event_name": "PermissionRequest", "tool_name": "Bash", "tool_input": {"command": command}}
         payload.update(extra)

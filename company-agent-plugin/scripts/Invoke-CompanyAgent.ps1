@@ -49,13 +49,21 @@ if (Test-Path -LiteralPath $metadataPath -PathType Leaf) {
 # The installed release is retained independently of Claude's disposable plugin
 # cache. Personal MCP entries therefore keep a durable interpreter location.
 $candidates = @($selectedPython, $recordedPython, (Join-Path $pluginRoot 'runtime\python\python.exe'), $env:COMPANY_AGENT_PYTHON, 'python', 'py')
-$python = $null
 $probed = @{}
+$bootstrap = Join-Path $PSScriptRoot 'native_bootstrap.py'
+$readyMarker = 'COMPANY_AGENT_RUNTIME_READY:' + [Guid]::NewGuid().ToString('N')
+$entryArguments = @('--cli') + $CliArguments
+if ($Mode -eq 'Hook') {
+    # Retain input only in memory so an unsupported interpreter can fall back.
+    $payload = [Console]::In.ReadToEnd()
+    $entryArguments = @('--event', $Event)
+}
 $launcherEnvironment = @{}
-foreach ($name in @('PYLAUNCHER_ALLOW_INSTALL', 'PYLAUNCHER_ALWAYS_INSTALL', 'PYTHON_MANAGER_AUTOMATIC_INSTALL')) {
+foreach ($name in @('PYLAUNCHER_ALLOW_INSTALL', 'PYLAUNCHER_ALWAYS_INSTALL', 'PYTHON_MANAGER_AUTOMATIC_INSTALL', 'COMPANY_AGENT_BOOTSTRAP_ENV')) {
     $launcherEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
 try {
+    $env:COMPANY_AGENT_BOOTSTRAP_ENV = $launcherEnvironment | ConvertTo-Json -Compress
     [Environment]::SetEnvironmentVariable('PYLAUNCHER_ALLOW_INSTALL', $null, 'Process')
     [Environment]::SetEnvironmentVariable('PYLAUNCHER_ALWAYS_INSTALL', $null, 'Process')
     [Environment]::SetEnvironmentVariable('PYTHON_MANAGER_AUTOMATIC_INSTALL', 'false', 'Process')
@@ -69,32 +77,56 @@ foreach ($candidate in $candidates) {
     $probed[$info.Source] = $true
     $prefix = @()
     if ([IO.Path]::GetFileNameWithoutExtension($info.Source) -ieq 'py') { $prefix = @('-3') }
-    # -I ignores PYTHONIOENCODING. Pin UTF-8 explicitly so a Korean or emoji
-    # interpreter path is decoded correctly by this UTF-8 PowerShell wrapper.
-    try {
-        $probe = & $info.Source @prefix -I -X utf8 -B -c 'import sys; print(sys.executable); sys.exit(0 if sys.version_info >= (3,11) and sys.version_info.major == 3 else 1)' 2>$null
-        $probeExit = $LASTEXITCODE
+    # The bootstrap validates Python before importing or running the entrypoint.
+    # Its per-call marker distinguishes launch failure from an application error:
+    # after entry has begun, NEVER run that operation again with another runtime.
+    $runtimeReady = $false
+    $pendingOutput = New-Object 'System.Collections.Generic.List[object]'
+    $writeLine = {
+        param($line)
+        if ($line -is [System.Management.Automation.ErrorRecord]) {
+            [Console]::Error.WriteLine($line.ToString())
+        } else {
+            [Console]::Out.WriteLine([string]$line)
+        }
     }
-    catch { continue }
-    if ($probeExit -eq 0 -and -not [string]::IsNullOrWhiteSpace(($probe -join ''))) {
-        $python = [string](@($probe)[-1]); break
+    $forwardOutput = {
+        if ($_ -is [string] -and $_ -ceq $readyMarker) {
+            $runtimeReady = $true
+            foreach ($line in $pendingOutput) { & $writeLine $line }
+            $pendingOutput.Clear()
+        } elseif ($runtimeReady) {
+            & $writeLine $_
+        } else {
+            # Startup noise is suppressed for rejected candidates, as before.
+            $pendingOutput.Add($_)
+        }
+    }
+    $candidateExit = $null
+    $previousErrorPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        $LASTEXITCODE = $null
+        if ($Mode -eq 'Hook') {
+            $payload | & $info.Source @prefix -X utf8 -B $bootstrap $readyMarker @entryArguments 2>&1 | ForEach-Object $forwardOutput
+        } else {
+            & $info.Source @prefix -X utf8 -B $bootstrap $readyMarker @entryArguments 2>&1 | ForEach-Object $forwardOutput
+        }
+        $candidateExit = $LASTEXITCODE
+    }
+    catch {
+        if ($runtimeReady) { [Console]::Error.WriteLine($_.ToString()); exit 1 }
+        continue
+    }
+    finally { $ErrorActionPreference = $previousErrorPreference }
+    if ($runtimeReady) {
+        if ($null -eq $candidateExit) { exit 1 }
+        exit $candidateExit
     }
 }
 }
 finally {
     foreach ($name in $launcherEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $launcherEnvironment[$name], 'Process') }
 }
-if ([string]::IsNullOrWhiteSpace($python)) {
-    [Console]::Error.WriteLine('Company Agent needs the company-approved Python 3.11+ already installed on this PC. Check its path and execution permission, then rerun Install-CompanyAgent.cmd to select it. Python is not downloaded or installed automatically.')
-    exit 2
-}
-$env:COMPANY_AGENT_PYTHON = $python
-$entry = Join-Path $PSScriptRoot 'native_entry.py'
-if ($Mode -eq 'Hook') {
-    # The only in-memory copy; never persist the input prompt/transcript payload.
-    $payload = [Console]::In.ReadToEnd()
-    $payload | & $python -X utf8 $entry --event $Event
-} else {
-    & $python -X utf8 $entry --cli @CliArguments
-}
-exit $LASTEXITCODE
+[Console]::Error.WriteLine('Company Agent needs the company-approved Python 3.11+ already installed on this PC. Check its path and execution permission, then rerun Install-CompanyAgent.cmd to select it. Python is not downloaded or installed automatically.')
+exit 2

@@ -30,7 +30,9 @@ class ListReviewTests(unittest.TestCase):
         self.assertEqual('deny', first['permissionDecision'])
         self.assertIn('아직 실행하지 않았습니다', first['permissionDecisionReason'])
         self.assertIn('company-agent:html-report', first['permissionDecisionReason'])
-        self.assertLess(len(first['permissionDecisionReason']), 250)
+        # Includes one executable recovery with exact launcher/root/session/turn,
+        # not an abbreviated command that forces model-side reconstruction.
+        self.assertLess(len(first['permissionDecisionReason']), 1200)
         self.assertNotIn(str(self.state()['skillWorkflow']['catalog']), first['permissionDecisionReason'])
         self.assertNotIn('permissionDecision', self.pre('Skill', skill='company-agent:html-report'))
         self.native_skill('company-agent:html-report')
@@ -93,8 +95,8 @@ class ListReviewTests(unittest.TestCase):
         self.assertIn('폴더 조회·일반 목록 비교는 차단하지 않습니다', startup['instructions'])
         ctx, _ = self.output()
         self.assertIn('[스킬 확인]', ctx['instructions'])
-        self.assertIn('이번 작업의 본문', ctx['instructions'])
-        self.assertIn('도구 미실행', ctx['instructions'])
+        self.assertIn('이번 업무의 본문', ctx['instructions'])
+        self.assertIn('도구가 아직 미실행', ctx['instructions'])
 
     def test_empty_actual_catalogue_never_forces_a_skill(self):
         plugin = self.f.root / 'empty-plugin'

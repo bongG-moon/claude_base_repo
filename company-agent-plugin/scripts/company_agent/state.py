@@ -537,6 +537,11 @@ def _same_absolute_path(value: str, expected: Path) -> bool:
 def _known_runtime(value: str, names: set[str]) -> bool:
     if value.casefold() in names:
         return True
+    # Only the accepted bare names or an exact absolute runtime path can match.
+    # Ordinary commands (pwd, git, etc.) cannot pass _same_absolute_path, so do
+    # not repeatedly walk PATH for every bookkeeping classification of them.
+    if not Path(value).is_absolute():
+        return False
     # An arbitrary path named python.exe/powershell.exe is not trusted merely
     # because its filename matches. Accept only a runtime resolved locally.
     expected = [Path(sys.executable)] if "python" in names else []
