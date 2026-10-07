@@ -40,6 +40,7 @@ $productionDeployFiles = @(
     'CompanyAgent.UserContext.ps1',
     'CompanyAgent.ClaudeDiscovery.ps1',
     'CompanyAgent.PluginCompatibility.ps1',
+    'CompanyAgent.ReadHook.ps1',
     'ExistingHarness.ps1',
     'HarnessReplacement.ps1',
     'Initialize-CompanyAgentUser.ps1',

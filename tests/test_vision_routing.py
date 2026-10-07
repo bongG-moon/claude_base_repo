@@ -207,9 +207,9 @@ class VisionRoutingTests(unittest.TestCase):
             self.assertIn(tool, meta["tools"])
         self.assertIn("텍스트", body)
         hooks = json.loads((PLUGIN / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]
-        matcher = hooks["PreToolUse"][0]["matcher"]
         for name in ("Read", "Agent", "Task", "mcp__test__screenshot"):
-            self.assertRegex(name, matcher)
+            self.assertEqual(1, sum(bool(re.fullmatch(group['matcher'], name))
+                                    for group in hooks['PreToolUse']))
         script = (PLUGIN / "scripts/Invoke-CompanyAgent.ps1").read_text(encoding="utf-8-sig")
         suffixes = re.search(r"\$isImageRead = .*?@\(([^)]+)\)", script).group(1)
         self.assertEqual(vision.IMAGE_SUFFIXES, set(re.findall(r"'(\.[a-z]+)'", suffixes)))

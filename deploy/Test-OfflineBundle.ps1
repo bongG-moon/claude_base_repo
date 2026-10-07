@@ -76,6 +76,7 @@ function Assert-EmployeeBundle {
         'payload/core/plugin/scripts/company_agent/ppt_workflow.py',
         'payload/core/plugin/scripts/company_agent/runtime_diagnostics.py',
         'payload/core/plugin/scripts/Inspect-ClaudeRuntime.ps1',
+        'payload/core/plugin/scripts/read_hook.py',
         'payload/core/plugin/skills/presentation/references/sources.md',
         'payload/core/plugin/scripts/company_agent/background_work.py',
         'payload/core/plugin/skills/presentation/references/design-review.md',
@@ -94,6 +95,7 @@ function Assert-EmployeeBundle {
         'docs/HTML_DESIGN_SELECTION.md',
         'payload/core/plugin/skills/company-agent/references/completion.md',
         'deploy/CompanyAgent.PluginCompatibility.ps1',
+        'deploy/CompanyAgent.ReadHook.ps1',
         'docs/SKILL_CATALOG.md',
         'payload/core/plugin/skills/asset-factory/references/authoring.md',
         'payload/core/plugin/skills/asset-factory/references/platform-tools.md',
@@ -145,18 +147,20 @@ function Assert-EmployeeBundle {
         -not $_.PSIsContainer -and $_.Extension -iin @('.exe', '.dll', '.pyd', '.so', '.dylib')
     })
     Assert-OfflineBundle ($nativeFiles.Count -eq 0) 'Employee bundle contains native binaries.'
-    foreach ($name in @(
+    $requiredDeployFiles = @(
         'Diagnose-CompanyAgent.ps1', 'CompanyAgent.Common.ps1', 'ExistingHarness.ps1', 'HarnessReplacement.ps1',
         'CompanyAgent.UserContext.ps1', 'CompanyAgent.ClaudeDiscovery.ps1',
+        'CompanyAgent.PluginCompatibility.ps1', 'CompanyAgent.ReadHook.ps1',
         'Initialize-CompanyAgentUser.ps1', 'Install-CompanyAgent.cmd', 'Install-CompanyAgent.ps1',
         'Install-ScopedCompanyAgent.ps1', 'Restore-PreviousHarness.ps1', 'Rollback-CompanyAgent.ps1',
         'Setup-CompanyAgent.ps1', 'Start-CompanyAgent.ps1', 'Uninstall-CompanyAgent.ps1',
         'Uninstall-ScopedCompanyAgent.ps1', 'Update-CompanyAgent.ps1'
-    )) {
+    )
+    foreach ($name in $requiredDeployFiles) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('deploy\' + $name)) -PathType Leaf) "Required deployment dependency is absent: $name"
     }
     $deployFiles = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'deploy') -File -Force)
-    Assert-OfflineBundle ($deployFiles.Count -eq 18) 'Unexpected deploy tools were included.'
+    Assert-OfflineBundle ($deployFiles.Count -eq $requiredDeployFiles.Count) 'Unexpected deploy tools were included.'
     foreach ($name in @(
         'New-OfflineBundle.ps1', 'Get-EmbeddedPython.ps1', 'Test-DeploymentSmoke.ps1',
         'Test-ExistingHarness.ps1', 'Test-HarnessReplacement.ps1', 'Test-PersonalStateBackup.ps1',
@@ -384,7 +388,7 @@ try {
         status = 'passed'
         defaultRuntimeMode = $defaultManifest.runtime.mode
         minimumPythonVersion = $defaultManifest.runtime.minimumVersion
-        productionDeployFiles = 18
+        productionDeployFiles = @($defaultManifest.files | Where-Object { $_.path -like 'deploy/*' }).Count
         testRoot = $testRoot
         artifactsKept = [bool]$KeepArtifacts
     }

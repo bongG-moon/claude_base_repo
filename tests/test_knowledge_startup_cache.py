@@ -131,20 +131,116 @@ class KnowledgeStartupCacheTests(unittest.TestCase):
             self.run_start()
         self.assertEqual(1, built.call_count)
 
-    def test_rebased_overlay_uses_new_hash_without_replaying_the_action(self):
+    def prepare_rebase(self):
+        self.write(self.source, 'term.example')
         overlay = knowledge.upsert_personal({'id': 'personal.extend.example', 'title': 'Extra detail',
                                              'mode': 'extend', 'extends': 'term.example', 'body': 'Extra definition.'},
                                             self.state, self.base)
         self.run_start()
         raw = self.source.read_text(encoding='utf-8')
         self.source.write_text(raw.replace('owner: "team"', 'owner: "new-team"'), encoding='utf-8')
-        report = self.run_start()
+        return overlay
+
+    def test_rebased_overlay_uses_new_hash_without_replaying_the_action(self):
+        overlay = self.prepare_rebase()
+        reads = []
+        real_read = Path.read_text
+        def read(path, *args, **kwargs):
+            if path.suffix == '.md':
+                reads.append(path)
+            return real_read(path, *args, **kwargs)
+        with patch.object(Path, 'read_text', read):
+            report = self.run_start()
+        self.assertCountEqual([self.source, overlay, overlay], reads)
         self.assertEqual(['personal.extend.example'], report['rebased'])
         self.assertEqual(knowledge.text_sha256(overlay.read_text(encoding='utf-8')),
                          self.catalog()['entries'][0]['overlays'][0]['content_hash'])
         self.assertEqual([], self.run_start()['rebased'])
-        with patch.object(knowledge, 'build_index', side_effect=AssertionError('unchanged rebase rebuilt')):
+        reads.clear()
+        with patch.object(Path, 'read_text', read), \
+                patch.object(knowledge, 'build_index', side_effect=AssertionError('unchanged rebase rebuilt')):
             self.assertEqual([], self.run_start()['rebased'])
+        self.assertCountEqual([self.source, overlay], reads)
+
+    def test_overlay_replaced_after_rebase_does_not_publish_or_cache_stale_index(self):
+        overlay = self.prepare_rebase()
+        before = {p.name: p.read_bytes() for p in self.index.iterdir()}
+        real_write = knowledge.atomic_write_text
+        replaced = False
+        def write(path, text, *args, **kwargs):
+            nonlocal replaced
+            real_write(path, text, *args, **kwargs)
+            if path == overlay and not replaced:
+                replaced = True
+                real_write(path, text.replace('Extra definition.', 'Concurrent definition.'))
+        with patch.object(knowledge, 'atomic_write_text', side_effect=write):
+            report = self.run_start()
+        self.assertTrue(replaced)
+        self.assertIn('source_changed', [x['code'] for x in report['indexIssues']])
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.index.iterdir()})
+        self.assertIn('Concurrent definition.', overlay.read_text(encoding='utf-8'))
+        self.assertEqual([], self.run_start()['indexIssues'])
+        entry = self.catalog()['entries'][0]
+        self.assertIn('Concurrent definition.', entry['searchText'])
+        self.assertEqual(knowledge.text_sha256(overlay.read_text(encoding='utf-8')),
+                         entry['overlays'][0]['content_hash'])
+
+    def test_overlay_replaced_during_rebase_readback_does_not_publish_stale_index(self):
+        overlay = self.prepare_rebase()
+        before = {p.name: p.read_bytes() for p in self.index.iterdir()}
+        real_write, real_read = knowledge.atomic_write_text, Path.read_text
+        written = replaced = False
+        def write(path, text, *args, **kwargs):
+            nonlocal written
+            real_write(path, text, *args, **kwargs)
+            if path == overlay:
+                written = True
+        def read(path, *args, **kwargs):
+            nonlocal replaced
+            text = real_read(path, *args, **kwargs)
+            if path == overlay and written and not replaced:
+                replaced = True
+                real_write(path, text.replace('Extra definition.', 'Concurrent definition.'))
+            return text
+        with patch.object(knowledge, 'atomic_write_text', side_effect=write), \
+                patch.object(Path, 'read_text', read):
+            report = self.run_start()
+        self.assertTrue(replaced)
+        self.assertIn('source_changed', [x['code'] for x in report['indexIssues']])
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.index.iterdir()})
+        self.assertEqual([], self.run_start()['indexIssues'])
+        self.assertIn('Concurrent definition.', self.catalog()['entries'][0]['searchText'])
+
+    def test_overlay_unavailable_after_rebase_reports_source_changed(self):
+        for failure in ('deleted', 'permission', 'decode'):
+            with self.subTest(failure=failure):
+                overlay = self.prepare_rebase()
+                before = {p.name: p.read_bytes() for p in self.index.iterdir()}
+                real_write, real_read = knowledge.atomic_write_text, Path.read_text
+                written = False
+                def write(path, text, *args, **kwargs):
+                    nonlocal written
+                    real_write(path, text, *args, **kwargs)
+                    if path == overlay:
+                        written = True
+                        if failure == 'deleted':
+                            path.unlink()
+                def read(path, *args, **kwargs):
+                    if path == overlay and written:
+                        if failure == 'permission':
+                            raise PermissionError('Concurrent access blocked readback')
+                        if failure == 'decode':
+                            raise UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'Invalid source bytes')
+                    return real_read(path, *args, **kwargs)
+                with patch.object(knowledge, 'atomic_write_text', side_effect=write), \
+                        patch.object(Path, 'read_text', read):
+                    report = self.run_start()
+                self.assertTrue(written)
+                self.assertIn('source_changed', [x['code'] for x in report['indexIssues']])
+                self.assertEqual(before, {p.name: p.read_bytes() for p in self.index.iterdir()})
+                self.assertEqual([], self.run_start()['indexIssues'])
+                if failure == 'deleted':
+                    self.assertEqual([], self.catalog()['entries'][0]['overlays'])
 
     def test_pack_version_and_base_root_changes_invalidate(self):
         self.run_start()

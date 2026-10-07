@@ -35,7 +35,22 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(?:Skill|AskUserQuestion|Agent|Task|Read|Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$",
+        "matcher": "^(?:Skill|AskUserQuestion|Agent|Task|Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "powershell.exe",
+            "args": [
+              "-NoLogo", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
+              "${CLAUDE_PLUGIN_ROOT}/scripts/Invoke-CompanyAgent.ps1",
+              "-Mode", "Hook", "-Event", "PreToolUse"
+            ],
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "^Read$",
         "hooks": [
           {
             "type": "command",

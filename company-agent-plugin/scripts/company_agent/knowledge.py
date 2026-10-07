@@ -671,13 +671,26 @@ def reconcile_overlays(state_root: Path, base_root: Path, apply_safe: bool = Fal
                 metadata["updated_at"] = utc_now()
                 rendered = dump_frontmatter(metadata, overlay.body)
                 atomic_write_text(overlay.path, rendered)
+                # Pair our rendered text only with a stamp verified against that
+                # text. Another writer can replace the file after our write.
+                from .knowledge_cache import signature
+                try:
+                    written_stamp = signature(overlay.path)
+                    written_text = overlay.path.read_text(encoding='utf-8-sig')
+                    if signature(overlay.path) != written_stamp or written_text != rendered:
+                        raise ValueError('Rebased overlay changed before snapshot refresh')
+                except (OSError, ValueError, UnicodeError):
+                    parse_issues.append(KnowledgeIssue(
+                        'error', 'source_changed',
+                        'Knowledge source changed after overlay reconciliation; retry discovery.',
+                        str(overlay.path)))
+                    continue
                 updated_meta, updated_body = parse_frontmatter_text(rendered, str(overlay.path))
                 replacement = MarkdownDocument(path=overlay.path, metadata=updated_meta,
                                                body=updated_body, raw=rendered)
                 documents = [replacement if item.path == overlay.path else item for item in documents]
-                from .knowledge_cache import signature
                 snapshot.texts[overlay.path] = rendered
-                snapshot.stamps[overlay.path] = signature(overlay.path)
+                snapshot.stamps[overlay.path] = written_stamp
                 report["rebased"].append(str(metadata.get("id")))
             else:
                 report["compatible"].append(str(metadata.get("id")))

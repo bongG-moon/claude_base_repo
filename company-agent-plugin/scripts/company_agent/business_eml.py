@@ -23,6 +23,18 @@ MAX_ATTACHMENT = 4_000
 MAX_TEXT = 20_000
 _PROTECTED_TYPES = {"application/x-microsoft-rpmsg-message", "application/vnd.ms-outlook-rpmsg",
                     "application/pkcs7-mime", "application/x-pkcs7-mime", "multipart/encrypted"}
+_REASON_MESSAGES = {
+    "protection_blocked": "현재 읽기 기능이 지원하지 않는 보호된 유형은 제외했습니다.",
+    "embedded_mail_not_read": "첨부된 메일 안의 내용은 읽지 않았습니다.",
+    "unsupported_attachment": "지원하는 일반 텍스트 TXT 첨부가 아니어서 내용을 제외했습니다.",
+    "part_decode_failed": "문자 인코딩 또는 메일 구조를 해석하지 못한 부분은 제외했습니다.",
+    "plain_body_not_read": "일반 텍스트 본문은 읽지 못했습니다.",
+    "html_not_rendered": "HTML 본문은 표시하거나 실행하지 않았습니다.",
+    "unsupported_body_part": "지원하지 않는 본문 형식은 제외했습니다.",
+    "text_limit": "분량 제한 때문에 일부 텍스트만 반환했습니다.",
+    "mime_part_limit": "메일 구성 요소 수의 제한 때문에 일부만 확인했습니다.",
+    "malformed_mime": "메일 형식에 오류가 있어 읽은 내용이 완전하지 않을 수 있습니다.",
+}
 
 
 def _label(value: object, limit: int = 200) -> str:
@@ -50,9 +62,14 @@ def _text(part: Message) -> str:
     payload = part.get_payload(decode=True)
     if not isinstance(payload, bytes):
         raise ValueError("invalid payload")
-    # Unknown/invalid charsets fail rather than launching converters or emitting
-    # undecoded bytes. email parsing never invokes Office or opens attachment URLs.
-    return payload.decode(part.get_content_charset() or "ascii", errors="strict")
+    # Missing charset accepts strict UTF-8 (including ASCII). Never override a
+    # declared charset or replace invalid bytes with guessed/lossy text.
+    charset = part.get_content_charset()
+    if charset is None:
+        if part.get_param("charset") is not None:
+            raise ValueError("invalid charset")
+        charset = "utf-8"
+    return payload.decode(charset, errors="strict")
 
 
 def read_eml(file: Path) -> dict:
@@ -113,11 +130,13 @@ def read_eml(file: Path) -> dict:
             if _protected(part):
                 reason("protection_blocked")
                 if attached:
-                    result["attachments"].append({**record, "code": "protection_blocked"})
+                    result["attachments"].append({**record, "code": "protection_blocked",
+                                                  "message": _REASON_MESSAGES["protection_blocked"]})
                 continue
             if kind == "message/rfc822":
                 reason("embedded_mail_not_read")
-                result["attachments"].append({**record, "code": "embedded_mail_not_read"})
+                result["attachments"].append({**record, "code": "embedded_mail_not_read",
+                                              "message": _REASON_MESSAGES["embedded_mail_not_read"]})
                 continue
             if part.is_multipart() and not attached:
                 children = part.get_payload()
@@ -129,7 +148,8 @@ def read_eml(file: Path) -> dict:
             if attached:
                 if kind != "text/plain" or not filename or not filename.casefold().endswith(".txt"):
                     reason("unsupported_attachment")
-                    result["attachments"].append({**record, "code": "unsupported_attachment"})
+                    result["attachments"].append({**record, "code": "unsupported_attachment",
+                                                  "message": _REASON_MESSAGES["unsupported_attachment"]})
                     continue
                 text = _text(part)
                 limit = min(MAX_ATTACHMENT, remaining)
@@ -158,11 +178,17 @@ def read_eml(file: Path) -> dict:
         except (ValueError, TypeError, LookupError, UnicodeError, MessageError, RecursionError):
             reason("part_decode_failed")
             if attached:
-                result["attachments"].append({**record, "code": "part_decode_failed"})
+                result["attachments"].append({**record, "code": "part_decode_failed",
+                                              "message": _REASON_MESSAGES["part_decode_failed"]})
     if not result["body_read"]:
         reason("plain_body_not_read")
     if reasons:
         result["status"] = "partial"
+        read_any = result["body_read"] or any(item["status"] in {"read", "partial"}
+                                              for item in result["attachments"])
+        summary = "로컬 메일 파일을 일부만 읽었습니다." if read_any else "로컬 메일 파일에서 일반 텍스트를 읽지 못했습니다."
+        result["message"] = " ".join([summary, *(_REASON_MESSAGES[code] for code in reasons),
+                                      "읽은 범위는 본문 확인 여부와 첨부 상태를 확인하세요. Outlook에는 연결하지 않았습니다."])
     if "protection_blocked" in reasons:
         result["warnings"].append({"code": "protection_blocked"})
     return result

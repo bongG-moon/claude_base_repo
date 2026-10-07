@@ -35,6 +35,7 @@ foreach ($name in $scopedEntryValues.Keys) { Set-Variable -Name $name -Value $sc
 . (Join-Path $PSScriptRoot 'ExistingHarness.ps1')
 . (Join-Path $PSScriptRoot 'HarnessReplacement.ps1')
 . (Join-Path $PSScriptRoot 'CompanyAgent.PluginCompatibility.ps1')
+. (Join-Path $PSScriptRoot 'CompanyAgent.ReadHook.ps1')
 $usesConfigOverride = -not [string]::IsNullOrWhiteSpace([string]$scopedEntryValues['ClaudeConfigRoot']) -or
     -not [string]::IsNullOrWhiteSpace($env:CLAUDE_CONFIG_DIR)
 
@@ -418,6 +419,8 @@ $releaseKnowledge = Join-Path $releaseRoot 'knowledge'
 $releaseConfig = Join-Path $releaseRoot 'config'
 $runtimeSelectionPath = Join-Path $releaseRoot 'runtime-selection.json'
 Assert-SetupPathHasNoReparsePoint -Path $runtimeSelectionPath -Name 'Runtime selection'
+$readHookLauncherPath = Join-Path $releaseRoot 'read-hook.cmd'
+Assert-SetupPathHasNoReparsePoint -Path $readHookLauncherPath -Name 'Read hook launcher'
 $payloadRecords = @($manifest.files | Where-Object { $_.path -like 'payload/*' } | Sort-Object path | ForEach-Object { "$($_.path)|$($_.sha256)|$($_.length)" })
 $payloadHash = Get-ScopedHash -Text ($payloadRecords -join "`n")
 $releaseReceipt = Join-Path $releaseRoot 'release.json'
@@ -521,6 +524,7 @@ if (Test-Path -LiteralPath $registrationPath -PathType Leaf) { $oldRegistration 
 $oldRuntimeSelection = $null
 if (Test-Path -LiteralPath $runtimeSelectionPath -PathType Leaf) { $oldRuntimeSelection = Read-SetupHarnessBytes -Path $runtimeSelectionPath }
 $runtimeSelectionChanged = $false
+$readHookSnapshot = New-CompanyAgentReadHookSnapshot -LauncherPath $readHookLauncherPath -BackupPath $backupPath
 $oldSkillPreferences = $null
 $skillPreferencesChanged = $false
 if ($resolvedSkillAction -eq 'PreferIncoming' -and $skillConflicts.Count -gt 0) {
@@ -557,6 +561,9 @@ try {
         Copy-CompanyAgentDirectoryContents -Source $sourcePlugin -Destination $releasePlugin
         Copy-CompanyAgentDirectoryContents -Source (Join-Path $BundleRoot 'payload\knowledge') -Destination $releaseKnowledge
         Copy-CompanyAgentDirectoryContents -Source (Join-Path $BundleRoot 'payload\config') -Destination $releaseConfig
+        # Only a newly created plugin copy is adapted. Cached copies keep this
+        # durable launcher path while same-version reapply changes its runtime.
+        $null = Set-CompanyAgentReadHookRegistration -PluginRoot $releasePlugin -LauncherPath $readHookLauncherPath
         $runtimeForMetadata = $resolvedPython
         if (Test-Path -LiteralPath (Join-Path $releasePlugin 'runtime\python\python.exe') -PathType Leaf) { $runtimeForMetadata = Join-Path $releasePlugin 'runtime\python\python.exe' }
         Write-CompanyAgentJsonAtomic -Path (Join-Path $releasePlugin 'company-agent-install.json') -Value ([pscustomobject]@{
@@ -576,6 +583,7 @@ try {
     Write-CompanyAgentJsonAtomic -Path $runtimeSelectionPath -Value ([pscustomobject]@{
         schemaVersion = 1; coreVersion = [string]$manifest.coreVersion; pythonCommand = $installedPython
     })
+    Set-CompanyAgentReadHookLauncher -Snapshot $readHookSnapshot -PythonCommand $installedPython -PluginRoot $releasePlugin
     Write-CompanyAgentJsonAtomic -Path $marketplaceManifestPath -Value ([pscustomobject]@{
         name = $marketplaceName; owner = [pscustomobject]@{ name = 'Company Agent Platform Team' }
         plugins = @([pscustomobject]@{ name = 'company-agent'; source = ('./versions/' + [string]$manifest.coreVersion + '/plugin'); description = 'Company Agent organizational harness and project harness builder' })
@@ -645,6 +653,8 @@ try {
 catch {
     $failure = $_.Exception.Message
     $recoveryErrors = @()
+    try { Restore-CompanyAgentReadHookLauncher -Snapshot $readHookSnapshot }
+    catch { $recoveryErrors += $_.Exception.Message }
     if ($skillPreferencesChanged) {
         try {
             Assert-SetupPathHasNoReparsePoint -Path $skillPreferencesPath -Name 'Skill preference recovery'
