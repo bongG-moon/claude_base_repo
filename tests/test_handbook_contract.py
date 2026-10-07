@@ -70,15 +70,16 @@ class HandbookTests(unittest.TestCase):
         # Version metadata, not an assumption of public release, is authoritative.
         readme=(ROOT/'README.md').read_text(encoding='utf-8')
         version=json.loads((PLUGIN/'.claude-plugin/plugin.json').read_text(encoding='utf-8'))['version']
-        self.assertRegex(readme,rf'현재 (?:공개 배포|소스·배포 준비) 버전은 \*\*{re.escape(version)}\*\*')
+        self.assertRegex(readme,rf'(?:현재 (?:공개 배포|소스·배포 준비)|이번 배포 대상) 버전은 \*\*{re.escape(version)}\*\*')
         draft='현재 소스·배포 준비 버전은' in readme
         if draft:
-            self.assertIn('Release는 **초안**',readme)
+            self.assertTrue('Release는 **초안**' in readme or 'Release는 **미게시**' in readme)
+        release_state = '미게시' if 'Release는 **미게시**' in readme else '초안'
         for name in ('DEPLOYMENT.md','BUSINESS_PILOT_GUIDE.md','LOCAL_WORKSPACE.md'):
             intro='\n'.join((ROOT/'docs'/name).read_text(encoding='utf-8').splitlines()[:40])
             self.assertIn(version,intro,name)
             if draft:
-                self.assertIn('초안',intro,name)
+                self.assertIn(release_state,intro,name)
             linked=re.findall(r'/releases/(?:tag|download)/v([\d.]+)',intro)
             self.assertTrue(all(v==version for v in linked),(name,linked))
 

@@ -16,6 +16,27 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 $OutputEncoding = $utf8
 [Console]::OutputEncoding = $utf8
 [Console]::InputEncoding = $utf8
+$payload = $null
+if ($Mode -eq 'Hook') {
+    $payload = [Console]::In.ReadToEnd()
+    if ($Event -eq 'PreToolUse') {
+        # Read is new to this matcher only for vision routing. Ordinary text
+        # reads need neither a Python process nor installation/skill discovery.
+        # Mirror vision_routing.IMAGE_SUFFIXES; malformed input uses normal checks.
+        try {
+            $readInput = $payload | ConvertFrom-Json
+            if ($readInput.tool_name -ceq 'Read') {
+                $visionEnabled = ([string]$env:ANTHROPIC_CUSTOM_MODEL_OPTION).Trim() -ceq 'HCP-Vision-Latest'
+                $readExtension = [IO.Path]::GetExtension([string]$readInput.tool_input.file_path).ToLowerInvariant()
+                $isImageRead = $readExtension -in @('.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf')
+                if (-not $visionEnabled -or -not $isImageRead) {
+                    [Console]::Out.WriteLine('{}')
+                    exit 0
+                }
+            }
+        } catch { } # No permissions granted on parse failure; normal path decides.
+    }
+}
 $recordedPython = $null
 $selectedPython = $null
 $metadataPath = Join-Path $pluginRoot 'company-agent-install.json'
@@ -55,7 +76,6 @@ $readyMarker = 'COMPANY_AGENT_RUNTIME_READY:' + [Guid]::NewGuid().ToString('N')
 $entryArguments = @('--cli') + $CliArguments
 if ($Mode -eq 'Hook') {
     # Retain input only in memory so an unsupported interpreter can fall back.
-    $payload = [Console]::In.ReadToEnd()
     $entryArguments = @('--event', $Event)
 }
 $launcherEnvironment = @{}

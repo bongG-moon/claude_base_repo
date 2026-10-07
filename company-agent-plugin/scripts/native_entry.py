@@ -45,6 +45,24 @@ def main() -> int:
                 # active only while Claude actually invokes this plugin hook.
                 print(json.dumps(danger, ensure_ascii=True))
                 return 0
+            from company_agent.vision_routing import preflight as vision_preflight
+            vision = vision_preflight(payload)
+            if vision is not None:
+                # Pure routing / ordinary Read fast path: no catalogue scan,
+                # session lookup, model probe or new permission grant.
+                # A routing intervention (unlike harmless {}) is scoped to the
+                # installed user/project. Never change unrelated folders.
+                if vision and not configure_runtime(plugin, Path(str(payload.get("cwd") or os.getcwd()))):
+                    vision = {}
+                print(json.dumps(vision, ensure_ascii=True))
+                return 0
+        from company_agent.vision_routing import result_context as vision_result_context
+        vision = vision_result_context(event, payload)
+        if vision is not None:
+            if vision and not configure_runtime(plugin, Path(str(payload.get("cwd") or os.getcwd()))):
+                vision = {}
+            print(json.dumps(vision, ensure_ascii=True))
+            return 0
         if event == "PreToolUse" and payload.get("tool_name") in {"Agent", "Task"}:
             inputs = payload.get("tool_input")
             if not isinstance(inputs, dict) or inputs.get("subagent_type") not in COMPANY_WORKERS:

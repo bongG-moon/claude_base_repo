@@ -95,7 +95,7 @@ The worker classifier is deterministic and keeps MEDIUM as the unknown delegated
 
 If a SMALL or MEDIUM worker discovers that the task is broader or riskier than classified, the coordinator performs one-way escalation to MEDIUM or LARGE. It never silently downgrades a safety floor.
 
-The standard `claude-config` mode stores aliases, not internal model IDs:
+For the three general workers, the standard `claude-config` mode stores aliases, not internal model IDs:
 
 ```text
 SMALL  = haiku
@@ -109,6 +109,26 @@ forced tier / subagent  -> --model or frontmatter uses the selected alias
 The Launcher does not set `ANTHROPIC_DEFAULT_HAIKU_MODEL`, `ANTHROPIC_DEFAULT_SONNET_MODEL`, or `ANTHROPIC_DEFAULT_OPUS_MODEL` in this mode. It clears inherited process-level `CLAUDE_CODE_SUBAGENT_MODEL` overrides only inside its child process so that the three workers are not collapsed onto one model; it does not change Windows or Claude settings. Because Claude settings can inject those variables again, Setup and Start inspect the user, project/local, file-managed, and Windows registry settings they can access and refuse to run when a non-empty forcing value is present. An explicit model-ID map remains only as a backward-compatible advanced mode.
 
 References: [Claude Code model configuration](https://code.claude.com/docs/en/model-config), [custom subagents](https://code.claude.com/docs/en/sub-agents), and [Hooks](https://code.claude.com/docs/en/hooks).
+
+### Image-only routing
+
+`company-agent:vision-worker` is a separate observation worker whose model frontmatter is the exact ID `HCP-Vision-Latest`. This is an operational HCP model, not a fourth workload tier or a replacement for the main session's model. The existing environment value `ANTHROPIC_CUSTOM_MODEL_OPTION == "HCP-Vision-Latest"` enables `visionRouting.enabled`; an absent model in a personal or validation environment must not trigger a probe or forced model request. Enabling routing is local configuration detection, not a model-availability check.
+
+When an image-file `Read` or a recognized screenshot MCP call requires visual inspection, the parent delegates the bounded observation to this worker in a separate context. An ordinary worker instead returns `NEEDS_VISION` with the exact existing image paths, or the exact capture tool name and arguments, the requested page/region, and the current `workFile`. It does not recursively invoke a worker. The parent passes the Korean text result back to the original task and model; the vision worker does not edit the work file or create another deliverable.
+
+Only the review purpose, question, required page/region, and relevant paths or capture arguments belong in that context. Do not forward full conversation history, unrelated business-document bodies, secrets, or unrelated images. The response identifies the observed area, findings, and unverified scope in Korean text; it excludes original image payloads, raw base64, and full OCR dumps. Native permissions and source-data handling restrictions still apply. A routing handoff is not authority to retry an actual permission denial through another tool, model, or worker.
+
+If the model, image input, or observation tool is unavailable, the worker returns `VISION_UNAVAILABLE` with the reason and unverified scope. The parent continues feasible structural/content checks and reports visual inspection as unverified. It does not switch to another model, repeatedly discover model lists, or resend the same images. Offline fixtures can verify this routing contract without gateway or model requests; they do not establish that operational image inspection succeeded.
+
+Two boundaries remain explicit: a native CLI image pasted directly into the prompt reaches the model API before tool hooks, so this routing cannot intercept it; a general MCP can return mixed text/image content that its name does not reveal. Known image-file and screenshot routes therefore do not guarantee automatic conversion of every image input or MCP output. Users can request a bounded review by giving an image file path and then continue with an ordinary text follow-up.
+
+The image backstop covers `Read` for PNG/JPEG/GIF/WebP and PDF (which can include rendered pages), `chrome-devtools.take_screenshot`, `playwright.browser_take_screenshot`, and `local-computer-use.zoom` under those exact MCP server names. The vision worker has an explicit observation-only tool list; a different server with a same-named tool is not implicitly trusted. Mixed `computer_inspect`/`get_window_state` calls can be delegated proactively when the existing session is known to return images, but are not auto-classified from their names. No extra status query is run merely to decide routing.
+
+The per-invocation Agent `model` override is removed only for this worker, selecting its frontmatter ID: the installed CLI's Agent tool parameter accepts family aliases, not this custom ID. General workers' model arguments are preserved. Ordinary text `Read` calls exit in the PowerShell launcher before Python/registration/catalogue discovery; actual vision interventions still check the installed user/project scope. Vision results do not create mutation receipts or Stop retries, and existing unfinished output-verification obligations remain intact.
+
+Before operational acceptance, confirm all of the following in the company environment: the HCP model is registered in the model list; the exact `HCP-Vision-Latest` ID is permitted by the gateway and account; and the installed CLI accepts that full custom ID in subagent model frontmatter. These are separate checks. A configured label, a successful mock test, or a worker definition alone proves none of them.
+
+Offline verification on 2026-10-07: 142 targeted tests passed with the production routing flag supplied only to the test process, including 23 new routing/continuation checks, real PowerShell hook-input checks, existing context-budget tests, ordinary worker model preservation, native runtime, skill execution and PPT preparation. No HCP or substitute model was called. Local Claude Code agent-definition validation and standalone manual regeneration/check passed. A broader run in the shared development checkout exposed two separate Workspace documentation/package-contract failures (`test_current_install_entry_points_do_not_send_staff_to_old_releases` and `test_both_bundle_builders_include_every_manual` in `test_handbook_contract.py`). These observations describe that test run; the 1.4.37 release scope excludes separate Workspace application changes. Production image understanding, gateway authorization and actual request-model logs remain unverified. Installer packaging, release publication and operational acceptance are verified separately.
 
 ## Separation of ownership
 

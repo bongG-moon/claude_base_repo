@@ -1,12 +1,16 @@
-# Company Agent 설치와 배포 — Windows
+# Company Harness 설치와 배포 — Windows
 
-현재 소스의 배포 대상은 **1.4.36**, 회사 지식팩은 **2026.09.03**입니다. 직원은 담당자가 검토·승인하여 제공한 `company-agent-1.4.36-2026.09.03.zip`을 사용합니다. 이번 버전은 명시한 스킬·선택창 답변을 존중하고 선택 도움말의 불필요한 차단을 줄입니다. 이전 버전의 후크·컨텍스트 준비 최적화는 유지합니다. 스킬 선택·승인·위험 명령 확인을 유지하며 개인 기억·스킬·모델·MCP 설정을 초기화하지 않습니다. 기존 직접 소스형 개인 MCP의 등록도 자동 변경하지 않습니다. 기존 실패 후크에 선택창 취소 처리를 연결했으며 외부 모델·상시 작업자·학습용 Stop 반복은 추가하지 않았습니다. 사내 HCP의 시간·토큰 효과는 미검증이며 Workspace 앱과 WS-33 시작 제한은 이번 배포 대상이 아닙니다. 기존 Release·ZIP·설치된 PC는 자동 갱신되지 않습니다. [1.4.36 변경 내용](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.36/docs/UPDATE_1.4.36.md)과 [배포 검증 범위](https://github.com/bongG-moon/claude_base_repo/blob/v1.4.36/docs/VALIDATION_RELEASE_1.4.36.md)를 확인하세요.
+현재 소스의 배포 대상은 **1.4.37**, 회사 지식팩은 **2026.09.03**입니다. 직원은 담당자가 제공한 **Company-Harness-Setup.exe**를 두 번 클릭해 설치합니다. 기존 설치·백업·개인 자료 보존 절차를 사용하며, 필요한 실행 파일 위치를 찾지 못했을 때만 물어봅니다. 이번 버전은 간편 설치기와 조건부 이미지 전용 작업자를 포함하며, 메인 모델·MCP·개인 설정을 보존합니다. 담당자는 [1.4.37 변경 내용](UPDATE_1.4.37.md)을 확인합니다. 로컬 설치 파일 생성과 GitLab 게시·사내 PC 적용은 별도입니다. 이전 Release 파일은 보존하며 별도 Workspace 앱 변경은 이번 배포에 포함하지 않습니다. 이미 설치된 PC는 자동 갱신되지 않습니다.
 
 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다.
+
+이미지 전용 작업자는 기존 환경의 `ANTHROPIC_CUSTOM_MODEL_OPTION`이 정확히 `HCP-Vision-Latest`일 때만 활성화됩니다. 필요한 이미지 관찰에 한해 별도 작업자를 호출하고 한국어 텍스트 결과를 받아 기존 모델로 작업을 계속합니다. 설정이 없으면 비활성 상태이며 설치기는 모델 설정을 추가하거나 모델 목록·API를 시험 호출하지 않습니다. 운영 담당자는 HCP 모델 목록 등록, 정확한 ID의 계정·게이트웨이 허용, 설치된 Claude Code의 사용자 지정 작업자 모델 ID 지원과 실제 이미지 처리 결과를 각각 확인해야 합니다. 모형 라우팅 시험은 이 운영 검증을 대신하지 않습니다.
 
 직원 PC에는 Claude Code와 사내 SMALL/MEDIUM/LARGE 연결, 회사 승인 Python 3.11 이상이 이미 준비되어 있어야 합니다. 기본 ZIP에는 Python 실행 파일과 DLL을 넣지 않고 PC의 Python을 사용합니다. 설치 과정에서 Python/pip/Git를 설치하거나 다운로드하지 않으며 PC의 PATH 설정도 바꾸지 않습니다. 설치 조건은 Claude Code CLI 2.1.220 이상, Windows PowerShell 5.1 이상, Windows 10/11입니다. 대상 PC의 운영체제와 Python 아키텍처는 사내 담당자가 확인합니다.
 
 ## 직원이 하는 일
+
+담당자가 공유한 사내 GitLab Release 페이지에서 **Company-Harness-Setup.exe**를 받습니다. 두 번 클릭하고 사용할 범위를 고른 뒤 **설치하기**를 누릅니다. 완료 후 Claude Code를 다시 엽니다. 비공개 프로젝트는 사내 GitLab 로그인과 해당 프로젝트의 읽기 권한을 사용합니다. 직원은 Git 저장소를 복제하거나 소스를 빌드할 필요가 없습니다. ZIP으로 제공받았다면 아래 대체 설치 방법을 사용할 수 있습니다.
 
 배포 전 1.0.0 설치 파일에서 `cp949 codec can't encode character` 오류를 겪었다면 수정 ZIP을 **새 폴더에 완전히 압축 해제**하여 실행합니다. 기존 Skill 설명을 지우거나 Python/Windows 언어를 재설정하지 않습니다. 수정본은 설치기의 Python 입출력을 UTF-8로 처리하고, JSON의 한글·특수문자·경로를 손실 없이 복원합니다. Skill 검사에서 중단됐다면 백업·기존 규칙 비활성화 이전 단계입니다. 이미 다른 1.0.0 내용으로 설치에 성공한 환경에서 ‘같은 버전의 내용이 다름’ 오류가 나오면 보호 검사를 우회하거나 개인 저장 영역을 지우지 말고 담당자에게 확인합니다.
 
@@ -239,6 +243,34 @@ powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion "<�
 `-WithoutBundledPython`은 기존 빌드 명령과의 호환을 위해 유지하며 현재 기본값과 같은 결과를 냅니다. 직원 ZIP에는 설치·실행·제거·복구에 필요한 파일을 넣고, `New-OfflineBundle.ps1`, `Get-EmbeddedPython.ps1`, `Test-*.ps1` 같은 빌드·테스트 도구는 제외합니다. 해당 도구와 테스트 소스는 저장소에 남아 있으며 개발 검증은 저장소에서 수행합니다.
 
 기본 ZIP에는 `.exe`, `.dll`, `.pyd`가 없습니다. 이는 Python 런타임을 별도로 준비한다는 뜻이며 하네스를 문서만으로 바꾼 것은 아닙니다. 하네스에는 실행에 필요한 `.cmd`, `.ps1`, `.py` 코드가 남습니다. Gmail이나 사내 보안 시스템은 이 파일도 차단할 수 있으므로 첨부·반입·실행 승인을 보장하지 않습니다. 확장자 변경이나 코드 난독화로 숨기지 않고 사내에서 허용한 배포 경로를 사용합니다.
+
+### 사내 GitLab에서 직원에게 배포하기
+
+GitLab에 소스를 반입하는 것과 직원 설치 파일을 게시하는 것은 별개입니다. 빌드가 끝난 **직원 설치 ZIP**을 준비하고 아래 도구를 담당자 PC에서 실행합니다. 현재 배포본을 옮기는 경우 공개 Release에서 받은 검증된 설치 ZIP을 그대로 사용할 수도 있습니다. 버전과 안내서는 입력 ZIP에서 읽으며 ZIP 내용을 바꾸지 않습니다.
+
+직원 기본 배포는 단일 EXE입니다. 승인된 직원 ZIP을 EXE로 만들고 GitLab 게시 자료 준비 도구에 함께 전달합니다. 실제 업로드와 Release 게시는 담당자가 아래 안내에 따라 수동으로 진행합니다.
+
+```powershell
+powershell.exe -NoProfile -File .\deploy\New-CompanyAgentSetup.ps1 -BundleZip "<검증된 직원 ZIP>"
+powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZip "<같은 직원 ZIP>" -SetupExe "<생성한 Company-Harness-Setup.exe>" -OutputDirectory "<새 게시 자료 폴더>" -ProjectUrl "https://gitlab.example.com/team/company-agent"
+```
+
+게시 도구는 EXE 안의 ZIP과 전달한 ZIP의 해시를 비교합니다. 직원용 게시 설명은 **EXE 다운로드 → 두 번 클릭 → 설치하기**로 작성됩니다. 생성된 `employeeFiles` 목록의 파일만 게시하면 됩니다. 원본 ZIP은 담당자 보관·대체 설치용입니다. 빌드 PC에 Windows x64용 .NET Framework C# 컴파일러가 필요하며 실행 PC에는 기존 Claude Code와 Python을 사용합니다.
+
+```powershell
+# 담당자용: 주소는 실제 사내 GitLab 프로젝트 페이지로 바꿉니다.
+powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZip ".\dist\company-agent-1.4.37-2026.09.03.zip" -OutputDirectory ".\build\gitlab-harness-delivery" -ProjectUrl "https://gitlab.example.com/team/company-agent"
+```
+
+사내 주소를 아직 정하지 않았다면 `-ProjectUrl`을 생략해 파일만 준비할 수 있습니다. 출력 폴더가 이미 있으면 새 폴더를 지정합니다. 기존 배포 파일을 덮어쓰지 않습니다. 도구는 ZIP의 구성 파일·해시·안내서 일치를 확인한 뒤 설치 ZIP, 단독 HTML 안내서, 두 `.sha256` 파일과 게시용 설명을 만듭니다. 직원 PC에는 이 도구가 필요 없습니다.
+
+출력된 `GitLab-배포안내.md` 순서대로 **Deploy → Releases**에 승인된 소스 태그의 배포 항목을 만듭니다. `GitLab-Release.md`를 설명란에 붙여 넣고 파일 삽입 기능으로 설치 EXE·안내서·두 해시 파일을 첨부합니다. 파일 주소는 GitLab이 생성한 링크를 사용합니다. 일반 직원 계정으로 다운로드와 해시를 확인한 후 **Release 페이지 주소 하나**를 공유합니다. 버전별 배포 항목은 보존하고 새 버전은 새 항목으로 게시합니다.
+
+비공개 프로젝트는 사내 GitLab 로그인·프로젝트 읽기 권한을 사용합니다. 서버의 파일 첨부 용량 제한을 확인하세요. 파일 첨부가 제한되어 Generic Package를 사용하는 경우 직원 브라우저의 인증 방식까지 확인해야 합니다. 직원에게 관리용 API 토큰을 배포하거나 다운로드 URL에 토큰을 넣지 않습니다. [GitLab 파일 첨부 API](https://docs.gitlab.com/api/project_markdown_uploads/), [Release 배포 파일](https://docs.gitlab.com/user/project/releases/release_fields/)을 참고합니다.
+
+이번 도구는 게시 자료 준비만 수행합니다. GitLab 접속·파일 업로드·토큰 저장·자동 설치·자동 업데이트는 하지 않습니다. 설치 후 하네스는 기존 Claude Code에서 사용하며 새 버전을 적용할 때만 담당자가 게시한 설치 파일을 다시 설치합니다.
+
+### Python 포함 패키지가 필요한 경우
 
 Python을 함께 전달해야 하는 별도 운영 환경에서만 관리자가 다음 옵션을 선택합니다. Windows x64용 공식 Python 3.13.15 embeddable archive를 준비하는 예시이며, 회사가 승인한 반입·검증 절차를 거칩니다.
 

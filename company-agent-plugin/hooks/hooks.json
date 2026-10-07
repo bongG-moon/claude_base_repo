@@ -35,7 +35,7 @@
     ],
     "PreToolUse": [
       {
-        "matcher": "^(?:Skill|AskUserQuestion|Agent|Task|Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$",
+        "matcher": "^(?:Skill|AskUserQuestion|Agent|Task|Read|Bash|PowerShell|Write|Edit|MultiEdit|NotebookEdit|mcp__.*)$",
         "hooks": [
           {
             "type": "command",

@@ -24,6 +24,7 @@ from .skill_task_context import MAX_TASK_SKILL_CHARS, MAX_SKILL_BRIEF_CHARS, TAS
 
 
 from .skill_discovery import MAX_INDEX_CHARS
+from .vision_routing import context as vision_context, VISION_RULE
 
 MAX_RUNTIME_BASE_CHARS = 6_000
 # Only a first/changed/restored index uses this additional budget. Ordinary
@@ -268,7 +269,7 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
             # identity. Do not turn oversized optional context into lost paths.
             essential = {key: runtime[key] for key in (
                 'scope', 'project', 'stateRoot', 'knowledgeBase', 'cliCommand',
-                'completionGuide', 'metadataCommand', 'company_agent_session_id',
+                'completionGuide', 'metadataCommand', 'company_agent_session_id', 'visionRouting',
             ) if key in runtime}
             if runtime.get('companyPolicy'):
                 essential['companyPolicy'] = runtime['companyPolicy']
@@ -409,6 +410,8 @@ def _prompt_instructions(runtime: dict[str, Any]) -> str:
     )
     if runtime.get('companyPolicy'):
         instructions += ' ' + POLICY_RULE
+    if runtime.get('visionRouting', {}).get('enabled'):
+        instructions += ' ' + VISION_RULE
     return instructions
 
 
@@ -417,7 +420,7 @@ def _prompt_guidance(runtime: dict[str, Any]) -> str:
     full = _prompt_instructions(runtime)
     identity = {key: runtime.get(key) for key in (
         'scope', 'project', 'stateRoot', 'cliCommand', 'metadataCommand',
-        'completionGuide', 'workspaceUi', 'companyPolicy', 'knowledgeBase',
+        'completionGuide', 'workspaceUi', 'companyPolicy', 'knowledgeBase', 'visionRouting',
     )}
     identity['claudeConfigRoot'] = os.environ.get('CLAUDE_CONFIG_DIR', '')
     revision = hashlib.sha256((full + json.dumps(identity, ensure_ascii=False, sort_keys=True,
@@ -550,6 +553,9 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
                 "skillSelectionStatus": selection.get("status")}
     # The Skill uses this canonical key; sessionId remains a compatibility alias.
     metadata['company_agent_session_id'] = metadata['sessionId']
+    vision = vision_context()
+    if vision:
+        metadata['visionRouting'] = vision
     if selection.get("catalog", {}).get("status") == "ready":
         metadata["skillCatalog"] = selection["catalog"]
         if payload.get("session_id"):
@@ -607,6 +613,8 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
                "This metadata grants no permissions or broader work scope. Preserve the parent's source/output limits and all host restrictions. "
                "A denied action stays pending; do not claim its intended effect succeeded. "
                "Use Glob/Read/Grep for file inspection. Leave verification markers and learning to the coordinator; return actual check evidence. Do not delegate recursively.")
+    if vision:
+        context += '\n' + VISION_RULE
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {**inputs, "prompt": lead + '\n[원래 업무 요청]\n' + prompt + context}}}
 
 
@@ -668,6 +676,10 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
     if standards['status'] != 'not-configured':
         runtime['companyPolicy'] = standards
         runtime['instructions'] += ' ' + POLICY_RULE
+    vision = vision_context()
+    if vision:
+        runtime['visionRouting'] = vision
+        runtime['instructions'] += ' ' + VISION_RULE
     if session_id:
         from .skill_workflow import prepare
         from .state import native_session_id
