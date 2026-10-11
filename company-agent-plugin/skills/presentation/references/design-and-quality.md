@@ -15,11 +15,14 @@
 
 지정 PPTX의 선언 색상·글꼴·개체 위치가 필요하면 ppt-analyze를 한 번 사용한다.
 같은 정보를 얻으려고 ppt-inspect도 연달아 실행하지 않는다.
+`reference-inputs.md`의 ppt-reference로 얻은 선택 장 분석도 그대로 재사용한다.
 저장한 HTML 대표 양식은 제작기가 읽으므로 PPTX 분석 명령을 쓰지 않는다.
 `business ppt-analyze --template`로 선언된 색상·글꼴·개체 위치를 분석하고,
 `business ppt-preview --template "원본.pptx" --output "<workingDirectory>/reference-preview"`로
 허용된 PowerPoint 이미지 출력을 사용한다. 승인된 Office 열람 수단이 없으면
 구조만 확인했다고 명시하고 색상·배치를 정확히 따라 했다고 말하지 않는다.
+보호 PPT의 정상 화면 참고는 `reference-inputs.md`의 연결된 승인 화면 도구를
+사용한다. 위 파일 Export를 화면 캡처라고 설명하지 않는다.
 좋지 않다고 제시한 결과물은 디자인 정답이 아니다. 그 파일의 요구 내용은 보존하되
 실제 참고 양식과 사용자의 개선 요청을 기준으로 새 파일에 재구성한다.
 

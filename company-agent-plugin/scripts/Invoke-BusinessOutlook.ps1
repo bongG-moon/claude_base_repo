@@ -129,10 +129,15 @@ function Read-SelectedMail($Spec, $Selected) {
     if ($Spec.include_body -isnot [bool] -or $Spec.body_access_approved -isnot [bool]) { throw 'invalid_request' }
     if ($Spec.include_body -and -not $Spec.body_access_approved) { throw 'body_permission_required' }
     if ($Spec.body_char_limit -lt 1 -or $Spec.body_char_limit -gt 12000) { throw 'invalid_request' }
+    $totalBodyLimit=12000
+    if ($null -ne $Spec.PSObject.Properties['total_body_char_limit']) { $totalBodyLimit=[int]$Spec.total_body_char_limit }
+    if ($totalBodyLimit -lt 1 -or $totalBodyLimit -gt 24000) { throw 'invalid_request' }
+    $remainingBody=$totalBodyLimit; $bodyReadCount=0; $bodySkippedCount=0
+    $reasons=New-Object 'System.Collections.Generic.List[string]'
     $items = New-Object 'System.Collections.Generic.List[object]'
     $partial = $false
     foreach ($ref in $refs) {
-        if ($script:watch.Elapsed.TotalSeconds -gt 25) { $partial=$true; break }
+        if ($script:watch.Elapsed.TotalSeconds -gt 25) { $partial=$true; $reasons.Add('time_limit'); break }
         if (-not (Test-Id $ref.store_id) -or -not (Test-Id $ref.entry_id) -or -not $Selected.ContainsKey($ref.store_id)) {
             throw 'store_not_allowed'
         }
@@ -152,12 +157,25 @@ function Read-SelectedMail($Spec, $Selected) {
                 }
                 $record.attachments = @($attachments.ToArray())
                 $record.attachments_truncated = ([int]$item.Attachments.Count -gt 30)
+                if ($record.attachments_truncated) { $partial=$true; $reasons.Add('attachment_metadata_limit') }
                 $record.body_status = 'not_requested'
-                if ($Spec.include_body) {
+                if ($Spec.include_body -and $remainingBody -le 0) {
+                    # Once the shared budget is spent, do not touch another COM
+                    # Body property merely to discard its content afterward.
+                    $record.body_status='omitted_total_body_limit'; $record.body_truncated=$true
+                    $bodySkippedCount++; $partial=$true; $reasons.Add('total_body_char_limit')
+                } elseif ($Spec.include_body) {
                     try {
                         $body = [string]$item.Body
-                        $record.body = Limit-Text $body ([int]$Spec.body_char_limit)
-                        $record.body_truncated = ($body.Length -gt [int]$Spec.body_char_limit)
+                        $bodyReadCount++
+                        $take=[Math]::Min([int]$Spec.body_char_limit, $remainingBody)
+                        $record.body = Limit-Text $body $take
+                        $remainingBody-=$record.body.Length
+                        $record.body_truncated = ($body.Length -gt $take)
+                        if ($record.body_truncated) {
+                            $partial=$true
+                            $reasons.Add($(if ($take -lt [int]$Spec.body_char_limit) {'total_body_char_limit'} else {'body_char_limit'}))
+                        }
                         $record.body_status = 'ok'
                     } catch {
                         # No alternate HTML, raw MAPI, file, OCR, or screenshot fallback.
@@ -167,15 +185,19 @@ function Read-SelectedMail($Spec, $Selected) {
                     }
                 }
             }
-            if ($record.status -ne 'ok') { $partial=$true }
+            if ($record.status -ne 'ok') { $partial=$true; $reasons.Add('items_access_unverified') }
             $items.Add($record)
         } catch {
             $partial=$true
+            $reasons.Add('items_access_unverified')
             $items.Add(@{store_id=$ref.store_id; entry_id=$ref.entry_id; status='unknown'})
         }
     }
     return @{status=$(if ($partial) {'partial'} else {'ok'}); items=@($items.ToArray()); requested_count=$refs.Count;
-        completed_count=$items.Count; complete=(-not $partial)}
+        completed_count=$items.Count; complete=(-not $partial); coverage='selected_message_refs_only';
+        body_read_count=$bodyReadCount; body_skipped_budget_count=$bodySkippedCount;
+        body_chars_returned=($totalBodyLimit-$remainingBody); total_body_char_limit=$totalBodyLimit;
+        partial_reasons=@($reasons.ToArray() | Select-Object -Unique)}
 }
 function Search-SelectedMail($Spec, $Selected) {
     if ($Spec.limit -lt 1 -or $Spec.limit -gt 50 -or $Spec.scan_limit -lt 1 -or $Spec.scan_limit -gt 2000 -or

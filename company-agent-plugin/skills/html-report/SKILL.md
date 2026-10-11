@@ -11,7 +11,10 @@ description: HTML 보고서 제작 시 디자인·분량·표시 방식을 선�
 현재 근거로 설명합니다. 완료만으로 도식을 만들지 않습니다. `방금 작업 정리해줘`는
 짧은 텍스트부터, `글로만/도표 없이/그리지 마`는 도식 없이 답합니다. 아래는 일반 보고서용입니다.
 
-Reuse known answers. If design is missing, immediately ask ONE design question:
+Reuse known answers. Explicit `추천대로 / 알아서 / 질문 없이 완성` fills missing
+ordinary choices (minimal / standard / scroll); skip those questions. Preserve
+explicit references/additional styles and external permissions. Otherwise ask
+ONE missing design question:
 `1. 깔끔한 업무형(추천) / 2. 지표 중심형 / 3. 추가 디자인(미리보기) / 4. HTML 양식 직접 첨부`.
 Never batch the initial design question with length/mode. To ask, do not run commands,
 write empty JSON, read references or start workers. Questions stay in chat.
@@ -39,6 +42,7 @@ Source content belongs in the separate full job. At ready, delegate generation o
 
 ## 추가 디자인을 고른 경우에만
 
+Use the same chat menu in CLI and Workspace; do not wait for automatic app cards.
 Show all ten numbered names/descriptions below and END THIS TURN.
 If used, IMMEDIATELY show the helper's selectionPrompt instead.
 Use chat number/name replies, not AskUserQuestion groups/pages, 1~4 / 5~8 splits

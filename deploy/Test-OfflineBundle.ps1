@@ -48,7 +48,6 @@ function Assert-EmployeeBundle {
         'docs/Company-Agent-사용자-안내서.html',
         'payload/core/plugin/scripts/company_agent/skill_catalog.py',
         'payload/core/plugin/scripts/company_agent/skill_discovery.py',
-        'docs/LOCAL_WORKSPACE.md',
         'payload/core/plugin/scripts/company_agent/skill_decision.py',
         'payload/core/plugin/scripts/company_agent/skill_host_choice.py',
         'payload/core/plugin/scripts/company_agent/workflow_evidence.py',
@@ -221,9 +220,11 @@ function Assert-EmployeeBundle {
     foreach ($operationalDoc in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md',
         'PROJECT_HARNESS.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md',
         'SELF_LEARNING.md', 'BUSINESS_PILOT_GUIDE.md', 'SKILL_CATALOG.md',
-        'HTML_DESIGN_SELECTION.md', 'COMPANY_PERSONAL_WORKFLOW.md', 'LOCAL_WORKSPACE.md',
-        'WORKSPACE_STARTUP_DIAGNOSTIC.md')) {
+        'HTML_DESIGN_SELECTION.md', 'COMPANY_PERSONAL_WORKFLOW.md')) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('docs/' + $operationalDoc)) -PathType Leaf) "Operational document is missing: $operationalDoc"
+    }
+    foreach ($appDoc in @('LOCAL_WORKSPACE.md', 'WORKSPACE_STARTUP_DIAGNOSTIC.md', 'WORKSPACE_USER_GUIDE.html')) {
+        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath ('docs/' + $appDoc)))) "Separate Workspace app document leaked into the harness bundle: $appDoc"
     }
     foreach ($removed in @('docs/CUA_DRIVER_PILOT.md', 'docs/Company-Agent-Cua-Pilot.html',
         'docs/VALIDATION_CUA_MANUALS_2026-09-19.md',

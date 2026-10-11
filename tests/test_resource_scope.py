@@ -158,7 +158,7 @@ class ResourceScopeTests(unittest.TestCase):
             code=cli.main(['asset','create','--spec',str(spec),'--state-root',str(self.state),
                           '--storage-scope','project','--project-root',str(self.a)])
         self.assertEqual(0,code)
-        self.assertTrue(Path(json.loads(out.getvalue())['path']).is_relative_to(selected_root(self.state,self.a,'project')))
+        self.assertEqual(self.a/'.claude/skills/only-a',Path(json.loads(out.getvalue())['path']))
         self.assertEqual(['only-a'],[s['name'] for s in inventory_skills(self.state,project_root=self.a,claude_root=self.config)['skills']])
         self.assertEqual([],inventory_skills(self.state,project_root=self.b,claude_root=self.config)['skills'])
 

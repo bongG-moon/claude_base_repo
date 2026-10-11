@@ -112,6 +112,105 @@ class MailValidationTests(unittest.TestCase):
         for name in ("send_mail", "delete_mail", "move_mail", "archive_mail"):
             self.assertFalse(hasattr(mail, name))
 
+    def test_cumulative_and_serialized_output_limits_validate_before_bridge(self):
+        read = self.spec() | {"message_refs": [{"store_id": STORE, "entry_id": MESSAGE}]}
+        with patch.object(mail, "_invoke") as invoke:
+            for extra in ({"total_body_char_limit": 24001}, {"total_body_char_limit": True},
+                          {"result_char_limit": 4095}, {"result_char_limit": 64001}):
+                self.assertEqual("invalid_request", mail.read_mail(read | extra)["status"])
+            invoke.assert_not_called()
+        with patch.object(mail, "_invoke", return_value={"status": "ok", "items": []}) as invoke:
+            mail.read_mail(read)
+        self.assertEqual(12000, invoke.call_args.args[1]["total_body_char_limit"])
+        self.assertEqual(32000, invoke.call_args.args[1]["result_char_limit"])
+
+    def test_body_total_is_enforced_even_for_oversized_bridge_response(self):
+        spec = self.spec() | {"message_refs": [{"store_id": STORE, "entry_id": MESSAGE}],
+                              "include_body": True, "body_access_approved": True,
+                              "body_char_limit": 4000, "total_body_char_limit": 5000}
+        raw = {"status": "ok", "items": [{"body": "x" * 10000, "body_status": "ok"} for _ in range(3)]}
+        with patch.object(mail, "_invoke", return_value=raw):
+            result = mail.read_mail(spec)
+        self.assertEqual([4000, 1000, 0], [len(item["body"]) for item in result["items"]])
+        self.assertEqual(5000, result["output_budget"]["body_chars_returned"])
+        self.assertEqual("partial", result["status"])
+        self.assertIn("total_body_char_limit", result["partial_reasons"])
+        self.assertFalse(result["complete"])
+
+    def test_final_json_budget_handles_korean_emoji_attachments_and_coverage(self):
+        spec = self.spec() | {"message_refs": [{"store_id": STORE, "entry_id": MESSAGE}],
+                              "include_body": True, "body_access_approved": True, "result_char_limit": 4096}
+        raw = {"status": "ok", "body_read_count": 1, "body_chars_returned": 4000,
+               "items": [{"store_id": STORE, "entry_id": MESSAGE, "subject": "제목",
+                          "body": "한😀" * 2000, "body_status": "ok", "attachment_count": 30,
+                          "attachments": [{"name": "첨부" * 100} for _ in range(30)]}]}
+        with patch.object(mail, "_invoke", return_value=raw):
+            result = mail.read_mail(spec)
+        self.assertLessEqual(len(json.dumps(result, ensure_ascii=True, indent=2)) + 1, 4096)
+        self.assertEqual(MESSAGE, result["items"][0]["entry_id"])
+        self.assertEqual(30, result["items"][0]["attachment_count"])
+        self.assertNotIn("attachments", result["items"][0])
+        self.assertTrue(result["items"][0]["body_truncated"])
+        self.assertEqual(result["body_chars_returned"], len(result["items"][0]["body"]))
+        self.assertEqual(1, result["output_budget"]["returned_count"])
+        self.assertIn("result_char_limit", result["partial_reasons"])
+
+    def test_long_ids_are_omitted_whole_and_protection_evidence_survives(self):
+        long_id = "AB" * 2048
+        raw = {"status": "partial", "items": [{"store_id": long_id, "entry_id": long_id,
+                 "status": "blocked", "code": "protection_blocked"}], "complete": False}
+        with patch.object(mail, "_invoke", return_value=raw):
+            result = mail.search_mail(self.spec() | {"result_char_limit": 4096})
+        self.assertEqual([], result["items"])
+        self.assertEqual(1, result["output_budget"]["omitted_count"])
+        self.assertIn({"code": "protection_blocked", "count": 1}, result["restriction_warnings"])
+        self.assertLessEqual(len(json.dumps(result, ensure_ascii=True, indent=2)) + 1, 4096)
+        self.assertFalse(result["search_scope"]["body_searched"])
+
+    def test_oversized_envelope_and_unrequested_body_are_not_echoed(self):
+        raw = {"status": "ok", "extra": "PRIVATE" * 10000,
+               "partial_reasons": ["PRIVATE" * 10000], "items": [{"body": "PRIVATE-BODY"}]}
+        with patch.object(mail, "_invoke", return_value=raw):
+            result = mail.search_mail(self.spec() | {"result_char_limit": 4096})
+        self.assertNotIn("PRIVATE", json.dumps(result))
+        self.assertLessEqual(len(json.dumps(result, ensure_ascii=True, indent=2)) + 1, 4096)
+        self.assertEqual("response_omitted_by_output_budget", result["coverage"])
+
+    def test_repeated_known_partial_reasons_cannot_bypass_final_json_limit(self):
+        for extra in ("", "x" * 10000):
+            with self.subTest(force_fallback=bool(extra)):
+                raw = {"status": "partial", "partial_reasons": ["body_char_limit"] * 10000,
+                       "extra": extra, "items": [{"status": "blocked", "code": "protection_blocked"}]}
+                with patch.object(mail, "_invoke", return_value=raw):
+                    result = mail.search_mail(self.spec() | {"result_char_limit": 4096})
+                self.assertLessEqual(len(json.dumps(result, ensure_ascii=True, indent=2)) + 1, 4096)
+                self.assertEqual(1, result["partial_reasons"].count("body_char_limit"))
+                self.assertIn({"code": "protection_blocked", "count": 1}, result["restriction_warnings"])
+                self.assertEqual("partial", result["status"])
+
+    def test_restricted_rows_never_forward_unexpected_content_or_erase_denial(self):
+        spec = self.spec() | {"message_refs": [{"store_id": STORE, "entry_id": MESSAGE}],
+                              "include_body": True, "body_access_approved": True}
+        for fields, code in (({"status": "blocked"}, "protection_blocked"),
+                             ({"status": "permission_denied"}, "permission_denied"),
+                             ({"status": "unknown", "protection_status": "unknown"}, "protection_unknown"),
+                             ({"status": "ok", "code": "protection_blocked"}, "protection_blocked")):
+            with self.subTest(fields=fields):
+                private = "RESTRICTED_PRIVATE_TEXT"
+                restricted = {**fields, "store_id": STORE, "entry_id": MESSAGE,
+                              "body": private, "HTMLBody": private, "subject": private,
+                              "attachments": [{"content": private}], "unexpected_payload": private}
+                raw = {"status": "partial", "items": [restricted, {"status": "ok", "body": "allowed"}]}
+                with patch.object(mail, "_invoke", return_value=raw):
+                    result = mail.read_mail(spec)
+                self.assertNotIn(private, json.dumps(result))
+                self.assertEqual(fields["status"], result["items"][0]["status"])
+                self.assertEqual(MESSAGE, result["items"][0]["entry_id"])
+                self.assertEqual("allowed", result["items"][1]["body"])
+                self.assertEqual(7, result["output_budget"]["body_chars_returned"])
+                self.assertIn({"code": code, "count": 1}, result["restriction_warnings"])
+                self.assertIn("restricted_content_excluded", result["partial_reasons"])
+
 
 class MailTransportTests(unittest.TestCase):
     def invoke_mock(self, result=None, error=None):
@@ -342,6 +441,31 @@ Search-SelectedMail $spec @{'AABB0011'=$store} | ConvertTo-Json -Depth 10 -Compr
         self.assertNotIn("body", result["items"][0])
         self.assertEqual("not_verified", result["server_completeness"])
         self.assertEqual(["scan_limit"], result["partial_reasons"])
+
+    def test_cumulative_body_budget_stops_later_com_body_reads(self):
+        result = self.run_fixture(r"""
+$script:bodyReads=0
+$script:fakeItem=[pscustomobject]@{Class=43;Permission=0;PermissionTemplateGuid='';
+    Subject='synthetic';SenderName='test';SenderEmailAddress='test@example.invalid';
+    ReceivedTime=[datetime]'2026-09-01T00:00:00Z';Size=20;Attachments=[pscustomobject]@{Count=0};
+    Parent=[pscustomobject]@{StoreID='AABB0011'}}
+$script:fakeItem | Add-Member ScriptProperty Body {$script:bodyReads++; return ('x' * 10)}
+$script:session=[pscustomobject]@{}
+$script:session | Add-Member ScriptMethod GetItemFromID {param($entry,$store) return $script:fakeItem}
+$spec=[pscustomobject]@{message_refs=@(@{store_id='AABB0011';entry_id='AABB0033'},
+    @{store_id='AABB0011';entry_id='AABB0044'},@{store_id='AABB0011';entry_id='AABB0055'});
+    include_body=$true;body_access_approved=$true;body_char_limit=8;total_body_char_limit=12}
+$read=Read-SelectedMail $spec @{'AABB0011'='selected'}
+@{read=$read;body_reads=$script:bodyReads} | ConvertTo-Json -Depth 10 -Compress
+""")
+        read = result["read"]
+        self.assertEqual(2, result["body_reads"])
+        self.assertEqual([8, 4, 0], [len(item.get("body", "")) for item in read["items"]])
+        self.assertEqual(12, read["body_chars_returned"])
+        self.assertEqual(1, read["body_skipped_budget_count"])
+        self.assertEqual("omitted_total_body_limit", read["items"][2]["body_status"])
+        self.assertIn("total_body_char_limit", read["partial_reasons"])
+        self.assertFalse(read["complete"])
 
     def test_sorted_old_tail_skips_to_child_but_failed_sort_scans_boundedly(self):
         result = self.run_fixture(r"""

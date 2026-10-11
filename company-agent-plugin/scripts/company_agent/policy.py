@@ -505,7 +505,10 @@ def _evaluate_outlook_call(
         return deny_tool_call(
             "메일은 등록된 본인 Outlook 계정으로만 발송할 수 있습니다."
         )
-    return _allow()
+    # Identity consistency is not approval of this message. Keep the host's
+    # normal per-call confirmation instead of granting permission for a send.
+    # An approval flag supplied by the model must not bypass this boundary.
+    return _ask("수신자·본문·첨부파일을 확인한 뒤 이 메일의 발송을 승인해 주세요.")
 
 
 def evaluate_tool_call(

@@ -861,16 +861,36 @@ def _remember_personal_skill_load(state: dict[str, Any], item: dict, root: Path)
     """
     identity = _personal_skill_identity(item.get("path"), root)
     digest = item.get("sha256")
-    if (not identity or not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
+    if (not isinstance(digest, str) or not re.fullmatch(r"[a-f0-9]{64}", digest)
             or state.get("protectionRestricted") or not _collect_learning_observations(state, root)):
         return
+    target = None
+    if identity is None:
+        try:
+            from . import native_skill_learning
+            project = state.get('skillWorkflow', {}).get('project')
+            value = item.get('path')
+            if (not isinstance(project, str) or not Path(project).is_absolute() or not isinstance(value, str)
+                    or not Path(value).is_absolute() or Path(value).name != 'SKILL.md'):
+                return
+            path = Path(value).absolute()
+            target = native_skill_learning.observe(root, Path(project), path, digest)
+            from .skill_workflow import _native_semantics
+            raw = native_skill_learning.read(root, path.parent.name, target).encode('utf-8')
+            if (_native_semantics(raw)
+                    and state.get('skillWorkflow', {}).get('nativeLoads', {}).get(item.get('id')) != digest):
+                return  # Read cannot apply native-only fork/hooks/model/argument semantics.
+            identity = (path.parent.name, path)
+        except (OSError, ValueError, UnicodeError):
+            return
     name, path = identity
-    observed = {"name": name, "path": str(path), "sha256": digest}
-    skills = [s for s in state.get("usedSkills", []) if isinstance(s, dict) and s.get("name") != name]
+    observed = {"name": name, "path": str(path), "sha256": digest,
+                **({'skillTarget': target} if target is not None else {})}
+    skills = [s for s in state.get("usedSkills", []) if isinstance(s, dict) and (s.get("name"), s.get('path')) != (name, str(path))]
     state["usedSkills"] = (skills + [observed])[-MAX_OBSERVED_SKILLS:]
     work = state.get("work")
     if isinstance(work, dict):
-        skills = [s for s in work.get("usedSkills", []) if isinstance(s, dict) and s.get("name") != name]
+        skills = [s for s in work.get("usedSkills", []) if isinstance(s, dict) and (s.get("name"), s.get('path')) != (name, str(path))]
         work["usedSkills"] = (skills + [observed])[-MAX_OBSERVED_SKILLS:]
 
 
@@ -882,10 +902,22 @@ def _observed_personal_skill(tool_name: str, tool_input: dict[str, Any], root: P
             or not isinstance(response["file"].get("content"), str)):
         return None
     identity = _personal_skill_identity(tool_input.get("file_path"), root)
+    target = None
     if not identity:
-        return None
+        try:
+            from . import native_skill_learning
+            value = tool_input.get('file_path')
+            project = state.get('skillWorkflow', {}).get('project')
+            if (not isinstance(value, str) or not Path(value).is_absolute() or Path(value).name != 'SKILL.md'
+                    or not isinstance(project, str) or not Path(project).is_absolute()):
+                return None
+            path = Path(value)
+            target = native_skill_learning.observe(root, Path(project), path)
+            identity = (path.parent.name, path)
+        except (OSError, ValueError, UnicodeError):
+            return None
     name, path = identity
-    skills_root = root.absolute() / "personal-root" / ".claude" / "skills"
+    skills_root = path.parent if target else root.absolute() / "personal-root" / ".claude" / "skills"
     try:
         if not _safe_local_path(path, skills_root) or path.stat().st_size > MAX_OBSERVED_SKILL_BYTES:
             return None
@@ -899,10 +931,12 @@ def _observed_personal_skill(tool_name: str, tool_input: dict[str, Any], root: P
         receipts = state.get("learningReadReceipts")
         if not isinstance(receipts, dict):
             receipts = state["learningReadReceipts"] = {}
-        if not _record_read(receipts, name, response, data):
+        receipt_key = name if target is None else name + ':' + hashlib.sha256(str(path).encode()).hexdigest()
+        if not _record_read(receipts, receipt_key, response, data):
             return None
         # Hash and ranges only. No body, response, other paths or search query.
-        return {"name": name, "path": str(path), "sha256": hashlib.sha256(data).hexdigest()}
+        return {"name": name, "path": str(path), "sha256": hashlib.sha256(data).hexdigest(),
+                **({'skillTarget': target} if target is not None else {})}
     except (OSError, ValueError):
         return None
 
@@ -1111,7 +1145,7 @@ def record_activity(
                 work["toolCount"] = min(1_000_000, work.get("toolCount", 0) + 1)
                 work["failures"] = min(1_000_000, work.get("failures", 0) + int(failed))
                 work["revision"] = work.get("revision", 0) + 1
-                work["usedSkills"] = list({item["name"]: item for item in
+                work["usedSkills"] = list({(item["name"], item.get('path')): item for item in
                     work.get("usedSkills", []) + state.get("usedSkills", [])}.values())[-MAX_OBSERVED_SKILLS:]
                 if state.get("protectionRestricted"):
                     work["pending"] = []

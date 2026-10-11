@@ -1,6 +1,6 @@
 # Company Harness 설치와 배포 — Windows
 
-현재 소스의 배포 대상은 **1.4.38**, 회사 지식팩은 **2026.09.03**입니다. 직원은 담당자가 제공한 **Company-Harness-Setup.exe**를 두 번 클릭해 설치합니다. 기존 설치·백업·개인 자료 보존 절차를 사용하며, 필요한 실행 파일 위치를 찾지 못했을 때만 물어봅니다. 이번 버전은 간편 설치기와 조건부 이미지 전용 작업자를 포함하며, 메인 모델·MCP·개인 설정을 보존합니다. 담당자는 [1.4.38 변경 내용](UPDATE_1.4.38.md)을 확인합니다. 로컬 설치 파일 생성과 GitLab 게시·사내 PC 적용은 별도입니다. 이전 Release 파일은 보존하며 별도 Workspace 앱 변경은 이번 배포에 포함하지 않습니다. 이미 설치된 PC는 자동 갱신되지 않습니다.
+현재 소스의 배포 대상은 **1.4.39**, 회사 지식팩은 **2026.09.03**입니다. 직원은 담당자가 제공한 **Company-Harness-Setup.exe**를 두 번 클릭해 설치합니다. 기존 설치·백업·개인 자료 보존 절차를 사용하며, 필요한 실행 파일 위치를 찾지 못했을 때만 물어봅니다. 이번 버전은 새 스킬의 Claude 기본 경로 저장·원본 수정, PPT 참고 입력 구분, 필요한 메일 본문만 읽는 흐름을 보완합니다. 간편 설치기·조건부 이미지 전용 작업자·메인 모델·MCP·개인 설정은 유지합니다. 담당자는 [1.4.39 변경 내용](UPDATE_1.4.39.md)을 확인합니다. 로컬 설치 파일 생성과 GitLab 게시·사내 PC 적용은 별도입니다. 이전 Release 파일은 보존하며 별도 Workspace 앱 변경은 이번 배포에 포함하지 않습니다. 이미 설치된 PC는 자동 갱신되지 않습니다.
 
 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다.
 
@@ -113,6 +113,8 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\deploy\Setup-CompanyAg
 
 기존 하네스의 `Keep`은 설치 자체를 하지 않는 선택이므로 위 Skill 선택과 구별합니다. Skill 파일은 그대로 보존하며 플러그인 네임스페이스로 함께 사용할 수 있습니다. 이 선호 설정은 Company Agent의 검색·컨텍스트·선택된 파일 읽기에 적용하고, Claude의 일반 `/Skill명` 우선순위는 바꾸지 않습니다. 설치 후 `/company-agent:skills`로 목록을 보고 이름별·프로젝트별 후보와 출처 순서를 바꿀 수 있습니다. [사용법과 적용 범위](SKILL_PRIORITY.md)
 
+다른 플러그인의 Python 연결 보정은 기본 실행하지 않습니다. 담당자가 해당 보정을 별도로 요청한 경우에만 `Install-ScopedCompanyAgent.ps1 -RepairOtherPluginPython`을 기존 설치 인자에 추가할 수 있습니다. 이 선택도 알려진 대상·백업 경계를 유지하며 개인 스킬·모델·MCP 설정을 초기화하지 않습니다.
+
 ## 기존 Company Agent 업데이트와 다른 하네스 교체 구분
 
 감지는 설치 대상으로 선택한 범위에서 수행합니다. 모델·MCP만 설정되어 있거나 독립 Skill만 있는 경우에는 기존 하네스로 판정하지 않습니다.
@@ -188,6 +190,10 @@ Skill 선택은 현재 개인 State의 `config/skill-preferences.json`에 있는
 
 기본 설치는 위 공통 Core와 별도로, PC에 이미 설치된 승인 Python 경로를 사용합니다. Python을 복사하거나 그 설치 폴더를 변경하지 않습니다. 관리자가 `-IncludeBundledPython`으로 만든 선택 패키지에만 `plugin\runtime\python\`과 Python 라이선스가 추가됩니다.
 
+새 스킬을 만들 때는 Claude 기본 경로에 원본 하나만 저장합니다. 개인 전체는 현재 Claude 설정 폴더의 `skills/<이름>/SKILL.md`, 프로젝트는 `<프로젝트>/.claude/skills/<이름>/SKILL.md`입니다. 위 상태 저장소에는 실제 원본을 가리키는 관리 정보가 남습니다. 기존 비공개 스킬을 자동 이전·복제하지 않으며 기억·도구·학습 이력의 저장 범위는 유지합니다. 새 프로젝트 스킬은 프로젝트 폴더를 공유할 때 함께 전달될 수 있습니다.
+
+기본 설치는 Ouroboros 등 다른 플러그인의 Python 연결을 수정하지 않습니다. 담당자가 해당 호환성 복구를 요청한 경우에만 `Install-ScopedCompanyAgent.ps1`의 `-RepairOtherPluginPython` 옵션으로 기존 백업·복구 절차를 사용합니다. 하네스 업데이트에 이 옵션을 자동 추가하지 마세요.
+
 사용자 권한의 로컬 설치입니다. 설치 프로그램이 Core와 개인 상태를 구분해 보존하지만 사용자가 OS 권한으로 Core를 직접 편집하는 것까지 금지하는 영역은 아닙니다. DB와 Outlook의 보안 경계는 사내 MCP와 계정 권한으로 집행합니다. 관리자 ACL로 Core를 보호하는 기존 machine 배포는 별도 경로로 유지합니다.
 
 Core, Knowledge, 설정이 바뀌면 관리자에게 새 CoreVersion의 ZIP을 받습니다. 새 ZIP을 새 폴더에 풀고 설치 파일을 다시 실행하여 기존 범위를 선택합니다. Company Agent 업데이트 화면에서 이전 버전 → 새 버전을 확인하고 업데이트를 선택하면 갱신됩니다. 기존 개인 저장 위치, 개인 기억·지식·스킬·자동 학습 설정과 사용자가 추가한 규칙·Hook은 유지됩니다. ‘현재 버전 유지’를 선택하면 업데이트도 하지 않습니다. User와 여러 Project scope를 쓰면 각 scope를 갱신하고 Claude를 재시작합니다.
@@ -259,7 +265,7 @@ powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZi
 
 ```powershell
 # 담당자용: 주소는 실제 사내 GitLab 프로젝트 페이지로 바꿉니다.
-powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZip ".\dist\company-agent-1.4.38-2026.09.03.zip" -OutputDirectory ".\build\gitlab-harness-delivery" -ProjectUrl "https://gitlab.example.com/team/company-agent"
+powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZip ".\dist\company-agent-1.4.39-2026.09.03.zip" -OutputDirectory ".\build\gitlab-harness-delivery" -ProjectUrl "https://gitlab.example.com/team/company-agent"
 ```
 
 사내 주소를 아직 정하지 않았다면 `-ProjectUrl`을 생략해 파일만 준비할 수 있습니다. 출력 폴더가 이미 있으면 새 폴더를 지정합니다. 기존 배포 파일을 덮어쓰지 않습니다. 도구는 ZIP의 구성 파일·해시·안내서 일치를 확인한 뒤 설치 ZIP, 단독 HTML 안내서, 두 `.sha256` 파일과 게시용 설명을 만듭니다. 직원 PC에는 이 도구가 필요 없습니다.

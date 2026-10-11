@@ -370,7 +370,7 @@ def _locked(root: Path) -> Iterator[dict[str, Any]]:
                     continue
                 path = _target(root, change)
                 try:
-                    current = _read(path, root)
+                    current = _read_target(root, change)
                     if change["status"] == "rollback_prepared":
                         change["status"] = "rolled_back" if _hash(current) == change.get("rollbackSha256") else "blocked_conflict"
                         if change["status"] == "rolled_back":
@@ -453,22 +453,45 @@ def _defer_reason(exc: Exception) -> str:
         return "personal source could not be safely updated; existing content preserved"
 
 
-def _read_skill(root: Path, name: str, session: dict[str, Any]) -> tuple[Path, str, str]:
+def _read_skill_revision(root: Path, name: str, session: dict[str, Any]) -> tuple[Path, str, str, dict | None]:
     _slug(name, "skillName")
-    path = _safe(root / "personal-root" / ".claude" / "skills" / name / "SKILL.md", root)
-    raw = _read(path, root)
-    digest = _hash(raw)
     used = session.get("usedSkills", [])
+    matches = [item for item in used[:8] if isinstance(item, dict) and item.get('name') == name] if isinstance(used, list) else []
+    identities = {(item.get('path'), json.dumps(item.get('skillTarget'), sort_keys=True)) for item in matches}
+    if len(identities) > 1:
+        raise ValueError('same-name skill learning targets are ambiguous; existing files preserved')
+    target = matches[0].get('skillTarget') if matches else None
+    if target is not None:
+        from . import native_skill_learning
+        path = native_skill_learning.resolve(root, name, target)
+        project = session.get('skillWorkflow', {}).get('project')
+        if not isinstance(project, str) or not Path(project).is_absolute():
+            raise ValueError('native skill learning requires its current project load context')
+        if native_skill_learning.observe(root, Path(project), path) != target:
+            raise ValueError('native skill learning target changed since its full body load')
+        raw = native_skill_learning.read(root, name, target)
+    else:
+        path = _safe(root / "personal-root" / ".claude" / "skills" / name / "SKILL.md", root)
+        raw = _read(path, root)
+    digest = _hash(raw)
     if not isinstance(used, list) or not any(
         isinstance(item, dict) and item.get("name") == name and item.get("sha256") == digest
         and Path(str(item.get("path", ""))).absolute() == path
         for item in used[:8]
     ):
         raise ValueError("skill must have been read this turn at its unchanged personal revision")
-    metadata, _ = parse_frontmatter_text(raw)
+    if target is not None:
+        from .native_skill_storage import native_document
+        metadata, _ = native_document(raw.encode('utf-8'), name)
+    else:
+        metadata, _ = parse_frontmatter_text(raw)
     if metadata.get("name") not in {None, name}:
         raise ValueError("skill name does not match personal directory")
-    return path, raw, digest
+    return path, raw, digest, target
+
+
+def _read_skill(root: Path, name: str, session: dict[str, Any]) -> tuple[Path, str, str]:
+    return _read_skill_revision(root, name, session)[:3]
 
 
 def _block(raw: str) -> str | None:
@@ -482,20 +505,40 @@ def _block(raw: str) -> str | None:
 def _target(root: Path, change: dict[str, Any]) -> Path:
     if change["kind"] == "skill":
         name = _slug(change["skillName"], "skillName")
+        if 'skillTarget' in change:
+            from .native_skill_learning import recorded_path
+            return recorded_path(change['skillTarget'], name)
+        # Legacy ledger entries are permanently pinned to the managed path.
         return _safe(root / "personal-root" / ".claude" / "skills" / name / "SKILL.md", root)
     if change["kind"] != "preference" or not re.fullmatch(r"learning\.preference\.[0-9a-f]{24}", change["memoryId"]):
         raise ValueError("invalid learning target")
     return _safe(root / "memory" / "items" / (change["memoryId"] + ".md"), root)
 
 
+def _read_target(root: Path, change: dict[str, Any]) -> str:
+    if change['kind'] == 'skill' and 'skillTarget' in change:
+        from .native_skill_learning import read
+        return read(root, change['skillName'], change['skillTarget'])
+    return _read(_target(root, change), root)
+
+
+def _write_target(root: Path, change: dict[str, Any], content: str) -> None:
+    if change['kind'] == 'skill' and 'skillTarget' in change:
+        from .native_skill_learning import write
+        write(root, change['skillName'], change['skillTarget'], content)
+    else:
+        _write(_target(root, change), root, content)
+
+
 def _checklist_lines(block: str | None) -> list[str]:
     return [line for line in (block or "").splitlines() if line.startswith("- ")]
 
 
-def _skill_entry_keys(data: dict[str, Any], name: str, block: str | None) -> list[str | None]:
+def _skill_entry_keys(data: dict[str, Any], name: str, block: str | None, target: dict | None = None) -> list[str | None]:
     """Recover legacy identities only from owned history, never from prose similarity."""
     lines = _checklist_lines(block)
-    history = [c for c in data["changes"] if c["kind"] == "skill" and c["skillName"] == name]
+    history = [c for c in data["changes"] if c["kind"] == "skill" and c["skillName"] == name
+               and c.get('skillTarget') == target]
     for change in reversed(history):
         if (_checklist_lines(change["afterBlock"]) == lines and "skillEntryKeys" in change):
             return list(change["skillEntryKeys"])
@@ -524,13 +567,13 @@ def _candidate_is_current(root: Path, data: dict[str, Any], observation: dict[st
             return change is not None and _hash(_read(_target(root, change), root)) == change["afterSha256"]
         name = observation["skillName"]
         owner = next((c for c in reversed(data["changes"]) if c["kind"] == "skill"
-                      and c["status"] == "active" and c["skillName"] == name), None)
+                      and c["status"] == "active" and c["skillName"] == name and c['candidateId'] == candidate_id), None)
         if owner is None:
             return False
-        block = _block(_read(_target(root, owner), root))
+        block = _block(_read_target(root, owner))
         if block is None or block.replace("\r\n", "\n") != owner["afterBlock"].replace("\r\n", "\n"):
             return False
-        matching = [line for line, key in zip(_checklist_lines(block), _skill_entry_keys(data, name, block))
+        matching = [line for line, key in zip(_checklist_lines(block), _skill_entry_keys(data, name, block, owner.get('skillTarget')))
                     if key == observation["key"]]
         entry = f"- {observation['title']}: {' '.join(observation['body'].split())}"
         return matching == [entry]
@@ -597,14 +640,17 @@ def _commit_change(root: Path, data: dict[str, Any], review: dict[str, Any], obs
         change.update({"beforeContent": before, "afterContent": rendered})
     else:
         change["skillName"] = observation["skillName"]
-        path, before, _ = _read_skill(root, observation["skillName"], session)
+        path, before, _, target = _read_skill_revision(root, observation["skillName"], session)
+        if target is not None:
+            change['skillTarget'] = target
         prior_block = _block(before)
         if prior_block is not None and not any(c.get("skillName") == observation["skillName"] and c["status"] == "active"
+                                               and c.get('skillTarget') == target
                                                and str(c.get("afterBlock", "")).replace("\r\n", "\n") == prior_block.replace("\r\n", "\n")
                                                for c in data["changes"]):
             raise ValueError("learned section was manually edited or has no owned revision")
         entry = f"- {observation['title']}: {' '.join(observation['body'].split())}"
-        keys = _skill_entry_keys(data, observation["skillName"], prior_block)
+        keys = _skill_entry_keys(data, observation["skillName"], prior_block, target)
         if any(key is None for key in keys):
             raise ValueError("legacy checklist identity is unavailable; existing lessons preserved for review")
         entries = list(zip(_checklist_lines(prior_block), keys))
@@ -628,12 +674,12 @@ def _commit_change(root: Path, data: dict[str, Any], review: dict[str, Any], obs
     # Write-ahead record contains only generated content, never whole Skill bodies.
     data["changes"].append(change)
     _save(root, data)
-    latest = _read(path, root) if path.exists() else ""
+    latest = _read_target(root, change) if path.exists() else ""
     if _hash(latest) != change["beforeSha256"]:
         change["status"] = "blocked_conflict"
         _save(root, data)
         raise ValueError("personal file changed during review; manual changes preserved")
-    _write(path, root, rendered)
+    _write_target(root, change, rendered)
     for old in data["changes"]:
         if old is not change and old["status"] == "active" and _target(root, old) == path:
             old["status"] = "superseded"
@@ -649,6 +695,7 @@ def _restore_previous_skill_owner(data: dict[str, Any], change: dict[str, Any], 
     restored = _block(rendered)
     for old in reversed(data["changes"]):
         if (old["status"] == "superseded" and old.get("skillName") == change["skillName"]
+                and old.get('skillTarget') == change.get('skillTarget')
                 and old.get("afterBlock") == change["beforeBlock"] and restored == change["beforeBlock"]):
             old["status"] = "active"
             # The original revision hash remains immutable for audit. The
@@ -662,7 +709,9 @@ def _rollback(root: Path, data: dict[str, Any], change: dict[str, Any], reason: 
         return _rollback_receipt(root, change, changed=False, effect="no_change")
     path = _target(root, change)
     try:
-        current = _read(path, root)
+        current = _read_target(root, change)
+        if 'skillTarget' in change and _hash(current) != change.get('currentSha256', change['afterSha256']):
+            raise ValueError('native skill changed after learning; original content preserved')
         if change["kind"] == "preference":
             if _hash(current) != change["afterSha256"]:
                 raise ValueError("learned preference has manual changes")
@@ -683,9 +732,9 @@ def _rollback(root: Path, data: dict[str, Any], change: dict[str, Any], reason: 
         change["rollbackReason"] = reason
         _rejection(data, change["candidateId"], add=True)
         _save(root, data)
-        if _read(path, root) != current:
+        if _read_target(root, change) != current:
             raise ValueError("personal file changed during rollback")
-        _write(path, root, rendered)
+        _write_target(root, change, rendered)
         change["status"] = "rolled_back"
         change["rollbackReason"] = reason
         change["rolledBackAt"] = _now()
@@ -722,7 +771,7 @@ def _assess(root: Path, data: dict[str, Any], review: dict[str, Any], spec: dict
             results.append({"skillName": evaluation["skillName"], "status": "deferred_evidence"})
             continue
         try:
-            _, _, digest = _read_skill(root, evaluation["skillName"], session)
+            _, _, digest, target = _read_skill_revision(root, evaluation["skillName"], session)
         except (OSError, ValueError, UnicodeError):
             results.append({"skillName": evaluation["skillName"], "status": "unsubstantiated_revision"})
             continue
@@ -731,12 +780,14 @@ def _assess(root: Path, data: dict[str, Any], review: dict[str, Any], spec: dict
             continue
         change = next((c for c in reversed(data["changes"]) if c["kind"] == "skill" and c["status"] == "active"
                        and c["skillName"] == evaluation["skillName"] and c.get("currentSha256", c["afterSha256"]) == digest
+                       and c.get('skillTarget') == target
                        and c["reviewId"] != review["id"]), None)
         if not change:
             continue
         baseline = [r for r in data["reviews"] if r["taskType"] == review["taskType"] and r["id"] != review["id"]
                     and (r.get("mode") != "submit" or r.get("sampleReady"))
                     and any(u.get("name") == evaluation["skillName"] and u.get("sha256") == change["beforeSha256"]
+                            and u.get('skillTarget') == target
                             for u in r.get("usedSkills", []))][-20:]
         baseline = list({r.get("workFingerprint", r["id"]): r for r in baseline
                          if r.get("workFingerprint", r["id"]) != review.get("workFingerprint", review["id"])}.values())
@@ -825,7 +876,9 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
             if previous is None or not any(c["id"] == prior["changeId"] and c["reviewId"] == previous["id"]
                                            and c["status"] == "active" for c in data["changes"]):
                 raise ValueError("priorFeedback changeId must be an active change from the previous user turn")
-        used = [{"name": item["name"], "sha256": item["sha256"]} for item in session.get("usedSkills", [])[:8]
+        used = [{"name": item["name"], "sha256": item["sha256"],
+                 **({'skillTarget': item['skillTarget']} if item.get('skillTarget') else {})}
+                for item in session.get("usedSkills", [])[:8]
                 if isinstance(item, dict) and isinstance(item.get("name"), str) and isinstance(item.get("sha256"), str)
                 and _SLUG.fullmatch(item["name"]) and _HASH.fullmatch(item["sha256"])]
         review = {"id": review_id, "sessionFingerprint": _hash(session_id), "turnId": turn_id, "at": _now(),
@@ -842,8 +895,17 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
         assessments = _assess(root, data, review, spec, session)
         changes = []
         for observation in spec["observations"]:
-            candidate_id = _hash(json.dumps([observation["kind"], observation["key"], observation.get("skillName"),
-                                            observation["title"], observation["body"]], ensure_ascii=False))
+            identity = [observation["kind"], observation["key"], observation.get("skillName"),
+                        observation["title"], observation["body"]]
+            if observation['kind'] == 'skill' and any(isinstance(item, dict) and item.get('skillTarget')
+                    and item.get('name') == observation['skillName'] for item in session.get('usedSkills', [])):
+                try:
+                    target = _read_skill_revision(root, observation['skillName'], session)[3]
+                    identity.append(target)  # Never pool votes across native ownership generations/scopes.
+                except (OSError, ValueError, UnicodeError) as exc:
+                    changes.append({'kind': 'skill', 'key': observation['key'], 'status': 'deferred', 'reason': _defer_reason(exc)})
+                    continue
+            candidate_id = _hash(json.dumps(identity, ensure_ascii=False))
             candidate = data["candidates"].get(candidate_id)
             if candidate is None:
                 if len(data["candidates"]) >= MAX_CANDIDATES:
@@ -986,7 +1048,7 @@ def _work_evidence(session: dict[str, Any], work: dict[str, Any]) -> dict[str, A
         evidence["taskToolCount"] = max(session.get("taskToolCount", 0), work.get("toolCount", 0))
         evidence["taskFailureCount"] = max(session.get("taskFailureCount", 0), work.get("failures", 0))
         evidence["taskVerificationFailures"] = max(session.get("taskVerificationFailures", 0), work.get("verificationFailures", 0))
-        evidence["usedSkills"] = list({item["name"]: item for item in
+        evidence["usedSkills"] = list({(item["name"], item.get('path')): item for item in
             work.get("usedSkills", []) + session.get("usedSkills", [])}.values())[-8:]
     return evidence
 
@@ -1057,7 +1119,7 @@ def learning_status(root: Path, *, session: dict[str, Any] | None = None) -> dic
     data = _load(root)
     relevant: list[dict[str, Any]] = []
     if isinstance(session, dict):
-        used = list({item["name"]: item for item in (session.get("work") or {}).get("usedSkills", []) +
+        used = list({(item["name"], item.get('path')): item for item in (session.get("work") or {}).get("usedSkills", []) +
                      session.get("usedSkills", []) if isinstance(item, dict) and "name" in item}.values())[-8:]
         if isinstance(used, list):
             for observed in used[:8]:
@@ -1065,6 +1127,7 @@ def learning_status(root: Path, *, session: dict[str, Any] | None = None) -> dic
                     continue
                 match = next((c for c in reversed(data["changes"]) if c["kind"] == "skill" and c["status"] == "active"
                               and c["skillName"] == observed.get("name")
+                              and c.get('skillTarget') == observed.get('skillTarget')
                               and c.get("currentSha256", c["afterSha256"]) == observed.get("sha256")), None)
                 if match is not None and not any(item["id"] == match["id"] for item in relevant):
                     relevant.append(_change_summary(match))

@@ -92,11 +92,11 @@ def named_requests(prompt: str) -> list[dict]:
         clause = re.split(r'[.!?;\n,]', after)[0].lstrip()
         if re.match(r'(?:으로|로|을|를)?\s*(?:말고|대신|아니|안\s)', clause):
             continue
-        if re.search(r'(?:쓰|사용|적용|호출|선택|만들|작성|제작|읽|요약|진행|하)[가-힣\s]{0,8}지\s*(?:마|말|않)|'
+        if re.search(r'(?:쓰|사용|적용|호출|선택|실행|만들|작성|제작|읽|요약|진행|하)[가-힣\s]{0,8}지\s*(?:마|말|않)|'
                      r'쓰지|사용\s*(?:안|금지)|설명|비교|무엇|뭐|\b(?:not|never|avoid|explain|compare)\b', clause, re.I):
             continue
-        korean = re.match(r'(?:으로|로)\s*.{0,40}?(?:해줘|해주세요|진행|사용|적용|호출|만들|작성|제작|읽|요약)|'
-                          r'(?:을|를)?\s*(?:사용|적용|호출|선택|진행)(?:해|하|할)', clause)
+        korean = re.match(r'(?:으로|로)\s*.{0,40}?(?:해줘|해주세요|진행|사용|적용|호출|실행|만들|작성|제작|읽|요약)|'
+                          r'(?:을|를)?\s*(?:사용|적용|호출|선택|진행|실행)(?:해|하|할|$)', clause)
         english_before = before[:source.start()] + ' ' if source else before
         english = (re.search(r'\b(?:use|using|invoke|run)\s+(?:the\s+)?$', english_before, re.I)
                    and not re.search(r"\b(?:not|never|avoid|don't|explain|compare|how|whether|should|could|would|can)\b", english_before, re.I))

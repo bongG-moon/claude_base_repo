@@ -180,7 +180,15 @@ def installed_fonts():
     return result
 
 
-def analyze(template):
+def analyze(template, selected_slides=None, *, first_slides=None):
+    if (selected_slides is not None and (not isinstance(selected_slides, list)
+            or not 1 <= len(selected_slides) <= 60
+            or any(type(number) is not int or not 1 <= number <= 10000 for number in selected_slides)
+            or len(set(selected_slides)) != len(selected_slides))
+            or first_slides is not None and (type(first_slides) is not int or not 1 <= first_slides <= 60)
+            or selected_slides is not None and first_slides is not None):
+        return {'ok':False,'status':'invalid_request','code':'invalid_slide_selection',
+                'message':'중복 없는 실제 장 번호를 최대 60개 또는 처음 확인할 장수를 지정해 주세요.'}
     if Path(template).suffix.lower() in ('.html','.htm'):
         from .ppt_html import read_template
         from .business_artifacts import _failure
@@ -199,6 +207,12 @@ def analyze(template):
     if not inspected.get('ok') or inspected.get('hasExternalRelationships'):
         return inspected if not inspected.get('ok') else {'ok':False,'status':'blocked','code':'external_template_links',
                 'message':'외부 연결이 포함된 양식은 자동 분석하지 않습니다.'}
+    if first_slides is not None:
+        selected_slides = list(range(1, min(first_slides, inspected['slideCount']) + 1))
+    if selected_slides is not None and (not selected_slides or any(number > inspected['slideCount'] for number in selected_slides)):
+        return {'ok':False,'status':'invalid_request','code':'invalid_slide_selection',
+                'message':'선택한 장이 원본에 없습니다. 실제 장 번호를 확인해 주세요.'}
+    selected_indices = None if selected_slides is None else {number - 1 for number in selected_slides}
     fonts, colors, pages, theme = Counter(), Counter(), [], {}
     with zipfile.ZipFile(template) as package:
         order={}
@@ -222,6 +236,8 @@ def analyze(template):
                     if node.get('script') == 'Hang' and node.get('typeface'):
                         fonts[node.get('typeface')] += 1
             if not re.fullmatch(r'ppt/slides/slide\d+\.xml', name):
+                continue
+            if selected_indices is not None and order.get(name) not in selected_indices:
                 continue
             root = _xml(package.read(name))
             shapes=[]
@@ -250,6 +266,12 @@ def analyze(template):
     if hashlib.sha256(Path(template).read_bytes()).hexdigest() != inspected['sha256']:
         return {'ok':False,'status':'blocked','code':'template_changed','message':'분석 중 양식이 변경되었습니다. 저장을 마친 뒤 다시 확인해 주세요.'}
     pages.sort(key=lambda page: page['sourceSlide'] if page['sourceSlide'] is not None else 9999)
+    if selected_slides is not None:
+        page_map = {page['sourceSlide']:page for page in pages}
+        if any(number - 1 not in page_map for number in selected_slides):
+            return {'ok':False,'status':'invalid_request','code':'reference_slide_order_unavailable',
+                    'message':'요청한 장과 원본 순서를 정확히 연결하지 못했습니다. 추측으로 다른 장을 반환하지 않습니다.'}
+        pages = [page_map[number - 1] for number in selected_slides]
     available=installed_fonts()
     return {'ok':True,'status':'analyzed','sha256':inspected['sha256'],'slideCount':inspected['slideCount'],
             'sizeEmu':inspected['sizeEmu'],'themeColors':theme,'declaredColors':[c for c,_ in colors.most_common(12)],

@@ -2,7 +2,7 @@
 
 처음이라면 **[Company Agent 사용자 안내서](docs/Company-Agent-사용자-안내서.html)** 하나를 여세요. 시작하기, Claude Code 기본 사용법, 업무 예문, 기억·스킬·후크·학습, 명령어·단축키, 디자인 용어를 모두 담았습니다. 회사 자료나 참고 PPT 없이 가상 자료로 연습합니다.
 
-**[Company Workspace 로컬 업무 화면](docs/LOCAL_WORKSPACE.md)**은 기존 Claude Code 설정을 사용하는 채팅·파일 선택·질문·승인 화면입니다. `Company-Workspace.vbs`를 더블클릭해 시작합니다. 기존 [1.4.32 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.32)의 별도 Workspace 묶음 **0.9**(`company-workspace-preview-0.9-*.zip`)는 그대로 보존합니다. 이번 1.4.38 배포 대상은 하네스·간편 설치기·사용자 안내서이며, 별도 개발 중인 Workspace 변경은 포함하지 않습니다. 사내 HCP·DRM 문서의 실제 업무 검증은 필요합니다.
+**[Company Workspace 로컬 업무 화면](docs/LOCAL_WORKSPACE.md)**은 기존 Claude Code 설정을 사용하는 채팅·파일 선택·질문·승인 화면입니다. `Company-Workspace.vbs`를 더블클릭해 시작합니다. 기존 [1.4.32 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.32)의 별도 Workspace 묶음 **0.9**(`company-workspace-preview-0.9-*.zip`)는 그대로 보존합니다. 이번 1.4.39 배포 대상은 하네스·간편 설치기·사용자 안내서이며, 별도 개발 중인 Workspace 변경은 포함하지 않습니다. 사내 HCP·DRM 문서의 실제 업무 검증은 필요합니다.
 
 Workspace는 **회사 공통 / 개인 전체 / 이 프로젝트**를 먼저 나누고 각 범위에서 **기억·지식 / 업무 구성**을 확인합니다. 새 기억·지식·스킬·도구는 개인 전체 또는 이 프로젝트를 선택한 뒤 저장하며 회사 공통은 읽기 전용입니다. 자동 학습은 기존 설치 범위에서만 작동하고 명시적 저장 선택으로 범위가 바뀌지 않습니다. 5단계 첫 업무 코스와 사용량/대기 시간·결과 확인도 제공합니다. 화면 조회에 추가 모델 호출은 없고 기존 데이터·로그인·모델·MCP 설정은 보존합니다. **Workspace 0.9는 별도 배포본으로 유지**하며 하네스를 업데이트할 때 기존 앱은 먼저 종료하세요. 기본 Office Reader 제거와 가상 보고서 체험은 유지합니다. 기존 설치가 자동 갱신되지는 않습니다.
 
@@ -12,17 +12,17 @@ Workspace는 **회사 공통 / 개인 전체 / 이 프로젝트**를 먼저 나�
 
 **기억·하네스 관리 → 구성 한눈에**는 선택한 폴더 기준으로 회사 공통·개인 전체·이 프로젝트의 저장 위치와 설정 상태를 비교하고 HTML로 저장합니다. 설정 켜짐과 실제 스킬 본문 로드 기록은 구분하며, 조회에 AI를 호출하거나 설정을 변경하지 않습니다. [구성 지도 구현·검증 결과](docs/VALIDATION_HARNESS_MAP_2026-09-19.md)를 참고하세요.
 
-이번 배포 대상 버전은 **1.4.38**입니다. 지식 자동 갱신 중 색인 불일치를 방지하고, 일반 파일 읽기 후크를 가볍게 처리하며, 로컬 EML의 UTF-8 한글 처리와 제외 사유 안내를 개선했습니다. 기존 간편 설치기와 조건부 이미지 전용 작업자는 유지합니다. 메인 모델·개인 설정·자료를 보존하며 사내 HCP의 실제 이미지 처리와 권한은 운영 환경에서 확인해야 합니다. [1.4.38 변경 이력](docs/UPDATE_1.4.38.md)을 확인하세요.
+이번 배포 대상 버전은 **1.4.39**입니다. 새 개인·프로젝트 스킬을 Claude 기본 위치에 한 번만 저장하고, 기존 스킬은 실제 원본을 수정하도록 연결했습니다. PPTX·HTML·이미지 참고 흐름을 구분하고 Outlook은 목록 검색 후 필요한 본문만 읽도록 보완했습니다. 기존 개인 자료·모델·MCP 설정은 유지하며 다른 플러그인의 Python 연결을 기본 설치에서 고치지 않습니다. [1.4.39 변경 이력](docs/UPDATE_1.4.39.md)을 확인하세요.
 
 **감사 보완 반영:** [감사 결과와 검증 범위](docs/AUDIT_HARNESS_2026-09-20.md)에 유명 스킬의 선별 반영과 미도입 항목을 정리했습니다. 해당 수정은 1.4.19부터 포함하며 이번 버전에도 유지합니다. 기존 Release ZIP과 이미 설치된 PC는 변경하지 않습니다.
 
-1.4.38 직원 배포 파일은 `Company-Harness-Setup.exe`이며, ZIP 대체 설치용 파일명은 `company-agent-1.4.38-2026.09.03.zip`입니다. 담당자가 공유한 Release 페이지의 첨부 파일을 사용합니다. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다. 이전 Release와 설치 파일은 보존합니다.
+1.4.39 직원 배포 파일은 `Company-Harness-Setup.exe`이며, ZIP 대체 설치용 파일명은 `company-agent-1.4.39-2026.09.03.zip`입니다. 담당자가 공유한 Release 페이지의 첨부 파일을 사용합니다. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다. 이전 Release와 설치 파일은 보존합니다.
 
 사내에서는 같은 직원 설치 ZIP을 GitLab Release에 첨부해 배포할 수 있습니다. 담당자는 `deploy/New-GitLabHarnessDelivery.ps1`로 설치 ZIP·통합 안내서·해시·게시 설명을 준비합니다. 직원은 배포 페이지 주소 하나에서 내려받아 설치합니다. [GitLab 배포 절차](docs/DEPLOYMENT.md#사내-gitlab에서-직원에게-배포하기)를 참고하세요.
 
-**단일 EXE 설치 구현본은 1.4.38입니다.** 직원은 `Company-Harness-Setup.exe`를 두 번 클릭하고 **Company Harness 설치** 화면에서 사용 범위를 고른 뒤 **설치하기**를 누릅니다. 기존 설치·백업·개인 자료 보존 절차를 그대로 사용합니다. 담당자는 `deploy/New-CompanyAgentSetup.ps1`로 검증된 직원 ZIP을 EXE로 만들고 GitLab 배포 준비 도구에 `-SetupExe`를 전달합니다. 실제 GitLab 업로드·게시는 담당자가 수동으로 진행합니다. 공개 Release와 사내 게시는 별도입니다. [변경 내용](docs/UPDATE_1.4.38.md)을 확인하세요.
-[폴더별 자동 스킬 목록](docs/SKILL_CATALOG.md), 각 PC의 Python 탐색과 Ouroboros 연결 교정을 포함합니다.
-기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.38 설치 파일에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.38`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
+**단일 EXE 설치 구현본은 1.4.39입니다.** 직원은 `Company-Harness-Setup.exe`를 두 번 클릭하고 **Company Harness 설치** 화면에서 사용 범위를 고른 뒤 **설치하기**를 누릅니다. 기존 설치·백업·개인 자료 보존 절차를 그대로 사용합니다. 담당자는 `deploy/New-CompanyAgentSetup.ps1`로 검증된 직원 ZIP을 EXE로 만들고 GitLab 배포 준비 도구에 `-SetupExe`를 전달합니다. 실제 GitLab 업로드·게시는 담당자가 수동으로 진행합니다. 공개 Release와 사내 게시는 별도입니다. [변경 내용](docs/UPDATE_1.4.39.md)을 확인하세요.
+[폴더별 자동 스킬 목록](docs/SKILL_CATALOG.md)과 각 PC의 Python 탐색을 유지합니다. Ouroboros 등 다른 플러그인의 연결 교정은 담당자가 별도로 요청한 경우에만 수행합니다.
+기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.39 설치 파일에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.39`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
 
 Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARGE 모델을 사용하는 개인화 하네스입니다. 공통 엔진과 개인 Knowledge·Memory·Skill을 분리하고 사용자 또는 프로젝트 범위로 설치합니다.
 
@@ -65,7 +65,7 @@ Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지�
 - 세션 원문 대신 추출한 개인 Memory 저장과 관련 항목 조회
 - 관련 Skill/Knowledge의 주입량 제한, 비파괴 Memory 중복 정리, native Compact 후 검증 상태 복원
 - 코드·Script·MCP 제작에 Karpathy Guidelines 회사판 기본 제공
-- 개인 Skill, Script Tool, MCP 후보 생성 및 검증
+- Claude 기본 위치에 새 개인·프로젝트 Skill 생성, 원본 위치를 유지하는 수정과 검증; Script Tool·MCP 후보 제작
 - “이 프로젝트 하네스 구성해줘” 요청으로 Agent·Skill·QA 규칙 생성
 - 버전별 배포, 기존 파일 충돌 검사, 실패 복구, 개인 상태 보존
 - 기존 Company Agent의 버전별 업데이트/다시 적용 안내와 개인 자료·기존 규칙·Hook 보존
@@ -85,6 +85,8 @@ Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지�
 
 이 선택은 Company Agent가 검색·안내하고 읽을 Skill에 적용합니다. Claude의 일반 `/Skill명` 우선순위를 바꾸거나 모든 자동 호출을 강제하는 기능은 아닙니다. 원본 Skill 파일은 함께 보존합니다. 설치 시 “기존 선택 유지”도 기존 후보가 무조건 이긴다는 뜻이 아니라 기존 선호 설정을 유지한다는 뜻입니다. 자세한 흐름과 명령은 [Skill 목록과 프로젝트별 선택](docs/SKILL_PRIORITY.md)에 있습니다.
 
+새 스킬은 개인 전체라면 현재 Claude 설정 폴더의 `skills/<이름>/SKILL.md`, 이 프로젝트라면 `<프로젝트>/.claude/skills/<이름>/SKILL.md`에 저장합니다. `/<이름>`으로 쓰며 현재 CLI가 목록을 아직 갱신하지 않았다면 지원되는 `/reload-skills` 또는 새 대화에서 확인합니다. 파일 저장만으로 현재 호스트의 인식·업무 성공을 보장하지 않습니다. 기존 비공개 저장소의 스킬은 이동·복제하지 않고 원래 이름과 경로로 계속 사용합니다. 프로젝트 스킬은 폴더 공유 시 함께 전달될 수 있지만 프로젝트 기억·도구의 비공개 저장 위치는 바꾸지 않습니다.
+
 ## 관리자 ZIP 생성
 
 빌드 PC: Windows PowerShell 5.1+, Python 3.11+, Claude Code CLI 2.1.220+.
@@ -93,10 +95,10 @@ Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지�
 
 ```powershell
 # PC에 이미 설치된 승인 Python을 사용하는 기본 직원 ZIP 생성
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.38 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.39 -KnowledgeVersion 2026.09.03
 ```
 
-결과는 `dist\company-agent-1.4.38-2026.09.03.zip`입니다. 뒤의 날짜는 회사 지식팩 버전이며 ZIP 생성일이 아닙니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 배포한 내용과 다른 소스를 패키징할 때는 같은 버전을 재사용하지 말고 새 CoreVersion과 일치하는 플러그인 manifest 버전을 사용합니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
+결과는 `dist\company-agent-1.4.39-2026.09.03.zip`입니다. 뒤의 날짜는 회사 지식팩 버전이며 ZIP 생성일이 아닙니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 배포한 내용과 다른 소스를 패키징할 때는 같은 버전을 재사용하지 말고 새 CoreVersion과 일치하는 플러그인 manifest 버전을 사용합니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
 
 로컬 ZIP은 기본적으로 Git 추적에서 제외합니다. 게시를 요청받으면 소스·안내서를 검증한 뒤 새 버전의 ZIP을 Release에 첨부하고 다운로드 SHA-256을 확인합니다. 과거 Git에 기록했던 1.2.0 파일을 최신 설치본으로 취급하지 마세요.
 

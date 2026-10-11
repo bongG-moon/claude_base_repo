@@ -27,6 +27,7 @@ sys.path.insert(0, str(PLUGIN/'scripts'))
 from company_agent.browser_workflow import plan_web_workflow
 from company_agent.native_runtime import runtime_context, task_prompt_context
 from company_agent.skill_task_context import task_candidates
+from company_agent.skill_execution import native_load_required
 from company_agent.skill_workflow import observe
 from company_agent.state import begin_turn, load_session
 from company_agent import asset_factory as assets
@@ -43,13 +44,19 @@ def context_probe(state, project, name, session, read_body):
     runtime=json.loads(expanded.splitlines()[-1])['company_agent_runtime']
     execution=runtime.get('skillExecution',{})
     if read_body:
-        file=Path(execution['path'])
-        content=file.read_text(encoding='utf-8')
-        observe(state,project,{'session_id':session,'hook_event_name':'PostToolUse','tool_name':'Read',
-            'tool_input':{'file_path':str(file)},'tool_response':{'file':{'content':content,'startLine':1}}})
+        if execution.get('load', {}).get('tool') == 'Skill':
+            # Simulate the host receipt only; the fixture never runs a model.
+            observe(state,project,{'session_id':session,'hook_event_name':'PostToolUse','tool_name':'Skill',
+                'tool_input':{'skill':execution['load']['skill']},'tool_response':{'success':True}})
+        else:
+            file=Path(execution['path'])
+            content=file.read_text(encoding='utf-8')
+            observe(state,project,{'session_id':session,'hook_event_name':'PostToolUse','tool_name':'Read',
+                'tool_input':{'file_path':str(file)},'tool_response':{'file':{'content':content,'startLine':1}}})
     route=load_session(session,state).get('skillWorkflow',{})
     return {'execution':execution,'contextChars':len(expanded),'indexMode':runtime.get('skillIndex',{}).get('mode'),
             'bodyReads':len(route.get('readSkills',{})),'selected':route.get('selected'),
+            'hostLoadingRules':native_load_required(project),
             'llmExecuted':False}
 
 
@@ -177,15 +184,27 @@ class DotsAssetLifecycleTests(unittest.TestCase):
         hints=task_candidates(inventory,'월간 수량 합계 대조를 점검해줘')
         self.assertIn(spec['name'],[g['name'] for g in hints['groups']])
         target=next(x for x in inventory['skills'] if x['name']==spec['name'])
-        self.assertEqual('personal',target['source'])
-        self.assertEqual('',target['invocation'])  # Not falsely registered as a native /command.
+        self.assertEqual('user',target['source'])
+        self.assertEqual(spec['name'],target['invocation'])
+        self.assertEqual(self.claude/'skills'/spec['name']/'SKILL.md',file)
+        self.assertFalse((self.state/'personal-root/.claude/skills'/spec['name']).exists())
         first=self.probe(spec['name'],'dots-first',read=True)
         self.assertEqual('load',first['execution']['mode'])
-        self.assertEqual('Read',first['execution']['load']['tool'])
+        self.assertEqual('Skill',first['execution']['load']['tool'])
+        self.assertEqual(spec['name'],first['execution']['load']['skill'])
         self.assertEqual(str(file),first['execution']['path'])
         self.assertEqual(1,first['bodyReads'])
         second=self.probe(spec['name'],'dots-first')
-        self.assertEqual('reuse',second['execution']['mode'])
+        # Isolating CLAUDE_CONFIG_DIR does not remove machine-managed or
+        # ancestor permission rules. A prior receipt must not bypass those.
+        if second['hostLoadingRules']:
+            self.assertEqual('load',second['execution']['mode'])
+            self.assertEqual('host-loading-rules',second['execution']['reason'])
+            self.assertEqual('Skill',second['execution']['load']['tool'])
+        else:
+            self.assertEqual('reuse',second['execution']['mode'])
+        self.assertEqual(1,second['bodyReads'])
+        self.assertEqual('reuse',second['indexMode'])
         original_hash=target['sha256']
         spec['instructions']='수정된 기준: 월간 수량과 합계를 대조하고 차이가 있는 항목만 표로 설명합니다.\n'
         self.create(spec)

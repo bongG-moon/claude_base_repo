@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -256,16 +257,24 @@ def _record_asset(layout: dict[str, Path], record: dict[str, Any]) -> None:
         stream.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def _snapshot_existing(layout: dict[str, Path], asset_type: str, name: str, destination: Path) -> None:
+def _snapshot_existing(layout: dict[str, Path], asset_type: str, name: str, destination: Path) -> Path | None:
     if not destination.exists():
         return
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     snapshot = layout["root"] / "assets" / "versions" / timestamp / asset_type / name
     snapshot.parent.mkdir(parents=True, exist_ok=True)
     shutil.copytree(destination, snapshot)
+    return snapshot
 
 
-def create_asset(spec: dict[str, Any], state_root: Path) -> Path:
+def create_asset(spec: dict[str, Any], state_root: Path, *, source_spec_path: Path | None = None,
+                 expected_skill_sha256: str | None = None, skill_location=None,
+                 preserve_native_description: bool = False) -> Path:
+    if skill_location is not None:
+        from .native_skill_storage import validate_location
+        skill_location = validate_location(skill_location, str(spec.get('name', '')))
+        if skill_location.state_root != Path(state_root).absolute():
+            raise ValueError('스킬 저장소와 선택 범위가 일치하지 않습니다.')
     layout = ensure_user_layout(state_root)
     asset_type = str(spec.get("type", ""))
     if asset_type not in ASSET_TYPES:
@@ -275,9 +284,20 @@ def create_asset(spec: dict[str, Any], state_root: Path) -> Path:
     description = str(spec.get("description", "")).strip()
     if not description:
         raise ValueError("description is required")
+    previous = next((item for item in _load_registry(layout).get("assets", [])
+                     if item.get("type") == asset_type and item.get("name") == name), {})
 
     if asset_type == "skill":
-        destination = _create_skill(layout, name, description, spec)
+        from .skill_lifecycle import SkillSavePartialError
+        save_details: dict[str, Any] = {}
+        try:
+            destination = _create_skill(layout, name, description, spec, expected_sha256=expected_skill_sha256,
+                                        save_details=save_details, location=skill_location,
+                                        preserve_native_description=preserve_native_description)
+        except (OSError, ValueError) as exc:
+            if save_details.get("written"):
+                raise SkillSavePartialError(Path(save_details["destination"]), save_details.get("backupPath"), exc) from exc
+            raise
         status = "active"
     elif asset_type == "script-tool":
         destination = _create_script_tool(layout, name, description, spec)
@@ -292,37 +312,103 @@ def create_asset(spec: dict[str, Any], state_root: Path) -> Path:
         "description": description,
         "path": str(destination),
         "status": status,
-        "createdAt": _now(),
+        "createdAt": previous.get("createdAt", _now()),
+        "updatedAt": _now(),
         "knowledgeDependencies": list(spec.get("knowledge_dependencies", [])),
         "reason": str(spec.get("reason", "사용자 요청으로 생성"))[:500],
     }
-    _record_asset(layout, record)
+    if asset_type == "skill":
+        record["effectivePath"] = str(destination / "SKILL.md")
+        record["sourceSpecPath"] = str(source_spec_path) if source_spec_path else previous.get("sourceSpecPath")
+        record["sourceSynchronized"] = False
+        try:
+            record['sha256'] = hashlib.sha256((destination / 'SKILL.md').read_bytes()).hexdigest()
+        except OSError as exc:
+            raise SkillSavePartialError(destination, save_details.get("backupPath"), exc) from exc
+        record['storageKind'] = skill_location.storage_kind if skill_location else 'managed'
+        if skill_location is not None:
+            native = skill_location.storage_kind != 'managed'
+            record.update(storageScope=skill_location.storage_scope, claudeConfigRoot=str(skill_location.claude_root),
+                          projectRoot=str(skill_location.project_root) if skill_location.storage_scope == 'project' else None,
+                          factoryOwned=skill_location.factory_owned, nativeInvocation=name if native else None,
+                          hostDiscovery='not-verified', refreshRequired=None if native else False,
+                          refreshIfMissing='/reload-skills 또는 새 대화' if native else None)
+            if native and skill_location.factory_owned:
+                record['factoryRegistrationId'] = skill_location.factory_registration_id or uuid.uuid4().hex
+    try:
+        _record_asset(layout, record)
+    except (OSError, ValueError) as exc:
+        if asset_type == "skill":
+            raise SkillSavePartialError(destination, save_details.get("backupPath"), exc) from exc
+        raise
     return destination
 
 
-def _create_skill(layout: dict[str, Path], name: str, description: str, spec: dict[str, Any]) -> Path:
-    destination = _confined_child(layout["personal_skills"], name)
-    _assert_no_external_skill_collision(name, destination)
+def _create_skill(layout: dict[str, Path], name: str, description: str, spec: dict[str, Any],
+                  *, expected_sha256: str | None = None, save_details: dict[str, Any] | None = None,
+                  location=None, preserve_native_description: bool = False) -> Path:
+    from .skill_registry import _no_reparse
+    if location is not None:
+        from .native_skill_storage import validate_location
+        location = validate_location(location, name)
+        destination = location.directory
+    else:
+        _no_reparse(layout["personal_skills"] / name)
+        destination = _confined_child(layout["personal_skills"], name)
+    native = location is not None and location.storage_kind != 'managed'
+    if not native:
+        _assert_no_external_skill_collision(name, destination)
     instructions = str(spec.get("instructions", "")).strip()
     if not instructions:
         raise ValueError("instructions are required for a skill")
     from .skill_tool_dependencies import prepare_dependencies, dependency_instructions
-    dependencies = prepare_dependencies(layout["root"], destination, spec)
-    _snapshot_existing(layout, "skill", name, destination)
+    from .frontmatter import dump_frontmatter, parse_frontmatter_text
+    from .skill_lifecycle import check_reference_plan, reference_plan, write_references
+    _no_reparse(destination / "SKILL.md")
+    metadata = {}
+    if native:
+        from .skill_registry import MAX_SKILL_BYTES, _read
+        existing_raw = _read(destination / 'SKILL.md', MAX_SKILL_BYTES)
+    else:
+        existing_raw = (destination / "SKILL.md").read_bytes() if (destination / "SKILL.md").is_file() else None
+    if existing_raw is not None and not native:
+        metadata, _ = parse_frontmatter_text(existing_raw.decode('utf-8-sig'))
+    metadata.update(name=name, description=description)
+    dependencies = prepare_dependencies(layout["root"], destination, spec, location=location)
+    references = reference_plan(destination, spec)
+    if native:
+        from .native_skill_storage import check_snapshot_tree
+        check_snapshot_tree(destination)
+    snapshot = _snapshot_existing(layout, "skill", name, destination)
+    if save_details is not None:
+        save_details.update(destination=str(destination), backupPath=str(snapshot) if snapshot else None)
+    prefix = dependency_instructions(layout["root"], name, dependencies)
+    body = prefix + instructions.removeprefix(prefix) + "\n"
+    if native:
+        from .native_skill_storage import render_native_document
+        content = render_native_document(existing_raw, name, description, body,
+                                         preserve_description=preserve_native_description)
+        if len(content.encode('utf-8')) > MAX_SKILL_BYTES:
+            raise ValueError('native SKILL.md 크기가 읽기 안전 한도를 넘었습니다.')
+    else:
+        content = dump_frontmatter(metadata, body)
+    if expected_sha256 is not None:
+        current = destination / "SKILL.md"
+        if not current.is_file() or hashlib.sha256(current.read_bytes()).hexdigest() != expected_sha256:
+            raise ValueError("스킬이 수정 준비 중 변경되었습니다. 실제 원본을 다시 읽고 변경 내용을 합쳐 주세요.")
+    check_reference_plan(destination, references)
+    if native and existing_raw is None and (destination / 'SKILL.md').exists():
+        raise ValueError('스킬 생성 준비 중 같은 위치에 파일이 생겼습니다. 기존 파일을 확인하세요.')
     destination.mkdir(parents=True, exist_ok=True)
-    frontmatter = ["---", f"name: {name}", f"description: {json.dumps(description, ensure_ascii=False)}", "---", ""]
-    body = dependency_instructions(layout["root"], name, dependencies) + instructions + "\n"
-    atomic_write_text(destination / "SKILL.md", "\n".join(frontmatter) + body)
+    atomic_write_text(destination / "SKILL.md", content)
+    if save_details is not None:
+        save_details["written"] = True
     dependency_path = destination / "tool-dependencies.json"
     if dependencies:
         atomic_write_json(dependency_path, {"schemaVersion": 1, "dependencies": dependencies})
     elif dependency_path.exists() and spec.get("tool_dependencies") == []:
         dependency_path.unlink()  # Explicit update of this skill's own dependency list.
-    if spec.get("references"):
-        references = destination / "references"
-        references.mkdir(exist_ok=True)
-        for index, item in enumerate(spec["references"], start=1):
-            atomic_write_text(references / f"reference-{index}.md", str(item).strip() + "\n")
+    write_references(destination, references, snapshot)
     return destination
 
 

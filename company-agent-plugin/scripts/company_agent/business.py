@@ -111,6 +111,9 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action == 'ppt-preview':
         from .business_artifacts import preview_template
         return preview_template(safe_path(args.template, exists=True), safe_path(args.output))
+    if action == 'ppt-reference':
+        from .ppt_reference import prepare_reference
+        return prepare_reference(_spec(args.spec))
     # The initial choice screen has no user data yet. Do not require an empty
     # file, filesystem probes or a write/verification cycle just to ask it.
     if action in {'ppt-choices', 'html-choices'}:
@@ -177,7 +180,7 @@ def run(args: argparse.Namespace) -> int:
 def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
-    for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-design-preview", "ppt-template",
+    for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-reference", "ppt-design-preview", "ppt-template",
                    "mail-capabilities", "mail-search", "mail-read", "eml-read", "artifact-start", "artifact-publish", "artifact-cleanup", "ppt-fit-images", "ppt-capabilities"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
@@ -192,7 +195,7 @@ def register(subparsers: Any) -> None:
             command.add_argument("--folder", required=True)
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
-        if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images", "mail-search", "mail-read"}:
+        if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-reference", "ppt-design-preview", "ppt-template", "ppt-fit-images", "mail-search", "mail-read"}:
             command.add_argument("--spec", required=action not in {'ppt-choices', 'html-choices'},
                                  help='UTF-8 JSON 파일. ppt-choices/html-choices는 생략하면 첫 질문만 반환합니다.')
         if action in {"html", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images"}:

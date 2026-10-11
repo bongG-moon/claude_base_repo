@@ -169,9 +169,56 @@ def cmd_asset_create(args: argparse.Namespace) -> int:
         return 0
     with Path(args.spec).open("r", encoding="utf-8-sig") as stream:
         spec = json.load(stream)
-    path = create_asset(spec, _state_root(args))
-    _print_json({"ok": True, "path": str(path), "type": spec.get("type"), "name": spec.get("name")})
-    return 0
+    location = None
+    if spec.get('type') == 'skill':
+        from .native_skill_storage import locate_skill
+        base = _path(getattr(args, 'state_root', None), user_state_root())
+        project = Path(args.project_root or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd())
+        location = locate_skill(base, project, str(spec.get('name', '')), args.storage_scope, for_create=True)
+        root = location.state_root
+    else:
+        root = _state_root(args)
+    from .skill_lifecycle import SkillSavePartialError
+    try:
+        path = create_asset(spec, root, source_spec_path=Path(args.spec).resolve(), skill_location=location,
+                            expected_skill_sha256=location.expected_sha256 if location is not None else None)
+    except SkillSavePartialError as exc:
+        _print_json({**exc.result, 'storageScope': args.storage_scope})
+        return 1
+    result = {"ok": True, "path": str(path), "type": spec.get("type"), "name": spec.get("name")}
+    if spec.get('type') == 'skill':
+        from .skill_lifecycle import inspect_skill
+        result = {**inspect_skill(root, spec['name'], location=location), 'operation': 'saved',
+                  'storageScope': args.storage_scope}
+    _print_json(result)
+    return 0 if result['ok'] is True else 1
+
+
+def _existing_asset_skill(args):
+    from .native_skill_storage import locate_skill
+    root = _path(getattr(args, 'state_root', None), user_state_root())
+    project = Path(args.project_root or os.environ.get('COMPANY_AGENT_CWD') or Path.cwd())
+    if not project.is_absolute() or not project.is_dir():
+        raise ValueError('현재 프로젝트의 존재하는 절대경로를 --project-root로 지정해 주세요.')
+    return locate_skill(root, project, args.name, args.storage_scope)
+
+
+def cmd_asset_inspect(args: argparse.Namespace) -> int:
+    from .skill_lifecycle import inspect_skill
+    location = _existing_asset_skill(args)
+    result = inspect_skill(location.state_root, args.name, location=location)
+    _print_json(result)
+    return 0 if result['ok'] else 1
+
+
+def cmd_asset_update(args: argparse.Namespace) -> int:
+    from .skill_lifecycle import update_skill
+    location = _existing_asset_skill(args)
+    instructions = Path(args.instructions_file).read_text(encoding='utf-8-sig')
+    result = update_skill(location.state_root, args.name, instructions, description=args.description,
+                          expected_sha256=args.expected_sha256, location=location)
+    _print_json({**result, 'storageScope': location.storage_scope})
+    return 0 if result['ok'] else 1
 
 
 def cmd_asset_validate(args: argparse.Namespace) -> int:
@@ -770,6 +817,17 @@ def build_parser() -> argparse.ArgumentParser:
     _add_state_argument(create)
     create.add_argument("--spec", required=True)
     create.set_defaults(func=cmd_asset_create)
+    inspect_skill = asset_sub.add_parser("inspect", help="기존 스킬의 실제 적용 파일과 사용 방법을 읽기 전용으로 확인합니다.")
+    _add_state_argument(inspect_skill)
+    inspect_skill.add_argument("--name", required=True)
+    inspect_skill.set_defaults(func=cmd_asset_inspect)
+    update_skill = asset_sub.add_parser("update", help="기존 이름과 저장 범위를 유지하며 스킬 본문을 수정합니다. AssetSpec 재생성은 필요 없습니다.")
+    _add_state_argument(update_skill)
+    update_skill.add_argument("--name", required=True)
+    update_skill.add_argument("--instructions-file", required=True, help="frontmatter 없는 UTF-8 본문 파일")
+    update_skill.add_argument("--description")
+    update_skill.add_argument("--expected-sha256", help="inspect가 반환한 본문 파일 SHA-256; 다른 수정이 있으면 중단")
+    update_skill.set_defaults(func=cmd_asset_update)
     validate_asset_parser = asset_sub.add_parser("validate")
     validate_asset_parser.add_argument("path")
     validate_asset_parser.set_defaults(func=cmd_asset_validate)
@@ -918,7 +976,7 @@ def build_parser() -> argparse.ArgumentParser:
     workspace.set_defaults(func=cmd_workspace)
     # Selection never accepts a browser/model supplied destination path. Existing
     # state-root remains the installation/session root, not a second scope flag.
-    for action in (upsert, create, memory_upsert, memory_search, memory_compact, memory_history, memory_restore,
+    for action in (upsert, create, inspect_skill, update_skill, memory_upsert, memory_search, memory_compact, memory_history, memory_restore,
                    test_tool, test_mcp, activate, activate_tool, sync_mcp, run_tool, rebind_mcp,
                    search, build, export, reconcile):
         action.add_argument('--storage-scope', choices=('personal', 'project'))

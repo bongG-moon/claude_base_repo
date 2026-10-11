@@ -59,14 +59,16 @@ def _binding(root: Path, definition: dict) -> dict:
     return {"server": server, "tools": definition["tools"], "assetHash": receipt["assetHash"], "schemaHash": digest}
 
 
-def prepare_dependencies(root: Path, destination: Path, spec: dict) -> list[dict]:
+def prepare_dependencies(root: Path, destination: Path, spec: dict, *, location=None) -> list[dict]:
     previous = destination / "tool-dependencies.json"
     if "tool_dependencies" not in spec and previous.is_file():
         existing = load_json(previous)
         if not isinstance(existing, dict) or existing.get("schemaVersion") != 1:
             raise ValueError("Invalid existing skill dependencies")
         # Preserve an existing binding; an ordinary text update cannot silently rebind changed tools.
-        check = check_skill_dependencies(root, destination.name)
+        check = check_skill_dependencies(root, destination.name,
+                                          location.project_root if location is not None else None,
+                                          location=location)
         if not check["ok"]:
             raise ValueError("Existing skill dependency changed; explicitly review tool_dependencies")
         return existing["dependencies"]
@@ -92,10 +94,21 @@ def dependency_instructions(root: Path, name: str, bindings: list[dict]) -> str:
             "호출 실패·권한 거절은 결과 성공으로 처리하지 않습니다. 외부 쓰기 승인은 별도 유지합니다.\n\n")
 
 
-def check_skill_dependencies(root: Path, name: str, project: Path | None = None) -> dict:
+def check_skill_dependencies(root: Path, name: str, project: Path | None = None, *, location=None) -> dict:
     from .asset_factory import _confined_child
     from .native_mcp import registration_status
-    destination = _confined_child(root / "personal-root/.claude/skills", name)
+    from .native_skill_storage import registered_location, validate_location
+    if location is not None:
+        location = validate_location(location, name)
+        if location.state_root != Path(root).absolute():
+            raise ValueError('스킬과 연결 도구의 저장소가 다릅니다.')
+        destination = location.directory
+    else:
+        destination = _confined_child(root / "personal-root/.claude/skills", name)
+        if not (destination / 'SKILL.md').is_file():
+            location = registered_location(root, name, project)
+            if location is not None:
+                destination = location.directory
     if not (destination / "SKILL.md").is_file():
         return {"ok": False, "status": "missing-skill", "dependencies": []}
     file = destination / "tool-dependencies.json"

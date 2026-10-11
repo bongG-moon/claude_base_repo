@@ -269,7 +269,7 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
             # identity. Do not turn oversized optional context into lost paths.
             essential = {key: runtime[key] for key in (
                 'scope', 'project', 'stateRoot', 'knowledgeBase', 'cliCommand',
-                'completionGuide', 'metadataCommand', 'company_agent_session_id', 'visionRouting',
+                'completionGuide', 'metadataCommand', 'company_agent_session_id', 'workspaceUi', 'visionRouting',
             ) if key in runtime}
             if runtime.get('companyPolicy'):
                 essential['companyPolicy'] = runtime['companyPolicy']
@@ -634,6 +634,7 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
             "project": str(cwd), "stateRoot": str(root),
             "knowledgeBase": str(base) if base else None,
             "cliCommand": cli_command(plugin),
+            "workspaceUi": os.environ.get("COMPANY_WORKSPACE_UI") == "1",
             "completionGuide": str(plugin / "skills" / "company-agent" / "references" / "completion.md"),
             "metadataCommand": shlex.quote(str(Path(sys.executable)).replace("\\", "/")) + " -B " + shlex.quote(str(plugin / "scripts" / "harness_cli.py").replace("\\", "/")),
             "personalSkills": [item for item in skill_cards if item["source"] == "personal"],

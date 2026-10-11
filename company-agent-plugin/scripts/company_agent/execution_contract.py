@@ -287,6 +287,16 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     if head == ("asset", "check-skill"):
         fields = _fields(args[2:], {"--name", "--state-root", "--project-root"}, {"--name"})
         return "read_only" if fields is not None and re.fullmatch(r"[a-z][a-z0-9-]{1,62}", fields["--name"]) else "unknown"
+    if head == ("asset", "inspect"):
+        # Metadata and hashes only; never a body-load receipt or native permission grant.
+        if args[2:] == ['--help']:
+            return 'read_only'
+        fields = _fields(args[2:], {'--name', '--state-root', '--project-root', '--storage-scope'}, {'--name'})
+        return ('read_only' if fields is not None
+                and re.fullmatch(r'[a-z][a-z0-9-]{1,62}', fields['--name'])
+                and fields.get('--storage-scope', 'personal') in {'personal', 'project'} else 'unknown')
+    if head == ('asset', 'update') and args[2:] == ['--help']:
+        return 'read_only'
     if head == ("asset", "web-plan") and args[2:] != ['--help']:
         return "read_only" if _fields(args[2:], {"--spec"}) is not None else "unknown"
     # Exact help calls must be handled before missing-storage-scope questions.
@@ -324,7 +334,7 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         args = [value for value in args if value != '--open']
     if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "ppt-capabilities"), ("business", "html-designs")}:
         allowed = {"--state-root"}
-    elif head == ("business", "mail-search"):
+    elif head in {("business", "mail-search"), ("business", "ppt-reference")}:
         allowed, required = {"--state-root", "--spec"}, {"--spec"}
     elif head == ('business', 'html-choices'):
         allowed = {'--state-root', '--spec'}

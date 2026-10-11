@@ -2,8 +2,10 @@
 import hashlib
 import json
 from pathlib import Path
+import posixpath
 import re
 import unittest
+from urllib.parse import unquote, urlsplit
 
 ROOT=Path(__file__).resolve().parents[1]
 PLUGIN=ROOT/'company-agent-plugin'
@@ -18,17 +20,26 @@ GUIDE='Company-Agent-사용자-안내서.html'
 STANDALONE='Company-Agent-사용자-안내서.html'
 
 
+def powershell_files(text, variable):
+    """Read the literal packaging allowlist, not incidental filenames/comments."""
+    match=re.search(r'\$'+re.escape(variable)+r'\s*=\s*@\((.*?)\)',text,re.S)
+    if not match:
+        raise AssertionError(f'Missing packaging allowlist: ${variable}')
+    values=re.findall(r"'([^']+)'",match.group(1))
+    remaining=re.sub(r"'[^']+'|[\s,]",'',match.group(1))
+    if remaining or not values:
+        raise AssertionError(f'Expected a nonempty literal allowlist: ${variable}')
+    return {value.replace('\\','/') for value in values}
+
+
 class HandbookTests(unittest.TestCase):
     def test_three_scopes_are_consistent(self):
         for file in [ROOT/'docs/COMPANY_AGENT_HANDBOOK.md', ROOT/'docs/ONBOARDING_COURSE.md',
-                     ROOT/'docs/COMPANY_PERSONAL_WORKFLOW.md', ROOT/'local_app/web/companion.js',
+                     ROOT/'docs/COMPANY_PERSONAL_WORKFLOW.md',
                      PLUGIN/'resources/onboarding-course.json', PLUGIN/'skills/company-agent/SKILL.md']:
             text=file.read_text(encoding='utf-8')
             for term in ['회사 공통','개인 전체','이 프로젝트']:
                 self.assertIn(term,text,str(file))
-        ui=(ROOT/'local_app/web/companion.js').read_text(encoding='utf-8')
-        self.assertNotIn("knowledge:'회사·개인 지식'",ui)
-        self.assertNotIn("brief:'폴더 업무 지침'",ui)
 
     def test_storage_and_learning_limits_are_explained_to_users(self):
         handbook=(ROOT/'docs/COMPANY_AGENT_HANDBOOK.md').read_text(encoding='utf-8')
@@ -75,7 +86,7 @@ class HandbookTests(unittest.TestCase):
         if draft:
             self.assertTrue('Release는 **초안**' in readme or 'Release는 **미게시**' in readme)
         release_state = '미게시' if 'Release는 **미게시**' in readme else '초안'
-        for name in ('DEPLOYMENT.md','BUSINESS_PILOT_GUIDE.md','LOCAL_WORKSPACE.md'):
+        for name in ('DEPLOYMENT.md','BUSINESS_PILOT_GUIDE.md'):
             intro='\n'.join((ROOT/'docs'/name).read_text(encoding='utf-8').splitlines()[:40])
             self.assertIn(version,intro,name)
             if draft:
@@ -152,15 +163,38 @@ class HandbookTests(unittest.TestCase):
         for number in range(1,chapter_count+1):
             self.assertIn(f'<h3 id="usage-section-{number}"><span id="section-{number}"',page)
 
-    def test_both_bundle_builders_include_every_manual(self):
-        for builder in ['New-WorkspaceBundle.ps1','New-OfflineBundle.ps1']:
-            text=(ROOT/'deploy'/builder).read_text(encoding='utf-8')
-            for name in [*MARKDOWN,*HTMLS,GUIDE]:
-                self.assertIn(name,text)
-            self.assertIn('SKILL_PRIORITY.md',text)
-        # Windows PowerShell 5.1 otherwise misreads Korean filenames in source.
-        builder=ROOT/'deploy/New-WorkspaceBundle.ps1'
-        self.assertTrue(builder.read_bytes().startswith(b'\xef\xbb\xbf'))
+    def test_harness_bundle_includes_user_manuals_and_operating_contracts(self):
+        text=(ROOT/'deploy/New-OfflineBundle.ps1').read_text(encoding='utf-8-sig')
+        markdown=powershell_files(text,'markdownManuals')
+        operational=powershell_files(text,'operationalDocs')
+        self.assertEqual(set(MARKDOWN),markdown)
+        html=re.search(r"\$htmlManual\s*=\s*'([^']+)'",text)
+        self.assertIsNotNone(html)
+        self.assertEqual(GUIDE,html.group(1))
+        required={'DEPLOYMENT.md','STATE_PRESERVATION.md','SKILL_PRIORITY.md',
+                  'PROJECT_HARNESS.md','MCP_CONTRACTS.md','ADMIN_KNOWLEDGE_GUIDE.md',
+                  'LEGACY_MACHINE_DEPLOYMENT.md','SELF_LEARNING.md','BUSINESS_PILOT_GUIDE.md',
+                  'SKILL_CATALOG.md','HTML_DESIGN_SELECTION.md','COMPANY_PERSONAL_WORKFLOW.md'}
+        self.assertFalse(required-operational,sorted(required-operational))
+        app_docs={'LOCAL_WORKSPACE.md','WORKSPACE_STARTUP_DIAGNOSTIC.md','WORKSPACE_USER_GUIDE.html'}
+        self.assertFalse(app_docs&(markdown|operational|{GUIDE}))
+        for name in markdown|operational|{GUIDE}:
+            self.assertTrue((ROOT/'docs'/name).is_file(),name)
+            content=(ROOT/'docs'/name).read_text(encoding='utf-8')
+            for target in re.findall(r'\]\(([^)\s]+)\)',content):
+                url=urlsplit(target)
+                if not url.scheme and not url.netloc:
+                    self.assertNotIn(posixpath.basename(unquote(url.path)),app_docs,name)
+        self.assertIn('foreach ($docName in @($operationalDocs) + @($markdownManuals) + @($htmlManual))',text)
+        self.assertIn("-Destination (Join-Path $stagePath ('docs\\' + $docName))",text)
+        self.assertIn('foreach ($manualName in @($markdownManuals) + @($htmlManual))',text)
+        self.assertIn('-Destination $manualDestination',text)
+
+    def test_package_contract_rejects_missing_or_dynamic_allowlist(self):
+        with self.assertRaisesRegex(AssertionError,'Missing packaging allowlist'):
+            powershell_files("# 'USER_GUIDE.md'",'markdownManuals')
+        with self.assertRaisesRegex(AssertionError,'nonempty literal allowlist'):
+            powershell_files('$markdownManuals = @($unknown)','markdownManuals')
 
     def test_installed_manuals_match_source_and_local_links(self):
         installed=PLUGIN/'resources/manuals'
@@ -275,13 +309,13 @@ class HandbookTests(unittest.TestCase):
         self.assertNotIn('emit(b.legacy',generator)
 
     def test_removed_screen_control_is_not_shipped_or_advertised(self):
-        for name in ('local_app/computer_use.py', 'docs/CUA_DRIVER_PILOT.md',
+        for name in ('docs/CUA_DRIVER_PILOT.md',
                      'docs/Company-Agent-Cua-Pilot.html',
                      'company-agent-plugin/resources/manuals/CUA_DRIVER_PILOT.md',
                      'company-agent-plugin/resources/manuals/Company-Agent-Cua-Pilot.html',
                      'company-agent-plugin/skills/cua-driver'):
             self.assertFalse((ROOT/name).exists(),name)
-        for folder in (ROOT/'local_app', PLUGIN/'hooks', PLUGIN/'resources/manuals'):
+        for folder in (PLUGIN/'hooks', PLUGIN/'resources/manuals'):
             for file in folder.rglob('*'):
                 if file.suffix in ('.py','.js','.json','.md','.html'):
                     self.assertNotRegex(file.read_text(encoding='utf-8'),

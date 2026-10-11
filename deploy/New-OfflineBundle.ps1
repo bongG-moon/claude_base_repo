@@ -327,7 +327,7 @@ try {
         'PROJECT_HARNESS.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md',
         'LEGACY_MACHINE_DEPLOYMENT.md', 'SELF_LEARNING.md', 'BUSINESS_PILOT_GUIDE.md',
         'SKILL_CATALOG.md', 'HTML_DESIGN_SELECTION.md',
-        'COMPANY_PERSONAL_WORKFLOW.md', 'LOCAL_WORKSPACE.md', 'WORKSPACE_STARTUP_DIAGNOSTIC.md')
+        'COMPANY_PERSONAL_WORKFLOW.md')
     New-CompanyAgentDirectory -Path (Join-Path $stagePath 'docs')
     foreach ($docName in @($operationalDocs) + @($markdownManuals) + @($htmlManual)) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force

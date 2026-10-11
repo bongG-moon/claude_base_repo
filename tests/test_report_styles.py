@@ -2,6 +2,7 @@ import argparse
 import base64
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -16,6 +17,46 @@ from company_agent import report_styles as styles, business_artifacts as artifac
 
 
 class ReportStylesTests(unittest.TestCase):
+    def test_workspace_environment_flag_never_hides_chat_design_options(self):
+        spec = {'designMenu': 'additional', 'length': 'detailed', 'mode': 'scroll'}
+        baseline = artifacts.html_choices(spec)
+        for value in ('', '0', 'true', '1'):
+            with self.subTest(flag=value), patch.dict(os.environ, {'COMPANY_WORKSPACE_UI': value}):
+                result = artifacts.html_choices(spec)
+                self.assertEqual(baseline, result)
+                self.assertEqual({'length': 'detailed', 'mode': 'scroll'}, result['preservedChoices'])
+                self.assertNotIn('workspaceChoice', result)
+                self.assertNotIn('presentation', result)
+                self.assertEqual('chat-number-or-name', result['selectionInput'])
+                self.assertIn('전체 번호 목록을 한 번에 보여주고', result['selectionInstruction'])
+                for number, (_, name, _, _) in enumerate(styles.STYLES, 1):
+                    self.assertIn(f'{number}. {name}', result['selectionPrompt'])
+                for selected in ({}, {'style': 'neumorphism'}, {**spec, 'style': 'neumorphism'}):
+                    self.assertNotIn('workspaceChoice', artifacts.html_choices(selected))
+                chosen = artifacts.html_choices({**spec, 'style': '4번'})
+                self.assertEqual('ready', chosen['stage'])
+                self.assertEqual({'style': 'glassmorphism', 'length': 'detailed', 'mode': 'scroll'}, chosen['selection'])
+
+    def test_workspace_cli_choice_exits_successfully_without_creating_state(self):
+        with tempfile.TemporaryDirectory() as t:
+            root = Path(t)
+            spec = root / 'choices.json'
+            spec.write_text('{"designMenu":"additional","length":"detailed","mode":"scroll"}', encoding='utf-8')
+            state = root / 'not-created'
+            command = [sys.executable, '-B', str(ROOT / 'company-agent-plugin/scripts/harness_cli.py'),
+                'business', 'html-choices', '--spec', str(spec), '--state-root', str(state)]
+            result = subprocess.run(command, capture_output=True, text=True, encoding='utf-8', timeout=20,
+                env={**os.environ, 'COMPANY_WORKSPACE_UI': '1', 'PYTHONIOENCODING': 'utf-8'})
+            self.assertEqual(0, result.returncode, result.stderr)
+            pending = json.loads(result.stdout)
+            self.assertNotIn('presentation', pending)
+            self.assertNotIn('workspaceChoice', pending)
+            self.assertEqual('design_detail', pending['stage'])
+            self.assertEqual('chat-number-or-name', pending['selectionInput'])
+            self.assertIn('10. 레트로·Y2K', pending['selectionPrompt'])
+            self.assertIn('전체 번호 목록을 한 번에 보여주고', pending['selectionInstruction'])
+            self.assertFalse(state.exists())
+
     def test_additional_selection_is_one_direct_reply_for_all_styles(self):
         pending=styles.choices({'designMenu':'additional','length':'detailed'})
         self.assertTrue(pending['waitForUser'])
@@ -256,6 +297,10 @@ class ReportStylesTests(unittest.TestCase):
     def test_additional_choice_instructions_no_longer_require_group_question(self):
         skill=(ROOT/'company-agent-plugin/skills/html-report/SKILL.md').read_text(encoding='utf-8')
         self.assertIn('END THIS TURN',skill)
+        self.assertIn('same chat menu in CLI and Workspace', skill)
+        self.assertNotIn('workspaceChoice', skill)
+        self.assertNotIn('workspaceUi', skill)
+        self.assertNotIn('Do not repeat\nthe list', skill)
         self.assertNotIn('After a group answer',skill)
         self.assertNotIn('four-option designQuestions',skill)
         self.assertIn('immersive-3d',skill)

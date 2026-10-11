@@ -19,6 +19,7 @@ param(
     [switch] $DryRun,
     [switch] $SkipAdminCheck,
     [switch] $SkipPrerequisiteCheck,
+    [switch] $RepairOtherPluginPython,
     [switch] $SkipBundleVerification
 )
 
@@ -27,7 +28,7 @@ Set-StrictMode -Version 2.0
 $scopedEntryValues = @{}
 foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'BackupRoot', 'ClaudeConfigRoot',
     'ClaudeCommand', 'PythonCommand', 'InvokingUserProfile', 'InvokingLocalAppData', 'NonInteractive',
-    'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction', 'SkillConflictAction')) {
+    'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'RepairOtherPluginPython', 'ExistingHarnessAction', 'SkillConflictAction')) {
     $scopedEntryValues[$name] = Get-Variable -Name $name -ValueOnly
 }
 . (Join-Path $PSScriptRoot 'Setup-CompanyAgent.ps1') -FunctionsOnly
@@ -619,15 +620,17 @@ try {
     }
     Write-CompanyAgentJsonAtomic -Path $registrationPath -Value $registration
     if ($null -ne $harnessTransaction) { $null = Complete-SetupHarnessReplacement -Transaction $harnessTransaction }
-    # A separate, recoverable compatibility repair after Company Agent commits.
-    # Failure here must not roll back an otherwise successful installation.
-    try {
-        $pluginRepairs = @(Repair-CompanyAgentPluginPython -ClaudeConfigRoot $ClaudeConfigRoot -PythonCommand $resolvedPython -BackupBase $backupPath -Scope $Scope -ProjectRoot $ProjectRoot)
-        foreach ($repair in $pluginRepairs) {
-            Write-Host ("Ouroboros Python connection repaired: {0}. Backup: {1}" -f $repair.python, $repair.backup)
+    # Leave other plugins untouched by default. This existing, recoverable
+    # repair is available only when the operator explicitly requests it.
+    if ($RepairOtherPluginPython) {
+        try {
+            $pluginRepairs = @(Repair-CompanyAgentPluginPython -ClaudeConfigRoot $ClaudeConfigRoot -PythonCommand $resolvedPython -BackupBase $backupPath -Scope $Scope -ProjectRoot $ProjectRoot)
+            foreach ($repair in $pluginRepairs) {
+                Write-Host ("Ouroboros Python connection repaired: {0}. Backup: {1}" -f $repair.python, $repair.backup)
+            }
         }
+        catch { Write-Warning ("Company Agent installed, but optional plugin Python repair needs attention: " + $_.Exception.Message) }
     }
-    catch { Write-Warning ("Company Agent installed, but optional plugin Python repair needs attention: " + $_.Exception.Message) }
     $resultStatus = 'installed'
     if ($intent.operation -eq 'update') {
         $resultStatus = 'updated'

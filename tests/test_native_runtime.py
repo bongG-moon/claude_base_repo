@@ -69,6 +69,13 @@ class NativeRuntimeTestBase(unittest.TestCase):
 
 
 class NativeRuntimeTests(NativeRuntimeTestBase):
+    def test_workspace_ui_runtime_capability_requires_exact_child_flag(self):
+        for value in ('', '0', 'true', '1'):
+            with self.subTest(flag=value), patch.dict(os.environ, {'COMPANY_WORKSPACE_UI': value}):
+                context = json.loads(runtime_context(PLUGIN, self.project))['company_agent_runtime']
+                self.assertIs(value == '1', context['workspaceUi'])
+                self.assertIn('metadataCommand --help', context['instructions'])
+
     def test_session_start_rebuilds_knowledge_once_and_retains_errors(self):
         from company_agent import knowledge
         atomic_write_text(self.base/'broken.md', '---\nmalformed\n---\n')
