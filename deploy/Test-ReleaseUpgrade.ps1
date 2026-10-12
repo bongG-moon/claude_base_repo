@@ -101,9 +101,12 @@ try {
     # baseline release need not contain newly added learning runtime files.
     foreach ($relative in @(
         'scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py',
-        'scripts\company_agent\skill_question_receipts.py', 'hooks\hooks.json',
+        'scripts\company_agent\skill_question_receipts.py',
         'scripts\company_agent\execution_contract.py', 'scripts\company_agent\native_runtime.py',
         'scripts\native_entry.py',
+        'scripts\company_agent\vision_routing.py', 'scripts\company_agent\vision_handoff.py',
+        'agents\vision-worker.md', 'agents\small-worker.md',
+        'agents\medium-worker.md', 'agents\large-worker.md',
         'scripts\company_agent\business.py',
         'scripts\company_agent\business_safety.py', 'scripts\company_agent\workspace_api.py',
         'scripts\company_agent\resource_scope.py', 'scripts\company_agent\harness_map.py',
@@ -149,6 +152,21 @@ try {
         $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
         Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedModule -Algorithm SHA256).Hash) "Updated file was not installed intact: $relative"
     }
+    # A scoped installation changes exactly the Read launcher command/args.
+    # Compare the entire expected document, not a blanket exclusion or the
+    # source-byte hash that can never match this intentional adaptation.
+    $expectedHooks = Read-CompanyAgentJson -Path (Join-Path $update 'payload\core\plugin\hooks\hooks.json')
+    $readGroups = @($expectedHooks.hooks.PreToolUse | Where-Object { $_.matcher -ceq '^Read$' })
+    Assert-ReleaseUpgrade ($readGroups.Count -eq 1 -and $readGroups[0].hooks.Count -eq 1) 'Source must contain one separate Read hook'
+    # Claude's registry can point to its cache copy rather than the managed
+    # distribution folder; the durable launcher belongs to the latter.
+    $installedReleaseRoot = Join-Path $localAppData ('CompanyAgent-Distribution\marketplace\versions\' + $newVersion)
+    $readLauncher = Join-Path $installedReleaseRoot 'read-hook.cmd'
+    Assert-ReleaseUpgrade (Test-Path -LiteralPath $readLauncher -PathType Leaf) 'Updated Read launcher is missing'
+    $readGroups[0].hooks[0].command = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::System)) 'cmd.exe'
+    $readGroups[0].hooks[0].args = @('/d', '/v:off', '/s', '/c', 'call', $readLauncher)
+    $installedHooks = Read-CompanyAgentJson -Path (Join-Path $current[0].installPath 'hooks\hooks.json')
+    Assert-ReleaseUpgrade (($expectedHooks | ConvertTo-Json -Depth 100 -Compress) -ceq ($installedHooks | ConvertTo-Json -Depth 100 -Compress)) 'Installed hooks differ beyond the expected Read launcher adaptation'
     foreach ($removed in @('resources\first-work.html', 'resources\manuals\Company-Agent-Guide.html',
         'resources\manuals\Company-Agent-Handbook.html', 'resources\manuals\Company-Agent-Onboarding.html',
         'resources\manuals\Claude-Code-필수-사용법.html',
@@ -173,6 +191,7 @@ try {
     [pscustomobject]@{
         status = 'pass'; previousVersion = $oldVersion; updatedVersion = $newVersion
         nativeClaudeRegistration = $true; nativeSessionStart = $true
+        readHookRegistrationVerified = $true
         personalStatePreserved = $true; originalArchivesPreserved = $true
         longPathSkillBackupPreserved = $true
         artifactsKept = [bool]$KeepArtifacts; testRoot = $testRoot

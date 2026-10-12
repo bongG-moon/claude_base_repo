@@ -45,15 +45,29 @@ def main() -> int:
                 # active only while Claude actually invokes this plugin hook.
                 print(json.dumps(danger, ensure_ascii=True))
                 return 0
-            from company_agent.vision_routing import preflight as vision_preflight
+            from company_agent.vision_routing import preflight as vision_preflight, recovery_candidate, handoff_reason
             vision = vision_preflight(payload)
+            vision_scoped = False
+            if vision is None and recovery_candidate(payload):
+                vision_scoped = configure_runtime(plugin, Path(str(payload.get("cwd") or os.getcwd())))
+                if vision_scoped:
+                    vision = vision_preflight(payload, recovery_root=user_state_root())
             if vision is not None:
                 # Pure routing / ordinary Read fast path: no catalogue scan,
                 # session lookup, model probe or new permission grant.
                 # A routing intervention (unlike harmless {}) is scoped to the
                 # installed user/project. Never change unrelated folders.
-                if vision and not configure_runtime(plugin, Path(str(payload.get("cwd") or os.getcwd()))):
-                    vision = {}
+                if vision:
+                    if not vision_scoped:
+                        vision_scoped = configure_runtime(plugin, Path(str(payload.get("cwd") or os.getcwd())))
+                    if not vision_scoped:
+                        vision = {}
+                    elif payload.get('tool_name') == 'Read' and vision.get('hookSpecificOutput', {}).get('permissionDecision') == 'deny':
+                        # This is our routing backstop, not a real file/permission
+                        # failure. Keep only bounded recovery metadata, no source.
+                        from company_agent.vision_handoff import remember
+                        marker = remember(user_state_root(), payload)
+                        vision['hookSpecificOutput']['permissionDecisionReason'] = handoff_reason(payload, marker)
                 print(json.dumps(vision, ensure_ascii=True))
                 return 0
         from company_agent.vision_routing import result_context as vision_result_context
@@ -75,6 +89,9 @@ def main() -> int:
         if not active:
             print("{}")
             return 0
+        if event == 'UserPromptSubmit':
+            from company_agent.vision_handoff import reset as reset_vision_handoff
+            reset_vision_handoff(user_state_root(), payload)
         session_id = str(payload.get('session_id') or '')
         record_hook(user_state_root(), session_id, event, 'started', 0)
         preparation = {}

@@ -6,9 +6,9 @@ Company Agent ZIP을 로컬 PC의 폴더에 완전히 압축 해제한 뒤 이 �
 
 담당자가 단일 EXE 설치본을 제공했다면 **Company-Harness-Setup.exe**를 두 번 클릭하고 **Company Harness 설치** 화면에서 사용할 범위를 고른 뒤 **설치하기**를 누르면 된다. 압축 풀기나 명령어 입력 없이 같은 설치기를 사용한다. 아래 절차는 ZIP 설치본을 Claude에게 맡기는 경우에 해당한다.
 
-이번 배포 대상은 **1.4.39**이며 직원 기본 설치 파일은 **Company-Harness-Setup.exe**다. 사내 GitLab에서 ZIP으로 받은 경우 담당자가 첨부한 `company-agent-1.4.39-2026.09.03.zip` 설치 파일을 사용한다. GitLab이 자동으로 제공하는 Source code ZIP은 직원 설치 번들이 아니다. 다운로드 위치와 관계없이 같은 설치 절차를 사용하며, 직원 PC에서 GitLab 토큰·Git 설치·자동 업데이트 설정을 요구하지 않는다.
+이번 배포 대상은 **1.4.40**이며 직원 기본 설치 파일은 **Company-Harness-Setup.exe**다. 사내 GitLab에서 ZIP으로 받은 경우 담당자가 첨부한 `company-agent-1.4.40-2026.09.03.zip` 설치 파일을 사용한다. GitLab이 자동으로 제공하는 Source code ZIP은 직원 설치 번들이 아니다. 다운로드 위치와 관계없이 같은 설치 절차를 사용하며, 직원 PC에서 GitLab 토큰·Git 설치·자동 업데이트 설정을 요구하지 않는다.
 
-1.4.39는 새 개인·프로젝트 스킬을 Claude 기본 위치에 저장하고 기존 스킬의 원본 수정 흐름을 지원한다. 설치만으로 기존 개인 스킬을 이동·복제하거나 자동 학습 대상으로 추가하지 않는다. 다른 플러그인의 Python 연결 교정은 기본 실행하지 않으며 담당자가 `Install-ScopedCompanyAgent.ps1 -RepairOtherPluginPython`을 명시한 경우에만 수행한다.
+1.4.40은 이미지 관찰의 비전 작업자 인계와 반복 실패 처리를 보완한다. 기존의 새 개인·프로젝트 스킬 기본 위치 저장과 원본 수정 흐름은 유지한다. 설치만으로 기존 개인 스킬을 이동·복제하거나 자동 학습 대상으로 추가하지 않는다. 다른 플러그인의 Python 연결 교정은 기본 실행하지 않으며 담당자가 `Install-ScopedCompanyAgent.ps1 -RepairOtherPluginPython`을 명시한 경우에만 수행한다. 사내 HCP Vision 실제 응답은 운영 환경에서 확인해야 한다.
 
 기존 조건부 이미지 전용 작업자는 유지한다. `ANTHROPIC_CUSTOM_MODEL_OPTION`이 정확히 `HCP-Vision-Latest`일 때만 이미지 관찰을 별도 작업자에게 맡기며 메인 모델은 유지한다. 설정이 없으면 비전 라우팅은 비활성 상태다. 설치 중 비전 설정을 추가하거나 모델을 시험 호출하지 않는다. 실제 사내 모델·게이트웨이·CLI 지원 확인은 운영 검증으로 남긴다. 기존 Release 파일은 보존하며 별도 Workspace 앱 변경은 이번 설치 범위에 포함하지 않는다.
 

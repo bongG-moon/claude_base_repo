@@ -135,6 +135,37 @@ class ReadHookIntegrationTests(fixtures.NativeRuntimeTestBase):
         self.assertEqual(0, result.returncode, result.stderr)
         self.assertEqual({}, json.loads(result.stdout))
 
+    def test_real_entry_repairs_handoff_and_new_user_turn_retires_it(self):
+        identity = {'session_id': 'vision-entry-test', 'cwd': str(self.project)}
+        image = 'C:/synthetic/한글 자료.jpg'
+        result = self.run_entry(payload(image, **identity))
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertIn('[company-vision:', result.stdout)
+        env = dict(os.environ, ANTHROPIC_CUSTOM_MODEL_OPTION=vision.VISION_MODEL,
+                   PYTHONDONTWRITEBYTECODE='1', CLAUDE_CONFIG_DIR=str(self.root / 'isolated-profile'))
+        env.pop('CLAUDE_ENV_FILE', None)
+
+        def event(name, value):
+            response = subprocess.run([sys.executable, '-B', '-X', 'utf8',
+                str(self.plugin / 'scripts/native_entry.py'), '--event', name],
+                input=json.dumps({**identity, **value}, ensure_ascii=False), capture_output=True,
+                text=True, encoding='utf-8', env=env, cwd=self.project, timeout=30)
+            self.assertEqual(0, response.returncode, response.stderr)
+            return json.loads(response.stdout)
+
+        wrong_agent = {'tool_name': 'Agent', 'tool_input': {
+            'description': '이미지 확인', 'run_in_background': False,
+            'prompt': f'Use {vision.VISION_AGENT} to read "{image}".'}}
+        fixed = event('PreToolUse', wrong_agent)['hookSpecificOutput']
+        self.assertEqual(vision.VISION_AGENT, fixed['updatedInput']['subagent_type'])
+        self.assertNotIn('permissionDecision', fixed)
+        # Native permissions and actual model invocation are NOT exercised here.
+        self.assertEqual({}, event('PreToolUse', payload(image,
+            agent_type=vision.VISION_AGENT, agent_id='vision-1')))
+        self.assertEqual('deny', event('PreToolUse', wrong_agent)['hookSpecificOutput']['permissionDecision'])
+        event('UserPromptSubmit', {'prompt': '새 요청: 설명만 해줘'})
+        self.assertEqual({}, event('PreToolUse', wrong_agent))
+
     def test_application_error_is_forwarded_once(self):
         trace = self.root / 'calls.txt'
         fixtures.atomic_write_text(self.plugin / 'scripts/native_entry.py',

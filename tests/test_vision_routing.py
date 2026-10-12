@@ -8,6 +8,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -112,6 +113,72 @@ class VisionRoutingTests(unittest.TestCase):
         for name in ("general-purpose", "company-agent:medium-worker", "other:vision-worker"):
             self.assertIsNone(vision.preflight(call("Agent", {"subagent_type": name, "model": "opus"})))
 
+    def test_hint_is_exact_agent_input_and_needs_no_job(self):
+        file = r'C:\synthetic\한글 자료 1.jpg'
+        result = vision.preflight(call(inputs={'file_path': file}))['hookSpecificOutput']
+        reason = result['permissionDecisionReason']
+        hint, _ = json.JSONDecoder().raw_decode(reason[reason.index('{'):])
+        self.assertEqual(vision.VISION_AGENT, hint['subagent_type'])
+        self.assertIn(json.dumps(file, ensure_ascii=False)[1:-1], hint['prompt'])
+        self.assertNotIn('model', hint)
+        self.assertNotIn('resume', hint)
+        self.assertIn('workFile은 불필요', reason)
+
+    def test_replays_omitted_worker_trace_without_spawning_general_child(self):
+        with tempfile.TemporaryDirectory(prefix='vision-trace-') as temporary, \
+                patch.dict(os.environ, {'COMPANY_AGENT_USER_STATE': temporary}):
+            identity = {'session_id': 'synthetic-session', 'cwd': temporary}
+            file = r'C:\synthetic\전략 자료.jpg'
+            blocked = self.run_entry(call(inputs={'file_path': file}, **identity))
+            self.assertEqual('deny', blocked['hookSpecificOutput']['permissionDecision'])
+            # Same mistake as production: vision is mentioned, but type omitted.
+            request = call('Agent', {'description': '이미지 전사', 'run_in_background': False,
+                'prompt': f'Read "{file}". If blocked hand off to {vision.VISION_AGENT}.'}, **identity)
+            routed = self.run_entry(request)['hookSpecificOutput']
+            self.assertEqual(vision.VISION_AGENT, routed['updatedInput']['subagent_type'])
+            self.assertNotIn('permissionDecision', routed)
+            self.assertNotIn('model', routed['updatedInput'])
+            self.assertEqual({}, self.run_entry(call(inputs={'file_path': file},
+                agent_id='vision-child', agent_type=vision.VISION_AGENT, **identity)))
+            repeated = self.run_entry(request)['hookSpecificOutput']
+            self.assertEqual('deny', repeated['permissionDecision'])
+            self.assertIn('이미 요청', repeated['permissionDecisionReason'])
+
+    def test_inactive_scope_never_writes_or_repairs_handoff(self):
+        with tempfile.TemporaryDirectory(prefix='vision-inactive-') as temporary, \
+                patch.dict(os.environ, {'COMPANY_AGENT_USER_STATE': temporary}):
+            identity = {'session_id': 'synthetic-session', 'cwd': temporary}
+            self.assertEqual({}, self.run_entry(call(**identity), active=False))
+            self.assertEqual({}, self.run_entry(call('Agent', {
+                'prompt': f'{vision.VISION_AGENT} read C:/work/image.jpg'}, **identity), active=False))
+            self.assertEqual([], list(Path(temporary).rglob('*.json')))
+
+    def test_self_message_stops_without_changing_other_messages(self):
+        own = call('SendMessage', {'to': 'worker1', 'message': 'please read image'}, agent_id='worker1')
+        result = self.run_entry(own)['hookSpecificOutput']
+        self.assertEqual('deny', result['permissionDecision'])
+        self.assertIn('자기 자신', result['permissionDecisionReason'])
+        self.assertEqual({}, self.run_entry(call('SendMessage', {'to': 'main'}, agent_id='worker1'), scope_check=False))
+        self.assertEqual({}, self.run_entry(call('SendMessage', {'to': 'worker2'}), scope_check=False))
+        with patch.dict(os.environ, {'ANTHROPIC_CUSTOM_MODEL_OPTION': ''}):
+            self.assertEqual({}, self.run_entry(own, scope_check=False))
+
+    def test_vision_cannot_message_or_search_for_ocr_with_shell(self):
+        for tool in ('SendMessage', 'ListAgents', 'Bash', 'PowerShell'):
+            result = vision.preflight(call(tool, agent_id='v1', agent_type=vision.VISION_AGENT))
+            self.assertEqual('deny', result['hookSpecificOutput']['permissionDecision'])
+
+    def test_main_and_worker_guidance_avoid_missing_workfile_search(self):
+        reason = vision.preflight(call(agent_id='general'))['hookSpecificOutput']['permissionDecisionReason']
+        self.assertIn('최종 답변', reason)
+        self.assertIn('이미 있을 때만', reason)
+        self.assertIn('찾거나 만들지', reason)
+        prompt = vision.preflight(call('Agent', {'subagent_type': vision.VISION_AGENT,
+            'prompt': '전체 글자를 추출해줘'}))['hookSpecificOutput']['updatedInput']['prompt']
+        self.assertIn('전체 글자 추출', prompt)
+        self.assertIn('[판독 불가]', prompt)
+        self.assertIn('workFile은 필요 없습니다', prompt)
+
     def test_empty_vision_task_is_not_a_probe(self):
         for prompt in (None, "", "  "):
             result = vision.preflight(call("Agent", {"subagent_type": vision.VISION_AGENT, "prompt": prompt}))
@@ -206,8 +273,13 @@ class VisionRoutingTests(unittest.TestCase):
         for tool in vision.OBSERVATION_TOOLS:
             self.assertIn(tool, meta["tools"])
         self.assertIn("텍스트", body)
+        for name in ("small-worker", "medium-worker", "large-worker"):
+            worker = (PLUGIN / f"agents/{name}.md").read_text(encoding="utf-8")
+            self.assertIn("return `NEEDS_VISION` directly to the parent", worker)
+            self.assertIn("workFile only if already present", worker)
+            self.assertIn("Do not delegate, message yourself or poll", worker)
         hooks = json.loads((PLUGIN / "hooks/hooks.json").read_text(encoding="utf-8"))["hooks"]
-        for name in ("Read", "Agent", "Task", "mcp__test__screenshot"):
+        for name in ("Read", "Agent", "Task", "SendMessage", "mcp__test__screenshot"):
             self.assertEqual(1, sum(bool(re.fullmatch(group['matcher'], name))
                                     for group in hooks['PreToolUse']))
         script = (PLUGIN / "scripts/Invoke-CompanyAgent.ps1").read_text(encoding="utf-8-sig")
