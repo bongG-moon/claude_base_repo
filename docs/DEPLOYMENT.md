@@ -1,12 +1,14 @@
 # Company Harness 설치와 배포 — Windows
 
-현재 소스의 배포 대상은 **1.4.40**, 회사 지식팩은 **2026.09.03**입니다. 직원은 담당자가 제공한 **Company-Harness-Setup.exe**를 두 번 클릭해 설치합니다. 기존 설치·백업·개인 자료 보존 절차를 사용하며, 필요한 실행 파일 위치를 찾지 못했을 때만 물어봅니다. 이번 버전은 이미지 읽기의 비전 작업자 종류 누락을 제한적으로 보완하고, 자기 메시지·중복 인계 반복과 불필요한 작업 파일 탐색을 줄입니다. 메인 모델·승인 설정·MCP·개인 자료는 유지합니다. 담당자는 [1.4.40 변경 내용](UPDATE_1.4.40.md)을 확인합니다. 로컬 설치 파일 생성과 GitLab 게시·사내 PC 적용은 별도입니다. 이전 Release 파일은 보존하며 별도 Workspace 앱 변경은 이번 배포에 포함하지 않습니다. 이미 설치된 PC는 자동 갱신되지 않습니다.
+현재 소스의 배포 대상은 **1.4.41**, 회사 지식팩은 **2026.09.03**입니다. 직원은 담당자가 제공한 **Company-Harness-Setup.exe**를 두 번 클릭해 설치합니다. 기존 설치·백업·개인 자료 보존 절차를 사용하며, 필요한 실행 파일 위치를 찾지 못했을 때만 물어봅니다. 이번 버전은 비전 작업자의 정상 종료와 실제 이미지 판독을 구분하고, 실패 시 OCR로 조용히 대체하거나 원인을 추측해 확정하지 않도록 안내합니다. 실행 분기·메인 모델·승인 설정·MCP·개인 자료는 유지하며 상시 연결 시험이나 추가 검증 호출을 넣지 않습니다. 담당자는 [1.4.41 변경 내용](UPDATE_1.4.41.md)을 확인합니다. 로컬 설치 파일 생성과 GitLab 게시·사내 PC 적용은 별도입니다. 이전 Release 파일은 보존하며 별도 Workspace 앱 변경은 이번 배포에 포함하지 않습니다. 이미 설치된 PC는 자동 갱신되지 않습니다.
 
 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다.
 
 이미지 전용 작업자는 기존 환경의 `ANTHROPIC_CUSTOM_MODEL_OPTION`이 정확히 `HCP-Vision-Latest`일 때만 활성화됩니다. 필요한 이미지 관찰에 한해 별도 작업자를 호출하고 한국어 텍스트 결과를 받아 기존 모델로 작업을 계속합니다. 설정이 없으면 비활성 상태이며 설치기는 모델 설정을 추가하거나 모델 목록·API를 시험 호출하지 않습니다. 운영 담당자는 HCP 모델 목록 등록, 정확한 ID의 계정·게이트웨이 허용, 설치된 Claude Code의 사용자 지정 작업자 모델 ID 지원과 실제 이미지 처리 결과를 각각 확인해야 합니다. 모형 라우팅 시험은 이 운영 검증을 대신하지 않습니다.
 
 이미지 인계 시에는 `company-agent:vision-worker`를 명시한 새 작업자를 사용합니다. 같은 대화·폴더에서 방금 보류한 정확한 이미지 경로와 비전 인계 의도가 확인된 경우에만 누락된 작업자 종류를 보완합니다. 다른 업무나 다른 대화의 작업자를 일괄 비전 모델로 바꾸지 않습니다. 메인 모델 자체를 전환하지 않으므로 텍스트 결과를 받은 뒤 원래 모델로 계속합니다. 단순 이미지 읽기는 `workFile`을 만들거나 찾지 않으며, 비전 호출 실패 시 사본·Base64·설정 변경으로 우회하지 않습니다. 입력창에 직접 첨부한 이미지와 모든 MCP 이미지 응답까지 자동으로 가로채는 기능은 아닙니다. 운영 확인 순서는 [비전 인계 시험](UPDATE_1.4.40.md#운영-환경에서-확인하기)을 따릅니다.
+
+필요할 때만 쓰는 별도 `VLM-Input-Check-20261013.zip`은 하네스에 자동 설치되지 않습니다. 기본 실행은 오프라인이며, 명시적 전송 시 같은 가상 이미지로 A(일반 이미지 입력)와 B(합성 Read 도구 결과)를 각각 한 번씩 비교합니다. B는 실제 CLI가 아니며 실제 Claude Code 경로 C는 별도 시험입니다. 모델 자기 보고·토큰 수·응답 모델명 차이만으로 성공이나 원인을 단정하지 않습니다. 실제 사내 HCP 모델·게이트웨이 동작은 아직 미검증입니다. [비교 키트 안내](../standalone-guides/vision-input-check/README.md)를 참고하세요.
 
 직원 PC에는 Claude Code와 사내 SMALL/MEDIUM/LARGE 연결, 회사 승인 Python 3.11 이상이 이미 준비되어 있어야 합니다. 기본 ZIP에는 Python 실행 파일과 DLL을 넣지 않고 PC의 Python을 사용합니다. 설치 과정에서 Python/pip/Git를 설치하거나 다운로드하지 않으며 PC의 PATH 설정도 바꾸지 않습니다. 설치 조건은 Claude Code CLI 2.1.220 이상, Windows PowerShell 5.1 이상, Windows 10/11입니다. 대상 PC의 운영체제와 Python 아키텍처는 사내 담당자가 확인합니다.
 
@@ -267,7 +269,7 @@ powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZi
 
 ```powershell
 # 담당자용: 주소는 실제 사내 GitLab 프로젝트 페이지로 바꿉니다.
-powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZip ".\dist\company-agent-1.4.40-2026.09.03.zip" -OutputDirectory ".\build\gitlab-harness-delivery" -ProjectUrl "https://gitlab.example.com/team/company-agent"
+powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZip ".\dist\company-agent-1.4.41-2026.09.03.zip" -OutputDirectory ".\build\gitlab-harness-delivery" -ProjectUrl "https://gitlab.example.com/team/company-agent"
 ```
 
 사내 주소를 아직 정하지 않았다면 `-ProjectUrl`을 생략해 파일만 준비할 수 있습니다. 출력 폴더가 이미 있으면 새 폴더를 지정합니다. 기존 배포 파일을 덮어쓰지 않습니다. 도구는 ZIP의 구성 파일·해시·안내서 일치를 확인한 뒤 설치 ZIP, 단독 HTML 안내서, 두 `.sha256` 파일과 게시용 설명을 만듭니다. 직원 PC에는 이 도구가 필요 없습니다.

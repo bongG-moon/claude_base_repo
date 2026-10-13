@@ -125,11 +125,11 @@ def preflight(payload: dict[str, Any], *, recovery_root: Path | None = None) -> 
         # Each bounded inspection starts in the vision definition's own context.
         updated.pop("resume", None)
         updated["prompt"] = (
-            "[비전 읽기 전용] 전달된 대상만 기존 권한 안에서 관찰하세요. 이미지·base64·전체 대화 대신 "
-            "사용자가 요약을 요청하면 요약을, 전체 글자 추출을 요청하면 그 범위의 전사를 한국어 텍스트로 반환하세요. "
-            "숫자·구조를 보존하고 안 보이는 곳은 [판독 불가]로 표시하세요. 단순 읽기에 workFile은 필요 없습니다. "
-            "설정·파일 변경·재위임·SendMessage는 금지합니다. 모델·권한·도구 실패 시 VISION_UNAVAILABLE과 실제 사유를 "
-            "반환하고 사본·base64·픽셀/OCR·설정 탐색으로 재시도하지 마세요.\n" + inputs["prompt"]
+            "[비전 읽기 전용] 지정 대상만 기존 권한 안에서 관찰하세요. 요약 또는 요청한 전체 글자 추출을 "
+            "한국어 텍스트로 반환하고 숫자·구조를 보존하며 안 보이는 곳은 [판독 불가]로 표시하세요. "
+            "workFile은 필요 없습니다. 이미지 판독·모델·권한·도구 실패는 VISION_UNAVAILABLE과 미확인 범위만 반환하세요. "
+            "정상 종료·모델 자기 보고는 인식 성공의 증거가 아닙니다. 원인 단정·내용 추측·OCR 대체·반복 호출·"
+            "사본/base64/설정 탐색·파일 변경·재위임·SendMessage는 하지 마세요.\n" + inputs["prompt"]
         )
         return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": updated}}
     if _vision_child(payload):
@@ -162,11 +162,11 @@ def result_context(event: str, payload: dict[str, Any]) -> dict[str, Any] | None
     if not _vision_call(payload):
         return None
     text = (
-        "비전 작업 실패는 해당 이미지 확인 미검증입니다. 모델 탐색·동일 호출 반복·텍스트 모델로 이미지 재전송은 하지 마세요. "
+        "비전 작업 실패는 이미지 확인 미검증입니다. 원인 추측·OCR 대체·모델 탐색·동일 호출 반복은 하지 마세요. "
         "실제 권한 거절은 그대로 유지하고, 가능한 텍스트/구조 확인만 계속합니다. 기존 변경의 검증 의무는 지우지 마세요."
         if event == "PostToolUseFailure" else
-        "비전의 실제 완료 결과를 확인한 뒤 텍스트 관찰만 활용하세요. 실행 중이면 기존 완료 알림/결과 도구로 기다립니다. "
-        "이미지를 본 대화에 다시 읽지 말고 기존 모델로 계속하세요. workFile은 이미 있을 때만 유지하고 찾거나 만들지 마세요. "
-        "자기 메시지나 일반 작업자 재개는 비전 호출이 아닙니다. 응답 오류·미확인 범위는 성공으로 처리하지 마세요."
+        "작업자 정상 종료는 이미지 인식 성공이 아닙니다. 실제 완료 결과만 사용하고 VISION_UNAVAILABLE·판독 실패는 "
+        "미확인으로 알리세요. 원인·fallback을 단정하거나 OCR로 조용히 대체하지 마세요. 실행 중이면 기존 완료 알림을 "
+        "기다리고, 완료 후 기존 모델로 계속하세요. 실패 반복·자기 메시지·추가 검증 호출 없이 workFile은 이미 있을 때만 유지하세요."
     )
     return {"hookSpecificOutput": {"hookEventName": event, "additionalContext": text}}

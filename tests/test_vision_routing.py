@@ -194,6 +194,56 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertNotIn("secret", text)
         self.assertNotIn("decision", result)
 
+    def test_normal_tool_completion_is_not_visual_success(self):
+        payload = call('Agent', {'subagent_type': vision.VISION_AGENT},
+                       tool_response={'content': 'VISION_UNAVAILABLE: private raw gateway data'})
+        result = vision.result_context('PostToolUse', payload)
+        text = result['hookSpecificOutput']['additionalContext']
+        for phrase in ('정상 종료는 이미지 인식 성공이 아닙니다', 'VISION_UNAVAILABLE',
+                       '미확인', 'fallback', 'OCR로 조용히 대체하지', '추가 검증 호출 없이'):
+            self.assertIn(phrase, text)
+        self.assertNotIn('private raw gateway data', text)
+        self.assertNotIn('decision', result)
+        # No claim to verify correctness by inspecting the worker's own prose.
+        for response in ('I saw the image', 'base64 appears as text', '', None):
+            self.assertEqual(result, vision.result_context('PostToolUse',
+                             {**payload, 'tool_response': response}))
+
+    def test_evidence_guidance_stays_bounded_without_extra_routine_instructions(self):
+        worker = (PLUGIN / 'agents/vision-worker.md').read_text(encoding='utf-8')
+        for phrase in ('모델 자기 보고', '토큰 수', '서버 처리', '실제 응답 모델',
+                       'OCR로 조용히 대체', '파일명·질문·이전 답변',
+                       '추가 도구를 호출하지', '평소 작업에 연결 시험·추가 검증 호출을 넣지',
+                       '화면 관찰만으로 사실성·편집 가능성을 확정하지'):
+            self.assertIn(phrase, worker)
+        # Character budgets, not claims about real HCP tokenizer usage.
+        # The released 1.4.40 worker had 2,105 characters excluding final newline.
+        self.assertLessEqual(len(worker.rstrip()), 2105)
+        payload = call('Agent', {'subagent_type': vision.VISION_AGENT, 'prompt': 'TEST'})
+        prefix = vision.preflight(payload)['hookSpecificOutput']['updatedInput']['prompt'][:-4]
+        self.assertLessEqual(len(prefix), 300)
+        for event, budget in (('PostToolUse', 220), ('PostToolUseFailure', 140)):
+            self.assertLessEqual(len(vision.result_context(event, payload)
+                                     ['hookSpecificOutput']['additionalContext']), budget)
+        # The global/per-turn routing rule is unchanged; no diagnostics added there.
+        self.assertNotIn('test', vision.VISION_RULE.lower())
+        self.assertNotIn('검증 호출', vision.VISION_RULE)
+
+    def test_guidance_and_normal_reads_do_not_call_network_processes_or_files(self):
+        def unexpected(*args, **kwargs):
+            raise AssertionError('Routine routing must not run diagnostics or IO')
+        with patch('socket.socket', side_effect=unexpected), \
+             patch('subprocess.Popen', side_effect=unexpected), \
+             patch('builtins.open', side_effect=unexpected), \
+             patch.object(Path, 'open', side_effect=unexpected):
+            self.assertEqual({}, vision.preflight(call(inputs={'file_path': 'normal.md'})))
+            self.assertIsNone(vision.preflight(call('mcp__corp-db-read__query')))
+            self.assertIsNone(vision.result_context('PostToolUse', call('Bash')))
+            payload = call('Agent', {'subagent_type': vision.VISION_AGENT, 'prompt': 'inspect'})
+            self.assertIn('updatedInput', vision.preflight(payload)['hookSpecificOutput'])
+            for event in ('PostToolUse', 'PostToolUseFailure'):
+                self.assertIn('additionalContext', vision.result_context(event, payload)['hookSpecificOutput'])
+
     def test_observation_result_does_not_persist_image_or_capture_as_mutation(self):
         payload = call(agent_type=vision.VISION_AGENT, agent_id="v1", tool_response={"type": "image", "data": "SECRET"})
         self.assertEqual({}, vision.result_context("PostToolUse", payload))
