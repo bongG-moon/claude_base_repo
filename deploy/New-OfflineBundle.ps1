@@ -205,6 +205,10 @@ if (-not $SkipSourceValidation) {
     if ([string]::IsNullOrWhiteSpace($pythonExecutable)) {
         $pythonExecutable = $pythonInfo.Definition
     }
+    $excelSkillValidation = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-B', (Join-Path $SourceRoot 'scripts\sync-excel-pipeline-skill.py'), '--check')
+    if ($excelSkillValidation.ExitCode -ne 0) {
+        throw "Excel skill runtime source validation failed:`r`n$($excelSkillValidation.StdOut)`r`n$($excelSkillValidation.StdErr)"
+    }
     $previousDontWriteBytecode = [Environment]::GetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', 'Process')
     try {
         [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', '1', 'Process')

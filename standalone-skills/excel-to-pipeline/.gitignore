@@ -1,0 +1,11 @@
+# Local dependencies/caches are not part of the standalone skill or fixtures.
+__pycache__/
+*.py[cod]
+node_modules/
+.venv/
+.clean-source-*/
+# Disposable unittest workspaces; named fixture files stay trackable.
+/tests/tmp*/
+/tests/reader-route-*/
+/tests/excel-pipeline-limits-*/
+/tests/fixtures/tmp*/

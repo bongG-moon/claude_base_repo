@@ -62,7 +62,7 @@ class HandbookTests(unittest.TestCase):
         actual={p.parent.name for p in (PLUGIN/'skills').glob('*/SKILL.md')
                 if 'disable-model-invocation: true' not in p.read_text(encoding='utf-8').split('---',2)[1]}
         self.assertEqual(actual,documented)
-        self.assertEqual(11,len(actual))
+        self.assertEqual(12,len(actual))
         self.assertIn(f'기본 스킬 {len(actual)}개와 이전 이름 1개',text)
         compatibility=(PLUGIN/'skills/platform-mcp-builder/SKILL.md').read_text(encoding='utf-8')
         self.assertIn('disable-model-invocation: true',compatibility.split('---',2)[1])

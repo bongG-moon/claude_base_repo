@@ -202,7 +202,7 @@ def skill_brief(runtime: dict) -> str:
 # model call, file reads, or new registry schema. Unknown domains still use text.
 _DOMAINS = {
     'slides': r'(?<![a-z])(?:pptx?|powerpoint|slides?)(?![a-z])|슬라이드|파워포인트',
-    'sheet': r'(?<![a-z])(?:xlsx?|excel|csv|spreadsheet)(?![a-z])|엑셀',
+    'sheet': r'(?<![a-z])(?:xlsx?|xlsm|excel|csv|spreadsheet)(?![a-z])|엑셀',
     'word': r'(?<![a-z])(?:docx?|word)(?![a-z])|워드',
     'html': r'(?<![a-z])html?(?![a-z])|웹페이지',
     'mail': r'(?<![a-z])(?:outlook|email|mail)(?![a-z])|아웃룩|메일',
@@ -320,12 +320,34 @@ def _explanation_intent(text: str) -> bool:
                 or re.search(r'\b(?:explain|show|draw|visuali[sz]e|diagram)\b[^.!?;\n]{0,70}' + subject, text))
 
 
-def _features(text: str) -> tuple[set, set]:
+def _features(text: str, *, metadata: bool = False) -> tuple[set, set]:
     positive = _positive_text(text)
     lifecycle = _lifecycle_features(positive)
-    if lifecycle:
-        return lifecycle
     domains = {name for name, pattern in _DOMAINS.items() if re.search(pattern, positive)}
+    # Specialised workbook-to-data work is not a replacement for a plain
+    # document reader. Derive both prompt and skill capability from metadata;
+    # no skill name, body, file inspection or extra model call is involved.
+    pipeline = 'sheet' in domains and bool(re.search(
+        r'수식|함수\s*구조|매크로|전처리|데이터\s*테이블|(?:여러|복수)\s*(?:개(?:의)?\s*)?표|'
+        r'표.{0,12}(?:분리|분해)|시트.{0,12}구조|\b(?:vba|formula|formulas|preprocess|pipeline)\b|'
+        r'\bmultiple\s+tables\b', positive))
+    # A Python preprocessing script is the requested workbook-conversion
+    # deliverable, not necessarily a reusable Skill/MCP asset. Keep actual
+    # Skill/tool creation and installation/modification in their existing flow.
+    pipeline_script = (pipeline and lifecycle == ({'assets'}, {'make'})
+                       and re.search(r'스크립트|\bscripts?\b', positive)
+                       and not re.search(r'스킬|도구|\b(?:skills?|tools?|mcp)\b', positive))
+    if lifecycle and not pipeline_script:
+        return lifecycle
+    if pipeline:
+        # General readers may also analyse formulas. Keep their explicit basic
+        # read capability; only specialist metadata excludes plain reading.
+        general_reading = metadata and bool(re.search(
+            r'(?:엑셀|xlsx|xlsm|excel|파일|문서).{0,20}(?:읽기|읽고|읽습니다|요약)|'
+            r'\b(?:read|reading)\b.{0,30}\b(?:excel|xlsx|xlsm|files?|documents?)\b', positive))
+        if not general_reading:
+            domains.discard('sheet')
+        domains.add('excel-pipeline')
     # A completed input reference ("읽은 내용을 HTML로 만들어줘") is not
     # another read operation. Keep negated/unread inputs and any separate
     # request to read again; do not weaken genuine read-then-create routing.
@@ -334,6 +356,8 @@ def _features(text: str) -> tuple[set, set]:
         positive,
     )
     actions = ({'read'} if _READ.search(current_actions) else set()) | ({'make'} if _MAKE.search(positive) else set())
+    if pipeline and re.search(r'이전|분리|분해|전처리|\b(?:migrate|convert|split|preprocess)\b', positive):
+        actions.add('read')
     if _explanation_intent(positive):
         domains.add('explanation')
         actions.add('make')
@@ -359,7 +383,7 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
     prompt_domains, prompt_actions = _features(prompt[:2000])
     # Compute capabilities before shortening descriptions for display. A
     # multi-purpose skill may genuinely perform the same requested role.
-    capabilities = {x['id']: _features(str(x.get('description', ''))) for x in items}
+    capabilities = {x['id']: _features(str(x.get('description', '')), metadata=True) for x in items}
     def strong(item):
         domains, actions = capabilities[item['id']]
         return bool(prompt_domains and prompt_actions and prompt_domains <= domains and prompt_actions <= actions)

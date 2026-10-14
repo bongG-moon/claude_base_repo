@@ -279,6 +279,9 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     if not args:
         return "unknown"
     head = tuple(args[:2])
+    if head == ('business', 'excel-analyze'):
+        from .excel_pipeline_command import read_only_arguments
+        return 'read_only' if read_only_arguments(args) else 'unknown'
     if head == ("handoff", "read"):
         fields = _fields(args[2:], {"--id", "--project", "--state-root"}, {"--id", "--project"})
         return "read_only" if fields is not None and re.fullmatch(r"[a-f0-9]{32}", fields["--id"]) else "unknown"

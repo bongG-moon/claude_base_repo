@@ -63,6 +63,9 @@ def _choice_spec(path: str | None) -> tuple[dict, dict | None]:
 def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     action = args.business_action
     state = safe_path(args.state_root or user_state_root())
+    if action == 'excel-analyze':
+        from .excel_pipeline_command import analyze
+        return analyze(args)
     if action in {'artifact-start','artifact-publish','artifact-cleanup'}:
         from . import artifact_delivery
         if action == 'artifact-start':
@@ -181,9 +184,20 @@ def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
     for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-reference", "ppt-design-preview", "ppt-template",
-                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "artifact-start", "artifact-publish", "artifact-cleanup", "ppt-fit-images", "ppt-capabilities"):
+                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "artifact-start", "artifact-publish", "artifact-cleanup", "ppt-fit-images", "ppt-capabilities", "excel-analyze"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
+        if action == 'excel-analyze':
+            command.add_argument('--file', required=True)
+            destination = command.add_mutually_exclusive_group(required=True)
+            destination.add_argument('--output', help='새 결과 폴더. 기존 폴더는 덮어쓰지 않습니다.')
+            destination.add_argument('--inspect', action='store_true', help='짧은 구조 요약만, 파일 생성 없음.')
+            destination.add_argument('--context-only', action='store_true', help='제한된 모델용 요약만, 파일 생성 없음.')
+            command.add_argument('--plan')
+            command.add_argument('--reader', choices=('auto', 'openpyxl', 'xlwings'), default='auto')
+            command.add_argument('--excel-timeout', type=int, default=90)
+            command.add_argument('--sample-rows', type=int, default=5)
+            command.add_argument('--context-chars', type=int, default=12000)
         if action in {'html-designs', 'html-template'}:
             command.add_argument('--output')
             command.add_argument('--open', action='store_true', dest='open_preview')

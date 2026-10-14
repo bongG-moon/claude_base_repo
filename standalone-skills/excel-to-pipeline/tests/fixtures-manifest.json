@@ -1,0 +1,67 @@
+{
+  "fixtureVersion": 1,
+  "syntheticOnly": true,
+  "authoring": "@oai/artifact-tool; intentional exception formulas patched with Python stdlib OOXML after export",
+  "expectedValuesSource": "Hand-calculated business controls independent of the skill parser and evaluator",
+  "runtimeExcelRecalculation": "Not performed; cached supported calculations verified with Artifact Tool, then read back with openpyxl",
+  "previewCaveats": [
+    "Artifact Tool renders text identifiers 00101 as 101, but saved XLSX stores 00101 as a string with number format @; validate identifiers from workbook cells, not the preview",
+    "ambiguous_cases.xlsx exception-sheet preview is pre-OOXML patch and shows placeholder labels, not evaluated exceptions"
+  ],
+  "files": {
+    "complex_workbook.xlsx": {
+      "sheets": 5,
+      "tables": [
+        {"sheet":"집계","range":"B4:E8","headerRows":1,"dataRange":"B5:E7","dataRows":3,"totalRows":[8]},
+        {"sheet":"정산","range":"B5:H16","headerRows":1,"dataRange":"B6:H15","dataRows":10,"totalRows":[16]},
+        {"sheet":"신청","range":"B5:J16","nativeTable":"Applicants","headerRows":1,"dataRange":"B6:J16","dataRows":10,"blankRows":[11],"physicalDataRows":11},
+        {"sheet":"기준표","range":"B4:E7","headerRows":1,"dataRows":3},
+        {"sheet":"기준표","range":"G4:I7","headerRows":1,"dataRows":3},
+        {"sheet":"기준표","range":"B11:D14","headerRows":1,"dataRows":3},
+        {"sheet":"실적","range":"B4:G9","headerRows":2,"dataRange":"B6:G9","dataRows":4,"mergedRanges":["B4:B5","C4:C5","D4:E4","F4:G4"],"flattenedHeaders":["부서","월","교육 / 신청","교육 / 수료","성과 / 만족도","성과 / 달성률"]}
+      ],
+      "expectedCells": {
+        "신청!B6":"00101", "신청!B16":"00110", "신청!G10":0,
+        "신청!J6":null, "신청!F6":"2026-10-01T00:00:00", "신청!I7":0.1,
+        "실적!F9":null, "실적!G9":0,
+        "정산!E7":150000, "정산!H7":270000, "정산!H8":0, "정산!H9":95000, "정산!H16":1185000,
+        "집계!C5":3, "집계!C6":2, "집계!C7":2, "집계!C8":7,
+        "집계!D5":320000, "집계!D6":570000, "집계!D7":295000, "집계!D8":1185000,
+        "집계!E5":106667, "집계!E6":285000, "집계!E7":147500
+      },
+      "formulas": ["VLOOKUP", "IF", "ROUND", "SUM", "SUMIFS", "COUNTIFS"],
+      "formulaTotal": 82
+    },
+    "variant_next_month.xlsx": {
+      "sheets":5,
+      "changes":["신청 00101 수량 1→2", "신청 00103 대기→승인", "기준표 C02 단가 150000→160000", "신규 신청 00111 추가", "신청일 10월→11월"],
+      "tableChanges":[
+        {"sheet":"신청","range":"B5:J17","nativeTable":"Applicants","dataRows":11,"blankRows":[11],"physicalDataRows":12},
+        {"sheet":"정산","range":"B5:H17","dataRows":11,"totalRows":[17]}
+      ],
+      "expectedCells": {
+        "신청!B17":"00111", "신청!F6":"2026-11-01T00:00:00", "기준표!D6":160000,
+        "정산!H6":200000, "정산!H7":288000, "정산!H8":200000, "정산!H12":128000, "정산!H16":360000, "정산!H17":1871000,
+        "집계!C5":4, "집계!C6":3, "집계!C7":2, "집계!C8":9,
+        "집계!D5":628000, "집계!D6":948000, "집계!D7":295000, "집계!D8":1871000,
+        "집계!E5":157000, "집계!E6":316000, "집계!E7":147500
+      },
+      "formulaTotal":89
+    },
+    "ambiguous_cases.xlsx": {
+      "sheets":2,
+      "mustNotClaimFullyAutomatic":true,
+      "ambiguousRanges":[{"sheet":"경계모호","range":"B4:E10","reasons":["repeated header without separating blank row", "empty internal column may or may not split tables", "subtotal embedded between possible tables"]}],
+      "expectedFormulaOutcomes":{
+        "수식예외!C5":{"formula":"=INDIRECT(\"경계모호!C5\")","outcome":"unsupported_or_requires_review","cache":null},
+        "수식예외!C6":{"formula":"='[missing.xlsx]Sheet1'!A1","outcome":"external_reference_not_executed","cache":null},
+        "수식예외!C7":{"formula":"=C8+1","outcome":"cycle","cache":null},
+        "수식예외!C8":{"formula":"=C7+1","outcome":"cycle","cache":null},
+        "수식예외!C9":{"formula":"=1/0","outcome":"error","cache":"#DIV/0!"},
+        "수식예외!C10":{"formula":"=VLOOKUP(\"없음\",경계모호!B5:C6,2,FALSE)","outcome":"error","cache":"#N/A"},
+        "수식예외!C12":{"formula":"=10+20","outcome":"recomputed_without_cache","cache":null,"computed":30}
+      },
+      "expectedCells":{"수식예외!C11":10}
+    }
+  }
+}

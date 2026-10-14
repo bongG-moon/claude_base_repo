@@ -1,0 +1,240 @@
+{
+  "version": 1,
+  "modules": [
+    {
+      "name": "EventWrapper",
+      "path": "modules/014_EventWrapper.bas",
+      "module_type": "bas",
+      "source_sha256": "4f7ca37152c220a4a22a43375ca45dc7bb621268bc559469e9eae9bec3f20cc6"
+    },
+    {
+      "name": "FixtureBridge",
+      "path": "modules/017_FixtureBridge.bas",
+      "module_type": "bas",
+      "source_sha256": "6f8730022fed5222f9b33f3e079ed8ea6c21c9ae0add343d2f6991389c1c0af6"
+    },
+    {
+      "name": "Sheet1",
+      "path": "modules/002_Sheet1.cls",
+      "module_type": "cls",
+      "source_sha256": "893bcf21001ed9567945a82e262e42a78c19968b6d6bd018e33db439318bc549"
+    },
+    {
+      "name": "Sheet10",
+      "path": "modules/011_Sheet10.cls",
+      "module_type": "cls",
+      "source_sha256": "9224e346a74c4111705cab0b2cbfce190acd6a983c75e65dbefbbfaa6e7ff3d3"
+    },
+    {
+      "name": "Sheet11",
+      "path": "modules/012_Sheet11.cls",
+      "module_type": "cls",
+      "source_sha256": "570156809c5a04c6d69c84af12467fc58b96a8cd29a2ac8af909426418ae21ac"
+    },
+    {
+      "name": "Sheet12",
+      "path": "modules/013_Sheet12.cls",
+      "module_type": "cls",
+      "source_sha256": "1d5ec939de574fbe0c50182d265b30fdab1e2d120353ba8d4fb68e00bd9fec98"
+    },
+    {
+      "name": "Sheet2",
+      "path": "modules/003_Sheet2.cls",
+      "module_type": "cls",
+      "source_sha256": "dc376b793fba21d513981980134985420f047eb03b475bbd265b8cfc540b7cd7"
+    },
+    {
+      "name": "Sheet3",
+      "path": "modules/004_Sheet3.cls",
+      "module_type": "cls",
+      "source_sha256": "349bf88f4ccb9f4e6f4c03018ee929fc6baac657cc625a71cf38d2903a65230f"
+    },
+    {
+      "name": "Sheet4",
+      "path": "modules/005_Sheet4.cls",
+      "module_type": "cls",
+      "source_sha256": "32be86fa95cfdd0576008e6fcb42fecf671d383a01d30e4c403ff7591c15a0bc"
+    },
+    {
+      "name": "Sheet5",
+      "path": "modules/006_Sheet5.cls",
+      "module_type": "cls",
+      "source_sha256": "66341632b5b7d495b446a06cdbaadb2aae3a537c7ba869e9ae193374ffb0dd5c"
+    },
+    {
+      "name": "Sheet6",
+      "path": "modules/007_Sheet6.cls",
+      "module_type": "cls",
+      "source_sha256": "c0f315bba1b8eefa0692880a2084c3de4b84ae805017ad2b4d96f8434177dd3f"
+    },
+    {
+      "name": "Sheet7",
+      "path": "modules/008_Sheet7.cls",
+      "module_type": "cls",
+      "source_sha256": "e9cda631da23f8806840cac8d89c4e68f3cbf55634cea65c3bdfdd4df841fd67"
+    },
+    {
+      "name": "Sheet8",
+      "path": "modules/009_Sheet8.cls",
+      "module_type": "cls",
+      "source_sha256": "62beb93108ff68c773393f3c64fdfc2d683f79e0dfd4b2fe519d06a49f818ed4"
+    },
+    {
+      "name": "Sheet9",
+      "path": "modules/010_Sheet9.cls",
+      "module_type": "cls",
+      "source_sha256": "e83f408a1374742c9a094b9268a32d6c2598dbcdb2f063b15db192f34a366e6b"
+    },
+    {
+      "name": "ThisWorkbook",
+      "path": "modules/001_ThisWorkbook.cls",
+      "module_type": "cls",
+      "source_sha256": "8a5667e084aed31e60335399794671ac247108d5e5a3192726f5973252ee6cc0"
+    },
+    {
+      "name": "TrainingCalculation",
+      "path": "modules/015_TrainingCalculation.bas",
+      "module_type": "bas",
+      "source_sha256": "0f7407669b59aceb7b2602eb0f07f89a6c07af3e7597c550bf0f0d40622f7a66"
+    },
+    {
+      "name": "TrainingPreparation",
+      "path": "modules/016_TrainingPreparation.bas",
+      "module_type": "bas",
+      "source_sha256": "43edd86e7fc199ce77b111321755a5e61e06d1604b035990fcd8e4702556fd12"
+    }
+  ],
+  "sheets": [
+    "집계",
+    "수식처리",
+    "신청원본",
+    "출결원본",
+    "평가원본",
+    "사원기준",
+    "교육기준",
+    "정책",
+    "비정형",
+    "예외신청",
+    "오류수식",
+    "매크로출력"
+  ],
+  "formula_count": 6798,
+  "formula_sha256": "ab2d4cd6cd5835397adcc93ed4ffb7424bf8cc8df05341a8cfb0718205a4f3a5",
+  "headers": [
+    {
+      "sheet": "신청원본",
+      "range": "B5:M5",
+      "values": [
+        [
+          "신청ID",
+          "사번",
+          "부서",
+          "과정코드",
+          "교육일",
+          "수량",
+          "상태",
+          "할인율",
+          "수동금액",
+          "갱신순번",
+          "메모",
+          "회차"
+        ]
+      ]
+    },
+    {
+      "sheet": "출결원본",
+      "range": "B5:E5",
+      "values": [
+        [
+          "신청ID",
+          "차시",
+          "참석",
+          "시간"
+        ]
+      ]
+    },
+    {
+      "sheet": "평가원본",
+      "range": "B5:D5",
+      "values": [
+        [
+          "신청ID",
+          "점수",
+          "응시"
+        ]
+      ]
+    },
+    {
+      "sheet": "사원기준",
+      "range": "B5:F5",
+      "values": [
+        [
+          "사번",
+          "이름",
+          "부서",
+          "직급",
+          "활성"
+        ]
+      ]
+    },
+    {
+      "sheet": "교육기준",
+      "range": "B5:F5",
+      "values": [
+        [
+          "과정코드",
+          "과정명",
+          "단가",
+          "교육시간",
+          "수료점수"
+        ]
+      ]
+    },
+    {
+      "sheet": "정책",
+      "range": "B5:C5",
+      "values": [
+        [
+          "항목",
+          "값"
+        ]
+      ]
+    },
+    {
+      "sheet": "예외신청",
+      "range": "B5:M5",
+      "values": [
+        [
+          "신청ID",
+          "사번",
+          "부서",
+          "과정코드",
+          "교육일",
+          "수량",
+          "상태",
+          "할인율",
+          "수동금액",
+          "갱신순번",
+          "메모",
+          "회차"
+        ]
+      ]
+    }
+  ],
+  "defined_names": [
+    [
+      "workbook",
+      "RequiredAttendance",
+      "'정책'!$C$6"
+    ]
+  ],
+  "review": {
+    "recipe": "synthetic_training_v1",
+    "business_sources_reviewed": true,
+    "fixture_sha256": "34e03d7bcc1db17e83d448c156449d8ff34c11ad5190edf69ca4c17a2298901c",
+    "excluded": [
+      "자동 이벤트",
+      "오류수식 시트의 의도적인 비지원 수식"
+    ]
+  }
+}
