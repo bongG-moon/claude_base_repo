@@ -114,5 +114,7 @@ def analyze(args) -> dict:
                 "sourceModified": False, "macrosExecuted": False}
     if output:
         response.update(output=str(output), modelContext=str(output / "model_context.json"),
-                        report=str(output / "report.md"), transform=str(output / "transform.py"))
+                        report=str(output / "report.md"), transform=str(output / "transform.py"),
+                        entryPoint=str(output / "main.py"), dataDirectory=str(output / "DATA"),
+                        processDirectory=str(output / "PROCESS"), readme=str(output / "README.md"))
     return response

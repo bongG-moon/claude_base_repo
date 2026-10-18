@@ -33,7 +33,9 @@ Excel 경로 시험·제한이 필요할 때만 [excel-reader.md](references/exc
 
 - 표·원본 위치: `tables/`, `workbook.json`, `source_cells.json`
 - 수식·읽기 근거·제한: `formulas.json`, `pipeline_plan.json`, `input_evidence.json`, `report.md`
-- 같은 종류의 다음 파일: `transform.py`와 `pipeline_lib/`. 이미 만든 처리 코드는 재사용합니다.
+- 실행: `main.py`. `DATA/`는 출처·로더, `PROCESS/`는 고정 수식·표별 업무 처리, `outputs/`는 실행 결과입니다.
+- 사용자가 바꿀 Python에는 역할·주요 동작·수정 위치를 쉬운 한국어 주석으로 설명하고 README에 실행법을 적습니다.
+- 같은 구조의 입력은 DATA만 바꾸고 PROCESS를 재사용합니다. 기존 `transform.py`는 구조 재분석 호환용입니다.
 - 매크로 원문 접근 가능: `vba/`, `vba-index.json`, `migration_plan.json`
 
 한 요청의 결과는 지정한 **한 폴더**에 모읍니다. 같은 분석을 inspect→생성으로 반복하지
@@ -42,6 +44,9 @@ Excel 경로 시험·제한이 필요할 때만 [excel-reader.md](references/exc
 VBA 처리까지 Python으로 옮기려면 [vba-migration.md](references/vba-migration.md)를
 읽고 관련 원문으로 입력→처리→출력을 구현합니다. 접근 거절이면 셀·수식 분석을
 계속하되 매크로는 미분석으로 남깁니다. 자동 완전 번역·실제 VBA 실행 대조를 주장하지 않습니다.
+업무별 정리·결합·집계는 `PROCESS/table_steps.py`에, 외부 Python/DB 연결은 DATA에 둡니다.
+고정 수식의 행·열·자료형이 달라지면 재검토하며 자동 확장을 주장하지 않습니다.
+재사용 검증은 DATA만 교체해 결과 변화를 확인하고 PROCESS가 그대로인지 대조합니다.
 
 ## 보존할 것
 

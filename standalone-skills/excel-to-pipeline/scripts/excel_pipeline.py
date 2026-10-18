@@ -24,7 +24,7 @@ MAX_CELLS = 250_000
 MAX_RECTANGLE = 1_000_000
 MAX_UNCOMPRESSED = 128 * 1024 * 1024
 MAX_REGIONS = 500
-VERSION = "0.5.0"
+VERSION = "0.6.0"
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 FLAG_LABELS = {
     "header_ambiguous": "헤더 여부 확인", "blank_boundary_review": "빈 줄·열의 표 경계 확인",
@@ -488,6 +488,16 @@ def analyze(source, plan=None, reader="auto", excel_timeout=90):
         result = {"summary": summary, "sheets": sheets, "tables": tables,
                   "pipeline_plan": processing_plan(tables, formulas),
                   "formulas": formulas, "source_cells": observations, "input_evidence": input_evidence}
+        # Reusable projects keep calculation rules apart from replaceable input values.
+        result["project_source"] = str(source)
+        result["workbook_structure"] = {
+            "epoch": wb.epoch.isoformat(),
+            "names": [{"name": n.name, "text": n.attr_text, "sheet": scope}
+                      for scope, names in [(None, wb.defined_names)] +
+                      [(ws.title, getattr(ws, "defined_names", {})) for ws in wb.worksheets]
+                      for n in names.values()],
+            "merges": {ws.title: [str(m) for m in ws.merged_cells.ranges] for ws in wb.worksheets},
+        }
         # Ordinary xlsx files never import the VBA dependency or spawn its worker.
         if source.suffix.lower() == ".xlsm" or "macros" in features or (vba_result and vba_result["status"] != "no_vba"):
             attach_vba_analysis(source, result, vba_result)
@@ -573,10 +583,13 @@ def markdown_report(result):
               "표별 원천 데이터·수식 처리 단계와 열별 대표 계산은 pipeline_plan.json에 있습니다.",
               "표 수준 의존성이 서로 얽혀도 셀 수준 순환과 같지는 않습니다. 실제 순환 오류는 formulas.json을 확인하세요.", "",
               "## 다시 사용하기", "",
-              '`python -X utf8 transform.py "다음파일.xlsx" --output "다음결과"`', "",
-              "기본은 새 파일에서 표 경계를 다시 찾습니다. 확인한 범위를 고정하려면 `--plan plan.json`을 추가하세요.",
-              "새 파일의 구조가 다르면 자동 발견 결과를 먼저 확인하세요. 고정 명세는 선택 범위만 추출합니다.",
-              "변환은 표 추출과 지원 수식 재계산입니다. 업무별 결합·정제는 transform.py의 customize_tables에 추가합니다.", "",
+              '`python -X utf8 main.py` — 생성된 프로젝트 폴더에서 실행합니다.', "",
+              "DATA/sources.py에서 입력 파일을 바꾸거나 DATA/load.py에서 다른 자료를 불러옵니다.",
+              "DATA는 입력, PROCESS는 고정한 수식·업무 처리를 담당합니다. 한국어 수정 안내는 README.md에 있습니다.",
+              "행·열·수식 구조가 같을 때 PROCESS를 그대로 재사용합니다. 구조가 달라졌다면 변경 부분부터 재검토하세요.",
+              "이전 방식의 구조 재분석이 필요한 경우에만 다음 호환 명령을 사용합니다.",
+              '`python -X utf8 transform.py "다음파일.xlsx" --output "다음결과"`',
+              "이 명령은 새 표 경계를 다시 찾는 분석이며, 고정 PROCESS 재사용 검증과는 다릅니다.", "",
               "## 분석 범위", "", "이미지·차트의 의미, VBA·피벗·Power Query 실행, 외부 파일 읽기는 포함하지 않습니다.",
               "생성 JSON에도 원본 업무 데이터가 있으므로 원본과 같은 보안 범위에서 보관하세요.", ""]
     evidence = result.get("input_evidence", {})
@@ -648,12 +661,14 @@ def publish(result, output, emit_project=True, sample_rows=5, context_chars=1200
         write_json(output / "migration_plan.json", result["migration_plan"])
     if emit_project:
         (output / "pipeline_lib").mkdir()
-        for filename in ("excel_pipeline.py", "formula_engine.py", "vba_extract.py", "vba_inspect.py", "migration_contract.py", "model_context.py", "workbook_input.py", "xlwings_reader.py"):
+        for filename in ("excel_pipeline.py", "formula_engine.py", "vba_extract.py", "vba_inspect.py", "migration_contract.py", "model_context.py", "workbook_input.py", "xlwings_reader.py", "project_builder.py", "project_runtime.py"):
             shutil.copyfile(Path(__file__).resolve().parent / filename, output / "pipeline_lib" / filename)
         (output / "transform.py").write_text(TRANSFORM, encoding="utf-8")
         (output / "requirements.txt").write_text("openpyxl>=3.1,<4\n", encoding="utf-8")
         (output / "requirements-vba.txt").write_text("-r requirements.txt\noletools==0.60.2\n", encoding="utf-8")
         (output / "requirements-excel.txt").write_text("-r requirements.txt\nxlwings>=0.33,<0.34; sys_platform == 'win32'\nolefile>=0.47,<0.48\n", encoding="utf-8")
+        from project_builder import write_project
+        write_project(result, output, sample_rows, context_chars)
 
 
 def main(argv=None, customize=None, emit_project=True):

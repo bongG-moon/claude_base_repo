@@ -212,6 +212,9 @@ class InstalledExcelWorkflowTests(unittest.TestCase):
             self.assertEqual(0, completed.returncode, completed.stdout + completed.stderr)
             result = json.loads(completed.stdout)
             self.assertTrue(result['ok'], result)
+            self.assertEqual(str(output / 'main.py'), result['entryPoint'])
+            self.assertTrue((output / 'DATA/load.py').is_file())
+            self.assertTrue((output / 'PROCESS/pipeline.py').is_file())
             self.assertEqual('openpyxl', result['summary']['reader'])
             self.assertEqual({'computed': 2}, result['summary']['formula_status'])
             self.assertEqual(before, source.read_bytes())
@@ -227,6 +230,11 @@ class InstalledExcelWorkflowTests(unittest.TestCase):
             self.assertEqual(0, rerun.returncode, rerun.stdout + rerun.stderr)
             self.assertEqual(json.loads((output / 'source_cells.json').read_text(encoding='utf-8')),
                              json.loads((next_output / 'source_cells.json').read_text(encoding='utf-8')))
+            project_run = subprocess.run([sys.executable, '-X', 'utf8', '-B', result['entryPoint'],
+                                          '--output', str(root / '분리 실행')],
+                                         capture_output=True, text=True, encoding='utf-8')
+            self.assertEqual(0, project_run.returncode, project_run.stdout + project_run.stderr)
+            self.assertEqual({'computed': 2}, json.loads(project_run.stdout)['summary']['formula_status'])
 
 
 if __name__ == '__main__':
