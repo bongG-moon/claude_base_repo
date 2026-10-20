@@ -24,7 +24,7 @@ MAX_CELLS = 250_000
 MAX_RECTANGLE = 1_000_000
 MAX_UNCOMPRESSED = 128 * 1024 * 1024
 MAX_REGIONS = 500
-VERSION = "0.6.0"
+VERSION = "0.7.0"
 NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 FLAG_LABELS = {
     "header_ambiguous": "헤더 여부 확인", "blank_boundary_review": "빈 줄·열의 표 경계 확인",
@@ -627,48 +627,76 @@ def customize_tables(tables):
 
 
 if __name__ == "__main__":
-    raise SystemExit(main(customize=customize_tables, emit_project=False))
+    arguments = sys.argv[1:]
+    if "--layout" not in arguments:
+        arguments += ["--layout", "detailed"]
+    raise SystemExit(main(arguments, customize=customize_tables, emit_project=False))
 '''
 
 
-def publish(result, output, emit_project=True, sample_rows=5, context_chars=12000):
+def publish(result, output, emit_project=True, sample_rows=5, context_chars=12000,
+            layout="compact", diagnostics=False):
     from model_context import build_model_context, serialize_model_context
-    context = build_model_context(result, sample_rows=sample_rows, max_chars=context_chars)
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
         raise InputError("결과 폴더가 이미 있습니다. 기존 자료 보호를 위해 새 폴더를 지정해 주세요.")
+    context = build_model_context(result, sample_rows=sample_rows, max_chars=context_chars)
+    if layout not in {"compact", "detailed"}:
+        raise InputError("지원하지 않는 결과 구성입니다.")
+    # Compile before creating anything; unsupported formulas remain explicit nodes.
+    if emit_project and layout == "compact":
+        from compact_project import compile_sheets
+        compiled = compile_sheets(result)
     output.mkdir(parents=True, exist_ok=False)
     (output / "tables").mkdir()
+    detail = output if layout == "detailed" else output / "_details"
+    detail.mkdir(exist_ok=True)
     # Keep compact serialization: pretty-printing would exceed the chosen budget.
-    (output / "model_context.json").write_text(serialize_model_context(context), encoding="utf-8")
-    write_json(output / "summary.json", result["summary"])
-    write_json(output / "input_evidence.json", result.get("input_evidence", {}))
-    write_json(output / "workbook.json", {"summary": result["summary"], "sheets": result["sheets"],
+    (detail / "model_context.json").write_text(serialize_model_context(context), encoding="utf-8")
+    write_json(detail / "summary.json", result["summary"])
+    write_json(detail / "input_evidence.json", result.get("input_evidence", {}))
+    if layout == "detailed" or diagnostics:
+        write_json(detail / "workbook.json", {"summary": result["summary"], "sheets": result["sheets"],
                                          "tables": [{k: v for k, v in t.items() if k not in {"rows"}} for t in result["tables"]]})
-    write_json(output / "formulas.json", result["formulas"])
-    write_json(output / "pipeline_plan.json", result["pipeline_plan"])
-    write_json(output / "source_cells.json", result["source_cells"])
+        write_json(detail / "formulas.json", result["formulas"])
+        write_json(detail / "pipeline_plan.json", result["pipeline_plan"])
+        write_json(detail / "source_cells.json", result["source_cells"])
+    else:
+        write_json(detail / "검토필요.json", [f for f in result["formulas"] if f["status"] != "computed"])
     for table in result["tables"]:
         write_json(output / "tables" / (table["id"] + ".json"), table)
-    write_json(output / "plan.json", {"version": 1, "tables": [
+    if layout == "detailed" or diagnostics:
+        write_json(detail / "plan.json", {"version": 1, "tables": [
         {"id": t["id"], "sheet": t["sheet"], "range": t["range"], "header_rows": t["header_rows"],
          "exclude_rows": t["excluded_rows"]} for t in result["tables"]]})
-    (output / "report.md").write_text(markdown_report(result), encoding="utf-8")
+        (detail / "report.md").write_text(markdown_report(result), encoding="utf-8")
     if "vba" in result:
         from vba_extract import publish_sources
-        publish_sources(result["vba"], output / "vba")
-        write_json(output / "vba-index.json", result["vba_index"])
-        write_json(output / "migration_plan.json", result["migration_plan"])
+        publish_sources(result["vba"], detail / "vba")
+        write_json(detail / "vba-index.json", result["vba_index"])
+        write_json(detail / "migration_plan.json", result["migration_plan"])
     if emit_project:
-        (output / "pipeline_lib").mkdir()
-        for filename in ("excel_pipeline.py", "formula_engine.py", "vba_extract.py", "vba_inspect.py", "migration_contract.py", "model_context.py", "workbook_input.py", "xlwings_reader.py", "project_builder.py", "project_runtime.py"):
-            shutil.copyfile(Path(__file__).resolve().parent / filename, output / "pipeline_lib" / filename)
-        (output / "transform.py").write_text(TRANSFORM, encoding="utf-8")
-        (output / "requirements.txt").write_text("openpyxl>=3.1,<4\n", encoding="utf-8")
-        (output / "requirements-vba.txt").write_text("-r requirements.txt\noletools==0.60.2\n", encoding="utf-8")
-        (output / "requirements-excel.txt").write_text("-r requirements.txt\nxlwings>=0.33,<0.34; sys_platform == 'win32'\nolefile>=0.47,<0.48\n", encoding="utf-8")
-        from project_builder import write_project
-        write_project(result, output, sample_rows, context_chars)
+        support = output / ("pipeline_lib" if layout == "detailed" else "_support")
+        support.mkdir()
+        for filename in ("excel_pipeline.py", "formula_engine.py", "vba_extract.py", "vba_inspect.py", "migration_contract.py", "model_context.py", "workbook_input.py", "xlwings_reader.py", "project_builder.py", "project_runtime.py", "python_formulas.py", "project_selection.py", "compact_project.py"):
+            shutil.copyfile(Path(__file__).resolve().parent / filename, support / filename)
+        requirements = output if layout == "detailed" else support
+        (requirements / "requirements.txt").write_text("openpyxl>=3.1,<4\n", encoding="utf-8")
+        (requirements / "requirements-vba.txt").write_text("-r requirements.txt\noletools==0.60.2\n", encoding="utf-8")
+        (requirements / "requirements-excel.txt").write_text("-r requirements.txt\nxlwings>=0.33,<0.34; sys_platform == 'win32'\nolefile>=0.47,<0.48\n", encoding="utf-8")
+        if layout == "detailed":
+            (output / "transform.py").write_text(TRANSFORM, encoding="utf-8")
+            from project_builder import write_project
+            write_project(result, output, sample_rows, context_chars)
+        else:
+            from compact_project import write_compact_project
+            write_compact_project(result, output, sample_rows, context_chars, compiled)
+    if layout == "compact":
+        with (output / "README.md").open("a", encoding="utf-8") as guide:
+            guide.write("\n## 이번 결과의 확인 범위\n\n")
+            guide.write(f"수식 상태: {result['summary']['formula_status']}\n\n")
+            guide.write(f"검토 항목: {result['summary']['review_flags'] or '없음'}\n")
+            guide.write("미지원·오류 계산은 완료로 처리하지 않았습니다. 상세 내용은 `_details`를 확인하세요.\n")
 
 
 def main(argv=None, customize=None, emit_project=True):
@@ -677,6 +705,10 @@ def main(argv=None, customize=None, emit_project=True):
     parser.add_argument("--output", help="새 결과 폴더")
     parser.add_argument("--inspect", action="store_true", help="요약만 확인, 파일 생성 안 함")
     parser.add_argument("--plan", help="확인한 표 범위/헤더 JSON (선택)")
+    parser.add_argument("--target", action="append", default=[], help="남길 결과 표 ID 또는 시트!A1:D20. 여러 번 지정 가능")
+    parser.add_argument("--layout", choices=("compact", "detailed"), default="compact",
+                        help="기본 compact: 시트별 Python 중심. detailed는 이전 상세 분석 구성")
+    parser.add_argument("--diagnostics", action="store_true", help="셀별 상세 기록도 _details에 보관")
     parser.add_argument("--reader", choices=("auto", "openpyxl", "xlwings"), default="auto",
                         help="기본 auto: 일반 OOXML 직접 읽기, 그 외 보호 파일 후보는 Excel 읽기. xlwings는 경로 시험용")
     parser.add_argument("--excel-timeout", type=int, default=90,
@@ -703,6 +735,9 @@ def main(argv=None, customize=None, emit_project=True):
             raise InputError("결과 폴더가 이미 있습니다. 새 폴더를 지정해 주세요.")
         plan = json.loads(Path(args.plan).read_text(encoding="utf-8")) if args.plan else None
         result = analyze(args.source, plan, args.reader, args.excel_timeout)
+        if args.target:
+            from project_selection import select_result
+            result = select_result(result, args.target)
         if customize is not None:
             result["tables"] = customize(result["tables"])
         if args.context_only:
@@ -711,7 +746,8 @@ def main(argv=None, customize=None, emit_project=True):
                                                                          max_chars=args.context_chars)))
             return 0
         if not args.inspect:
-            publish(result, args.output, emit_project, args.sample_rows, args.context_chars)
+            publish(result, args.output, emit_project, args.sample_rows, args.context_chars,
+                    layout=args.layout, diagnostics=args.diagnostics)
         print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
         return 0
     except (InputError, OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError) as error:

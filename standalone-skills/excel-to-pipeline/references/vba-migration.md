@@ -19,8 +19,9 @@ python -X utf8 "<스킬 폴더>/scripts/vba_inspect.py" "<Module.bas>" "<Sheet.c
 
 색인은 모듈·프로시저 위치, 호출 후보, 문자열로 명시한 시트·범위, 재계산·외부 동작 검토 지점을 제공한다.
 완전한 구문/자료 흐름 분석이 아니므로 관련 원문을 직접 읽는다. CP949 원문은 확인 후 `--encoding cp949`를 명시한다. 손실 디코딩하지 않는다.
-`model_context.json`의 구조·대표 수식·절차 위치부터 읽고 필요한 절차만 추가 확인한다.
-전체 색인은 `vba-index.json`과 `migration_plan.json`, 추출 상태는 `vba/manifest.json`에 있다.
+`_details/model_context.json`의 구조·대표 수식·절차 위치부터 읽고 필요한 절차만 추가 확인한다.
+전체 색인은 `_details/vba-index.json`과 `_details/migration_plan.json`, 추출 상태는 `_details/vba/manifest.json`에 있다.
+이전 상세 구성(`--layout detailed`)에서만 이 파일들이 프로젝트 루트에 있다.
 수천 개 수식·전체 원문·전체 행을 한꺼번에 대화에 넣지 않는다. 기본 앞 5행 표본을 늘릴 때도
 질문에 필요한 범위만 최대 1,000행까지 선택하고 글자 예산을 유지한다. 예외·후반부에 다른 규칙이
 있으면 해당 위치만 별도로 읽는다. 앞부분 표본을 무작위·대표성 보장 표본이라고 부르지 않는다.

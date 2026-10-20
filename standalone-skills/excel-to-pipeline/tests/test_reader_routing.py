@@ -322,7 +322,7 @@ class ReaderRoutingTests(unittest.TestCase):
     def test_publish_packages_native_runtime_and_optional_dependencies(self):
         result = pipeline.analyze(self.fixture)
         output = self.folder / "project"
-        pipeline.publish(result, output, sample_rows=5, context_chars=8000)
+        pipeline.publish(result, output, sample_rows=5, context_chars=8000, layout="detailed")
         for filename in ("workbook_input.py", "xlwings_reader.py"):
             self.assertEqual((output / "pipeline_lib" / filename).read_bytes(), (SKILL / "scripts" / filename).read_bytes())
         self.assertIn("xlwings", (output / "requirements-excel.txt").read_text(encoding="utf-8"))

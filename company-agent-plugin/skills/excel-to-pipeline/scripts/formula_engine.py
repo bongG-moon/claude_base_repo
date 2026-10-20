@@ -256,7 +256,7 @@ class CellRange:
 
 class FormulaEngine:
     def __init__(self, workbook, *, max_range_cells=10000, max_operations=100000,
-                 max_depth=64, max_formula_chars=8192, max_tokens=2048):
+                 max_depth=64, max_formula_chars=8192, max_tokens=2048, compiled_nodes=None):
         self.workbook = workbook
         self.max_range_cells = max_range_cells
         self.max_operations = max_operations
@@ -266,6 +266,7 @@ class FormulaEngine:
         self._parsed = {}
         self._cache = {}
         self._sheets = {name.casefold(): name for name in workbook.sheetnames}
+        self.compiled_nodes = compiled_nodes
 
     @staticmethod
     def _json_value(value):
@@ -346,7 +347,9 @@ class FormulaEngine:
             raise FormulaFailure("formula_depth_limit")
         context.stack.append(key)
         try:
-            value = self._eval(self._parse(cell.value), sheet, context)
+            ast = (self.compiled_nodes[key] if self.compiled_nodes is not None
+                   else self._parse(cell.value))
+            value = self._eval(ast, sheet, context)
             if isinstance(value, CellRange):
                 if value.shape != (1, 1):
                     raise FormulaFailure("array_result")
@@ -478,6 +481,8 @@ class FormulaEngine:
     def _eval(self, node, sheet, context):
         context.tick()
         kind = node[0]
+        if kind == "unsupported":
+            raise FormulaFailure(node[1])
         if kind == "literal":
             return node[1]
         if kind == "error":
@@ -765,7 +770,9 @@ class FormulaEngine:
                     continue
                 functions, dependencies = set(), set()
                 try:
-                    self._metadata(self._parse(cell.value), sheet.title, functions, dependencies)
+                    ast = (self.compiled_nodes[(sheet.title, cell.coordinate)] if self.compiled_nodes is not None
+                           else self._parse(cell.value))
+                    self._metadata(ast, sheet.title, functions, dependencies)
                 except (FormulaFailure, RecursionError, OverflowError, ValueError):
                     pass
                 records.append({"sheet": sheet.title, "cell": cell.coordinate,

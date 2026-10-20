@@ -26,17 +26,20 @@ Excel 경로 시험·제한이 필요할 때만 [excel-reader.md](references/exc
 
 ## 결과를 쓰는 법
 
-콘솔 요약과 `model_context.json`부터 읽습니다. 기본 **12,000자·표별 앞 5행**이며
+콘솔 요약과 `_details/model_context.json`부터 읽습니다. 기본 **12,000자·표별 앞 5행**이며
 `--sample-rows`를 늘려도 최대 1,000행입니다. `--context-chars`로 글자 예산을 낮출 수
 있습니다. 글자 수는 정확한 토큰 수가 아니므로 대화·출력 여유도 남깁니다.
 전체 분석은 로컬에서 수행하고 필요한 표·열·수식·VBA 절차만 추가 확인합니다.
 
-- 표·원본 위치: `tables/`, `workbook.json`, `source_cells.json`
-- 수식·읽기 근거·제한: `formulas.json`, `pipeline_plan.json`, `input_evidence.json`, `report.md`
-- 실행: `main.py`. `DATA/`는 출처·로더, `PROCESS/`는 고정 수식·표별 업무 처리, `outputs/`는 실행 결과입니다.
+- 실행: `main.py`. `DATA/`는 출처·로더, `PROCESS/`는 계산, `tables/`는 추출 표, `outputs/`는 실행 결과입니다.
+- 계산 시트당 Python 파일 하나에 수식과 추가 업무 처리를 합칩니다. 같은 행 패턴은 `for row`로 묶고 Python 연산·SUM/IF/ROUND 보조 함수로 표현합니다. 모든 수식을 pandas로 완전 번역하는 것은 아닙니다.
+- `PROCESS/pipeline.py`는 참조 관계상 선행 시트부터 계산합니다. 시트 상호 참조는 셀 단위로 계산하며 실제 순환 참조는 오류로 남깁니다.
 - 사용자가 바꿀 Python에는 역할·주요 동작·수정 위치를 쉬운 한국어 주석으로 설명하고 README에 실행법을 적습니다.
-- 같은 구조의 입력은 DATA만 바꾸고 PROCESS를 재사용합니다. 기존 `transform.py`는 구조 재분석 호환용입니다.
-- 매크로 원문 접근 가능: `vba/`, `vba-index.json`, `migration_plan.json`
+- 수식 묶음마다 결과 범위·원본 Excel 수식·입력 참조·함수와 연산의 동작·상대/고정 행·수정 주의점을 한국어 주석으로 남깁니다. 미지원 수식도 원문을 보존합니다. 업무 의미를 추측하지 않고 계산 수정 시 설명도 갱신합니다. 이를 위해 추가 모델 호출을 하지 않습니다.
+- 같은 구조의 입력은 DATA만 바꾸고 PROCESS를 재사용합니다.
+- `_support/`는 계산 지원·입력 계약, `_details/`는 모델 요약·근거·검토 항목입니다. 사용자에게 모두 읽게 하지 않습니다.
+- 셀별 상세 기록은 필요한 검증에만 `--diagnostics`. 이전 구성은 `--layout detailed`. 기본에는 여러 JSON/MD를 루트에 나열하지 않습니다.
+- 매크로 원문 접근 가능: `_details/vba/`, `_details/vba-index.json`, `_details/migration_plan.json`
 
 한 요청의 결과는 지정한 **한 폴더**에 모읍니다. 같은 분석을 inspect→생성으로 반복하지
 않고 첫 실행 결과를 재사용합니다. 기존 폴더는 덮어쓰지 않습니다. 표 경계·헤더가 모호한
@@ -44,9 +47,17 @@ Excel 경로 시험·제한이 필요할 때만 [excel-reader.md](references/exc
 VBA 처리까지 Python으로 옮기려면 [vba-migration.md](references/vba-migration.md)를
 읽고 관련 원문으로 입력→처리→출력을 구현합니다. 접근 거절이면 셀·수식 분석을
 계속하되 매크로는 미분석으로 남깁니다. 자동 완전 번역·실제 VBA 실행 대조를 주장하지 않습니다.
-업무별 정리·결합·집계는 `PROCESS/table_steps.py`에, 외부 Python/DB 연결은 DATA에 둡니다.
+업무별 정리·결합·집계는 해당 시트 Python의 `process_tables`에, 외부 Python/DB 연결은 DATA에 둡니다.
 고정 수식의 행·열·자료형이 달라지면 재검토하며 자동 확장을 주장하지 않습니다.
 재사용 검증은 DATA만 교체해 결과 변화를 확인하고 PROCESS가 그대로인지 대조합니다.
+
+## 필요한 결과만 남기기
+
+결과 표·범위를 명확히 지정한 요청이면 `--target "집계!A1:D20"` 또는 `--target "s01_t01"`을
+붙입니다. 여러 결과는 반복 지정합니다. 모호할 때만 어느 결과인지 묻습니다.
+선택한 결과의 원본 입력·선행 수식을 역추적해 새 프로젝트에 포함하고 무관한 값·수식은 제외합니다.
+원본·기존 프로젝트 삭제가 아닙니다. VBA·미지원 함수·동적 참조·외부 기능 때문에 범위를 확정하지
+못하면 자동 축소하지 않습니다. 이유를 알리고 필요 시 전체 분석을 유지합니다.
 
 ## 보존할 것
 

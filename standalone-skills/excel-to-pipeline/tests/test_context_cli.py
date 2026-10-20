@@ -31,7 +31,7 @@ class ContextCliTests(unittest.TestCase):
         baseline = copy.deepcopy(self.result)
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
             output = Path(folder) / "result"
-            publish(self.result, output, sample_rows=0, context_chars=2000)
+            publish(self.result, output, sample_rows=0, context_chars=2000, layout="detailed")
             content = (output / "model_context.json").read_text(encoding="utf-8")
             self.assertLessEqual(len(content), 2000)
             self.assertIsInstance(json.loads(content), dict)

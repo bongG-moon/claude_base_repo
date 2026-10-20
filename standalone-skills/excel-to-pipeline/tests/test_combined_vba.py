@@ -53,7 +53,7 @@ class CombinedVbaTests(unittest.TestCase):
             self.assertEqual(result["vba"]["status"], "no_vba")
             self.assertEqual(result["migration_plan"]["translation_status"], "not_required")
             self.assertEqual(result["summary"]["formula_status"], {"computed": 82})
-            pipeline.publish(result, output, emit_project=False)
+            pipeline.publish(result, output, emit_project=False, layout="detailed")
             manifest = json.loads((output / "vba" / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "no_vba")
             self.assertFalse((output / "vba" / "modules").exists())
@@ -74,7 +74,7 @@ class CombinedVbaTests(unittest.TestCase):
         self.assertFalse(result["summary"]["vba"]["translation_generated"])
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
             output = Path(folder) / "result"
-            pipeline.publish(result, output, emit_project=False)
+            pipeline.publish(result, output, emit_project=False, layout="detailed")
             self.assertTrue((output / "tables" / "s01_t01.json").is_file())
             manifest = json.loads((output / "vba" / "manifest.json").read_text(encoding="utf-8"))
             self.assertEqual(manifest["status"], "dependency_missing")
@@ -92,7 +92,7 @@ class CombinedVbaTests(unittest.TestCase):
         self.assertEqual(result["migration_plan"]["calculation_order_candidates"][0]["procedure"], "Prepare")
         with tempfile.TemporaryDirectory(dir=Path(__file__).parent) as folder:
             output = Path(folder) / "result"
-            pipeline.publish(result, output, emit_project=True)
+            pipeline.publish(result, output, emit_project=True, layout="detailed")
             source = output / "vba" / module["relative_path"]
             self.assertEqual(hashlib.sha256(source.read_bytes()).hexdigest(), module["source_sha256"])
             manifest = json.loads((output / "vba" / "manifest.json").read_text(encoding="utf-8"))

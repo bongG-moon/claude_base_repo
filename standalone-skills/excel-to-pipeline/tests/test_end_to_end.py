@@ -52,7 +52,7 @@ class EndToEndTests(unittest.TestCase):
     def test_generated_project_processes_changed_month(self):
         with tempfile.TemporaryDirectory(dir=FIXTURES) as folder:
             base, second = Path(folder) / "base", Path(folder) / "second"
-            publish(analyze(FIXTURES / "complex_workbook.xlsx"), base)
+            publish(analyze(FIXTURES / "complex_workbook.xlsx"), base, layout="detailed")
             completed = subprocess.run([sys.executable, "-X", "utf8", str(base / "transform.py"),
                                         str(FIXTURES / "variant_next_month.xlsx"), "--output", str(second)],
                                        capture_output=True, text=True, encoding="utf-8", timeout=20)

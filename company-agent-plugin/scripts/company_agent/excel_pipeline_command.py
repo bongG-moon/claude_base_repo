@@ -22,7 +22,7 @@ def read_only_arguments(arguments: list[str]) -> bool:
         return True
     fields = {}
     switches = set()
-    allowed = {'--file', '--state-root', '--plan', '--reader', '--excel-timeout', '--sample-rows', '--context-chars'}
+    allowed = {'--file', '--state-root', '--plan', '--reader', '--excel-timeout', '--sample-rows', '--context-chars', '--target', '--layout'}
     index = 2
     while index < len(arguments):
         key = arguments[index]
@@ -32,7 +32,7 @@ def read_only_arguments(arguments: list[str]) -> bool:
             switches.add(key)
             index += 1
             continue
-        if key not in allowed or key in fields or index + 1 == len(arguments):
+        if key not in allowed or (key in fields and key != '--target') or index + 1 == len(arguments):
             return False
         value = arguments[index + 1]
         if not value or value.startswith('--'):
@@ -44,6 +44,8 @@ def read_only_arguments(arguments: list[str]) -> bool:
     if Path(fields['--file']).suffix.lower() not in {'.xlsx', '.xlsm'}:
         return False
     if fields.get('--reader', 'auto') not in {'auto', 'openpyxl', 'xlwings'}:
+        return False
+    if fields.get('--layout', 'compact') not in {'compact', 'detailed'}:
         return False
     for key, low, high in (('--excel-timeout', 10, 300), ('--sample-rows', 0, 1000), ('--context-chars', 1024, 50000)):
         if key in fields and (not re.fullmatch(r'[0-9]+', fields[key]) or not low <= int(fields[key]) <= high):
@@ -88,6 +90,12 @@ def analyze(args) -> dict:
         command += ["--inspect"]
     if plan:
         command += ["--plan", str(plan)]
+    layout = getattr(args, 'layout', 'compact')
+    command += ["--layout", layout]
+    if getattr(args, 'diagnostics', False):
+        command += ["--diagnostics"]
+    for target in getattr(args, 'target', []):
+        command += ["--target", target]
     completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
                                check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if completed.returncode:
@@ -113,8 +121,10 @@ def analyze(args) -> dict:
     response = {"ok": True, "status": "completed", "context" if args.context_only else "summary": result,
                 "sourceModified": False, "macrosExecuted": False}
     if output:
-        response.update(output=str(output), modelContext=str(output / "model_context.json"),
-                        report=str(output / "report.md"), transform=str(output / "transform.py"),
+        detail = output if layout == 'detailed' else output / '_details'
+        response.update(output=str(output), modelContext=str(detail / "model_context.json"),
                         entryPoint=str(output / "main.py"), dataDirectory=str(output / "DATA"),
                         processDirectory=str(output / "PROCESS"), readme=str(output / "README.md"))
+        if layout == 'detailed':
+            response.update(report=str(output / 'report.md'), transform=str(output / 'transform.py'))
     return response

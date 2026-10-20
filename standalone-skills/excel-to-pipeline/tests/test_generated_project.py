@@ -99,7 +99,7 @@ class GeneratedProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             project = root / "한글 업무 프로젝트"
-            publish(self.analysis, project, context_chars=4000)
+            publish(self.analysis, project, context_chars=4000, layout="detailed")
             before = hashes(project / "PROCESS")
             source_hash = hashlib.sha256(self.source.read_bytes()).hexdigest()
             first = root / "첫 결과"

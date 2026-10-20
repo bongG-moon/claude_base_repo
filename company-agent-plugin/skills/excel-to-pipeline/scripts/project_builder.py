@@ -29,7 +29,7 @@ def main():
             raise ValueError("결과 폴더가 이미 있습니다. 다른 이름을 지정하세요.")
         data = load_data()  # 파일·DB 등 입력 출처는 DATA/load.py에서 바꿉니다.
         result, processed = run(data)  # 계산과 업무 규칙은 PROCESS에서 관리합니다.
-        publish(result, output, emit_project=False, sample_rows=SAMPLE_ROWS, context_chars=CONTEXT_CHARS)
+        publish(result, output, emit_project=False, sample_rows=SAMPLE_ROWS, context_chars=CONTEXT_CHARS, layout="detailed")
         # 수식 분석 원본과 사용자가 추가한 업무 결과를 구분해서 보관합니다.
         write_json(output / "processed_tables.json", processed)
         print(json.dumps({"output": str(output), "summary": result["summary"]}, ensure_ascii=False))
@@ -140,7 +140,8 @@ def make_rules(result):
             "sheets": result["sheets"], "structure": result["workbook_structure"],
             "inputs": inputs, "formulas": formulas, "tables": tables,
             "vba": result["summary"].get("vba"),
-            "non_cell_features": result["summary"].get("non_cell_features", [])}
+            "non_cell_features": result["summary"].get("non_cell_features", []),
+            "selection": result.get("selection")}
 
 
 def write_project(result, output, sample_rows, context_chars):

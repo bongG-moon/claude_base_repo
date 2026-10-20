@@ -100,6 +100,8 @@ class ExcelCliContractTests(unittest.TestCase):
         args = self.args('--context-only')
         self.assertEqual(('auto', 5, 12000, 90),
                          (args.reader, args.sample_rows, args.context_chars, args.excel_timeout))
+        self.assertEqual('compact', args.layout)
+        self.assertEqual([], args.target)
 
     def test_invalid_limit_never_starts_analysis(self):
         with tempfile.TemporaryDirectory() as temporary:
@@ -152,7 +154,8 @@ class ExcelCliContractTests(unittest.TestCase):
     def test_read_only_contract_accepts_only_bounded_nonoutput_forms(self):
         prefix = ['business', 'excel-analyze', '--file', '한글 workbook.xlsm']
         for suffix in (['--inspect'], ['--context-only', '--reader', 'auto', '--sample-rows', '1000'],
-                       ['--context-only', '--context-chars', '1024', '--excel-timeout', '300', '--reader', 'xlwings']):
+                       ['--context-only', '--context-chars', '1024', '--excel-timeout', '300', '--reader', 'xlwings'],
+                       ['--context-only', '--target', '집계!D8', '--target', 's01_t01', '--layout', 'compact']):
             self.assertTrue(excel_pipeline_command.read_only_arguments(prefix + suffix))
         for suffix in ([], ['--output', 'results'], ['--inspect', '--context-only'],
                        ['--inspect', '--inspect'], ['--inspect', '--sample-rows', '1001'],
@@ -180,6 +183,24 @@ class ExcelCliContractTests(unittest.TestCase):
         for name in ('tests', 'examples', 'fixtures', '.venv'):
             self.assertFalse((skill / name).exists())
         self.assertFalse((PLUGIN / 'skills/office-reader').exists())
+
+    def test_target_flags_forwarded_without_new_model_or_preflight_calls(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'sample.xlsx'
+            source.write_bytes(b'not-opened')
+            args = self.args('--output', str(Path(temporary) / 'output'), '--target', '집계!D8',
+                             '--target', 's01_t01', '--diagnostics')
+            args.file = str(source)
+            success = subprocess.CompletedProcess([], 0, '{"status": "extracted"}', '')
+            with patch.object(excel_pipeline_command.subprocess, 'run', return_value=success) as run:
+                result = excel_pipeline_command.analyze(args)
+            self.assertTrue(result['ok'])
+            command = run.call_args.args[0]
+            self.assertEqual(2, command.count('--target'))
+            self.assertIn('--diagnostics', command)
+            self.assertEqual(1, run.call_count)
+            self.assertTrue(result['modelContext'].endswith(str(Path('_details/model_context.json'))))
+            self.assertNotIn('transform', result)
 
 
 @unittest.skipUnless(HAS_OPENPYXL, 'openpyxl required for installed analysis smoke')
@@ -218,18 +239,18 @@ class InstalledExcelWorkflowTests(unittest.TestCase):
             self.assertEqual('openpyxl', result['summary']['reader'])
             self.assertEqual({'computed': 2}, result['summary']['formula_status'])
             self.assertEqual(before, source.read_bytes())
-            cells = json.loads((output / 'source_cells.json').read_text(encoding='utf-8'))
+            cells = [json.loads(p.read_text(encoding='utf-8')) for p in (output / 'tables').glob('*.json')]
             serialized = json.dumps(cells, ensure_ascii=False)
             self.assertIn('aB009', serialized)
             self.assertIn('Ab009', serialized)
-            context = (output / 'model_context.json').read_text(encoding='utf-8')
+            context = (output / '_details/model_context.json').read_text(encoding='utf-8')
             self.assertLessEqual(len(context), 12000)
             next_output = root / '다음결과'
-            rerun = subprocess.run([sys.executable, '-X', 'utf8', '-B', str(output / 'transform.py'), str(source),
+            rerun = subprocess.run([sys.executable, '-X', 'utf8', '-B', str(output / 'main.py'),
                                     '--output', str(next_output)], capture_output=True, text=True, encoding='utf-8')
             self.assertEqual(0, rerun.returncode, rerun.stdout + rerun.stderr)
-            self.assertEqual(json.loads((output / 'source_cells.json').read_text(encoding='utf-8')),
-                             json.loads((next_output / 'source_cells.json').read_text(encoding='utf-8')))
+            self.assertEqual([t['rows'] for t in cells],
+                             [json.loads(p.read_text(encoding='utf-8'))['rows'] for p in (next_output / 'tables').glob('*.json')])
             project_run = subprocess.run([sys.executable, '-X', 'utf8', '-B', result['entryPoint'],
                                           '--output', str(root / '분리 실행')],
                                          capture_output=True, text=True, encoding='utf-8')

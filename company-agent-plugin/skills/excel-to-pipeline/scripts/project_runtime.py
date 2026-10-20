@@ -95,7 +95,10 @@ def read_excel_data(source, rules, reader="auto", excel_timeout=90):
                     if cell.data_type == "f":
                         current_formulas[key] = cell.value
         allowed = set(rules["inputs"]) | set(rules["formulas"])
-        if populated - allowed or current_formulas != rules["formulas"]:
+        selected = bool(rules.get("selection"))
+        compared_formulas = ({k: v for k, v in current_formulas.items() if k in allowed}
+                             if selected else current_formulas)
+        if (not selected and populated - allowed) or compared_formulas != rules["formulas"]:
             raise ValueError("행·열·수식 구조가 달라졌습니다. 기존 PROCESS를 덮어쓰지 않았습니다. 변경 범위를 검토하세요.")
         structure = {"epoch": wb.epoch.isoformat(),
                      "names": [{"name": n.name, "text": n.attr_text, "sheet": scope}
@@ -146,7 +149,7 @@ def replace_tables(data, replacements, rules):
     return result
 
 
-def calculate_data(data, rules):
+def calculate_data(data, rules, compiled_nodes=None, sheet_order=None):
     """Recompute from values and frozen rules, with no source I/O or Office process."""
     from excel_pipeline import (FormulaEngine, extract_table, merged_lookup, processing_plan,
                                 safe_value, VERSION)
@@ -154,8 +157,8 @@ def calculate_data(data, rules):
     wb = openpyxl.Workbook()
     wb.remove(wb.active)
     wb.epoch = dt.datetime.fromisoformat(rules["structure"]["epoch"])
-    for sheet in rules["sheets"]:
-        wb.create_sheet(sheet["name"])
+    for name in sheet_order or [sheet["name"] for sheet in rules["sheets"]]:
+        wb.create_sheet(name)
     try:
         for key, value in values.items():
             meta = rules["inputs"][key]
@@ -174,7 +177,11 @@ def calculate_data(data, rules):
         for item in rules["structure"]["names"]:
             owner = wb if item["sheet"] is None else wb[item["sheet"]]
             owner.defined_names.add(DefinedName(item["name"], attr_text=item["text"]))
-        engine = FormulaEngine(wb)
+        if compiled_nodes is not None:
+            expected = {tuple(key.rsplit("!", 1)) for key in rules["formulas"]}
+            if set(compiled_nodes) != expected:
+                raise ValueError("PROCESS 계산 위치가 입력 계약과 다릅니다. 수식 위치 추가·삭제는 재검토가 필요합니다.")
+        engine = FormulaEngine(wb, compiled_nodes=compiled_nodes)
         formulas = engine.analyze()
         for formula in formulas:
             formula.update(value=safe_value(formula.get("value")), cached_value=None,
