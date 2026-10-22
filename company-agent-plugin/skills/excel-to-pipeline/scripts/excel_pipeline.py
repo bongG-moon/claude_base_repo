@@ -260,6 +260,10 @@ def validate_plan(plan, wb):
     checked, ids = {}, set()
     for table in plan["tables"]:
         sheet, table_id = table.get("sheet"), table.get("id")
+        display_name = table.get("display_name")
+        if display_name is not None and (not isinstance(display_name, str) or not display_name.strip()
+                                         or len(display_name) > 80 or any(ord(c) < 32 for c in display_name)):
+            raise InputError("표의 display_name은 1~80자의 한 줄 이름으로 지정하세요.")
         if sheet not in wb.sheetnames or not isinstance(table_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", table_id):
             raise InputError("명세 시트명 또는 표 ID가 잘못되었습니다.")
         if table_id in ids:
@@ -352,6 +356,7 @@ def extract_table(ws, table, merges, engine):
     if repeated_headers:
         flags.append("repeated_header_rows")
     return {"id": table["id"], "sheet": ws.title, "range": table["range"],
+            **({"display_name": table["display_name"]} if table.get("display_name") else {}),
             "origin": table["origin"], "header_rows": table["header_rows"], "columns": columns,
             "rows": rows, "source_rows": source_rows, "row_kinds": row_kinds,
             "blank_rows": blank_rows, "repeated_header_rows": repeated_headers,
@@ -647,6 +652,9 @@ def publish(result, output, emit_project=True, sample_rows=5, context_chars=1200
     if emit_project and layout == "compact":
         from compact_project import compile_sheets
         compiled = compile_sheets(result)
+    if emit_project:
+        from workflow_report import render_workflow
+        workflow_html = render_workflow(result)
     output.mkdir(parents=True, exist_ok=False)
     (output / "tables").mkdir()
     detail = output if layout == "detailed" else output / "_details"
@@ -676,6 +684,7 @@ def publish(result, output, emit_project=True, sample_rows=5, context_chars=1200
         write_json(detail / "vba-index.json", result["vba_index"])
         write_json(detail / "migration_plan.json", result["migration_plan"])
     if emit_project:
+        (output / "업무흐름.html").write_text(workflow_html, encoding="utf-8")
         support = output / ("pipeline_lib" if layout == "detailed" else "_support")
         support.mkdir()
         for filename in ("excel_pipeline.py", "formula_engine.py", "vba_extract.py", "vba_inspect.py", "migration_contract.py", "model_context.py", "workbook_input.py", "xlwings_reader.py", "project_builder.py", "project_runtime.py", "python_formulas.py", "project_selection.py", "compact_project.py"):

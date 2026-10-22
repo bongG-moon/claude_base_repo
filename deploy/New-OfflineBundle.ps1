@@ -209,6 +209,10 @@ if (-not $SkipSourceValidation) {
     if ($excelSkillValidation.ExitCode -ne 0) {
         throw "Excel skill runtime source validation failed:`r`n$($excelSkillValidation.StdOut)`r`n$($excelSkillValidation.StdErr)"
     }
+    $catalogSkillValidation = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-B', (Join-Path $SourceRoot 'scripts\sync-work-context-skill.py'), '--check')
+    if ($catalogSkillValidation.ExitCode -ne 0) {
+        throw "Work context skill source validation failed:`r`n$($catalogSkillValidation.StdOut)`r`n$($catalogSkillValidation.StdErr)"
+    }
     $previousDontWriteBytecode = [Environment]::GetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', 'Process')
     try {
         [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', '1', 'Process')

@@ -329,6 +329,8 @@ def write_compact_project(result, output, sample_rows, context_chars, compiled=N
             f"{selection['kept_formula_count']}개 수식과 필요한 입력만 포함했습니다. 원본은 삭제하지 않았습니다.\n") if selection else ""
     (output / "README.md").write_text(
         "# 시작하기\n\n`python -X utf8 main.py`를 실행하세요. 새 결과는 `outputs` 안에 저장됩니다.\n\n"
+        "계산 구조를 먼저 보려면 `업무흐름.html`을 여세요. 입력 표·계산·결과의 실제 수식 참조를 그림으로 보여줍니다.\n"
+        "표 이름은 시트·열 이름에 근거한 제안이며 기존 표 ID는 유지합니다. 그림은 생성 시점 기준이고 재실행 때 추가 생성하지 않습니다.\n\n"
         "## 수정할 곳은 두 군데입니다\n\n"
         "- **DATA**: 입력 파일 위치는 sources.py, Python·JSON·DB 연결은 load.py\n"
         "- **PROCESS**: 시트당 Python 파일 하나. 같은 행 계산은 반복문 한 곳에서 수정합니다.\n"

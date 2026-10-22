@@ -125,6 +125,7 @@ def analyze(args) -> dict:
         response.update(output=str(output), modelContext=str(detail / "model_context.json"),
                         entryPoint=str(output / "main.py"), dataDirectory=str(output / "DATA"),
                         processDirectory=str(output / "PROCESS"), readme=str(output / "README.md"))
+        response['workflowHtml'] = str(output / '업무흐름.html')
         if layout == 'detailed':
             response.update(report=str(output / 'report.md'), transform=str(output / 'transform.py'))
     return response

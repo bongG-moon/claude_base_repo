@@ -1,8 +1,11 @@
 {
   "source": "standalone-skills/excel-to-pipeline",
   "generatedBy": "scripts/sync-excel-pipeline-skill.py",
-  "hashEncoding": "UTF-8 text with LF line endings",
+  "hashEncoding": "UTF-8 text with LF line endings; font assets are raw bytes",
   "files": {
+    "assets/NotoSansKR-Variable.woff": "4f0769528a12c78397fea9dd32f979de67c77898342e5b4797956dfc8ae04c93",
+    "assets/OFL.txt": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+    "assets/SOURCE.json": "60d4ba5daa0fb99cec97f9ca4fa1f11a71581ada6910154a11538ee75cffe8ae",
     "references/excel-reader.md": "567fbc0a09e64dada31a27a2007e694e58c0af38609aa2b8c6e16a5204fb0ef7",
     "references/limits.md": "51f785a4c9f04004f6d022160747e6d633d4d7379707a290ec45f6b3ccd1e90a",
     "references/plan.md": "b51cd3f4437b69d70f9605dd64e5959501d56dcf2913a9a8df98bd1d5dd70b24",
@@ -10,8 +13,8 @@
     "requirements-excel.txt": "77f6b15accc8c04b7fb01df375ab309c076e61e82d7a306f3aa2f8f331a5763d",
     "requirements-vba.txt": "b8321e50ef03b0709f77d0b0459ad585e4ce35bf0e9b412af7cec8f4271a0c44",
     "requirements.txt": "9bba605fd7b6ea23038de15e5a1ae6714b3d3fb14ed2d6e6bedbfb0665ca2122",
-    "scripts/compact_project.py": "b5ef46d91810cb96a3fffaaa5774a2f231391ceb5372f63cdb628ceb02ea9bbf",
-    "scripts/excel_pipeline.py": "c61b393b4e9c683777a39394b16910222d0b6e77d2bce6ea15cbe245ffcbb832",
+    "scripts/compact_project.py": "7a1ca2e7905bf6d6bec7523567f48f5fa6adb8a881b6b44232149094c195b591",
+    "scripts/excel_pipeline.py": "3503d2c4e1abd4a9bfb56dfe0f8fb1c5e81b3ab5b5b38fbb84a3e6653212bd70",
     "scripts/formula_engine.py": "90a670fdfbbf12ad858b9351aa521b388a16c6f45da78b5b5310c93f5384a46b",
     "scripts/migration_contract.py": "7838b40d93c2468beecc721b77a7932b402ea41f4b6ec5c6c71b5d422b8bcbd6",
     "scripts/model_context.py": "43150b2b54f66b553ed17a7ec2cf99f693ad0c5af97f0b747b088c6bb7068665",
@@ -22,6 +25,7 @@
     "scripts/vba_extract.py": "7d65bf5e24717d2afdc921ea1767fa6000d59e027559c4beb720e8a4b32768c8",
     "scripts/vba_inspect.py": "7f636fc25c7f5f7a9ecae2c7d2d71c7846c2ec3c654189bf4ce852fe86c2d7b0",
     "scripts/workbook_input.py": "0d05e9e6cb5c63f0f6904dadab86fa2775489962512aa821a8c2648d08d028de",
+    "scripts/workflow_report.py": "0a8ffad4e0774a70cb011fcc8365d5620f0c0a533ef744272bad0a440b85e5fb",
     "scripts/xlwings_reader.py": "d20a322942dfd84ec384ac7451ffebb3223f7111b9050f97d0c626d393f5ec98"
   }
 }

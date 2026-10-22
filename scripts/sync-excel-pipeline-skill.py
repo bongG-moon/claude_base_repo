@@ -17,7 +17,8 @@ DESTINATION = ROOT / "company-agent-plugin" / "skills" / "excel-to-pipeline"
 RUNTIME = ("excel_pipeline.py", "formula_engine.py", "migration_contract.py",
            "model_context.py", "vba_extract.py", "vba_inspect.py",
            "workbook_input.py", "xlwings_reader.py", "project_builder.py", "project_runtime.py",
-           "python_formulas.py", "project_selection.py", "compact_project.py")
+           "python_formulas.py", "project_selection.py", "compact_project.py", "workflow_report.py")
+ASSETS = ("NotoSansKR-Variable.woff", "OFL.txt", "SOURCE.json")
 REFERENCES = ("plan.md", "limits.md", "excel-reader.md", "vba-migration.md")
 REQUIREMENTS = ("requirements.txt", "requirements-vba.txt", "requirements-excel.txt")
 
@@ -40,16 +41,19 @@ def reference_for_distribution(name: str, text: str) -> str:
 
 
 def expected_files() -> dict[str, bytes]:
-    # Git's Windows checkout may use CRLF. All shipped sources are UTF-8 text;
-    # compare canonical LF bytes so checkout settings do not fake divergence.
+    # Canonical LF for text, untouched bytes for fonts; Git checkout settings
+    # must neither fake divergence nor corrupt a WOFF binary.
     result = {f"scripts/{name}": (SOURCE / "scripts" / name).read_bytes().replace(b'\r\n', b'\n') for name in RUNTIME}
+    for name in ASSETS:
+        content = (SOURCE / "assets" / name).read_bytes()
+        result[f"assets/{name}"] = content if name.endswith('.woff') else content.replace(b'\r\n', b'\n')
     result.update({name: (SOURCE / name).read_bytes().replace(b'\r\n', b'\n') for name in REQUIREMENTS})
     for name in REFERENCES:
         result[f"references/{name}"] = reference_for_distribution(
             name, (SOURCE / "references" / name).read_text(encoding="utf-8")).encode("utf-8")
     manifest = {"source": "standalone-skills/excel-to-pipeline",
                 "generatedBy": "scripts/sync-excel-pipeline-skill.py",
-                "hashEncoding": "UTF-8 text with LF line endings",
+                "hashEncoding": "UTF-8 text with LF line endings; font assets are raw bytes",
                 "files": {name: hashlib.sha256(content).hexdigest() for name, content in sorted(result.items())}}
     result["runtime-source.json"] = (json.dumps(manifest, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     return result
@@ -62,7 +66,11 @@ def main(argv=None) -> int:
     different = []
     for name, content in expected_files().items():
         target = DESTINATION / name
-        if not target.is_file() or target.read_bytes().replace(b'\r\n', b'\n') != content:
+        actual = target.read_bytes() if target.is_file() else None
+        if actual is not None and not name.endswith('.woff'):
+            actual = actual.replace(b'\r\n', b'\n')
+        expected = content if name.endswith('.woff') else content.replace(b'\r\n', b'\n')
+        if actual != expected:
             different.append(name)
             if not args.check:
                 target.parent.mkdir(parents=True, exist_ok=True)

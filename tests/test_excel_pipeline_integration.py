@@ -236,6 +236,14 @@ class InstalledExcelWorkflowTests(unittest.TestCase):
             self.assertEqual(str(output / 'main.py'), result['entryPoint'])
             self.assertTrue((output / 'DATA/load.py').is_file())
             self.assertTrue((output / 'PROCESS/pipeline.py').is_file())
+            self.assertEqual(str(output / '업무흐름.html'), result['workflowHtml'])
+            self.assertTrue((output / '업무흐름.html').is_file())
+            workflow = (output / '업무흐름.html').read_text(encoding='utf-8')
+            self.assertIn('table-explanation', workflow)
+            self.assertIn('formula-steps', workflow)
+            self.assertIn('두 값을 곱', workflow)
+            self.assertNotIn('aB009', workflow)
+            self.assertNotIn('Ab009', workflow)
             self.assertEqual('openpyxl', result['summary']['reader'])
             self.assertEqual({'computed': 2}, result['summary']['formula_status'])
             self.assertEqual(before, source.read_bytes())
@@ -249,6 +257,7 @@ class InstalledExcelWorkflowTests(unittest.TestCase):
             rerun = subprocess.run([sys.executable, '-X', 'utf8', '-B', str(output / 'main.py'),
                                     '--output', str(next_output)], capture_output=True, text=True, encoding='utf-8')
             self.assertEqual(0, rerun.returncode, rerun.stdout + rerun.stderr)
+            self.assertFalse((next_output / '업무흐름.html').exists())
             self.assertEqual([t['rows'] for t in cells],
                              [json.loads(p.read_text(encoding='utf-8'))['rows'] for p in (next_output / 'tables').glob('*.json')])
             project_run = subprocess.run([sys.executable, '-X', 'utf8', '-B', result['entryPoint'],

@@ -1,0 +1,12 @@
+{
+  "source": "standalone-skills/work-context-catalog",
+  "generatedBy": "scripts/sync-work-context-skill.py",
+  "files": {
+    "SKILL.md": "2b33d6bbdce87737a18662cc90a0c4aa47198fb848f989705e22974c1d03421a",
+    "scripts/work_catalog.py": "259d4234a8d84fb22e7ed3551c67d173efd3e86aef14e12f89586629d8f48538",
+    "references/collection.md": "3faf8cece7a7fcf41f2a70c73d2113a7f749fa342f5d08cfd2533c34a0327816",
+    "assets/NotoSansKR-Variable.woff": "4f0769528a12c78397fea9dd32f979de67c77898342e5b4797956dfc8ae04c93",
+    "assets/OFL.txt": "1c05c68c34f9708415aada51f17e1b0092d2cea709bf4a94cd38114f9e73d7d9",
+    "assets/SOURCE.json": "60d4ba5daa0fb99cec97f9ca4fa1f11a71581ada6910154a11538ee75cffe8ae"
+  }
+}

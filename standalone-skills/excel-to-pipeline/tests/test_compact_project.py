@@ -100,7 +100,7 @@ class CompactProjectTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             output = Path(tmp) / "project"
             publish(self.result, output)
-            self.assertEqual({"DATA", "PROCESS", "outputs", "tables", "_details", "_support", "main.py", "README.md"},
+            self.assertEqual({"DATA", "PROCESS", "outputs", "tables", "_details", "_support", "main.py", "README.md", "업무흐름.html"},
                              {p.name for p in output.iterdir()})
             count = len({f["sheet"] for f in self.result["formulas"]})
             self.assertEqual(count, len(list((output / "PROCESS").glob("sheet_*.py"))))
