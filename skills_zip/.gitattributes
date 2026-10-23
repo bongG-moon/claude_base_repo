@@ -1,0 +1,2 @@
+# Preserve generated manifests, HTML and checksums byte-for-byte on checkout.
+* -text

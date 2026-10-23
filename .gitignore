@@ -19,3 +19,9 @@ Workspace-Diagnostic-*.json
 
 # Historical tracked installer; new installers are published as GitHub Release assets.
 !dist/company-agent-1.2.0-2026.09.03.zip
+
+# Maintained platform-ready Skill archives; retired builds remain local only.
+!skills_zip/*.zip
+skills_zip/.previous/
+skills_zip/.build.lock
+skills_zip/.package-*
