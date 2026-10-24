@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "packages": [
+    {
+      "slug": "manufacturing-oracle-mcp",
+      "file": "manufacturing-oracle-mcp-0.1.0-20261024.zip",
+      "packageId": "manufacturing-oracle-mcp",
+      "type": "MCP/Tool",
+      "sha256": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
+      "sourceProject": "metadata_driven_v5",
+      "sourceArtifact": "delivery_archives/manufacturing-oracle-mcp-0.1.0-20261024.zip",
+      "sourceThread": "019ff2de-42ec-7f22-aeda-54f75450a1ae"
+    }
+  ]
+}

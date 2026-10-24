@@ -3,21 +3,22 @@
   "sourceMode": "working-tree",
   "sourceVersion": "1.4.45",
   "distributionStandard": {
-    "sha256": "e592e456b748cfb34fc61344cd896d11aff06b9efb9eee49a2556dd25c1455cc",
+    "sha256": "0bfc08cd88d89df9298c7e427e0db37fb5a5ee6ec43179170b33d136ed333150",
     "files": {
-      "SKILL.md": "56f561eb759ac93ecdd11c3e2fba4cfe4fd793da1d435ef7b1dba4122f2bc4fd",
+      "SKILL.md": "30ec98550ad83e5e67c73611eacfc294ada69ecb4797ddfb15880baf77b8b92a",
       "assets/INSTALL_GUIDE.template.md": "421e804d4d3e918aa55c340d39f8682e8fd696a3a5f206f77103beafcebaa239",
       "assets/SELECT_SCOPE.template.ps1": "334c74877936ae67ca3ed6118ed0a27dd9d0ea5272531ead87490a2c07854c4f",
-      "assets/VERSION_CHECK_GUIDE.md": "ac27c1e4244a084f75f7923ab35138a65bc05a88cd9d5e459905aba61146e910",
+      "assets/VERSION_CHECK_GUIDE.md": "c7dae83f5dbb4057b86d41d64b2bda6a4b77c7d63a417f9eb0ff21e9a0a18685",
       "assets/ai-square.example.json": "25bdb08392866e6f3285614d9c1dc69ab3eb6c1e1a9a99daa25d84d53aa470fc",
       "assets/registration.example.json": "bad57bccf57ed80abde003e9079d73b54bb3aa49669244b1147186343653c9d8",
+      "references/local-mcp.md": "93dec2da115e1ea9ef86ec62f27b6267c095b3a1b401d48084bbc71c8571426d",
       "references/package-format.md": "70f37987940d909abb022816e8f7fe78254845af6b063e9d0a7a52959e3e4b24",
       "scripts/install_scope.py": "a458e0924f0684d5a304a7b9c54801dcaaee014621f2c18ac8d805a3f45b69dc",
       "scripts/package_contract.py": "c3c8e4143f35d6439a05afc8c28895474fe44de6d4d08e61d1e694059d778674",
       "scripts/prepare_package.py": "0de25692a7ecba44dbf8e6ba874ca03fab8041035988de66c4daadd8e1fde888",
-      "scripts/publish_client.py": "60fe405913953738d32871bc909e6349b26a4ee493f586f159d9a071c3fab1c2",
-      "scripts/square_client.py": "0082b3d9dfdaad41c9f6c620d39faf44000dc2582431273ff53132338f1dbc82",
-      "scripts/version_check.py": "f1c8697cb1241d0431533a9cc4b0d63360e72496a2e1cb18912f5ed3452202bc"
+      "scripts/publish_client.py": "733de88e1e5233ee6bea9dffea78bbd53dfd7f524bb58ccac08ce6e4efd5f515",
+      "scripts/square_client.py": "b7b556b1757f204abef1956ce658e40b6694b91468ebafb9eb0efc5a521ee143",
+      "scripts/version_check.py": "cc994b6a00912f77944672f40377568c4be2cd429a677be0f44db4d83230813f"
     }
   },
   "packages": [
@@ -30,8 +31,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-asset-factory",
-      "sha256": "bf974d2a18186504697a57e46580dde0e5b1568f28916161d84da17bfc248e16",
-      "size": 44558,
+      "sha256": "c1b1e7bf5fca6cd9092f5d39523d6ec4d0aa8f21dfdf6c02be5c3b65fa4e0aca",
+      "size": 44610,
       "files": 24
     },
     {
@@ -43,8 +44,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-company-agent",
-      "sha256": "84124d594426c53254f02d57efc5893bd88ec906405cc027d536b21457fae9bb",
-      "size": 237057,
+      "sha256": "a7dd24c7e2dfd7b4157dc9621ff84b85db90026a5b424dbdd99fa2cae3d0ba2b",
+      "size": 237110,
       "files": 23
     },
     {
@@ -56,8 +57,8 @@
       "runtimeRequired": false,
       "legacyAlias": false,
       "installName": "square-company-excel-to-pipeline",
-      "sha256": "a34e2b264b337126bc5b13712f3ba79bca056a24178096f6f9daa4047c890a40",
-      "size": 5498324,
+      "sha256": "6d777d78f1ba237485afa7c6288615db2f92c1d3b5d783498ea4d277f9710a02",
+      "size": 5498379,
       "files": 41
     },
     {
@@ -69,8 +70,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-file-organizer",
-      "sha256": "e11b84299541ec762cce24f816b31fc7e7d4141572993443ff4d3a801d74b9f0",
-      "size": 21787,
+      "sha256": "7380861f573afb26111c54aa235f290a17a1b1f2f5e4cf4f32a83664181ab2a5",
+      "size": 21841,
       "files": 11
     },
     {
@@ -82,8 +83,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-html-report",
-      "sha256": "7fcd97a7e00c493c1f5c0ee59ee068b37473662a11782c0269ad5dc234c3560b",
-      "size": 58888,
+      "sha256": "499e6e288ae172bf63b14cdb8535126b955a5a8f4d870547d28325102b5d918d",
+      "size": 58938,
       "files": 18
     },
     {
@@ -95,8 +96,8 @@
       "runtimeRequired": false,
       "legacyAlias": false,
       "installName": "square-company-karpathy-guidelines",
-      "sha256": "e4dfd8cb5a40c964b9af64ab5ec2ab932c8a9ffeaeafc53c21f158b64e880261",
-      "size": 26846,
+      "sha256": "3e3f9d10505a01d2fc6fc836e57ecd5a61f0015bef434c15ed0cfd66ebccb911",
+      "size": 26906,
       "files": 14
     },
     {
@@ -108,8 +109,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-outlook-assistant",
-      "sha256": "3b4e2cd902d3ebd5e309bf6cd39b685b8c55c5308f5f857cbc01426d7921a38e",
-      "size": 25966,
+      "sha256": "57e883968bebea13cc25207dee216ab190631f1a4b5a43533facf604a7bacc30",
+      "size": 26017,
       "files": 14
     },
     {
@@ -121,8 +122,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-personal-knowledge",
-      "sha256": "a756621b29523aa9f8d055a44d9c553291548ecb28f965bf31f05a0a8d515236",
-      "size": 22152,
+      "sha256": "d28a3953799ee9a3d2d00032484c2b23e1cb5155927e3ee62956df4483bf8f5d",
+      "size": 22206,
       "files": 11
     },
     {
@@ -134,8 +135,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-personal-memory",
-      "sha256": "f117c43c96ae4b416ef76e3758a8f149afb2cd9cecac043f76d03081d9f47823",
-      "size": 22630,
+      "sha256": "c0171b333597aa2313d91090149221fbdb819a1c234be893f508ca60fb35129a",
+      "size": 22684,
       "files": 10
     },
     {
@@ -147,8 +148,8 @@
       "runtimeRequired": true,
       "legacyAlias": true,
       "installName": "square-company-platform-mcp-builder",
-      "sha256": "30f4485cc59f352a6c1fd507bf40369843022791f46b93a92d0fdbd22046a3a5",
-      "size": 45292,
+      "sha256": "1cf633d4f45a0c27a665f620c13d867509d4aee986927a02fe6ecf6af9b818ed",
+      "size": 45350,
       "files": 25
     },
     {
@@ -160,8 +161,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-presentation",
-      "sha256": "7ff1c3bebfa9f5539dc685b4a7d0619fd5dec657ea94c49d56404ed86f0488c6",
-      "size": 50327,
+      "sha256": "6050a42fdc00361b0014a87f0b03235017d60a95a526cf7d5793fad0963fa067",
+      "size": 50378,
       "files": 20
     },
     {
@@ -173,8 +174,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-project-harness",
-      "sha256": "154b6b79a9ac75f9dcf9b15a3e45c11a0cbec9ed413845ad74bd2a153ee225be",
-      "size": 25823,
+      "sha256": "776e756275c83903ef13dd132df9b977713326decddc9dd3290880590c7bef48",
+      "size": 25874,
       "files": 12
     },
     {
@@ -186,8 +187,8 @@
       "runtimeRequired": true,
       "legacyAlias": false,
       "installName": "square-company-self-learning",
-      "sha256": "9be2d5af80c513d8bc02f7fa16c1339da1797dbbfd2ea49ac242932d7b143e5b",
-      "size": 26284,
+      "sha256": "84007eac350e73d955f4cf38bad647b1cb63657252fcfe94fa1fc8fbc0d99e33",
+      "size": 26335,
       "files": 11
     },
     {
@@ -199,27 +200,70 @@
       "runtimeRequired": false,
       "legacyAlias": false,
       "installName": "square-company-work-context-catalog",
-      "sha256": "f7ab034a5f69e70ec1298cdbba858959e9cf2d812e8fb8f5eddda776e265b939",
-      "size": 5386996,
+      "sha256": "1be72c363318591937b3806b1d76be53f3f708d41c4bdc84beeb838fc6aed307",
+      "size": 5387047,
       "files": 15
+    },
+    {
+      "slug": "manufacturing-oracle-mcp",
+      "file": "manufacturing-oracle-mcp-0.1.0-20261024.zip",
+      "name": "제조 메타데이터 Oracle MCP",
+      "description": "Claude Code가 기존 MongoDB 업무 기준을 읽고 등록된 Oracle 데이터를 조회하도록 연결합니다. 로컬 조회 결과와 적용 조건을 제공해 제조 데이터 분석에 활용합니다.",
+      "packageId": "manufacturing-oracle-mcp",
+      "type": "MCP/Tool",
+      "external": true,
+      "environment": "Windows 로컬 stdio MCP. Python 3.13에서 검증. Langflow 서버와 별도 LLM KEY 불필요.",
+      "requirements": [
+        "Python 3.11 이상과 Claude Code",
+        "MongoDB URI, DB명, 공통 Filter/Catalog/Domain 3개 컬렉션 읽기 권한",
+        "Table Catalog의 db_key에 해당하는 Oracle 조회 계정",
+        "requirements.txt 고정 버전을 받을 수 있는 패키지 저장소 또는 사전 준비 wheel",
+        "Oracle thick 모드가 필요한 경우 호환 Instant Client"
+      ],
+      "workflow": {
+        "steps": [
+          {
+            "title": "범위 선택과 설정 작성",
+            "description": "프로젝트 또는 내 계정 설치를 선택하고 자동 생성된 .env와 Oracle 접속 설정을 입력합니다."
+          },
+          {
+            "title": "등록 업무 기준 확인",
+            "description": "Claude Code가 Domain, Table Catalog, Main Filter를 읽어 데이터와 조건을 결정합니다."
+          },
+          {
+            "title": "Oracle 데이터 조회",
+            "description": "등록된 SELECT를 필수 bind로 조회하고 공통 필터와 표준 컬럼 매핑을 적용합니다."
+          },
+          {
+            "title": "로컬 데이터 분석",
+            "description": "Claude Code가 미리보기와 전체 JSONL/CSV, 잘림 여부를 확인해 분석과 답변을 이어갑니다."
+          }
+        ]
+      },
+      "sourceProject": "metadata_driven_v5",
+      "sourceArtifact": "delivery_archives/manufacturing-oracle-mcp-0.1.0-20261024.zip",
+      "sourceThread": "019ff2de-42ec-7f22-aeda-54f75450a1ae",
+      "sha256": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
+      "size": 41122
     }
   ],
   "managedFiles": {
-    "SHA256SUMS.txt": "16f3c5d5a7c5075e316f4f8adec23eb57837b5ddddf9a49d4505dc4c7252761b",
-    "company-asset-factory.zip": "bf974d2a18186504697a57e46580dde0e5b1568f28916161d84da17bfc248e16",
-    "company-company-agent.zip": "84124d594426c53254f02d57efc5893bd88ec906405cc027d536b21457fae9bb",
-    "company-excel-to-pipeline.zip": "a34e2b264b337126bc5b13712f3ba79bca056a24178096f6f9daa4047c890a40",
-    "company-file-organizer.zip": "e11b84299541ec762cce24f816b31fc7e7d4141572993443ff4d3a801d74b9f0",
-    "company-html-report.zip": "7fcd97a7e00c493c1f5c0ee59ee068b37473662a11782c0269ad5dc234c3560b",
-    "company-karpathy-guidelines.zip": "e4dfd8cb5a40c964b9af64ab5ec2ab932c8a9ffeaeafc53c21f158b64e880261",
-    "company-outlook-assistant.zip": "3b4e2cd902d3ebd5e309bf6cd39b685b8c55c5308f5f857cbc01426d7921a38e",
-    "company-personal-knowledge.zip": "a756621b29523aa9f8d055a44d9c553291548ecb28f965bf31f05a0a8d515236",
-    "company-personal-memory.zip": "f117c43c96ae4b416ef76e3758a8f149afb2cd9cecac043f76d03081d9f47823",
-    "company-platform-mcp-builder.zip": "30f4485cc59f352a6c1fd507bf40369843022791f46b93a92d0fdbd22046a3a5",
-    "company-presentation.zip": "7ff1c3bebfa9f5539dc685b4a7d0619fd5dec657ea94c49d56404ed86f0488c6",
-    "company-project-harness.zip": "154b6b79a9ac75f9dcf9b15a3e45c11a0cbec9ed413845ad74bd2a153ee225be",
-    "company-self-learning.zip": "9be2d5af80c513d8bc02f7fa16c1339da1797dbbfd2ea49ac242932d7b143e5b",
-    "company-work-context-catalog.zip": "f7ab034a5f69e70ec1298cdbba858959e9cf2d812e8fb8f5eddda776e265b939",
-    "등록_설치_안내.html": "7402f61e528df81694438b95cff6f61bb2b5d0251e0ab41d340c506e6e31c865"
+    "SHA256SUMS.txt": "0297ca494b4acfd4777b29bf702c0dc29c4fe82a0413c4ac3c9a7785b17d0d34",
+    "company-asset-factory.zip": "c1b1e7bf5fca6cd9092f5d39523d6ec4d0aa8f21dfdf6c02be5c3b65fa4e0aca",
+    "company-company-agent.zip": "a7dd24c7e2dfd7b4157dc9621ff84b85db90026a5b424dbdd99fa2cae3d0ba2b",
+    "company-excel-to-pipeline.zip": "6d777d78f1ba237485afa7c6288615db2f92c1d3b5d783498ea4d277f9710a02",
+    "company-file-organizer.zip": "7380861f573afb26111c54aa235f290a17a1b1f2f5e4cf4f32a83664181ab2a5",
+    "company-html-report.zip": "499e6e288ae172bf63b14cdb8535126b955a5a8f4d870547d28325102b5d918d",
+    "company-karpathy-guidelines.zip": "3e3f9d10505a01d2fc6fc836e57ecd5a61f0015bef434c15ed0cfd66ebccb911",
+    "company-outlook-assistant.zip": "57e883968bebea13cc25207dee216ab190631f1a4b5a43533facf604a7bacc30",
+    "company-personal-knowledge.zip": "d28a3953799ee9a3d2d00032484c2b23e1cb5155927e3ee62956df4483bf8f5d",
+    "company-personal-memory.zip": "c0171b333597aa2313d91090149221fbdb819a1c234be893f508ca60fb35129a",
+    "company-platform-mcp-builder.zip": "1cf633d4f45a0c27a665f620c13d867509d4aee986927a02fe6ecf6af9b818ed",
+    "company-presentation.zip": "6050a42fdc00361b0014a87f0b03235017d60a95a526cf7d5793fad0963fa067",
+    "company-project-harness.zip": "776e756275c83903ef13dd132df9b977713326decddc9dd3290880590c7bef48",
+    "company-self-learning.zip": "84007eac350e73d955f4cf38bad647b1cb63657252fcfe94fa1fc8fbc0d99e33",
+    "company-work-context-catalog.zip": "1be72c363318591937b3806b1d76be53f3f708d41c4bdc84beeb838fc6aed307",
+    "manufacturing-oracle-mcp-0.1.0-20261024.zip": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
+    "등록_설치_안내.html": "44a19b63acc4b15c251388fdf83f46a13b8940164b6632ae9926c6ec321f798a"
   }
 }

@@ -199,16 +199,17 @@ class ActualPackageTests(unittest.TestCase):
     def setUpClass(cls):
         cls.out = ROOT / 'skills_zip'
         cls.catalog = json.loads((cls.out / 'catalog.json').read_text(encoding='utf-8'))
+        cls.skills = [r for r in cls.catalog['packages'] if not r.get('external')]
 
     def test_all_discovered_skills_have_one_zip(self):
         actual = {p.parent.name for p in (ROOT / 'company-agent-plugin/skills').glob('*/SKILL.md')}
-        self.assertEqual(actual, {r['slug'] for r in self.catalog['packages']})
-        self.assertEqual(len(actual), len(list(self.out.glob('*.zip'))))
+        self.assertEqual(actual, {r['slug'] for r in self.skills})
+        self.assertEqual(len(self.catalog['packages']), len(list(self.out.glob('*.zip'))))
 
     def test_all_archives_source_hashes_and_contract(self):
         sys.path.insert(0, str(export.DEFAULT_STANDARD / 'scripts'))
         from package_contract import read_package
-        for row in self.catalog['packages']:
+        for row in self.skills:
             with self.subTest(skill=row['slug']):
                 path = self.out / row['file']; export.check_zip(path)
                 self.assertEqual(export.digest(path.read_bytes()), row['sha256'])
@@ -244,7 +245,7 @@ class ActualPackageTests(unittest.TestCase):
         sys.path.insert(0, str(export.DEFAULT_STANDARD / 'scripts'))
         spec = importlib.util.spec_from_file_location('actual_installer', export.SUPPORT / 'install_skill.py')
         installer = importlib.util.module_from_spec(spec); spec.loader.exec_module(installer)
-        for row in self.catalog['packages']:
+        for row in self.skills:
             with self.subTest(skill=row['slug']), tempfile.TemporaryDirectory(dir=ROOT / '.smoke/platform-skills') as td:
                 base = Path(td); project = base / 'project'; project.mkdir()
                 package = base / 'package'

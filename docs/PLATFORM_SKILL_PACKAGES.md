@@ -41,7 +41,15 @@ python -X utf8 -B scripts/build-skill-packages.py --distribution-skill "최신 p
 
 생성 결과를 직접 편집하지 마세요. 직접 변경한 파일은 덮어쓰지 않고 중단합니다. 제거된 스킬의 관리 ZIP은 `.previous` 아래로 옮겨 보관합니다. 무관한 파일은 건드리지 않습니다. 기존 설치기는 같은 설치 폴더를 자동 덮어쓰지 않습니다.
 
-## 검증
+## 다른 프로젝트의 MCP 함께 배포하기
+
+`skills_zip`에는 스킬 14개와 별도 도구인 **제조 메타데이터 Oracle MCP**가 있습니다. HTML의 **별도 MCP**에서 선택합니다. MCP는 하네스에 내장되거나 Skill로 자동 등록되지 않습니다. ZIP 전체를 풀고 README.md의 설치 범위·MongoDB/Oracle 접속 설정 안내를 따릅니다.
+
+이 MCP의 정본은 `metadata_driven_v5` 프로젝트이며, 여기서는 검토된 ZIP을 바이트 그대로 보관합니다. `scripts/platform_skills/external-packages.json`에 원본 프로젝트·산출물·대화·packageId·SHA-256을 기록했습니다. 생성기는 등록된 ZIP의 해시와 최신 플랫폼 규격을 검사하고 목록·설치 안내·체크섬에 포함합니다. 원본 프로젝트를 자동 탐색하거나 수정하지 않습니다.
+
+MCP를 갱신할 때는 정본 프로젝트에서 검증한 새 ZIP을 `skills_zip`에 넣고 위 등록 파일의 파일명·해시·출처를 함께 바꾼 뒤 생성·검사를 실행합니다. 새 PC에서도 이 저장소의 ZIP만으로 목록을 재생성할 수 있습니다. 파일이 없거나 임의로 수정되면 조용히 제외하지 않고 중단합니다. 이전 관리 ZIP은 기존 `.previous` 보관 규칙을 따릅니다. ZIP 내부의 설치기는 스킬용 설치기와 다르며 접속 설정을 재설치 시 유지합니다.
+
+## 검증 명령
 
 ```powershell
 python -X utf8 -B -m unittest discover -s tests -p "test_platform_skill_*.py" -v

@@ -162,6 +162,10 @@ def check_zip(path, expected=None):
 
 def index_html(rows, version, standard_sha):
     e = html.escape
+    external = [r for r in rows if r.get('external')]
+    rows = [r for r in rows if not r.get('external')]
+    external_table = ''.join(f'<tr><td><a href="{e(r["file"])}">{e(r["name"])}</a><small>{e(r["type"])}</small></td><td>{e(r["environment"])}</td><td>{e(r["description"])}</td></tr>' for r in external)
+    external_section = (f'<section class="table"><h2>별도 MCP · {len(external)}개</h2><p>스킬과 별도로 설치·연결하는 도구입니다. ZIP 안의 README.md에서 설치 범위를 선택하고 필요한 접속 설정을 준비하세요. 하네스 설치만으로 연결되지 않습니다.</p><table><thead><tr><th>도구 / ZIP</th><th>사용 조건</th><th>설명</th></tr></thead><tbody>{external_table}</tbody></table></section>' if external else '')
     table = ''.join(f'<tr><td><a href="{e(r["file"])}">{e(r["name"])}</a><small>{e(r["slug"])}</small></td><td>{"Company Agent 필요" if r["runtimeRequired"] else "단독 사용"}{" · 이전 이름 호환" if r["legacyAlias"] else ""}</td><td>{e(r["description"])}</td></tr>' for r in rows)
     standalone = sum(not r['runtimeRequired'] for r in rows)
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Company Skills 배포 파일</title><style>
@@ -170,8 +174,53 @@ body{{margin:0;background:#f4f6fa;color:#16223a;font:16px/1.7 'Noto Sans KR','Ma
 <p>하네스 {e(version)}의 현재 파일 기준 · 스킬 {len(rows)}개 · 단독 사용 {standalone}개 / 하네스 필요 {len(rows)-standalone}개</p>
 <section><h2>등록하는 방법</h2><ol><li>아래에서 필요한 ZIP을 선택합니다.</li><li>플랫폼의 도구 등록 화면에 ZIP 자체를 올립니다.</li><li>채워진 설명·사용 조건·동작 흐름을 확인하고 조직·업무 분류·공개 범위를 직접 선택합니다.</li><li>업데이트는 같은 도구의 새 버전 등록을 사용합니다. packageId는 유지됩니다.</li></ol><p>여기까지는 파일 준비입니다. 서버 게시나 사용자 PC 설치는 실행하지 않았습니다.</p></section>
 <section class="table"><h2>개별 ZIP</h2><table><thead><tr><th>스킬 / ZIP</th><th>사용 조건</th><th>설명</th></tr></thead><tbody>{table}</tbody></table></section>
+{external_section}
 <section><h2>사용하기 전에</h2><p>ZIP 안의 INSTALL.md를 읽고 현재 프로젝트 또는 내 계정 전체 중 설치 범위를 선택합니다. 기존 같은 폴더는 덮어쓰지 않습니다. Company Agent에 이미 있는 기능은 중복 설치할 필요가 없습니다.</p><p>하네스 필요 스킬의 ZIP에는 실행 엔진·후크·MCP 연결이 없습니다. 해당 기능을 제공하는 기존 설치가 필요합니다. 플랫폼 등록 검사 통과가 실제 사내 업무 실행 성공을 뜻하지는 않습니다.</p><p>원본 스킬·코드·참고자료를 보존했습니다. ZIP 안의 PACKAGE_SOURCE.json에서 파일별 출처와 해시를 확인할 수 있습니다. 단독형 두 스킬은 standalone-skills의 정본을 사용합니다.</p></section>
 <section><h2>다시 만들기</h2><p>저장소에서 <code>python -X utf8 scripts/build-skill-packages.py</code>를 실행합니다. <code>--check</code>는 최신 여부만 검사합니다. 같은 입력은 같은 ZIP을 만들며 불필요하게 파일을 다시 쓰지 않습니다.</p><p>로컬 플랫폼 배포 스킬 기준: <code>{e(standard_sha[:16])}</code>. 대화를 상시 감시하지 않습니다. 플랫폼 소스를 다른 위치에서 관리하면 <code>--distribution-skill</code>로 그 스킬 폴더를 지정하세요.</p></section></main></body></html>'''.encode('utf-8')
+
+
+def external_packages(root, contract):
+    """Keep reviewed standalone packages byte-for-byte; never fetch or install."""
+    registry = no_links(root / 'scripts/platform_skills/external-packages.json')
+    if not registry.exists():
+        return [], {}
+    config = json.loads(registry.read_text(encoding='utf-8'))
+    if config.get('schemaVersion') != 1 or not isinstance(config.get('packages'), list):
+        raise ValueError('외부 패키지 등록 형식을 확인하세요.')
+    rows, artifacts, ids, slugs = [], {}, set(), set()
+    for item in config['packages']:
+        name, slug = item['file'], item['slug']
+        if not re.fullmatch(r'[a-z0-9][a-z0-9.-]*\.zip', name) or not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', slug):
+            raise ValueError('외부 패키지 파일명·별칭을 확인하세요.')
+        if name in artifacts or slug in slugs or item['packageId'] in ids:
+            raise ValueError('외부 패키지 중복 등록입니다.')
+        path = no_links(root / 'skills_zip' / name)
+        raw = path.read_bytes()
+        if digest(raw) != item['sha256']:
+            raise ValueError('외부 패키지 해시 불일치: ' + name)
+        # Use the current contract without importing a cached module or running package code.
+        code = ('import json,sys; from zipfile import ZipFile; '
+                'from package_contract import read_package; '
+                'z=ZipFile(sys.argv[1]); p=read_package(z); '
+                'assert p is not None; assert z.testzip() is None; '
+                'print(json.dumps(p,ensure_ascii=False))')
+        result = subprocess.run([sys.executable, '-B', '-X', 'utf8', '-c', code, str(path)],
+                                cwd=contract / 'scripts', capture_output=True, text=True,
+                                encoding='utf-8', timeout=30)
+        if result.returncode:
+            raise ValueError('외부 패키지 최신 규격 검사 실패: ' + name + '\n' + result.stderr)
+        manifest = json.loads(result.stdout)
+        if manifest['packageId'] != item['packageId'] or manifest['type'] != item['type']:
+            raise ValueError('외부 패키지 ID·유형 불일치: ' + name)
+        artifacts[name] = raw
+        ids.add(item['packageId']); slugs.add(slug)
+        rows.append(dict(slug=slug, file=name, name=manifest['name'], description=manifest['desc'],
+                         packageId=manifest['packageId'], type=manifest['type'], external=True,
+                         environment=manifest['environment'], requirements=manifest['requirements'],
+                         workflow=manifest['workflow'], sourceProject=item['sourceProject'],
+                         sourceArtifact=item['sourceArtifact'], sourceThread=item['sourceThread'],
+                         sha256=digest(raw), size=len(raw)))
+    return rows, artifacts
 
 
 def build(root, standard, stage, metadata_path):
@@ -231,6 +280,13 @@ def build(root, standard, stage, metadata_path):
                          packageId=manifest['packageId'], runtimeRequired=info['runtimeRequired'],
                          legacyAlias=slug == 'platform-mcp-builder', installName=install_name,
                          sha256=digest(artifacts[target.name]), size=len(artifacts[target.name]), files=len(files)))
+    extra_rows, extra_files = external_packages(root, contract)
+    if (artifacts.keys() & extra_files.keys() or
+            {r['packageId'] for r in rows} & {r['packageId'] for r in extra_rows} or
+            {r['slug'] for r in rows} & {r['slug'] for r in extra_rows}):
+        raise ValueError('스킬과 외부 패키지 이름·ID가 충돌합니다.')
+    rows.extend(extra_rows)
+    artifacts.update(extra_files)
     artifacts['등록_설치_안내.html'] = index_html(rows, version, standard_sha)
     artifacts['SHA256SUMS.txt'] = ('\n'.join(f'{r["sha256"]}  {r["file"]}' for r in rows) + '\n').encode()
     artifacts['catalog.json'] = encoded(dict(generator='company-platform-skills-v1', sourceMode='working-tree',
