@@ -168,10 +168,13 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
         raise ArtifactError("invalid_sections", "본문은 1~60개 페이지 또는 구역으로 구성해 주세요.")
     result = {"title": _text(spec.get("title", "업무 보고서"), 300), "subtitle": _text(spec.get("subtitle", ""), 1000),
               "style": style, "mode": mode, "length": length, "sections": []}
-    if "fontSource" in spec:
-        if spec["fontSource"] not in ("system", "google"):
-            raise ArtifactError("invalid_font_source", "글꼴은 system 또는 google 중에서 선택해 주세요.")
-        result["fontSource"] = spec["fontSource"]
+    if "fontSource" in spec and spec["fontSource"] not in ("system", "google"):
+        raise ArtifactError("invalid_font_source", "글꼴은 system 또는 google 중에서 선택해 주세요.")
+    from . import report_typography
+    try:
+        result.update(report_typography.validate(spec))
+    except ValueError as exc:
+        raise ArtifactError('invalid_font', str(exc)) from None
     for row in rows:
         if not isinstance(row, dict):
             raise ArtifactError("invalid_section", "각 페이지에는 제목과 본문을 객체로 지정해 주세요.")
@@ -254,12 +257,14 @@ def html_choice_selection(spec: dict[str, Any], *, metadata_only: bool = False) 
     """Shared choice contract; metadata validation never opens source assets."""
     if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional', 'template'):
         raise ArtifactError('invalid_choice', '디자인 선택 단계의 형식을 확인해 주세요.')
-    if metadata_only and set(spec) - {'style', 'length', 'mode', 'designMenu', 'htmlTemplate', 'templateReview'}:
+    from .report_typography import FIELDS
+    if metadata_only and set(spec) - {'style', 'length', 'mode', 'designMenu', 'htmlTemplate', 'templateReview', *FIELDS}:
         raise ArtifactError('invalid_choice', '선택 파일에는 디자인·분량·보기 선택만 넣어 주세요.')
-    fields = {key: spec[key] for key in ('style','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus') if key in spec}
+    fields = {key: spec[key] for key in ('style','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus', *FIELDS) if key in spec}
     # Also used by the report generator: aliases and numbered styles stay identical.
     normalized = _normalize({**fields, 'sections': [{}]})
     selection = {key: normalized[key] for key in ('style','length','mode')}
+    selection.update({key: normalized[key] for key in FIELDS if key in normalized})
     if 'htmlTemplate' in spec:
         template = spec['htmlTemplate']
         if (not isinstance(template, dict) or set(template) != {'path', 'sha256'}
@@ -285,7 +290,7 @@ def html_choices(spec: dict[str, Any]) -> dict[str, Any]:
         pending = choices(spec)
         return pending or {'ok': True, 'status': 'choices_ready', 'stage': 'ready',
                            'selection': selection,
-                           'message': '디자인·분량·보기 방식이 정해졌습니다. 같은 조건을 다시 묻지 않고 제작합니다.'}
+                           'message': '요청한 제작 조건이 정해졌습니다. 같은 조건을 다시 묻지 않고 제작합니다.'}
     except Exception as exc:
         return _failure(exc)
 
@@ -326,7 +331,7 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
     try:
         output = _target(output, ".html")
         data = _normalize(spec)
-        if require_choices:
+        if require_choices or spec.get('fontChoiceRequired'):
             from .report_styles import choices
             pending = choices(spec)
             if pending:
@@ -383,6 +388,8 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
         except FactError as exc:
             raise ArtifactError("numeric_validation_failed", str(exc)) from None
         document = render(data, _CSS, _JS, _html_table)
+        from .report_typography import selection as font_selection
+        typography = font_selection(data) if 'fontChoice' in data or 'fontSource' in data else None
         from .content_layout import check_html, LayoutError
         try:
             layout_check = check_html(document, data['sections'])
@@ -398,7 +405,9 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
                 "sections": len(data["sections"]), "offline": data.get("fontSource") != "google", "validation": validation,
                 "contentLayoutValidation": layout_check,
                 "templateReference": reference,
+                "typography": typography,
                 "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."] + (reference['warnings'] if reference else [])
+                + (["선택한 글꼴의 PC 설치 여부는 확인하지 않았습니다. 없으면 대체 글꼴로 표시됩니다."] if typography and typography['source'] != 'google' else [])
                 + (["Google Fonts 사용 시 글꼴 서비스로 연결합니다. 연결 불가 시 PC 글꼴로 표시하며 본문은 오프라인에서도 열립니다."] if data.get("fontSource") == "google" else [])}
     except Exception as exc:
         return _failure(exc)
@@ -490,6 +499,8 @@ def capabilities() -> dict[str, Any]:
                     "automaticDownload": False, "templateFormats": [".pptx", ".html"],
                     "draftFormat": "html", "savedDesignFormat": "html",
                     "nativeElements":['text','table','chart','rect','roundRect','ellipse','shadow','image'],
+                    "nativeGrouping":{'elements':['text','shape','image'],'field':'group','htmlAttribute':'data-ppt-group',
+                                      'contiguous':True,'nested':False,'automaticKpiPairs':True},
                     "freeformRequiresPythonPptx":True,"imageFit":['contain','cover','stretch'],
                     "existingImageResize":found,"htmlLayoutBrowserAvailable":browser_path() is not None,
                     "htmlImport":"static-local-no-source-scripts","templateSaveCommand":"business ppt-template",

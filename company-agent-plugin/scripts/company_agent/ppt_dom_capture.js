@@ -44,7 +44,7 @@
         page.elements.push(e);
         if (page.elements.length > 1200) fail('한 장의 개체 수가 1200개를 넘습니다.');
       };
-      const text = (node, style) => {
+      const text = (node, style, group) => {
         if (!node.textContent.trim()) return;
         if ((totalChars += node.length) > 200000) fail('HTML 본문이 너무 큽니다.');
         if (style.textTransform !== 'none' || parseFloat(style.letterSpacing)) warning('자간·대소문자 효과는 PowerPoint에서 재확인이 필요합니다.');
@@ -68,14 +68,17 @@
           const b = box({left:line.left,top:line.top,width:line.right-line.left,height:line.bottom-line.top});
           // Small width tolerance avoids clipping a final glyph; no font shrinking.
           b.w = Math.min(b.w + 1.5, result.width - b.x);
-          push({kind:'text', ...b, text:line.value, size:parseFloat(style.fontSize)*scale,
+          push({kind:'text', group, ...b, text:line.value, size:parseFloat(style.fontSize)*scale,
                 color:rgb(style.color).color, bold:parseInt(style.fontWeight) >= 600,
                 italic:style.fontStyle === 'italic', underline:style.textDecorationLine.includes('underline'),
                 font:style.fontFamily.split(',')[0].trim().replace(/^['"]|['"]$/g,''), wrap:false, lineSpacing:1});
         }
       };
-      const visit = (node, inheritedOpacity=1) => {
+      const visit = (node, inheritedOpacity=1, inheritedGroup) => {
         if (node.nodeType !== Node.ELEMENT_NODE) return;
+        const group = node.getAttribute('data-ppt-group') || inheritedGroup;
+        if (inheritedGroup && group !== inheritedGroup) fail('중첩 그룹은 한 단계의 의미 있는 묶음으로 정리해 주세요.');
+        if (node === slide && group) fail('장 전체 대신 카드·지표 단위에 그룹을 지정해 주세요.');
         const style = getComputedStyle(node), opacity = inheritedOpacity * Number(style.opacity);
         if (style.display === 'none' || style.visibility === 'hidden' || opacity === 0) return;
         const rect = node.getBoundingClientRect();
@@ -101,7 +104,7 @@
         if (node === slide && fill.opacity) page.background = fill.color;
         if (node !== slide && (fill.opacity || (uniform && borderWidth) || shadow)) {
           const b = box(rect);
-          push({kind:'shape',...b,shape:radius?'roundRect':'rect',radius:Math.min(radius,b.w/2,b.h/2),
+          push({kind:'shape',group,...b,shape:radius?'roundRect':'rect',radius:Math.min(radius,b.w/2,b.h/2),
                 fill:fill.opacity?fill.color:null,opacity:fill.opacity*opacity,
                 border:uniform?border.color:null,borderWidth:uniform?borderWidth*scale:0,shadow});
         }
@@ -112,17 +115,18 @@
             const b=box(rect), t=thickness*scale;
             if (side==='Top'||side==='Bottom') { if(side==='Bottom') b.y+=b.h-t; b.h=t; }
             else { if(side==='Right') b.x+=b.w-t; b.w=t; }
-            push({kind:'shape',...b,shape:'rect',fill:ink.color,opacity:ink.opacity*opacity});
+            push({kind:'shape',group,...b,shape:'rect',fill:ink.color,opacity:ink.opacity*opacity});
           }
         }
         if (node.tagName === 'IMG') {
           const match = node.src.match(/^data:(image\/(?:png|jpeg));base64,(.+)$/);
           if (!match || !node.naturalWidth) fail('이미지 로딩을 완료하지 못했습니다. 로컬 PNG/JPEG인지 확인해 주세요.');
           if (style.objectPosition !== '50% 50%') fail('그림 위치는 중앙 맞춤만 지원합니다.');
-          push({kind:'image',...box(rect),image:{mime:match[1],data:match[2],alt:node.alt},fit:style.objectFit==='cover'?'cover':style.objectFit==='fill'?'stretch':'contain'});
+          push({kind:'image',group,...box(rect),image:{mime:match[1],data:match[2],alt:node.alt},fit:style.objectFit==='cover'?'cover':style.objectFit==='fill'?'stretch':'contain'});
           return;
         }
         if (node.tagName === 'TABLE') {
+          if (group) fail('편집 가능한 표는 그룹 밖에 독립 개체로 배치해 주세요.');
           const rows=[...node.rows].map(r=>[...r.cells]);
           if (!rows.length || rows.some(r=>r.length!==rows[0].length || r.some(c=>c.colSpan!==1 || c.rowSpan!==1))) fail('병합 표는 분리된 셀 또는 명시적 PPT 표로 작성해 주세요.');
           if (rows.some(r=>r.some(c=>c.querySelector('img,svg,table')))) fail('그림/중첩 표가 있는 셀은 별도 개체로 작성해 주세요.');
@@ -135,8 +139,8 @@
         const children=[...node.childNodes];
         if (children.some(n=>n.nodeType===1 && getComputedStyle(n).zIndex!=='auto')) fail('겹치는 z-index 배치는 DOM 순서의 단순 배치로 바꿔 주세요.');
         for (const child of children) {
-          if(child.nodeType===Node.TEXT_NODE) text(child,style);
-          else visit(child,opacity);
+          if(child.nodeType===Node.TEXT_NODE) text(child,style,group);
+          else visit(child,opacity,group);
         }
       };
       visit(slide);

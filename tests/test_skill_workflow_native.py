@@ -18,6 +18,20 @@ from company_agent.state import load_session
 class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
     run_wrapper = native.NativePowerShellTests.run_wrapper
 
+    def runtime_from_context(self, result):
+        # Runtime JSON can be followed by project initialization guidance.
+        # Read its explicit key instead of requiring it to be the last line.
+        matches = []
+        for line in result['hookSpecificOutput']['additionalContext'].splitlines():
+            try:
+                data = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(data, dict) and isinstance(data.get('company_agent_runtime'), dict):
+                matches.append(data['company_agent_runtime'])
+        self.assertEqual(1, len(matches), 'Expected exactly one runtime JSON block')
+        return matches[0]
+
     def brief_groups(self, result):
         # Candidate details are transmitted once in the leading action brief.
         return [json.loads(line) for line in result['hookSpecificOutput']['additionalContext'].splitlines()
@@ -26,14 +40,14 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
     def test_html_request_receives_index_before_file_probe(self):
         with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(self.root / 'isolated-claude')}):
             started = self.hook('SessionStart', source='startup')
-            initial = json.loads(started['hookSpecificOutput']['additionalContext'])['company_agent_runtime']
+            initial = self.runtime_from_context(started)
             index = initial['skillIndex']
             self.assertEqual('inline', index['mode'])
             names = [row[0] for row in index['skills']]
             self.assertIn('html-report', names)
             self.assertIn('presentation', names)
             result = self.hook('UserPromptSubmit', prompt='HTML 보고서 만들어줘')
-            runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+            runtime = self.runtime_from_context(result)
             self.assertEqual('reuse', runtime['skillIndex']['mode'])
             self.assertEqual('html-report', runtime['skillExecution']['name'])
             self.assertEqual('load', runtime['skillExecution']['mode'])
@@ -53,7 +67,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
             self.read(self.plugin / 'skills/html-report/SKILL.md')
             self.assertEqual({}, self.hook('Stop'))
             compacted = self.hook('SessionStart', source='compact')
-            restored = json.loads(compacted['hookSpecificOutput']['additionalContext'])['company_agent_runtime']
+            restored = self.runtime_from_context(compacted)
             self.assertEqual('inline', restored['skillIndex']['mode'])
             state = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))
             self.assertEqual({}, state['skillWorkflow']['readSkills'])
@@ -108,7 +122,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         local_skill = self.project / '.claude/skills/html-report/SKILL.md'
         atomic_write_text(local_skill, '---\nname: html-report\ndescription: HTML 보고서 작성\n---\n한글 — 자료 😀\n')
         result = self.hook('UserPromptSubmit', prompt='html-report HTML 보고서 작성')
-        ctx = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        ctx = self.runtime_from_context(result)
         group = next(g for g in self.brief_groups(result) if g['name'] == 'html-report')
         selected = next(c for c in group['candidates'] if c['source'] == 'project')
         self.assertEqual('choose', ctx['skillExecution']['mode'])
@@ -122,7 +136,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         # The real next prompt identifies both the name and the source. Keep
         # the native wrapper/legacy encoding contract while using its new turn.
         result = self.hook('UserPromptSubmit', prompt='프로젝트 html-report로 진행해줘')
-        ctx = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        ctx = self.runtime_from_context(result)
         self.assertNotEqual(first_turn, ctx['skillWorkflow']['turn'])
         root = Path(self.record['userStateRoot'])
         self.assertEqual(selected['id'], load_session(self.payload['session_id'], root)['skillWorkflow']['choiceAnswer']['id'])
@@ -176,7 +190,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.assertEqual(0, result.returncode, repr(result.stderr))
         self.assertEqual(b'', result.stderr)
         wire = json.loads(result.stdout.decode('ascii'))
-        ctx = json.loads(wire['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        ctx = self.runtime_from_context(wire)
         self.assertEqual(str(self.project), ctx['project'])
         self.assertEqual('html-report', ctx['skillExecution']['name'])
         self.assertIn('한국어', ctx['instructions'])
@@ -184,7 +198,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
     def test_first_prompt_selection_execution_and_silent_list_flow(self):
         self.hook("SessionStart", source="startup")
         result = self.hook("UserPromptSubmit", prompt="HTML 보고서를 만들어줘")
-        runtime = json.loads(result["hookSpecificOutput"]["additionalContext"].split("\n")[-1])["company_agent_runtime"]
+        runtime = self.runtime_from_context(result)
         self.assertEqual("ready", runtime["skillWorkflow"]["status"])
         self.assertFalse(runtime["skillWorkflow"]["indexRead"])
         self.assertTrue(runtime["skillWorkflow"]["turn"])
@@ -209,7 +223,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         denied = self.hook("PreToolUse", tool_name="mcp__corp-db-read__query", tool_input={"query": "DELETE FROM employees"})
         self.assertEqual("deny", denied["hookSpecificOutput"]["permissionDecision"])
         next_result = self.hook("UserPromptSubmit", prompt="이제 발표 자료를 만들어줘")
-        next_runtime = json.loads(next_result["hookSpecificOutput"]["additionalContext"].split("\n")[-1])["company_agent_runtime"]
+        next_runtime = self.runtime_from_context(next_result)
         self.assertTrue(next_runtime["skillWorkflow"]["indexRead"])
         self.assertIsNone(next_runtime["skillWorkflow"]["selected"])
         self.read(self.plugin / "skills/presentation/SKILL.md")
@@ -220,11 +234,11 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         atomic_write_text(custom, '---\nname: custom-reader\ndescription: XLSX Excel 내용 읽기\n---\n사용자 지정 읽기 절차\n')
         self.hook('SessionStart', source='startup')
         result = self.hook('UserPromptSubmit', prompt='@AI_CAMP_지원현황.xlsx 여기 파일 내용읽고 어떤 정보들 있는지 확인해줘')
-        runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        runtime = self.runtime_from_context(result)
         self.read(Path(runtime['skillSelection']['catalog']['path']))
         self.read(custom)
         result = self.hook('UserPromptSubmit', prompt='위 내용을 바탕으로 신청자 현황과 강사 현황을 볼 수 있는 html을 만들고싶어')
-        runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        runtime = self.runtime_from_context(result)
         self.assertEqual('html-report', runtime['skillExecution']['name'])
         write = {'tool_name': 'Write', 'tool_input': {'file_path': str(self.project / 'report.html')}}
         for _ in range(2):
@@ -249,7 +263,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
                           '---\nname: writing-skills\ndescription: 개인 스킬·스크립트·도구·MCP를 만들고 수정·검증하는 제작 스킬입니다.\n---\n# 가상 제작 절차\n')
         with patch.dict(os.environ, {'CLAUDE_CONFIG_DIR': str(self.root / 'isolated-claude')}):
             result = self.hook('UserPromptSubmit', prompt='크롬 스킬을 만들자')
-            runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+            runtime = self.runtime_from_context(result)
             self.assertEqual('choose', runtime['skillExecution']['mode'])
             for operation in ('choose', 'route'):
                 command = runtime['cliCommand'] + f' skill {operation} --help'
@@ -259,7 +273,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
                 self.assertIn('usage:', help_result.stdout)
             result = self.hook('UserPromptSubmit', prompt=
                                '회사 asset-factory로 크롬 스킬을 만들자. https://lol.ps/ 를 크롬 디버깅 도구로 열고, 팝업이 있으면 닫아줘.')
-            runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+            runtime = self.runtime_from_context(result)
             self.assertEqual('asset-factory', runtime['skillExecution']['name'])
             self.assertEqual('company', runtime['skillExecution']['source'])
             self.assertEqual('load', runtime['skillExecution']['mode'])
@@ -331,7 +345,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
     def test_html_answer_turn_does_not_deadlock_and_choices_execute(self):
         self.hook("SessionStart", source="startup")
         result = self.hook("UserPromptSubmit", prompt="HTML 보고서를 만들어줘")
-        runtime = json.loads(result["hookSpecificOutput"]["additionalContext"].split("\n")[-1])["company_agent_runtime"]
+        runtime = self.runtime_from_context(result)
         self.read(Path(runtime["skillSelection"]["catalog"]["path"]))
         self.read(self.plugin / "skills/html-report/SKILL.md")
         self.hook("UserPromptSubmit", prompt="추가 디자인 중 뉴모피즘, 상세, 스크롤로 해줘")
@@ -407,7 +421,7 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
         self.record = self.register('project', 'Project', self.project,
                                     userStateRoot=str(self.root / "O'Brien 한글 state"))
         result = self.hook('UserPromptSubmit', prompt='HTML 보고서를 만들어줘')
-        runtime = json.loads(result['hookSpecificOutput']['additionalContext'].split('\n')[-1])['company_agent_runtime']
+        runtime = self.runtime_from_context(result)
         self.read(Path(runtime['skillSelection']['catalog']['path']))
         denied = self.hook('PreToolUse', tool_name='PowerShell', tool_input={'command': 'python report.py'})
         reason = denied['hookSpecificOutput']['permissionDecisionReason']

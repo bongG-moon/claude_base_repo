@@ -103,10 +103,11 @@ CSS = r'''
 
 
 def choices(spec):
+    from . import report_typography
     # Expose ONLY the current step. Length/view questions must not be bundled
     # with the initial design question or an unresolved additional-design menu.
     pending = {'ok': False, 'status': 'input_required', 'code': 'report_choices_required',
-               'preservedChoices': {key: spec[key] for key in ('style','length','mode','htmlTemplate','templateReview') if key in spec}}
+               'preservedChoices': {key: spec[key] for key in ('style','length','mode','htmlTemplate','templateReview', *report_typography.FIELDS) if key in spec}}
     if spec.get('designMenu') == 'template' or 'htmlTemplate' in spec:
         template = spec.get('htmlTemplate')
         if not (isinstance(template, dict) and isinstance(template.get('path'), str) and template['path']
@@ -143,14 +144,21 @@ def choices(spec):
             pending['initialDesignOptions']=['깔끔한 업무형(추천)', '지표 중심형', '추가 디자인(미리보기)', 'HTML 양식 직접 첨부']
         return pending
     missing = [key for key in ('length','mode') if key not in spec]
+    missing += report_typography.missing(spec)
     if not missing:
         return None
     pending.update(stage='format', missing=missing,
-                   message='디자인이 확정되었습니다. 아직 정하지 않은 분량·보기 방식만 선택해 주세요.')
+                   message='아직 정하지 않은 분량·보기 방식·글꼴만 선택해 주세요.')
     if 'length' in missing:
         pending['lengthOptions']=['핵심','보통','상세']
     if 'mode' in missing:
         pending['viewOptions']=['스크롤','페이지 넘김','둘 다']
+    if 'fontChoice' in missing:
+        pending['fontOptions'] = [{'value': key, 'name': name, 'description': description}
+                                  for key, name, description in report_typography.OPTIONS]
+        pending['fontInstruction'] = '다섯 항목을 채팅에 한 번에 보여 주세요. 번호·이름·직접 입력을 받으며, 이미 정한 글꼴은 다시 묻지 않습니다.'
+    if 'fontName' in missing:
+        pending['fontInstruction'] = '사용할 글꼴 이름만 알려 주세요. 파일·설치·인터넷 연결은 별도 요청 없이 추가하지 않습니다.'
     return pending
 
 
@@ -158,6 +166,7 @@ PICKER_JS = r'''"use strict";
 (()=>{
   const buttons=[...document.querySelectorAll('[data-choice]')];
   const length=document.getElementById('length-choice'), mode=document.getElementById('mode-choice');
+  const font=document.getElementById('font-choice'), custom=document.getElementById('font-name');
   const result=document.getElementById('choice-result'), status=document.getElementById('copy-status');
   if(location.hash==='#additional-designs')document.getElementById('additional-designs').open=true;
   function fitPreviews(){
@@ -178,12 +187,15 @@ PICKER_JS = r'''"use strict";
     const parts=['디자인: '+label];
     if(length.value!=='keep')parts.push('분량: '+length.options[length.selectedIndex].text);
     if(mode.value!=='keep')parts.push('보기: '+mode.options[mode.selectedIndex].text);
+    custom.hidden=font.value!=='custom';
+    if(font.value!=='keep')parts.push('글꼴: '+(font.value==='custom'?(custom.value.trim()||'직접 입력할 이름을 물어봐줘'):font.options[font.selectedIndex].text));
     result.value='HTML 보고서를 만들어줘. '+parts.join(' / ')+'. 따로 지정하지 않은 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목만 물어봐줘. 원자료와 요청 내용은 앞서 전달한 것을 사용해줘.';
     if(choice==='template')result.value='HTML 보고서에 내가 첨부할 HTML 양식을 참고해줘. '+(parts.length>1?parts.slice(1).join(' / ')+'. ':'')+'먼저 양식 파일을 받고 미리보기를 보여줘. 따로 지정하지 않은 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목은 양식 확인 후에만 물어봐줘.';
     status.textContent='이 선택은 아직 Claude에 전달되지 않았습니다. 아래 문장을 복사해 채팅에 붙여 넣어 주세요.';
   }
   buttons.forEach(button=>button.addEventListener('click',()=>{choice=button.dataset.choice;label=button.dataset.label;update();}));
   length.addEventListener('change',update);mode.addEventListener('change',update);
+  font.addEventListener('change',update);custom.addEventListener('input',update);
   document.getElementById('copy-choice').addEventListener('click',async()=>{
     try { if(!navigator.clipboard)throw new Error('unavailable');await navigator.clipboard.writeText(result.value);status.textContent='복사했습니다. Claude 채팅에 붙여 넣으면 선택을 전달할 수 있습니다.'; }
     catch { result.focus();result.select();status.textContent='자동 복사가 제한되었습니다. 선택된 문장을 Ctrl+C로 복사해 채팅에 붙여 넣어 주세요.'; }
@@ -193,6 +205,7 @@ PICKER_JS = r'''"use strict";
 
 
 def picker_html():
+    from .report_typography import OPTIONS
     from . import report_design
     from .business_artifacts import _CSS, _html_table
     from html import escape
@@ -230,6 +243,7 @@ body.picker{background:#f4f6fa;color:#20364c;font:16px/1.65 'Malgun Gothic','Seg
 .style-preview[data-style=immersive-3d] .layout-cover{padding-right:38%}.style-preview[data-style=immersive-3d] .theme-art{top:18%;height:250px}
 .style-preview .layout-cover .kpi{padding:18px 14px}.style-preview .layout-cover .kpi-value{font-size:30px}.style-preview .layout-cover .kpi-unit{display:block;margin-left:0}
 .selection-panel{background:white;border:1px solid #d2dce7;border-radius:12px;padding:22px;margin-top:24px}.selection-panel h2{font-size:20px}.choice-fields{display:flex;flex-wrap:wrap;gap:20px;margin:16px 0}.choice-fields label{display:flex;gap:10px;align-items:center}
+.choice-fields :is(label,select,input){max-width:100%;min-width:0}.choice-fields :is(select,input){min-height:44px;font:inherit}.choice-fields label{flex-wrap:wrap}
 .picker textarea{display:block;width:100%;min-height:115px;box-sizing:border-box;font:15px/1.7 'Malgun Gothic',sans-serif;padding:12px;border:1px solid #bdccdc;border-radius:8px;margin:16px 0}.note{font-size:14px;color:#536477}.picker footer{padding:20px 0;font-size:13px;color:#536477}
 @media(max-width:620px){.picker-wrap{padding:24px 16px}.picker h1{font-size:25px}.design-grid{grid-template-columns:1fr}.choice-fields label{flex-wrap:wrap}}
 @media print{.picker button{display:none}.mini-window{break-inside:avoid}}
@@ -240,4 +254,5 @@ body.picker{background:#f4f6fa;color:#20364c;font:16px/1.65 'Malgun Gothic','Seg
             +'<div class="quick-choices"><button type="button" data-choice="minimalism" data-label="미니멀리즘(깔끔한 업무형)" aria-pressed="true">깔끔한 업무형 · 추천</button><button type="button" data-choice="bento-grid" data-label="벤토그리드(지표 중심형)" aria-pressed="false">지표 중심형</button><button type="button" data-choice="template" data-label="HTML 양식 직접 첨부" aria-pressed="false">HTML 양식 직접 첨부</button></div><p class="note">첨부 양식을 선택했다면 아래 문장을 채팅에 붙여 넣고 HTML 파일을 첨부하세요. 이 화면에서 파일을 업로드하거나 원본을 실행하지 않습니다.</p>'
             +f'<details id="additional-designs" class="design-options"><summary>추가 디자인 · 설명과 미리보기</summary><p class="note">{len(STYLES)}가지 디자인을 같은 가상 자료로 비교합니다. 원하는 카드를 바로 선택하세요. 축소 예시이며 실제 분량·자료에 따라 배치는 달라집니다. 입체 오브제는 장식용이며 업무 데이터를 뜻하지 않습니다.</p><div class="design-grid">'+''.join(cards)+'</div></details>'
             +'<section class="selection-panel"><h2 id="selected-design">선택한 디자인: 미니멀리즘(깔끔한 업무형)</h2><div class="choice-fields"><label for="length-choice">분량<select id="length-choice"><option value="keep" selected>기존 선택 유지</option><option value="short">핵심</option><option value="standard">보통</option><option value="detailed">상세</option></select></label><label for="mode-choice">보기<select id="mode-choice"><option value="keep" selected>기존 선택 유지</option><option value="scroll">스크롤</option><option value="slides">페이지 넘김</option><option value="both">둘 다</option></select></label></div>'
-            +'<label for="choice-result">Claude에 전달할 문장</label><textarea id="choice-result" readonly></textarea><button type="button" id="copy-choice">선택 내용 복사</button><p id="copy-status" role="status" aria-live="polite"></p><noscript>화면 동작이 제한되어 있습니다. 디자인 이름·분량·보기 방식을 직접 Claude 채팅에 입력해 주세요.</noscript></section><footer>인터넷 연결 불필요 · 자동 설치/설정 변경/자료 전송 없음</footer></main><script>'+PICKER_JS+'</script></body></html>')
+            +'<div class="choice-fields"><label for="font-choice">글꼴<select id="font-choice"><option value="keep" selected>기존 선택 유지 / 미정이면 질문</option>'+''.join('<option value="'+key+'">'+escape(name)+'</option>' for key,name,_ in OPTIONS)+'</select></label><input id="font-name" aria-label="직접 입력할 글꼴 이름" placeholder="예: 맑은 고딕" maxlength="80" hidden></div><p class="note">글꼴을 자동 설치하지 않습니다. PC에 없으면 대체 글꼴로 표시됩니다. 위 축소 예시는 디자인 비교용입니다.</p>'
+            +'<label for="choice-result">Claude에 전달할 문장</label><textarea id="choice-result" readonly></textarea><button type="button" id="copy-choice">선택 내용 복사</button><p id="copy-status" role="status" aria-live="polite"></p><noscript>화면 동작이 제한되어 있습니다. 디자인 이름·분량·보기 방식·글꼴을 직접 Claude 채팅에 입력해 주세요.</noscript></section><footer>인터넷 연결 불필요 · 자동 설치/설정 변경/자료 전송 없음</footer></main><script>'+PICKER_JS+'</script></body></html>')

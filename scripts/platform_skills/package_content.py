@@ -30,6 +30,11 @@ def source_files(slug, info, tree):
     # Original paths remain unchanged inside source/, so sibling references work.
     available = {p.removeprefix('company-agent-plugin/'): (p, b)
                  for p, b in tree.items() if p.startswith('company-agent-plugin/')}
+    if source.startswith('standalone-skills/'):
+        # A portable adaptation replaces the entire skill, not merely files with
+        # matching names; do not leak unused Company-only references/scripts.
+        available = {p: value for p, value in available.items()
+                     if not p.startswith('skills/' + slug + '/')}
     for p, raw in tree.items():
         if p.startswith(prefix):
             available[f'skills/{slug}/' + p[len(prefix):]] = (p, raw)
@@ -48,8 +53,16 @@ def source_files(slug, info, tree):
             selected[p] = available[p]
 
     add('skills/' + slug)
-    for extra in EXTRAS.get(slug, []) + info.get('packaging', {}).get('includeAdditionalPaths', []):
+    implicit_extras = [] if source.startswith('standalone-skills/') else EXTRAS.get(slug, [])
+    for extra in implicit_extras + info.get('packaging', {}).get('includeAdditionalPaths', []):
         add(extra)
+    for name in info.get('packaging', {}).get('runtimeModules', []):
+        if not re.fullmatch(r'[a-z_]+\.(?:py|js)', name):
+            raise ValueError('Invalid portable module: ' + name)
+        src = 'company-agent-plugin/scripts/company_agent/' + name
+        if src not in tree:
+            raise ValueError('Missing portable module: ' + name)
+        selected[f'skills/{slug}/scripts/visual_engine/{name}'] = (src, tree[src])
     add('THIRD_PARTY_NOTICES.md')
     add('licenses')
     # Follow actual local Markdown/backtick references recursively. Runtime command
@@ -61,15 +74,26 @@ def source_files(slug, info, tree):
             scanned.add(p)
             text = selected[p][1].decode('utf-8-sig')
             refs = re.findall(r'\]\(([^)]+)\)', text)
+            markdown_refs = set(refs)
             refs += re.findall(r'`([^`\n]+)`', text)
             for ref in refs:
                 ref = ref.split('#')[0].strip().strip('<>')
                 if not ref or '://' in ref or '<' in ref or re.search(r'\s', ref):
                     continue
                 path = posixpath.normpath(posixpath.join(posixpath.dirname(p), ref))
+                # Backtick paths in instructions can be rooted at the loaded
+                # skill folder. Markdown hyperlinks remain document-relative.
+                root_path = 'skills/' + slug + '/' + ref
+                if (ref not in markdown_refs and path not in available and path not in selected
+                        and source.startswith('standalone-skills/') and root_path in available):
+                    path = root_path
                 if path in available:
                     add(path)
                     resolved.append({'from': p, 'to': path})
+                elif (source.startswith('standalone-skills/') and p.startswith('skills/' + slug + '/')
+                      and re.fullmatch(r'(?:references|scripts|assets)/[\w./-]+\.(?:md|py|js|json|html|txt)', ref)
+                      and path not in selected):
+                    raise ValueError('Missing portable reference: ' + p + ' -> ' + ref)
     return selected, resolved
 
 
@@ -107,10 +131,10 @@ python -X utf8 "압축해제폴더/install_skill.py" --scope project --project-d
 - 프로젝트 선택: `<업무폴더>/.claude/skills/{install_name}/`를 새로 만들고 ZIP의 모든 파일을 그 안에 복사합니다.
 - 내 계정 전역 선택: `~/.claude/skills/{install_name}/`에 복사합니다. `CLAUDE_CONFIG_DIR`를 사용하는 환경은 해당 설정 폴더의 `skills/{install_name}/`를 사용합니다.
 - `SKILL.md` 하나만 복사하지 마세요. `source/`의 Python 코드·참고자료·리소스가 함께 있어야 합니다.
-- 같은 이름의 설치 폴더가 이미 있으면 덮어쓰지 말고 기존 폴더를 별도 백업한 뒤 새 패키지를 설치합니다. 플러그인 캐시와 개인 기억·지식 저장소는 변경하지 않습니다.
+- 같은 이름의 설치 폴더가 이미 있으면 덮어쓰지 말고 기존 폴더를 별도 백업한 뒤 새 패키지를 설치합니다. 예전 `square-company-{slug}` 설치가 같은 범위에 있어도 중복 설치하지 않습니다. 기존 개인 수정 내용을 비교해 보관한 뒤 예전 폴더를 스킬 검색 경로 밖으로 옮기고 새 이름으로 설치합니다. 플러그인 캐시와 개인 기억·지식 저장소는 변경하지 않습니다.
 
 ## 실행
-Claude Code에서 해당 프로젝트를 열고 새 대화를 시작한 뒤 `/{install_name}`와 함께 할 일을 적습니다. 실제 본문은 `source/skills/{slug}/SKILL.md`에 있습니다. 그 본문에서 말하는 스킬 폴더는 해당 하위 폴더입니다.
+Claude Code에서 해당 프로젝트를 열고 새 대화를 시작한 뒤 `/{install_name}`와 함께 할 일을 적습니다. 실제 본문은 `source/skills/{slug}/SKILL.md`에 있습니다. 그 본문에서 말하는 스킬 폴더는 해당 하위 폴더입니다. 다른 호스트는 그 제품의 스킬 설치 위치에 전체 폴더를 두세요. 이 설치기는 Claude Code의 파일 위치만 지원하며 다른 제품의 설정을 변경하지 않습니다.
 {('이 항목은 이전 이름 호환용입니다. 신규 사용자는 스킬·도구 제작 도우미(asset-factory)를 우선 사용하세요.' if slug == 'platform-mcp-builder' else '')}
 
 ## 새 버전 및 제거

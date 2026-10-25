@@ -59,6 +59,41 @@ _SOURCES = {
 }
 _SOURCE_PATTERN = '|'.join(re.escape(value) for value in sorted(_SOURCES, key=len, reverse=True))
 _SKILL_NAME = r'[A-Za-z][A-Za-z0-9:_-]{0,159}'
+_REFERENCE_BLOCK = re.compile(r'```[\s\S]*?(?:```|$)|(?m:^\s*>[^\n]*)')
+_QUOTED = re.compile(r'''`[^`\n]*`|"[^"\n]*"|“[^”\n]*”|‘[^’\n]*’|(?<![A-Za-z])'[^'\n]*'(?![A-Za-z])''')
+_REFERENCE_DISCUSSION = re.compile(r'예문|예시|문장|문구|인용|번역|뜻|의미|설명|비교|'
+                                 r'\b(?:example|sentence|quote|translate|explain|meaning|compare)\b', re.I)
+_ROLE_OWNER = re.compile(r'([a-z][a-z0-9:_-]*-[a-z0-9:_-]+)\s+역할입니다')
+
+
+def _retrieval_prompt(prompt: str) -> str:
+    """Keep example instructions out of task hints, without changing the user input.
+
+    Fences/blockquotes are references. Inline quotes may instead be an output
+    title, so ignore them only when the surrounding request discusses them.
+    Quoted exact Skill names are retained for direct-use intent. This is only
+    bounded retrieval preparation, never a permission or execution decision.
+    """
+    text = prompt[:2000]
+    tail = prompt[2000:]  # Keep existing explicit slash handling past the hint window.
+    if '`' in text or '>' in text:
+        text = _REFERENCE_BLOCK.sub(' ', text)
+    if not any(mark in text for mark in ('`', '"', '“', '‘', "'")):
+        return text + tail
+    def without_example(match):
+        value = match.group()[1:-1]
+        if re.fullmatch(_SKILL_NAME, value):
+            return value
+        # Quoted output titles/subjects still belong to an actual request,
+        # e.g. '"HTML 보고서"를 만들고 의미도 설명해줘'.
+        after = re.split(r'[.!?;,\n`"“‘]', text[match.end():match.end() + 60])[0]
+        action = re.search(r'만들|작성|제작|생성|읽|분석|요약|정리', after)
+        if (not re.search(r'줘|주세요|만들자|\b(?:create|use|read|install)\b', value, re.I)
+                and action and not _REFERENCE_DISCUSSION.search(after[:action.start()])):
+            return value
+        return ' '
+    masked = _QUOTED.sub(without_example, text)
+    return (masked if _REFERENCE_DISCUSSION.search(masked) else text) + tail
 
 
 def named_requests(prompt: str) -> list[dict]:
@@ -285,7 +320,7 @@ def _lifecycle_features(text: str) -> tuple[set, set] | None:
     return None
 
 
-def _positive_text(text: str) -> str:
+def _positive_text(text: str, *, metadata: bool = False, owner_names: tuple = ()) -> str:
     # Exclusions / references to another workflow are not positive capabilities.
     # Registry descriptions are capped at 600 chars. Keep every capability in
     # that metadata while still bounding callers that pass a user prompt.
@@ -293,6 +328,10 @@ def _positive_text(text: str) -> str:
     # an earlier asset-authoring capability in _lifecycle_features.
     return '. '.join(s for s in re.split(r'[.!?]\s+', text.casefold()[:2000])
                     if not re.search(r'아닙|제외|용도입니다|않습니다|\bnot for\b|\binstead\b', s)
+                    # A description may direct another workflow to its named
+                    # owner. That reference is not this Skill's capability.
+                    and not (metadata and owner_names and '역할입니다' in s
+                             and (owner := _ROLE_OWNER.search(s)) and owner.group(1) not in owner_names)
                     and not re.search(r'^(?:참고|저장한).{0,140}(?:양식|캡처).{0,30}(?:제작|만들)', s))
 
 
@@ -320,8 +359,8 @@ def _explanation_intent(text: str) -> bool:
                 or re.search(r'\b(?:explain|show|draw|visuali[sz]e|diagram)\b[^.!?;\n]{0,70}' + subject, text))
 
 
-def _features(text: str, *, metadata: bool = False) -> tuple[set, set]:
-    positive = _positive_text(text)
+def _features(text: str, *, metadata: bool = False, owner_names: tuple = ()) -> tuple[set, set]:
+    positive = _positive_text(text, metadata=metadata, owner_names=owner_names)
     lifecycle = _lifecycle_features(positive)
     domains = {name for name, pattern in _DOMAINS.items() if re.search(pattern, positive)}
     # Specialised workbook-to-data work is not a replacement for a plain
@@ -371,6 +410,7 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
         return {}
     if not inventory.get('complete', False):
         return {'status': 'incomplete', 'groups': [], 'nextAction': 'check-catalog'}
+    prompt = _retrieval_prompt(prompt)
     items = [x for x in inventory.get('skills', []) if not x.get('incoming')]
     invocation_counts = Counter(x.get('invocation') for x in items)
     explicit = re.findall(r'(?<!\S)/([A-Za-z0-9][A-Za-z0-9:_-]{0,159})(?=\s|$)', prompt)
@@ -383,7 +423,8 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
     prompt_domains, prompt_actions = _features(prompt[:2000])
     # Compute capabilities before shortening descriptions for display. A
     # multi-purpose skill may genuinely perform the same requested role.
-    capabilities = {x['id']: _features(str(x.get('description', '')), metadata=True) for x in items}
+    capabilities = {x['id']: _features(str(x.get('description', '')), metadata=True,
+                    owner_names=(str(x.get('name', '')).casefold(), str(x.get('invocation', '')).casefold())) for x in items}
     def strong(item):
         domains, actions = capabilities[item['id']]
         return bool(prompt_domains and prompt_actions and prompt_domains <= domains and prompt_actions <= actions)
@@ -393,7 +434,8 @@ def task_candidates(inventory: dict, prompt: str) -> dict:
         domains, actions = capabilities[item['id']]
         named = name in prompt.casefold()  # user names are stronger than heuristics
         shared = prompt_domains & domains
-        general_reader = bool(re.search(r'문서|documents?', _positive_text(text))) and 'read' in actions
+        general_reader = 'read' in actions and bool(re.search(r'문서|documents?', _positive_text(text, metadata=True,
+            owner_names=(name, str(item.get('invocation', '')).casefold()))))
         organize = 'organize' in prompt_actions & actions
         if 'assets' in prompt_domains and ('assets' not in domains or not prompt_actions & actions):
             return 0

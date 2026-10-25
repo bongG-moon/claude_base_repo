@@ -119,9 +119,21 @@ body[data-style][data-length=short][data-view=scroll] :is(th,td){padding:8px 10p
 """
 
 
+INTERFACE_CSS = """
+/* Keep controls usable without making every report a large landing page. */
+.report-masthead>div{min-width:0}.report-name,.subtitle{overflow-wrap:anywhere}
+body[data-style] .report-masthead button{min-height:44px;min-width:44px;font-size:14px}
+body[data-style] :is(button,summary,a):focus-visible{outline:3px solid var(--accent);outline-offset:3px}
+.chart-values summary{min-height:44px;display:list-item;align-content:center}
+body[data-view=scroll] .section:not(.layout-cover) h2{max-width:none;text-wrap:pretty}
+.section :is(.copy-block,.visual-block){min-width:0}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+"""
+
+
 def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     from .report_styles import CSS as theme_css
-    base_css = base_css + '\n' + CSS + '\n' + theme_css + '\n' + data.get('referenceCss', '')
+    base_css = base_css + '\n' + CSS + '\n' + theme_css + '\n' + INTERFACE_CSS + '\n' + data.get('referenceCss', '')
     if data['length'] == 'short' and data['mode'] == 'scroll' and not data.get('referenceCss'):
         base_css += '\n' + SHORT_SCROLL_CSS
     has_diagram = any(row.get('diagram') for row in data['sections'])
@@ -134,10 +146,13 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
         base_css += '\nbody:not(.diagram-report-ready)[data-view=slides] main>.section{display:block}'
     google_font = data.get('fontSource') == 'google'
     font_link = ''
-    if 'fontSource' in data or has_diagram:
+    if 'fontChoice' not in data and ('fontSource' in data or has_diagram):
         base_css += '\nbody,button,.explanation-diagram text{font-family:"Noto Sans KR","Malgun Gothic","Segoe UI",sans-serif}'
     if google_font:
         font_link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&amp;display=swap">'
+    if 'fontChoice' in data or 'fontSource' in data:
+        from .report_typography import css as font_css
+        base_css += font_css(data)
     if any('contentOrder' in row for row in data['sections']):
         # Structural preference wins over a preset's split/grid styling on all
         # viewport sizes and print. DOM order is also the reading/tab order.

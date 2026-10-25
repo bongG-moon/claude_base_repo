@@ -142,6 +142,43 @@ period를 참조했는데 정의하지 않았다면 생성을 중단합니다. �
 공통 단위가 아닌데 표 전체를 `(단위: 백만원)`으로 표시하지 않습니다. `ratio`와 `percent_change`는 ×100 결과이므로 보통 `%`입니다.
 메타데이터 재사용은 선언한 이름과 단위를 일관되게 출력하는 기능이지, 원본의 의미·기간·분모·단위 변환을 판정하는 기능은 아닙니다.
 
+## 글꼴을 실제 결과에 적용
+
+새 작업은 `fontChoiceRequired:true`와 확정한 `fontChoice`를 job에 넣습니다.
+`noto-sans-kr / pretendard / nanum-square-neo / auto / custom` 중 하나이며,
+custom이면 `fontName`에 글꼴 이름만 넣습니다. 예: `"fontChoice":"custom","fontName":"맑은 고딕"`.
+이름이 없는 custom은 미완료 선택입니다. 글꼴 질문만을 위해 도우미나 모델을 추가 호출하지 않습니다.
+선택은 본문·제목·버튼·차트·설명도에 함께 적용합니다. auto는 첨부 양식의 글꼴을 유지하고,
+양식이 없으면 지표형(bento-grid/glassmorphism/neumorphism)은 Pretendard, 나머지는 Noto Sans KR입니다.
+`fontSource:system`은 설치된 글꼴만 요청하며 없으면 Noto Sans KR/맑은 고딕/시스템 고딕으로 대체합니다.
+실제 설치 여부를 검사했다고 말하지 않습니다. 명시적으로 Google Fonts 사용을 요청한 경우에만
+Noto Sans KR에 `fontSource:google`을 씁니다. 선택한 글꼴 이름을 임의 CSS나 URL로 실행하지 않습니다.
+기존 명세에 글꼴 선택 필드가 없어도 계속 실행되며 이전 산출물을 일괄 재생성하지 않습니다.
+
+## 반복 수정 요청을 줄이는 초안 기준
+
+- 내용이 짧은 카드에 고정 높이·큰 장식·과한 상하 여백을 넣지 않습니다. 본문 글씨를 줄여 해결하지 않습니다.
+- 제목은 자연스럽게 줄바꿈하고 의도 없는 줄바꿈·좁은 제목 폭을 피합니다. 요청한 표지 연출은 보존합니다.
+- 버튼은 읽기 쉬운 크기와 44px 클릭 영역을 기준으로, 아이콘은 의미·선 굵기·상대 크기를 일관되게 씁니다.
+- 같은 보고서의 첫 화면·상세·표·접힌 설명에 공통 색·글꼴·간격을 적용합니다.
+- 비교·설명·표 위주의 자료를 모두 KPI 카드로 바꾸지 않습니다. 보조 설명은 짧게, 원자료는 접어 표시합니다.
+- 일반 본문 대비 4.5:1, 키보드 포커스, 이름 있는 버튼, 모바일 읽기 순서를 확인합니다.
+- 전체 페이지 가로 넘침은 방지하고 큰 표·차트만 내부 스크롤합니다. 실제 390px/1280px 화면을 확인합니다.
+- 애니메이션은 변화 설명에 필요할 때만, 움직임 줄이기 설정을 존중합니다. 검사 때문에 모델 호출을 늘리지 않습니다.
+
+UI UX Pro Max에서 접근성·일관성·반응형 원칙만 참고했습니다. 전체 디자인 검색 DB·설치 CLI·웹 프레임워크
+개발 절차는 넣지 않습니다. 기존 웹앱 화면은 별도 `web-interface` 스킬 범위입니다.
+출처·라이선스: `../../../THIRD_PARTY_NOTICES.md`.
+
+설계 참고(2026-10-25 확인): [UI UX Pro Max](https://github.com/nextlevelbuilder/ui-ux-pro-max-skill),
+[NAVER 프리미엄콘텐츠의 서체 안내](https://naver-premiumcontents.gitbook.io/guide/kitguide),
+[Toss TDS의 제목·버튼 계층](https://tossmini-docs.toss.im/tds-mobile/components/top/),
+[Pretendard 원본](https://github.com/orioncactus/pretendard), [Noto 사용 안내](https://notofonts.github.io/noto-docs/website/use/).
+추천 글꼴 목록은 용도별 제안이며 상용 서비스의 사용률 순위나 해당 서비스의 실제 본문 글꼴 목록이 아닙니다.
+사용자 웹 프로젝트 피드백에서는 과한 카드 높이·작은 버튼·불필요한 줄바꿈·화면 간 불일치를,
+포털 피드백에서는 기존 채팅 UI 보존과 통계의 기간·집계 기준 일치를 참고했습니다.
+특정 프로젝트의 흰 유리판·파란 강조색은 모든 보고서의 기본 테마로 강제하지 않습니다.
+
 ## 완료 확인은 세 가지를 분리
 
 1. 내용: 원본과 표, 총계/비율, 요약과 상세, 미확인 원인 표시를 모두 비교합니다.

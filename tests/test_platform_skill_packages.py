@@ -29,7 +29,7 @@ class PackageUnitTests(unittest.TestCase):
         self.root = Path(self.temp.name)
 
     def metadata(self, slug='demo'):
-        return {slug: {'sourceDir': 'company-agent-plugin/skills/' + slug, 'runtimeRequired': True}}
+        return {slug: {'sourceDir': 'company-agent-plugin/skills/' + slug, 'runtimeRequired': False, 'distribution': 'portable'}}
 
     def files(self, slug='demo'):
         return {'company-agent-plugin/skills/' + slug + '/SKILL.md': b'---\nname: demo\n---\n'}
@@ -54,6 +54,64 @@ class PackageUnitTests(unittest.TestCase):
         meta['demo']['sourceDir'] = 'standalone-skills/demo'
         with self.assertRaisesRegex(ValueError, '정본'):
             export.discover(self.files(), meta)
+
+    def test_harness_only_requires_reason_and_is_visible_as_exclusion(self):
+        meta = {**self.metadata(), **self.metadata('core')}
+        meta['core'].update(distribution='harness-only')
+        with self.assertRaisesRegex(ValueError, '제외 이유'):
+            export.discover({**self.files(), **self.files('core')}, meta)
+        meta['core']['distributionReason'] = 'session hooks required'
+        self.assertEqual(set(export.discover({**self.files(), **self.files('core')}, meta)), {'demo'})
+
+    def test_portable_cannot_require_harness(self):
+        meta = self.metadata(); meta['demo']['runtimeRequired'] = True
+        with self.assertRaisesRegex(ValueError, '하네스를 요구'):
+            export.discover(self.files(), meta)
+
+    def test_new_package_must_choose_portable_or_harness_only(self):
+        meta = self.metadata(); del meta['demo']['distribution']
+        with self.assertRaisesRegex(ValueError, '배포 구분'):
+            export.discover(self.files(), meta)
+
+    def test_changed_plugin_requires_portable_instruction_review(self):
+        tree = self.files(); meta = self.metadata()
+        meta['demo']['packaging'] = {'reviewedPluginDigest': export.plugin_digest(tree, 'demo')}
+        export.discover(tree, meta)
+        tree['company-agent-plugin/skills/demo/references/new.md'] = b'changed behavior'
+        with self.assertRaisesRegex(ValueError, '독립판'):
+            export.discover(tree, meta)
+
+    def test_portable_replaces_whole_source_and_does_not_leak_old_references(self):
+        tree = self.files()
+        tree['company-agent-plugin/skills/demo/references/runtime.md'] = b'old runtime instructions'
+        tree['standalone-skills/demo/SKILL.md'] = b'---\nname: demo\n---\nportable'
+        tree['company-agent-plugin/THIRD_PARTY_NOTICES.md'] = b'notice'
+        tree['company-agent-plugin/licenses/license.txt'] = b'license'
+        info = {'sourceDir':'standalone-skills/demo', 'runtimeRequired':False}
+        selected, _ = export.source_files('demo', info, tree)
+        self.assertNotIn('skills/demo/references/runtime.md', selected)
+        self.assertEqual(selected['skills/demo/SKILL.md'][1], tree['standalone-skills/demo/SKILL.md'])
+
+    def test_portable_modules_are_exact_source_and_paths_are_validated(self):
+        tree = self.files()
+        tree['company-agent-plugin/THIRD_PARTY_NOTICES.md'] = b'notice'
+        tree['company-agent-plugin/licenses/license.txt'] = b'license'
+        tree['company-agent-plugin/scripts/company_agent/render.py'] = b'# exact engine bytes\r\n'
+        info = self.metadata()['demo']; info['packaging'] = {'runtimeModules':['render.py']}
+        selected, _ = export.source_files('demo', info, tree)
+        self.assertEqual(selected['skills/demo/scripts/visual_engine/render.py'][1], b'# exact engine bytes\r\n')
+        for name in ('../state.py', 'C:/secrets.py', 'render/more.py'):
+            info['packaging']['runtimeModules'] = [name]
+            with self.assertRaises(ValueError):
+                export.source_files('demo', info, tree)
+
+    def test_missing_portable_reference_fails_before_release(self):
+        tree = self.files()
+        tree['standalone-skills/demo/SKILL.md'] = b'---\nname: demo\n---\n[guide](references/missing.md)'
+        tree['company-agent-plugin/THIRD_PARTY_NOTICES.md'] = b'notice'
+        tree['company-agent-plugin/licenses/license.txt'] = b'license'
+        with self.assertRaisesRegex(ValueError, 'Missing portable reference'):
+            export.source_files('demo', {'sourceDir':'standalone-skills/demo'}, tree)
 
     def test_unsafe_source_and_dependency_paths_rejected(self):
         for source in ('../private', 'C:/private', 'standalone-skills/other'):
@@ -94,6 +152,22 @@ class PackageUnitTests(unittest.TestCase):
         (base / '__pycache__').mkdir()
         (base / '__pycache__/runtime.pyc').write_bytes(b'cache')
         self.assertEqual(set(export.read_tree(base, '.')), {'SKILL.md'})
+
+    def test_packaging_normalizes_only_declared_utf8_text_without_editing_sources(self):
+        for name in ('guide.md', 'run.py', 'invoke.ps1', 'LICENSE', 'SOURCE_LICENSE'):
+            path = self.root / name
+            original = b'\xef\xbb\xbfline 1\r\nline 2  \r\n'
+            path.write_bytes(original)
+            self.assertEqual(export.package_source_bytes(path), b'\xef\xbb\xbfline 1\nline 2  \n')
+            self.assertEqual(path.read_bytes(), original)
+        for name in ('font.woff', 'external.zip', 'unknown.bin'):
+            path = self.root / name; raw = b'\xff\x00\r\nunchanged'
+            path.write_bytes(raw)
+            self.assertEqual(export.package_source_bytes(path), raw)
+        for raw in (b'\xff\r\n', b'line\x00\r\n'):
+            path = self.root / 'invalid.py'; path.write_bytes(raw)
+            with self.assertRaises(ValueError):
+                export.package_source_bytes(path)
 
     def test_reparse_source_rejected(self):
         import stat
@@ -161,36 +235,50 @@ class PackageUnitTests(unittest.TestCase):
     def test_real_rebuild_tracks_skill_and_platform_changes_reproducibly(self):
         root = self.root / 'repo'; standard = self.root / 'standard'
         shutil.copytree(export.DEFAULT_STANDARD, standard, ignore=shutil.ignore_patterns('__pycache__', '*.pyc'))
+        support = self.root / 'support'; support.mkdir()
+        shutil.copyfile(export.SUPPORT / 'install_skill.py', support / 'install_skill.py')
         for directory in ('company-agent-plugin/resources/manuals', 'standalone-skills'):
             (root / directory).mkdir(parents=True)
         for name, content in {
             'company-agent-plugin/.claude-plugin/plugin.json': '{"version":"1.0.0"}',
             'company-agent-plugin/THIRD_PARTY_NOTICES.md': 'test notice',
             'company-agent-plugin/licenses/license.txt': 'test license',
+            'company-agent-plugin/licenses/LICENSE': 'test license\nsecond line\n',
             'company-agent-plugin/skills/demo/SKILL.md': '---\nname: demo\ndescription: example\n---\n# Test\n',
         }.items():
             path = root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_text(content, encoding='utf-8')
+        binary = root / 'company-agent-plugin/licenses/binary.dat'; binary.write_bytes(b'\xff\x00\r\nkeep')
         metadata = self.metadata()
         metadata['demo'].update(displayName='테스트', desc='가상 패키지', requirements=['시험 전용'], workTags=['시험'],
                                 workflow={'steps': [{'title': '시험', 'description': '가상 자료 확인'}]})
         config = root / 'metadata.json'; config.write_bytes(export.encoded(metadata))
         def build(number):
             stage = self.root / ('stage-' + str(number)); stage.mkdir()
-            return export.build(root, standard, stage, config)
-        first = build(1); self.assertEqual(first, build(2))
+            with patch.object(export, 'SUPPORT', support):
+                return export.build(root, standard, stage, config)
+        # Model both Git checkout modes, including helper/contract source files.
+        text_paths = [p for folder in (root, standard, support) for p in folder.rglob('*')
+                      if p.is_file() and (p.suffix.lower() in export.TEXT_SUFFIXES or p.name.upper() in export.TEXT_NAMES)]
+        for path in text_paths:
+            path.write_bytes(export.package_source_bytes(path))
+        first = build(1)
+        for path in text_paths:
+            path.write_bytes(path.read_bytes().replace(b'\n', b'\r\n'))
+        self.assertEqual(first, build(2), 'LF and CRLF checkouts must produce identical ZIPs/catalogues')
+        self.assertEqual(binary.read_bytes(), b'\xff\x00\r\nkeep')
         source = root / 'company-agent-plugin/skills/demo/SKILL.md'
         source.write_text(source.read_text(encoding='utf-8') + '\nChanged instructions\n', encoding='utf-8')
-        changed = build(3); self.assertNotEqual(first['company-demo.zip'], changed['company-demo.zip'])
+        changed = build(3); self.assertNotEqual(first['demo.zip'], changed['demo.zip'])
         standard_skill = standard / 'SKILL.md'
         standard_skill.write_text(standard_skill.read_text(encoding='utf-8') + '\nTest revision\n', encoding='utf-8')
-        revised = build(4); self.assertNotEqual(changed['company-demo.zip'], revised['company-demo.zip'])
+        revised = build(4); self.assertNotEqual(changed['demo.zip'], revised['demo.zip'])
         for artifacts in (first, changed, revised):
             self.assertEqual(json.loads(artifacts['catalog.json'])['packages'][0]['packageId'], 'company.skills.demo')
         out = root / 'dist'; export.reconcile(out, first)
         (standard / 'scripts/prepare_package.py').write_text('raise ValueError("new unsupported contract")', encoding='utf-8')
         with self.assertRaisesRegex(ValueError, '규격 검사 실패'):
             build(5)
-        self.assertEqual((out / 'company-demo.zip').read_bytes(), first['company-demo.zip'])
+        self.assertEqual((out / 'demo.zip').read_bytes(), first['demo.zip'])
 
 
 @unittest.skipUnless(export.DEFAULT_STANDARD.is_dir(), 'Latest platform distribution skill is required')
@@ -203,7 +291,9 @@ class ActualPackageTests(unittest.TestCase):
 
     def test_all_discovered_skills_have_one_zip(self):
         actual = {p.parent.name for p in (ROOT / 'company-agent-plugin/skills').glob('*/SKILL.md')}
-        self.assertEqual(actual, {r['slug'] for r in self.skills})
+        self.assertEqual(actual, {r['slug'] for r in self.skills} | {r['slug'] for r in self.catalog['harnessOnly']})
+        self.assertTrue(all(not r['runtimeRequired'] for r in self.skills))
+        self.assertTrue(all(r['file'] == r['slug'] + '.zip' for r in self.skills))
         self.assertEqual(len(self.catalog['packages']), len(list(self.out.glob('*.zip'))))
 
     def test_all_archives_source_hashes_and_contract(self):
@@ -218,9 +308,41 @@ class ActualPackageTests(unittest.TestCase):
                     self.assertEqual(manifest['packageId'], 'company.skills.' + row['slug'])
                     self.assertGreater(len(manifest['workflow']['steps']), 0)
                     source = json.loads(z.read('PACKAGE_SOURCE.json'))
+                    self.assertEqual(source['textNormalization'], 'utf8-crlf-to-lf')
                     for name, original in source['files'].items():
-                        self.assertEqual(z.read(name), (ROOT / original['repoPath']).read_bytes())
-                    self.assertEqual(z.read('install_scope.py'), (export.DEFAULT_STANDARD / 'scripts/install_scope.py').read_bytes())
+                        self.assertEqual(z.read(name), export.package_source_bytes(ROOT / original['repoPath']))
+                    self.assertEqual(z.read('install_scope.py'), export.package_source_bytes(export.DEFAULT_STANDARD / 'scripts/install_scope.py'))
+                    self.assertEqual(z.read('install_skill.py'), export.package_source_bytes(export.SUPPORT / 'install_skill.py'))
+
+    def test_portable_entries_and_requirements_have_no_harness_commands(self):
+        forbidden = ('company_agent_runtime', 'stateRoot', 'company-agent:vision-worker',
+                     'Invoke-CompanyAgent.ps1', 'company-agent business', 'company-agent asset')
+        for row in self.skills:
+            with self.subTest(skill=row['slug']), ZipFile(self.out / row['file']) as z:
+                manifest = json.loads(z.read('ai-square.json'))
+                instructions = z.read('SKILL.md').decode('utf-8') + z.read(f'source/skills/{row["slug"]}/SKILL.md').decode('utf-8')
+                instructions += json.dumps(manifest, ensure_ascii=False)
+                for value in forbidden:
+                    self.assertNotIn(value, instructions)
+                self.assertIn('name: ' + row['slug'] + '\n', z.read('SKILL.md').decode('utf-8'))
+
+    def test_packaged_visual_engine_has_complete_local_imports_and_no_hooks(self):
+        import ast
+        for slug in ('presentation', 'html-report'):
+            with ZipFile(self.out / (slug + '.zip')) as z:
+                prefix = f'source/skills/{slug}/scripts/visual_engine/'
+                files = {n[len(prefix):]:z.read(n) for n in z.namelist() if n.startswith(prefix)}
+                for name, raw in files.items():
+                    if not name.endswith('.py'):
+                        continue
+                    for node in ast.walk(ast.parse(raw)):
+                        if isinstance(node, ast.ImportFrom) and node.level:
+                            if node.module:
+                                self.assertIn(node.module.split('.')[0] + '.py', files, (slug, name, node.module))
+                            else:
+                                for alias in node.names:
+                                    self.assertIn(alias.name + '.py', files, (slug, name, alias.name))
+                self.assertFalse({'cli.py', 'state.py', 'hooks.py', 'vision_routing.py'} & files.keys())
 
     def test_actual_platform_upload_inspection_and_autofill(self):
         sys.path.insert(0, str(ROOT))
@@ -273,7 +395,7 @@ class ActualPackageTests(unittest.TestCase):
         import openpyxl
         with tempfile.TemporaryDirectory(dir=ROOT / '.smoke/platform-skills') as td:
             base = Path(td)
-            with ZipFile(self.out / 'company-excel-to-pipeline.zip') as z:
+            with ZipFile(self.out / 'excel-to-pipeline.zip') as z:
                 z.extractall(base / 'package')
             book = openpyxl.Workbook(); sheet = book.active; sheet.title = 'Data'
             for row in [['product', 'quantity', 'price', 'amount'], ['A', 2, 30, '=B2*C2'], ['B', 3, 20, '=B3*C3'], ['C', 1, 60, '=B4*C4']]:
@@ -294,7 +416,7 @@ class ActualPackageTests(unittest.TestCase):
     def test_packaged_catalog_reports_synthetic_skill_without_sessions(self):
         with tempfile.TemporaryDirectory(dir=ROOT / '.smoke/platform-skills') as td:
             base = Path(td)
-            with ZipFile(self.out / 'company-work-context-catalog.zip') as z:
+            with ZipFile(self.out / 'work-context-catalog.zip') as z:
                 z.extractall(base / 'package')
             project = base / 'project'; skill = project / '.claude/skills/weekly-report'; skill.mkdir(parents=True)
             source = skill / 'SKILL.md'

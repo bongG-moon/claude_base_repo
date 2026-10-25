@@ -104,6 +104,23 @@ expected를 지정하면 계산값과 대조한다. 중복 집계가 있으면
 
 ## 제출 전 필수 확인
 
+### 편집하기 쉬운 결과
+
+글자·숫자는 네이티브 텍스트, 데이터 표·차트는 해당 PowerPoint 개체로 만든다.
+색·굵기·폰트는 텍스트 서식으로 지정하며 벡터 윤곽선·스크린샷으로 글자를 대체하지 않는다.
+카드·지표·도표의 의미 있는 묶음은 `native-layout.md`의 group/data-ppt-group으로
+구성한다. 모든 장을 통째로 묶거나 표·차트를 그림으로 바꿔 그룹화하지 않는다.
+최종 결과의 실제 네이티브 개체·그룹 수와 기존 구조 검사를 함께 확인한다. 별도의
+검증 에이전트나 사용자 확인을 추가하지 않는다. 정적 검사는 PowerPoint에서 직접
+색 변경·굵기 변경·그룹 해제를 실행해 본 것과 구분해서 설명한다.
+
+공개 [ppt-master](https://github.com/hugohe3/ppt-master)와
+[presentation-skill](https://github.com/siril9/presentation-skill)의 참고 스타일 요약,
+내용에 맞는 배치, 원본 제작 명세에서 수정하는 원칙을 검토해 이 흐름에 반영했다.
+해당 프로젝트의 엔진·자동 설치·다단계 게이트를 가져오지 않는다. MIT 고지는
+플러그인의 THIRD_PARTY_NOTICES.md에 있다. 승인 후 수정도 같은 job/workFile에서
+수행하며 기존 HTML 승인 규칙을 유지한다.
+
 ### 기존 배치 유지 명세
 
 `creationMode:"reference"` 또는 `"saved"`, `referenceMode:"preserve"`와 함께

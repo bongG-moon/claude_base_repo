@@ -17,6 +17,9 @@ import time
 sys.dont_write_bytecode = True
 from install_scope import select_scope
 
+LEGACY_PREFIX = "square-company-"
+SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+
 
 class InstallError(ValueError):
     """An install condition the user can resolve without changing their profile."""
@@ -103,11 +106,49 @@ def verified_package(source: Path):
     skill = files["SKILL.md"].decode("utf-8-sig")
     frontmatter = re.match(r"\A---\s*\r?\n(.*?)\r?\n---(?:\s|$)", skill, re.S)
     names = re.findall(r"^name:\s*([a-z0-9-]+)\s*$", frontmatter.group(1), re.M) if frontmatter else []
-    if len(names) != 1 or not re.fullmatch(r"square-company-[a-z0-9]+(?:-[a-z0-9]+)*", names[0]):
-        raise InstallError("SKILL.md의 name은 square-company-로 시작하는 고유 이름이어야 합니다.")
+    if len(names) != 1 or len(names[0]) > 64 or not SKILL_NAME.fullmatch(names[0]):
+        raise InstallError("SKILL.md의 name은 64자 이하의 영문 소문자·숫자·하이픈 이름이어야 합니다.")
+    safe_relative(names[0])  # Also reject Windows reserved device names.
+    if package_id.startswith("company.skills."):
+        slug = package_id.removeprefix("company.skills.")
+        if not SKILL_NAME.fullmatch(slug) or names[0] not in {slug, LEGACY_PREFIX + slug}:
+            raise InstallError("SKILL.md의 이름이 packageId의 스킬 이름과 다릅니다. 올바른 ZIP을 다시 받아 주세요.")
     # Snapshot verified bytes. Copying does not reopen unverified source paths.
     files["PACKAGE_CONTENTS.json"] = raw_manifest
     return names[0], package_id, files
+
+
+def reject_related_install(skills_root: Path, name: str, package_id: str) -> None:
+    """Check only the old/new sibling name in the explicitly selected scope.
+
+    A name change is not authorization to migrate, overwrite or delete user
+    edits. The package ID identifies compatibility; no profile-wide scan runs.
+    """
+    related_name = name.removeprefix(LEGACY_PREFIX) if name.startswith(LEGACY_PREFIX) else LEGACY_PREFIX + name
+    if not related_name:
+        return
+    related = skills_root / related_name
+    reject_links(related)
+    if not os.path.lexists(related):
+        return
+    metadata_path = related / "ai-square.json"
+    reject_links(metadata_path)
+    installed_id = None
+    try:
+        with metadata_path.open("rb") as stream:
+            raw = stream.read(65_537)
+        if len(raw) <= 65_536:
+            metadata = read_json(raw)
+            if isinstance(metadata, dict):
+                installed_id = metadata.get("packageId")
+    except (OSError, ValueError):
+        pass
+    if (isinstance(installed_id, str) and re.fullmatch(r"[a-z][a-z0-9.-]{2,79}", installed_id)
+            and installed_id != package_id):
+        return  # A different package is not a known old-name installation.
+    reason = ("같은 스킬이 다른 이름으로 이미 설치되어 있습니다" if installed_id == package_id
+              else "이전/새 이름의 폴더가 있지만 설치 정보를 확인할 수 없습니다")
+    raise InstallError(f"{reason}: {related}\n중복 설치하지 않았습니다. 기존 내용과 사용자 수정 사항을 확인하고, 유지할 스킬을 정한 뒤 기존 폴더를 skills 밖에 백업·이동하고 다시 실행하세요. 자동 이동·삭제는 하지 않습니다.")
 
 
 def clean_staging(staging: Path, skills_root: Path, identity) -> None:
@@ -153,6 +194,7 @@ def install(source: Path, *, scope=None, project_dir=None, yes=False, dry_run=Fa
     print(f"패키지: {package_id} / {len(files)}개 파일")
     if os.path.lexists(target):
         raise InstallError(f"이미 설치된 폴더가 있어 덮어쓰지 않습니다: {target}\n기존 폴더를 별도 위치에 직접 백업한 뒤 대상 폴더를 비우지 말고 이동하고 다시 실행하세요.")
+    reject_related_install(skills_root, name, package_id)
     if dry_run:
         print("확인만 완료했습니다. 폴더 생성·파일 설치·설정 변경은 하지 않았습니다.")
         return {"status": "dry-run", "scope": selected, "target": str(target), "packageId": package_id}
@@ -167,6 +209,7 @@ def install(source: Path, *, scope=None, project_dir=None, yes=False, dry_run=Fa
     reject_links(skills_root)
     if os.path.lexists(target):
         raise InstallError("다른 작업이 설치 대상 폴더를 만들었습니다. 기존 폴더를 보존하고 중단합니다.")
+    reject_related_install(skills_root, name, package_id)
     skills_root.mkdir(parents=True, exist_ok=True)
     reject_links(skills_root)
     staging = Path(tempfile.mkdtemp(prefix=".square-install-", dir=skills_root))
@@ -187,6 +230,7 @@ def install(source: Path, *, scope=None, project_dir=None, yes=False, dry_run=Fa
             reject_links(skills_root)
             if os.path.lexists(target):
                 raise InstallError("설치 대상이 이미 생겨 중단했습니다. 기존 파일은 덮어쓰지 않았습니다.")
+            reject_related_install(skills_root, name, package_id)
             try:
                 # Windows rename fails if target exists, even an empty folder.
                 os.rename(staging, target)

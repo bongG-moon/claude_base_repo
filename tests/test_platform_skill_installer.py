@@ -40,8 +40,8 @@ class InstallerTests(unittest.TestCase):
         self.project.mkdir()
         self.home.mkdir()
         self.files = {
-            "SKILL.md": b"---\nname: square-company-test\ndescription: synthetic\n---\n# Test\n",
-            "ai-square.json": json.dumps({"schemaVersion": 1, "packageId": "company.test"}).encode(),
+            "SKILL.md": b"---\nname: test\ndescription: synthetic\n---\n# Test\n",
+            "ai-square.json": json.dumps({"schemaVersion": 1, "packageId": "company.skills.test"}).encode(),
             "INSTALL.md": b"Test only.\n",
             "references/info.md": b"Synthetic test documentation.\n",
         }
@@ -68,9 +68,98 @@ class InstallerTests(unittest.TestCase):
         with contextlib.redirect_stdout(self.stdout):
             return installer.install(self.package, **options)
 
+    def related_install(self, *, base=None, name="square-company-test", metadata=None):
+        target = (base or self.project) / ".claude/skills" / name
+        target.mkdir(parents=True)
+        (target / "keep.md").write_text("user changes", encoding="utf-8")
+        if metadata is not None:
+            (target / "ai-square.json").write_text(metadata, encoding="utf-8")
+        return target
+
+    def test_legacy_name_remains_installable(self):
+        self.files["SKILL.md"] = self.files["SKILL.md"].replace(b"name: test", b"name: square-company-test")
+        self.write_package()
+        result = self.run_install()
+        self.assertEqual(Path(result["target"]), self.project / ".claude/skills/square-company-test")
+
+    def test_same_package_legacy_name_blocks_install_and_dry_run_without_changes(self):
+        legacy = self.related_install(metadata=json.dumps({"packageId": "company.skills.test"}))
+        before = {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        for dry_run in (False, True):
+            with self.subTest(dry_run=dry_run), self.assertRaisesRegex(installer.InstallError, "같은 스킬.*다른 이름"):
+                self.run_install(dry_run=dry_run)
+        self.assertEqual(before, {str(p.relative_to(self.root)): p.read_bytes() for p in self.root.rglob("*") if p.is_file()})
+        self.assertFalse((legacy.parent / "test").exists())
+        self.assertFalse(list(legacy.parent.glob(".square-install-*")))
+
+    def test_unknown_legacy_metadata_does_not_allow_silent_duplicate(self):
+        legacy = self.related_install()
+        for data in (None, "not json", "{}", '{"packageId":""}', " " * 65_537):
+            with self.subTest(data=None if data is None else data[:20]):
+                if data is not None:
+                    (legacy / "ai-square.json").write_text(data, encoding="utf-8")
+                with self.assertRaisesRegex(installer.InstallError, "설치 정보를 확인할 수 없습니다"):
+                    self.run_install(dry_run=True)
+                self.assertEqual((legacy / "keep.md").read_text(encoding="utf-8"), "user changes")
+                self.assertFalse((legacy.parent / "test").exists())
+
+    def test_unrelated_package_at_legacy_name_is_preserved(self):
+        legacy = self.related_install(metadata=json.dumps({"packageId": "independent.other"}))
+        result = self.run_install()
+        self.assertEqual(result["status"], "installed")
+        self.assertEqual((legacy / "keep.md").read_text(encoding="utf-8"), "user changes")
+
+    def test_legacy_install_in_unselected_scope_is_not_scanned(self):
+        legacy = self.related_install(base=self.home, metadata=json.dumps({"packageId": "company.skills.test"}))
+        result = self.run_install()
+        self.assertEqual(result["status"], "installed")
+        self.assertEqual((legacy / "keep.md").read_text(encoding="utf-8"), "user changes")
+
+    def test_new_name_blocks_legacy_same_package_install(self):
+        self.files["SKILL.md"] = self.files["SKILL.md"].replace(b"name: test", b"name: square-company-test")
+        self.write_package()
+        current = self.related_install(name="test", metadata=json.dumps({"packageId": "company.skills.test"}))
+        with self.assertRaisesRegex(installer.InstallError, "같은 스킬.*다른 이름"):
+            self.run_install()
+        self.assertEqual((current / "keep.md").read_text(encoding="utf-8"), "user changes")
+        self.assertFalse((current.parent / "square-company-test").exists())
+
+    def test_legacy_install_appearing_during_confirmation_is_preserved(self):
+        def confirm(_):
+            self.related_install(metadata=json.dumps({"packageId": "company.skills.test"}))
+            return "y"
+        with self.assertRaisesRegex(installer.InstallError, "같은 스킬.*다른 이름"):
+            self.run_install(interactive=True, yes=False, ask=confirm)
+        root = self.project / ".claude/skills"
+        self.assertFalse((root / "test").exists())
+        self.assertEqual((root / "square-company-test/keep.md").read_text(encoding="utf-8"), "user changes")
+        self.assertFalse(list(root.glob(".square-install-*")))
+
+    def test_legacy_install_appearing_during_retry_cleans_only_staging(self):
+        error = PermissionError("lock"); error.winerror = 32
+        def competing_install(_):
+            self.related_install(metadata=json.dumps({"packageId": "company.skills.test"}))
+        with patch.object(installer.os, "rename", side_effect=error) as rename, patch.object(installer.time, "sleep", competing_install):
+            with self.assertRaisesRegex(installer.InstallError, "같은 스킬.*다른 이름"):
+                self.run_install()
+        self.assertEqual(rename.call_count, 1)
+        root = self.project / ".claude/skills"
+        self.assertFalse((root / "test").exists())
+        self.assertEqual((root / "square-company-test/keep.md").read_text(encoding="utf-8"), "user changes")
+        self.assertFalse(list(root.glob(".square-install-*")))
+
+    def test_safe_standalone_name_is_bounded_and_rejects_devices(self):
+        for name in ("a" * 65, "../escape", "x/y", "x\\y", "Other", "x--y", "con", "nul", "com1", "lpt9"):
+            with self.subTest(name=name):
+                self.files["SKILL.md"] = f"---\nname: {name}\ndescription: test\n---\n".encode()
+                self.write_package()
+                with self.assertRaises(installer.InstallError):
+                    self.run_install()
+                self.assertFalse((self.project / ".claude").exists())
+
     def test_project_installs_only_manifest_files(self):
         result = self.run_install()
-        target = self.project / ".claude/skills/square-company-test"
+        target = self.project / ".claude/skills/test"
         self.assertEqual(Path(result["target"]), target)
         self.assertEqual({x.relative_to(target).as_posix() for x in target.rglob("*") if x.is_file()}, set(self.files) | {"PACKAGE_CONTENTS.json"})
         for name, data in self.files.items():
@@ -85,14 +174,14 @@ class InstallerTests(unittest.TestCase):
         settings = config / "settings.json"
         settings.write_text('{"keep":"unchanged"}', encoding="utf-8")
         result = self.run_install(scope="user", project_dir=None)
-        self.assertEqual(Path(result["target"]), config / "skills/square-company-test")
+        self.assertEqual(Path(result["target"]), config / "skills/test")
         self.assertEqual(settings.read_text(encoding="utf-8"), '{"keep":"unchanged"}')
         self.assertFalse((self.project / ".claude").exists())
 
     def test_user_honors_absolute_config_dir(self):
         custom = self.root / "custom-claude"
         result = self.run_install(scope="user", project_dir=None, environ={"CLAUDE_CONFIG_DIR": str(custom)})
-        self.assertEqual(Path(result["target"]), custom / "skills/square-company-test")
+        self.assertEqual(Path(result["target"]), custom / "skills/test")
         self.assertFalse((self.home / ".claude").exists())
 
     def test_relative_config_dir_rejected(self):
@@ -128,7 +217,7 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual(before, sorted(str(p.relative_to(self.root)) for p in self.root.rglob("*")))
 
     def test_existing_target_preserved(self):
-        target = self.project / ".claude/skills/square-company-test"
+        target = self.project / ".claude/skills/test"
         target.mkdir(parents=True)
         (target / "keep.md").write_text("existing", encoding="utf-8")
         with self.assertRaisesRegex(installer.InstallError, "덮어쓰지"):
@@ -161,7 +250,7 @@ class InstallerTests(unittest.TestCase):
     def test_unexpected_skill_name_rejected(self):
         self.files["SKILL.md"] = b"---\nname: other-skill\ndescription: test\n---\n"
         self.write_package()
-        with self.assertRaisesRegex(installer.InstallError, "square-company"):
+        with self.assertRaisesRegex(installer.InstallError, "packageId"):
             self.run_install()
 
     def test_reparse_parent_and_source_rejected(self):
@@ -179,7 +268,7 @@ class InstallerTests(unittest.TestCase):
         self.assertFalse((self.project / ".claude").exists())
 
     def test_final_collision_keeps_existing_and_cleans_only_staging(self):
-        target = self.project / ".claude/skills/square-company-test"
+        target = self.project / ".claude/skills/test"
         def collision(source, destination):
             target.mkdir()
             (target / "keep.md").write_text("another installer", encoding="utf-8")
@@ -212,11 +301,11 @@ class InstallerTests(unittest.TestCase):
                 self.run_install()
         self.assertEqual(rename.call_count, 3)
         root = self.project / '.claude/skills'
-        self.assertFalse((root / 'square-company-test').exists())
+        self.assertFalse((root / 'test').exists())
         self.assertFalse(list(root.glob('.square-install-*')))
 
     def test_collision_during_retry_preserves_other_install(self):
-        target = self.project / '.claude/skills/square-company-test'
+        target = self.project / '.claude/skills/test'
         error = PermissionError('lock'); error.winerror = 32
         def competing_install(_):
             target.mkdir(); (target / 'keep.md').write_text('keep', encoding='utf-8')

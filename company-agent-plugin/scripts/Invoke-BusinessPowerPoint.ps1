@@ -21,6 +21,7 @@ function Add-ReportText {
     param($Slide, $Element, $Design)
     $shape = $Slide.Shapes.AddTextbox(1, $Element.x, $Element.y, $Element.w, $Element.h)
     $shape.TextFrame.WordWrap = -1
+    $shape.TextFrame.AutoSize = 0
     $shape.TextFrame.MarginLeft = 0
     $shape.TextFrame.MarginRight = 0
     $shape.TextFrame.MarginTop = 2
@@ -31,6 +32,7 @@ function Add-ReportText {
     $shape.TextFrame.TextRange.Font.Color.RGB = Get-ReportColor ([string]$Design.theme.($Element.color))
     $shape.TextFrame.TextRange.ParagraphFormat.SpaceBefore = 0
     $shape.TextFrame.TextRange.ParagraphFormat.SpaceAfter = 0
+    $shape.TextFrame.TextRange.Font.Bold = 0
     if ($Element.bold) { $shape.TextFrame.TextRange.Font.Bold = -1 }
 }
 
@@ -90,6 +92,7 @@ try {
                 $slide.FollowMasterBackground = 0
                 $slide.Background.Fill.Solid()
                 $slide.Background.Fill.ForeColor.RGB = Get-ReportColor ([string]$design.theme.background)
+                $semanticGroups = [ordered]@{}
                 foreach ($element in @($design.pages[$pageIndex].elements)) {
                     $name = [string]$element.kind
                     $stage = $name
@@ -194,6 +197,22 @@ try {
                         $picture.Left = $left + ($blockWidth-$picture.Width)/2
                         $picture.Top = $top + ($usable-$picture.Height)/2
                         $picture.AlternativeText = [string]$row.image.alt
+                    }
+                }
+                # The basic renderer groups adjacent KPI text pairs by shape name.
+                $elementIndex = 0
+                foreach ($element in @($design.pages[$pageIndex].elements)) {
+                    $elementIndex++
+                    if ($element.PSObject.Properties['group'] -and $element.group) {
+                        $key = [string]$element.group
+                        if (-not $semanticGroups.Contains($key)) { $semanticGroups[$key] = @() }
+                        $semanticGroups[$key] += [string]$slide.Shapes.Item($elementIndex).Name
+                    }
+                }
+                foreach ($key in $semanticGroups.Keys) {
+                    if ($semanticGroups[$key].Count -gt 1) {
+                        $group = $slide.Shapes.Range([object[]]$semanticGroups[$key]).Group()
+                        $group.Name = $key
                     }
                 }
                 $pageIndex++

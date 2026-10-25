@@ -78,7 +78,7 @@ session folders, env or transcripts, invent IDs, change roots, or run discovery 
 ## User controls
 
 `/company-agent:learning` supports status, pause/resume and rollback of an identified automatic change.
-Status is on demand, not an automatic prerequisite. Pause preserves existing Memory/Skills and their use.
+Use `learning status --explain` on request only. Pause preserves existing Memory/Skills and their use.
 Rollback preserves manual edits and does not undo business files, mail, DB writes or other plugins.
 For preferences, rollback means deactivate this learned preference, not restore its
 previous text. For Skills, it restores only the engine-owned checklist block.

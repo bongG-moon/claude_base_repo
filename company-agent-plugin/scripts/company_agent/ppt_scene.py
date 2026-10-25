@@ -37,6 +37,11 @@ def elements(rows, width, height, palette, *, embedded=False):
         if not isinstance(raw, dict) or raw.get('kind') not in ('text', 'shape', 'image', 'table', 'chart'):
             raise ArtifactError('invalid_ppt_element', '지원하는 개체는 text, shape, image, table, chart입니다.')
         e = {'kind': raw['kind']}
+        if raw.get('group') is not None:
+            group = raw['group']
+            if not isinstance(group, str) or not re.fullmatch(r'[\w-]{1,64}', group) or raw['kind'] not in ('text','shape','image'):
+                raise ArtifactError('invalid_ppt_group', '그룹 이름은 64자 이하의 글자·숫자·밑줄·하이픈이며 글자·도형·그림만 묶습니다. 표·차트는 독립 개체로 유지하세요.')
+            e['group'] = group
         for key, maximum in (('x', width), ('y', height), ('w', width), ('h', height)):
             e[key] = number(raw.get(key), 0 if key in ('x', 'y') else .01, maximum)
         if e['x']+e['w'] > width+.5 or e['y']+e['h'] > height+.5:
@@ -101,7 +106,39 @@ def elements(rows, width, height, palette, *, embedded=False):
             elif len(e[kind]['series'])>4 or len(e[kind]['categories'])>12:
                 raise ArtifactError('invalid_ppt_element','차트는 12항목·4계열 이하로 나누어 주세요.')
         checked.append(e)
+    # Grouping non-adjacent objects changes paint order. Require explicit blocks.
+    seen, previous = set(), None
+    for e in checked:
+        group = e.get('group')
+        if group != previous and group in seen:
+            raise ArtifactError('invalid_ppt_group', '같은 그룹 개체를 연속 배치해 주세요. 겹침 순서를 임의로 바꾸지 않습니다.')
+        if group:
+            seen.add(group)
+        previous = group
     return checked
+
+
+def group_shapes(slide, elements):
+    """Create real, ungroupable PPT groups without changing paint order or geometry."""
+    shapes = list(slide.shapes)
+    if len(shapes) != len(elements):
+        raise ValueError('Native element/shape count mismatch')
+    groups = {}
+    for element, shape in zip(elements, shapes):
+        if element.get('group'):
+            groups.setdefault(element['group'], []).append(shape)
+    count = 0
+    for name, members in groups.items():
+        if len(members) < 2:
+            continue
+        tree = slide.shapes._spTree
+        position = tree.index(members[0]._element)
+        group = slide.shapes.add_group_shape(members)
+        group.name = name
+        tree.remove(group._element)
+        tree.insert(position, group._element)
+        count += 1
+    return count
 
 
 def add_shape(slide, e, box):

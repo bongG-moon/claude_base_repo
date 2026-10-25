@@ -819,7 +819,10 @@ def _is_own_learning_command(command: str, session_id: str, state: dict[str, Any
         resolved = shutil.which("company-agent")
         if not resolved or not _same_absolute_path(resolved, installed_bin):
             return False
-    if arguments == ["learning", "status"] or arguments == ["learning", "status", "--session", safe_session_id(session_id)]:
+    status_arguments = arguments
+    if arguments[:2] == ["learning", "status"] and arguments.count("--explain") == 1:
+        status_arguments = [word for word in arguments if word != "--explain"]
+    if status_arguments == ["learning", "status"] or status_arguments == ["learning", "status", "--session", safe_session_id(session_id)]:
         return True
     if len(arguments) != 8 or arguments[0] != "learning" or arguments[1] not in {"review", "stage", "submit"}:
         return False

@@ -241,6 +241,8 @@ def analyze(template, selected_slides=None, *, first_slides=None):
                 continue
             root = _xml(package.read(name))
             shapes=[]
+            text_styles=[]
+            style_keys=set()
             for node in root.findall(f'.//{{{P}}}sp') + root.findall(f'.//{{{P}}}graphicFrame') + root.findall(f'.//{{{P}}}pic'):
                 identity=node.find(f'.//{{{P}}}cNvPr')
                 if identity is None:
@@ -252,6 +254,23 @@ def analyze(template, selected_slides=None, *, first_slides=None):
                         geometry[part.tag.split('}')[-1]]=dict(part.attrib)
                 # Text is only a bounded preview in this request, never a durable profile.
                 text=' '.join(t.text or '' for t in node.findall(f'.//{{{A}}}t'))
+                # Bounded evidence for the existing reference review, not another
+                # model call or a claim to resolve inherited theme formatting.
+                for props in node.iter():
+                    if props.tag not in (f'{{{A}}}rPr', f'{{{A}}}defRPr') or len(text_styles) >= 8 or len(shapes) >= 80:
+                        continue
+                    sample={k:props.get(k) for k in ('sz','b','i') if props.get(k) is not None}
+                    for tag in ('latin','ea'):
+                        font=props.find(f'{{{A}}}{tag}')
+                        if font is not None and font.get('typeface'):
+                            sample[tag]=font.get('typeface')[:80]
+                    fill=props.find(f'{{{A}}}solidFill')
+                    if fill is not None and len(fill):
+                        sample['color']={fill[0].tag.split('}')[-1]:fill[0].get('val','')[:40]}
+                    key=repr(sample)
+                    if sample and key not in style_keys:
+                        style_keys.add(key)
+                        text_styles.append({'shapeId':int(identity.get('id','0')), **sample})
                 shapes.append({'shapeId':int(identity.get('id','0')),'name':identity.get('name','')[:120],
                                'kind':node.tag.split('}')[-1],
                                'textPreview':text[:160],'geometryEmu':geometry})
@@ -262,7 +281,8 @@ def analyze(template, selected_slides=None, *, first_slides=None):
             for node in root.findall(f'.//{{{A}}}srgbClr'):
                 if re.fullmatch('[a-fA-F0-9]{6}',node.get('val','')):
                     colors[node.get('val').upper()]+=1
-            pages.append({'part':name,'sourceSlide':order.get(name),'shapes':shapes[:80], 'shapesTruncated':len(shapes)>80})
+            pages.append({'part':name,'sourceSlide':order.get(name),'shapes':shapes[:80], 'shapesTruncated':len(shapes)>80,
+                          'declaredTextStyles':text_styles, 'groupCount':len(root.findall(f'.//{{{P}}}grpSp'))})
     if hashlib.sha256(Path(template).read_bytes()).hexdigest() != inspected['sha256']:
         return {'ok':False,'status':'blocked','code':'template_changed','message':'분석 중 양식이 변경되었습니다. 저장을 마친 뒤 다시 확인해 주세요.'}
     pages.sort(key=lambda page: page['sourceSlide'] if page['sourceSlide'] is not None else 9999)
@@ -288,19 +308,33 @@ def quality(path):
     from pptx import Presentation
     deck=Presentation(str(path))
     issues=[]
+    counts={'groups':0,'textFrames':0}
+    def walk(shapes, sx=1, sy=1, ox=0, oy=0):
+        for shape in shapes:
+            bounds=(ox+sx*shape.left, oy+sy*shape.top, sx*shape.width, sy*shape.height)
+            yield shape, bounds
+            if hasattr(shape,'shapes'):
+                counts['groups']+=1
+                xfrm=shape._element.grpSpPr.xfrm
+                if xfrm is not None and xfrm.chExt.cx and xfrm.chExt.cy:
+                    rx,ry=xfrm.ext.cx/xfrm.chExt.cx,xfrm.ext.cy/xfrm.chExt.cy
+                    yield from walk(shape.shapes,sx*rx,sy*ry,
+                                    ox+sx*(xfrm.off.x-rx*xfrm.chOff.x),oy+sy*(xfrm.off.y-ry*xfrm.chOff.y))
     for index,slide in enumerate(deck.slides,1):
-        for shape in slide.shapes:
-            if shape.left < 0 or shape.top < 0 or shape.left+shape.width > deck.slide_width+12700 or shape.top+shape.height > deck.slide_height+12700:
+        for shape,(x,y,w,h) in walk(slide.shapes):
+            if x < 0 or y < 0 or x+w > deck.slide_width+12700 or y+h > deck.slide_height+12700:
                 issues.append({'slide':index,'shapeId':shape.shape_id,'code':'out_of_bounds','message':'개체가 슬라이드 영역을 벗어납니다.'})
             frames=[shape.text_frame] if shape.has_text_frame else []
             if shape.has_table:
                 frames += [cell.text_frame for row in shape.table.rows for cell in row.cells]
             for frame in frames:
+                counts['textFrames']+=1
                 for paragraph in frame.paragraphs:
                     for run in paragraph.runs:
                         if run.text.strip() and run.font.size is not None and run.font.size.pt < 10:
                             issues.append({'slide':index,'shapeId':shape.shape_id,'code':'tiny_text','message':'10pt 미만 글자가 있어 확인이 필요합니다.'})
     return {'status':'issues_found' if issues else 'checked','issues':issues[:100],
+            'nativeObjects':counts,
             'visualReview':'not_performed','fontFallback':'not_fully_verified','sourceAccuracy':'not_verified'}
 
 

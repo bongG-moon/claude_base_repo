@@ -49,6 +49,20 @@ license is https://github.com/google/fonts/blob/main/ofl/notosanskr/OFL.txt.
 
 ## Upstream copyright notices
 
+PPT Master (https://github.com/hugohe3/ppt-master), MIT License,
+Copyright (c) 2025-2026 Hugo He; and Presentation Skill
+(https://github.com/siril9/presentation-skill), MIT License,
+Copyright (c) 2026 Siril Sengolraj, are referenced for selected template-profile,
+content-led composition and editable-source principles in the presentation skill.
+Their engines, role orchestration and installers are not bundled. The MIT terms
+below apply separately to these adapted guidance contributions.
+
+UI UX Pro Max (https://github.com/nextlevelbuilder/ui-ux-pro-max-skill)
+is referenced for selected accessibility, responsive layout and interface consistency
+guidance in html-report and web-interface. Its search database, CLI and stack
+workflows are not bundled. MIT License, Copyright (c) 2024 Next Level Builder.
+The MIT permission and warranty terms below apply to these adapted contributions.
+
 Copyright (c) 2026 Matt Pocock
 
 Copyright (c) 2026 DietrichGebert

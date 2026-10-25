@@ -104,7 +104,8 @@ def check_ppt(path, data):
             target = rels[slide_id.get('{'+ns['r']+'}id')]
             part = str(PurePosixPath(target.lstrip('/'))) if target.startswith('/') else str(PurePosixPath('ppt') / target)
             tree = ET.fromstring(archive.read(part)).find('p:cSld/p:spTree', ns)
-            shapes = [node for node in tree if node.tag.rsplit('}', 1)[-1] in ('sp', 'pic', 'graphicFrame')]
+            # Generated groups retain identity child transforms and paint order.
+            shapes = [node for node in tree.iter() if node.tag in (f"{{{ns['p']}}}sp", f"{{{ns['p']}}}pic", f"{{{ns['p']}}}graphicFrame")]
             if len(shapes) != len(page['elements']):
                 raise LayoutError('저장된 PPT 개체 수가 배치 명세와 다릅니다.')
             for block in page['contentBlocks']:

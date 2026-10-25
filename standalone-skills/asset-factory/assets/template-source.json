@@ -1,0 +1,37 @@
+[
+  {
+    "path": "company-agent-plugin/skills/platform-mcp-builder/assets/template/config.py",
+    "sha256": "6733450c87f660cd8759d39438821190a0387bbe967aa4980fd28a98cf9124f9",
+    "normalization": "utf8-lf"
+  },
+  {
+    "path": "company-agent-plugin/skills/platform-mcp-builder/assets/template/local_server.py",
+    "sha256": "bd305eece905085f42931cd7707b6cb8294cb0aed62205178ab1b765cee01d39",
+    "normalization": "utf8-lf"
+  },
+  {
+    "path": "company-agent-plugin/skills/platform-mcp-builder/assets/template/requirements-local.txt",
+    "sha256": "994e6981fffb3ce5c5d161673d98780ac57e446177fad5912ac68538fff0390f",
+    "normalization": "utf8-lf"
+  },
+  {
+    "path": "company-agent-plugin/skills/platform-mcp-builder/assets/template/test_tools.py",
+    "sha256": "5fa0392d6691d4d17407947a24b7a8a707826f606b5581375d98a5167fc8a2c4",
+    "normalization": "utf8-lf"
+  },
+  {
+    "path": "company-agent-plugin/skills/platform-mcp-builder/assets/template/src/__init__.py",
+    "sha256": "e16b3aa2e3711dd173edc5054774a254248e1293cf6ad0578735fd4cf3ed300c",
+    "normalization": "utf8-lf"
+  },
+  {
+    "path": "company-agent-plugin/skills/platform-mcp-builder/assets/template/src/mcp/__init__.py",
+    "sha256": "f94fc87f70719c80006921bd5ba5dd3d0440a3bf35ff3a01837c584605608c78",
+    "normalization": "utf8-lf"
+  },
+  {
+    "path": "company-agent-plugin/skills/platform-mcp-builder/assets/template/src/mcp/tools.py",
+    "sha256": "142723939a14850bd9268e32525ba3f8f01c437907ed6d9ffd953c1288aa65fc",
+    "normalization": "utf8-lf"
+  }
+]

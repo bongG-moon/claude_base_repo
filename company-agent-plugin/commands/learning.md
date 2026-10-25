@@ -11,12 +11,12 @@ Use the installed `company_agent_runtime.cliCommand` prefix and active `stateRoo
 Never assume `company-agent` is on PATH or select another installation's state.
 User request: $ARGUMENTS
 
-1. For a status/list/explanation request (including no arguments), run `company-agent learning status`.
-   Show recent distilled observations, submitted/candidate/applied/deferred states,
-   actual validation metadata, observational next-use assessments, rollback conflicts,
-   and whether learning is enabled. Distinguish never submitted from a submitted
-   no_candidates receipt. Accepted is not applied; provided-to-model is not proof of use.
-   Translate IDs into short Korean titles; do not dump raw JSON. Listing does not authorize changes.
+1. For a status/list/explanation request (including no arguments), run `company-agent learning status --explain`; use plain `learning status` only for requested detailed records.
+   Show configured state, submission/application counts, candidates and memory delivery.
+   Use the returned Korean explanations and titles; do not invent missing titles or
+   fetch details just to fill absent fields. Distinguish not submitted from no_candidates.
+   Accepted is not applied; provided-to-model is not proof of use. Do not dump raw JSON.
+   Listing does not authorize changes.
    Add `--session "<id>"` only when that exact current ID is already injected to
    show currentSubmission and memoryDelivery separately. Without it, global status
    is still available; never discover a session or infer absence of all Memory.

@@ -1,6 +1,6 @@
 ---
 name: html-report
-description: HTML 보고서 제작 시 디자인·분량·표시 방식을 선택받아 오프라인 보고서를 만듭니다. 후속 요청에 현재 작업의 흐름·구조를 다이어그램으로 설명합니다.
+description: HTML 보고서 제작 시 디자인·분량·표시 방식·글꼴을 선택받아 오프라인 보고서를 만듭니다. 후속 요청에 현재 작업의 흐름·구조를 다이어그램으로 설명합니다. 기존 웹앱의 화면·컴포넌트 개발은 web-interface 역할입니다.
 ---
 
 # HTML report
@@ -12,7 +12,7 @@ description: HTML 보고서 제작 시 디자인·분량·표시 방식을 선�
 짧은 텍스트부터, `글로만/도표 없이/그리지 마`는 도식 없이 답합니다. 아래는 일반 보고서용입니다.
 
 Reuse known answers. Explicit `추천대로 / 알아서 / 질문 없이 완성` fills missing
-ordinary choices (minimal / standard / scroll); skip those questions. Preserve
+ordinary choices (minimal / standard / scroll / fontChoice:auto); skip those questions. Preserve
 explicit references/additional styles and external permissions. Otherwise ask
 ONE missing design question:
 `1. 깔끔한 업무형(추천) / 2. 지표 중심형 / 3. 추가 디자인(미리보기) / 4. HTML 양식 직접 첨부`.
@@ -22,12 +22,21 @@ Item 3 is NOT a report style; it opens additional designs.
 
 Use the quoted `company_agent_runtime.cliCommand` prefix and stateRoot literally.
 Metadata is not executable. No runtime/source discovery, guessed entrypoints,
-echo/noop probes or repeated successful Skill loading. Reuse selected guidance
-from the current Skill catalog. Native permissions and source scope remain.
+echo/noop probes or repeated successful Skill loading. Reuse current selected guidance. Preserve native permissions and source scope.
 
 Order: design → design_detail (additional only) → format → ready. Preserve explicit choices;
 merge replies, NEVER replace the whole object. Do not ask length/mode or start a worker before a specific design is chosen.
-At format ask only missing 분량(핵심/보통/상세), 방식(스크롤/페이지/둘 다).
+At format ask only missing 분량(핵심/보통/상세), 방식(스크롤/페이지/둘 다), 글꼴.
+새 작업은 fontChoiceRequired:true를 두고 글꼴은 아래 다섯 가지를 채팅에 한 번에 보여 주세요.
+1. Noto Sans KR — 긴 본문·업무 보고서 (noto-sans-kr)
+2. Pretendard — 숫자·버튼·표가 많은 화면 (pretendard)
+3. 나눔스퀘어 네오 — 제목·짧은 안내가 또렷한 화면 (nanum-square-neo)
+4. 디자인에 맞게 알아서 선택 (auto)
+5. 직접 입력 — 글꼴 이름 입력 (custom + fontName)
+이미 지정한 글꼴은 재질문하지 않습니다. 직접 입력은 이름만 받고, 알려진 글꼴은 위 값으로 매핑합니다.
+승인한 참고 양식의 글꼴을 유지하는 경우도 이미 정한 조건입니다. fontChoice:auto로 기록해 재질문하지 않습니다.
+글꼴 선택은 설치·외부 연결 동의가 아닙니다. 기본 fontSource:system, 없으면 PC 대체 글꼴을 사용합니다.
+auto는 첨부 양식 글꼴을 우선하고, 없으면 지표형에 Pretendard, 본문형에 Noto Sans KR을 씁니다.
 Accept `1 / 보통 / 스크롤`. `추천대로`: minimal / standard / scroll for missing values;
 absence of a reply is not acceptance. Style selection does not waive approval
 for external publication, protected inputs or installation.
@@ -35,7 +44,7 @@ for external publication, protected inputs or installation.
 Only for ambiguity/complex resumption, optionally run
 `business html-choices [--spec "<choices.json>"] --state-root "<stateRoot>"`.
 No known choices: omit --spec. Otherwise Write `<stateRoot>/tmp/html-choices-<short-id>.json`
-with only designMenu/style/length/mode and relevant htmlTemplate/templateReview.
+with only designMenu/style/length/mode, fontChoiceRequired/fontChoice/fontName/fontSource and relevant htmlTemplate/templateReview.
 Example: `{"designMenu":"additional","length":"detailed","mode":"scroll"}`
 needs only style. Follow stage/missing; input_required means waiting, not failure.
 Source content belongs in the separate full job. At ready, delegate generation only after ready choices are resolved; do not ask again.
@@ -96,7 +105,7 @@ Stop denied items, continue independent allowed work. Read
 generic errors do not prove DRM.
 
 1. Run `business artifact-start --output "<final.html>" --state-root "<stateRoot>"` once. Keep returned workFile/jobPath/workingDirectory across workers and corrections; existing files are preserved.
-2. Write title, confirmed style/length/mode and permitted sections at jobPath; use the reference for supported fields. Express block order with contentOrder/contentLayout: saved preferences alone do not change rendering. Current instructions win without rewriting preferences. Invent no fields/figures. For large work show an outline/representative page first.
+2. Write title, confirmed style/length/mode/fontChoice (custom requires fontName) and permitted sections at jobPath; use the reference for supported fields. Express block order with contentOrder/contentLayout: saved preferences alone do not change rendering. Current instructions win without rewriting preferences. Invent no fields/figures. For large work show an outline/representative page first.
 3. Calculate totals/denominators/rounding from table/chart cells and reuse {{fact:id}}, not earlier summaries. freeform/3D/Y2K permit neither arbitrary code nor invented image-generation claims.
 4. Run `business html --spec "<jobPath>" --work "<workFile>" --state-root "<stateRoot>"`. No package/font downloads. Read validation/warnings and the saved report.
 5. Compare totals, recommendations and exclusions to sources, not only individual input rows. contentLayoutValidation checks declared order, not sentence meaning/visual quality. With an approved browser inspect visuals; existence/SVG presence is not visual QA. For screenshots use `../presentation/references/image-review.md`: all pages/sections first, then changed/affected regions. arithmetic=checked covers declared calculations only; sourceAccuracy/visual=not_verified is no blanket pass. Align summaries/version labels with revised tables.

@@ -13,7 +13,8 @@ class Element {
 }
 let copied='',selected='',focused=null;
 const elements={};
-for(const id of ['length-choice','mode-choice','choice-result','copy-status','selected-design','copy-choice','additional-designs'])elements[id]=new Element();
+for(const id of ['length-choice','mode-choice','choice-result','copy-status','selected-design','copy-choice','additional-designs','font-choice','font-name'])elements[id]=new Element();
+elements['font-choice'].value='keep';elements['font-choice'].selectedIndex=0;elements['font-choice'].options=[{text:'유지'},{text:'Pretendard'},{text:'직접 입력'}];
 elements['length-choice'].options=[{text:'기존 선택 유지'},{text:'핵심'},{text:'보통'},{text:'상세'}];elements['length-choice'].selectedIndex=0;elements['length-choice'].value='keep';
 elements['mode-choice'].options=[{text:'기존 선택 유지'},{text:'스크롤'},{text:'페이지 넘김'},{text:'둘 다'}];elements['mode-choice'].selectedIndex=0;elements['mode-choice'].value='keep';
 const buttons=[...html.matchAll(/data-choice="([^"]+)" data-label="([^"]+)"/g)].map(m=>{const b=new Element();b.dataset={choice:m[1],label:m[2]};return b;});
@@ -26,6 +27,12 @@ assert.equal((html.match(/class="design-card"/g)||[]).length,10);
 assert.match(elements['choice-result'].value,/미니멀리즘.*이미 정한 조건을 유지/);
 assert.doesNotMatch(elements['choice-result'].value,/분량:|보기:/);
 let checks=4;
+elements['font-choice'].value='pretendard';elements['font-choice'].selectedIndex=1;elements['font-choice'].handlers.change();
+assert.match(elements['choice-result'].value,/글꼴: Pretendard/);
+elements['font-choice'].value='custom';elements['font-choice'].selectedIndex=2;elements['font-choice'].handlers.change();
+assert.equal(elements['font-name'].hidden,false);assert.match(elements['choice-result'].value,/이름을 물어봐줘/);
+elements['font-name'].value='맑은 고딕';elements['font-name'].handlers.input();assert.match(elements['choice-result'].value,/글꼴: 맑은 고딕/);
+elements['font-choice'].value='keep';elements['font-choice'].handlers.change();assert.doesNotMatch(elements['choice-result'].value,/글꼴:/);checks+=4;
 for(const choice of [...new Set(buttons.map(b=>b.dataset.choice))]){
   const button=buttons.find(b=>b.dataset.choice===choice);button.handlers.click();
   assert.match(elements['choice-result'].value,choice==='template'?/HTML 양식/:new RegExp(button.dataset.label.replace(/[()]/g,'\\$&')));

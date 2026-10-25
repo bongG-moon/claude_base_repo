@@ -24,6 +24,29 @@ ROOT = Path(__file__).resolve().parents[1]
 SUPPORT = ROOT / 'scripts/platform_skills'
 DEFAULT_STANDARD = ROOT / 'pt_ai_square/static/guides/pt-file-distribution'
 SKIP = {'__pycache__', '.git', '.venv', 'node_modules', 'tests', '.pytest_cache'}
+TEXT_SUFFIXES = {'.md', '.py', '.js', '.json', '.html', '.txt', '.css', '.ps1',
+                 '.cmd', '.bas', '.cls', '.sh', '.toml', '.yaml', '.yml'}
+TEXT_NAMES = {'LICENSE', 'SOURCE_LICENSE', 'COPYING', 'NOTICE'}
+TEXT_NORMALIZATION = 'utf8-crlf-to-lf'
+
+
+def package_source_bytes(path):
+    """Normalize UTF-8 text CRLF only; preserve BOM, other bytes and source files.
+
+    Git checkout line endings must not change ZIPs or source review fingerprints.
+    Unknown formats, font files and existing external ZIPs stay byte-for-byte.
+    """
+    path = no_links(path)
+    raw = path.read_bytes()
+    if path.suffix.lower() in TEXT_SUFFIXES or path.name.upper() in TEXT_NAMES:
+        try:
+            raw.decode('utf-8')
+        except UnicodeDecodeError as error:
+            raise ValueError('배포 텍스트는 UTF-8이어야 합니다: ' + path.name) from error
+        if b'\x00' in raw:
+            raise ValueError('텍스트 파일에 바이너리 내용이 있습니다: ' + path.name)
+        return raw.replace(b'\r\n', b'\n')
+    return raw
 
 
 def no_links(path):
@@ -49,18 +72,29 @@ def read_tree(base, relative):
             continue
         no_links(path)
         if path.is_file() and path.suffix not in {'.pyc', '.pyo'}:
-            result[path.relative_to(base).as_posix()] = path.read_bytes()
+            result[path.relative_to(base).as_posix()] = package_source_bytes(path)
     return result
 
 
-def snapshot(root):
+def snapshot(root, metadata=None):
     tree = {}
     for source in ('company-agent-plugin/skills', 'company-agent-plugin/resources/manuals',
                    'company-agent-plugin/licenses', 'company-agent-plugin/THIRD_PARTY_NOTICES.md',
                    'standalone-skills'):
         tree.update(read_tree(root, source))
+    # Only explicitly selected, reusable modules are exported, never the launcher,
+    # session store or hooks. Read these bytes once for a consistent build snapshot.
+    if metadata is None:
+        metadata_file = root / 'scripts/platform_skills/catalog-metadata.json'
+        metadata = json.loads(metadata_file.read_text(encoding='utf-8-sig')) if metadata_file.is_file() else {}
+    for info in metadata.values():
+        for name in info.get('packaging', {}).get('runtimeModules', []):
+            if not re.fullmatch(r'[a-z_]+\.(?:py|js)', name):
+                raise ValueError('잘못된 제작 모듈 경로: ' + name)
+            relative = 'company-agent-plugin/scripts/company_agent/' + name
+            tree.update(read_tree(root, relative))
     manifest = 'company-agent-plugin/.claude-plugin/plugin.json'
-    tree[manifest] = no_links(root / manifest).read_bytes()
+    tree[manifest] = package_source_bytes(root / manifest)
     return tree
 
 
@@ -71,7 +105,13 @@ def discover(tree, metadata):
     missing = slugs - metadata.keys()
     if missing:
         raise ValueError('새 스킬의 배포 설명·의존성·흐름을 catalog-metadata.json에 추가하세요: ' + ', '.join(sorted(missing)))
-    active = {slug: metadata[slug] for slug in sorted(slugs)}
+    for slug in slugs:
+        if metadata[slug].get('distribution') not in {'portable', 'harness-only'}:
+            raise ValueError('배포 구분을 portable 또는 harness-only로 명시하세요: ' + slug)
+        if metadata[slug].get('distribution') == 'harness-only' and not metadata[slug].get('distributionReason'):
+            raise ValueError('하네스 전용 항목의 제외 이유가 필요합니다: ' + slug)
+    active = {slug: metadata[slug] for slug in sorted(slugs)
+              if metadata[slug].get('distribution') != 'harness-only'}
     for slug, info in active.items():
         if not re.fullmatch(r'[a-z0-9]+(?:-[a-z0-9]+)*', slug):
             raise ValueError('지원하지 않는 스킬 이름: ' + slug)
@@ -82,12 +122,22 @@ def discover(tree, metadata):
             raise ValueError('정본 SKILL.md가 없습니다: ' + source)
         if type(info.get('runtimeRequired')) is not bool:
             raise ValueError('runtimeRequired를 명시하세요: ' + slug)
+        if info.get('distribution') == 'portable' and info['runtimeRequired']:
+            raise ValueError('개별 배포 스킬은 하네스를 요구할 수 없습니다: ' + slug)
+        reviewed = info.get('packaging', {}).get('reviewedPluginDigest')
+        if reviewed and reviewed != plugin_digest(tree, slug):
+            raise ValueError('하네스 지침이 변경되었습니다. 독립판을 함께 검토하고 reviewedPluginDigest를 갱신하세요: ' + slug)
         for extra in info.get('packaging', {}).get('includeAdditionalPaths', []):
             if not extra.startswith(('skills/', 'resources/', 'licenses/')) or '..' in Path(extra).parts or '\\' in extra or ':' in extra:
                 raise ValueError('잘못된 참조 경로: ' + extra)
     if not active:
         raise ValueError('배포할 스킬이 없습니다.')
     return active
+
+
+def plugin_digest(tree, slug):
+    prefix = 'company-agent-plugin/skills/' + slug + '/'
+    return digest(encoded({p: digest(raw) for p, raw in sorted(tree.items()) if p.startswith(prefix)}))
 
 
 def standard_files(standard):
@@ -121,7 +171,7 @@ def wrapper(slug, info, original):
             '없으면 제한을 안내하고 임의 CLI 경로·세션을 만들지 마세요.' if info['runtimeRequired'] else
             'Company Agent 없이 사용 가능합니다. 필요한 Python 등 의존성은 INSTALL.md를 확인하세요.')
     return f'''---
-name: square-company-{slug}
+name: {slug}
 description: {json.dumps(info['desc'], ensure_ascii=False)}
 {controls}---
 
@@ -160,22 +210,23 @@ def check_zip(path, expected=None):
                 raise ValueError('참조 파일 누락')
 
 
-def index_html(rows, version, standard_sha):
+def index_html(rows, version, standard_sha, excluded=None):
     e = html.escape
     external = [r for r in rows if r.get('external')]
     rows = [r for r in rows if not r.get('external')]
     external_table = ''.join(f'<tr><td><a href="{e(r["file"])}">{e(r["name"])}</a><small>{e(r["type"])}</small></td><td>{e(r["environment"])}</td><td>{e(r["description"])}</td></tr>' for r in external)
     external_section = (f'<section class="table"><h2>별도 MCP · {len(external)}개</h2><p>스킬과 별도로 설치·연결하는 도구입니다. ZIP 안의 README.md에서 설치 범위를 선택하고 필요한 접속 설정을 준비하세요. 하네스 설치만으로 연결되지 않습니다.</p><table><thead><tr><th>도구 / ZIP</th><th>사용 조건</th><th>설명</th></tr></thead><tbody>{external_table}</tbody></table></section>' if external else '')
     table = ''.join(f'<tr><td><a href="{e(r["file"])}">{e(r["name"])}</a><small>{e(r["slug"])}</small></td><td>{"Company Agent 필요" if r["runtimeRequired"] else "단독 사용"}{" · 이전 이름 호환" if r["legacyAlias"] else ""}</td><td>{e(r["description"])}</td></tr>' for r in rows)
-    standalone = sum(not r['runtimeRequired'] for r in rows)
-    return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Company Skills 배포 파일</title><style>
+    excluded_table = ''.join(f'<li><strong>{e(r["name"])}</strong> — {e(r["reason"])}</li>' for r in (excluded or []))
+    return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>개별 스킬 · MCP 배포 파일</title><style>
 body{{margin:0;background:#f4f6fa;color:#16223a;font:16px/1.7 'Noto Sans KR','Malgun Gothic',sans-serif}}main{{max-width:1120px;margin:auto;padding:40px 24px}}h1{{font-size:32px}}section{{background:white;border:1px solid #e3e7ef;border-radius:16px;padding:24px;margin:20px 0}}a{{color:#245dbe}}table{{border-collapse:collapse;width:100%}}td,th{{padding:15px;text-align:left;border-bottom:1px solid #e5e9f0;vertical-align:top}}small{{display:block;color:#66748a}}.table{{overflow-x:auto}}td:first-child{{min-width:210px}}@media(max-width:640px){{main{{padding:16px}}section{{padding:16px}}h1{{font-size:26px}}}}</style></head><body><main>
 <small>P&amp;T AI SQUARE · 등록 준비 파일</small><h1>필요한 스킬을 하나씩 배포하세요.</h1>
-<p>하네스 {e(version)}의 현재 파일 기준 · 스킬 {len(rows)}개 · 단독 사용 {standalone}개 / 하네스 필요 {len(rows)-standalone}개</p>
-<section><h2>등록하는 방법</h2><ol><li>아래에서 필요한 ZIP을 선택합니다.</li><li>플랫폼의 도구 등록 화면에 ZIP 자체를 올립니다.</li><li>채워진 설명·사용 조건·동작 흐름을 확인하고 조직·업무 분류·공개 범위를 직접 선택합니다.</li><li>업데이트는 같은 도구의 새 버전 등록을 사용합니다. packageId는 유지됩니다.</li></ol><p>여기까지는 파일 준비입니다. 서버 게시나 사용자 PC 설치는 실행하지 않았습니다.</p></section>
-<section class="table"><h2>개별 ZIP</h2><table><thead><tr><th>스킬 / ZIP</th><th>사용 조건</th><th>설명</th></tr></thead><tbody>{table}</tbody></table></section>
+<p>개별 사용 스킬 {len(rows)}개 · 별도 MCP {len(external)}개. 다른 하네스에서도 필요한 스킬만 가져다 사용할 수 있습니다.</p>
+<section><h2>등록하는 방법</h2><ol><li>아래에서 필요한 ZIP을 선택합니다.</li><li>플랫폼의 도구 등록 화면에 ZIP 자체를 올립니다.</li><li>채워진 설명·사용 조건·동작 흐름을 확인하고 조직·업무 분류·공개 범위를 직접 선택합니다.</li><li>업데이트는 기존 도구의 새 버전 등록을 사용합니다. 플랫폼은 최초 packageId를 유지하며 새 ZIP의 식별자가 달라도 등록할 수 있습니다. ZIP 내부를 수정할 필요가 없습니다.</li></ol><p>여기까지는 파일 준비입니다. 서버 게시나 사용자 PC 설치는 실행하지 않았습니다.</p></section>
+<section class="table"><h2>개별 Skill · 작업 방법과 실행 자료</h2><table><thead><tr><th>스킬 / ZIP</th><th>사용 조건</th><th>설명</th></tr></thead><tbody>{table}</tbody></table></section>
 {external_section}
-<section><h2>사용하기 전에</h2><p>ZIP 안의 INSTALL.md를 읽고 현재 프로젝트 또는 내 계정 전체 중 설치 범위를 선택합니다. 기존 같은 폴더는 덮어쓰지 않습니다. Company Agent에 이미 있는 기능은 중복 설치할 필요가 없습니다.</p><p>하네스 필요 스킬의 ZIP에는 실행 엔진·후크·MCP 연결이 없습니다. 해당 기능을 제공하는 기존 설치가 필요합니다. 플랫폼 등록 검사 통과가 실제 사내 업무 실행 성공을 뜻하지는 않습니다.</p><p>원본 스킬·코드·참고자료를 보존했습니다. ZIP 안의 PACKAGE_SOURCE.json에서 파일별 출처와 해시를 확인할 수 있습니다. 단독형 두 스킬은 standalone-skills의 정본을 사용합니다.</p></section>
+<section><h2>하네스에서 사용하는 기능</h2><p>아래 항목은 개별 업무 스킬 ZIP에 포함하지 않습니다. 필요한 경우 하네스를 설치합니다.</p><ul>{excluded_table}</ul></section>
+<section><h2>사용하기 전에</h2><p>ZIP 안의 INSTALL.md를 읽고 현재 프로젝트 또는 내 계정 전체 중 설치 범위를 선택합니다. 기존 같은 폴더는 덮어쓰지 않습니다. Company Agent에 이미 있는 기능은 중복 설치할 필요가 없습니다.</p><p>Skill은 AI가 따르는 작업 방법이며 필요한 Python 코드·참고자료를 함께 담았습니다. MCP는 별도 프로세스로 실행해 AI에 기능을 제공하는 연결 서버입니다. 스킬·도구 제작 도우미는 MCP를 만드는 스킬이며 서버 자체가 아닙니다.</p><p>여기 있는 Skill은 Company Harness 없이 사용할 수 있습니다. Python 패키지·Office·메일 연결 등 개별 의존성은 ZIP의 INSTALL.md를 확인하세요. 기억·지식 스킬은 요청 시 파일을 정리하며 상시 자동 학습을 추가하지 않습니다.</p><p>이전 square-company 이름으로 설치했다면 같은 범위에 두 사본을 설치하지 마세요. 설치기는 중복을 알리고 기존 자료를 보존합니다. 출처와 사용 코드 해시는 PACKAGE_SOURCE.json에 있습니다.</p></section>
 <section><h2>다시 만들기</h2><p>저장소에서 <code>python -X utf8 scripts/build-skill-packages.py</code>를 실행합니다. <code>--check</code>는 최신 여부만 검사합니다. 같은 입력은 같은 ZIP을 만들며 불필요하게 파일을 다시 쓰지 않습니다.</p><p>로컬 플랫폼 배포 스킬 기준: <code>{e(standard_sha[:16])}</code>. 대화를 상시 감시하지 않습니다. 플랫폼 소스를 다른 위치에서 관리하면 <code>--distribution-skill</code>로 그 스킬 폴더를 지정하세요.</p></section></main></body></html>'''.encode('utf-8')
 
 
@@ -228,8 +279,8 @@ def build(root, standard, stage, metadata_path):
     standards = standard_files(standard)
     standard_hashes = {name: digest(raw) for name, raw in sorted(standards.items())}
     standard_sha = digest(encoded(standard_hashes))
-    tree = snapshot(root)
     metadata = json.loads(metadata_path.read_text(encoding='utf-8-sig'))
+    tree = snapshot(root, metadata)
     active = discover(tree, metadata)
     version = json.loads(tree['company-agent-plugin/.claude-plugin/plugin.json'])['version']
     rows, artifacts = [], {}
@@ -243,16 +294,18 @@ def build(root, standard, stage, metadata_path):
         selected, links = source_files(slug, info, tree)
         entry = f'source/skills/{slug}/SKILL.md'
         original = selected[f'skills/{slug}/SKILL.md'][1].decode('utf-8-sig')
-        install_name = 'square-company-' + slug
+        install_name = slug
         files = {'SKILL.md': wrapper(slug, info, original),
                  'INSTALL.md': make_guide(slug, info, install_name, version).encode('utf-8'),
-                 'install_skill.py': (SUPPORT / 'install_skill.py').read_bytes(),
+                 'install_skill.py': package_source_bytes(SUPPORT / 'install_skill.py'),
                  'install_scope.py': standards['scripts/install_scope.py']}
         files.update({'source/' + name: raw for name, (_, raw) in selected.items()})
         files['PACKAGE_SOURCE.json'] = encoded({
             'sourceMode': 'working-tree', 'sourceVersion': version, 'primarySkill': slug,
-            'sourcePreserved': True, 'runtimeRequired': info['runtimeRequired'],
-            'distributionStandard': {'sha256': standard_sha, 'files': standard_hashes},
+            'sourcePreserved': True, 'textNormalization': TEXT_NORMALIZATION,
+            'runtimeRequired': info['runtimeRequired'],
+            'distributionStandard': {'sha256': standard_sha, 'files': standard_hashes,
+                                     'textNormalization': TEXT_NORMALIZATION},
             'files': {f'source/{p}': {'repoPath': src, 'sha256': digest(raw)} for p, (src, raw) in sorted(selected.items())},
             'localReferences': sorted(links, key=lambda x: (x['from'], x['to']))})
         manifest = dict(schemaVersion=1, packageId='company.skills.' + slug, name=info['displayName'],
@@ -269,7 +322,7 @@ def build(root, standard, stage, metadata_path):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(raw)
             os.utime(path, (946684800, 946684800))
-        target = stage / ('company-' + slug + '.zip')
+        target = stage / (slug + '.zip')
         result = subprocess.run([sys.executable, '-B', '-X', 'utf8', str(contract / 'scripts/prepare_package.py'),
                                  str(package), str(target)], capture_output=True, text=True, encoding='utf-8', timeout=120)
         if result.returncode:
@@ -278,7 +331,7 @@ def build(root, standard, stage, metadata_path):
         artifacts[target.name] = target.read_bytes()
         rows.append(dict(slug=slug, file=target.name, name=info['displayName'], description=info['desc'],
                          packageId=manifest['packageId'], runtimeRequired=info['runtimeRequired'],
-                         legacyAlias=slug == 'platform-mcp-builder', installName=install_name,
+                         type='Skill', legacyAlias=False, installName=install_name,
                          sha256=digest(artifacts[target.name]), size=len(artifacts[target.name]), files=len(files)))
     extra_rows, extra_files = external_packages(root, contract)
     if (artifacts.keys() & extra_files.keys() or
@@ -287,11 +340,15 @@ def build(root, standard, stage, metadata_path):
         raise ValueError('스킬과 외부 패키지 이름·ID가 충돌합니다.')
     rows.extend(extra_rows)
     artifacts.update(extra_files)
-    artifacts['등록_설치_안내.html'] = index_html(rows, version, standard_sha)
+    excluded = [dict(slug=slug, name=info['displayName'], reason=info['distributionReason'])
+                for slug, info in metadata.items() if info.get('distribution') == 'harness-only'
+                and 'company-agent-plugin/skills/' + slug + '/SKILL.md' in tree]
+    artifacts['등록_설치_안내.html'] = index_html(rows, version, standard_sha, excluded)
     artifacts['SHA256SUMS.txt'] = ('\n'.join(f'{r["sha256"]}  {r["file"]}' for r in rows) + '\n').encode()
     artifacts['catalog.json'] = encoded(dict(generator='company-platform-skills-v1', sourceMode='working-tree',
-        sourceVersion=version, distributionStandard={'sha256': standard_sha, 'files': standard_hashes},
-        packages=rows, managedFiles={name: digest(raw) for name, raw in sorted(artifacts.items())}))
+        sourceVersion=version, distributionStandard={'sha256': standard_sha, 'files': standard_hashes,
+                                                    'textNormalization': TEXT_NORMALIZATION},
+        packages=rows, harnessOnly=excluded, managedFiles={name: digest(raw) for name, raw in sorted(artifacts.items())}))
     return artifacts
 
 

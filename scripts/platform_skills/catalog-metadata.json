@@ -39,7 +39,8 @@
     "runtimeRequired": false,
     "packaging": {
       "includeAdditionalPaths": []
-    }
+    },
+    "distribution": "portable"
   },
   "work-context-catalog": {
     "displayName": "업무 맥락 모아 보기",
@@ -81,11 +82,12 @@
     "runtimeRequired": false,
     "packaging": {
       "includeAdditionalPaths": []
-    }
+    },
+    "distribution": "portable"
   },
   "presentation": {
     "displayName": "편집 가능한 업무 발표자료",
-    "desc": "보고·실적 발표·제안의 전체 HTML 초안을 먼저 확인한 뒤 편집 가능한 PPT를 만듭니다. 참고 PPTX·HTML·허용된 화면 자료를 활용하며 Company Agent 실행 환경이 필요합니다.",
+    "desc": "참고 PPT·HTML·이미지의 배치와 문장 스타일을 살펴 HTML 초안을 만들고 글자·도형·표·차트를 편집할 수 있는 PPT로 제작합니다.",
     "workTags": [
       "발표자료",
       "업무 보고",
@@ -94,44 +96,60 @@
       "PPT"
     ],
     "requirements": [
-      "Company Agent가 설치되어 있고 company_agent_runtime.cliCommand와 stateRoot가 현재 세션에 제공되어야 합니다.",
-      "business artifact-start, ppt-design-preview, ppt, artifact-publish를 지원하는 Company Agent 런타임이 필요합니다.",
-      "고급 네이티브 배치·수정에는 python-pptx가 필요합니다. 실제 장표 렌더링·검토에는 런타임의 허용된 PowerPoint 및 이미지 검토 경로를 사용합니다.",
-      "전체 HTML 초안을 사용자가 확인한 뒤 PPT 제작을 진행합니다. 참고 자료의 처리·캡처·저장 권한은 별도로 지켜야 합니다."
+      "Python 3.11 이상과 python-pptx가 필요합니다. HTML 초안·PPT 생성 코드는 ZIP에 포함됩니다.",
+      "정적 HTML 요소를 직접 가져올 때만 설치된 Chrome 또는 Edge가 필요합니다. Node.js·Playwright·별도 브라우저 연결 서버는 필요하지 않습니다.",
+      "PPTX 구조 검사는 자동으로 실행할 수 있습니다. 실제 Office 화면·사용자 환경의 글꼴 표시는 별도 확인합니다.",
+      "참고 자료의 읽기·캡처·저장 권한을 지킵니다. 이미지 이해는 현재 호스트의 지원 기능을 사용하며 모델을 자동 변경하지 않습니다."
     ],
     "workflow": {
       "steps": [
         {
-          "title": "목적·청중·분량 확인",
-          "description": "이미 정한 조건을 재사용하고 빠진 내용만 확인합니다. 참고 자료가 있으면 분위기 참고 또는 기존 배치 유지 범위를 정합니다."
+          "title": "목적과 참고자료 확인",
+          "description": "일반 PPTX·HTML·이미지에서 필요한 배치·글꼴·말투를 살피고 기존 조건을 재사용합니다."
         },
         {
           "title": "전체 HTML 초안 작성",
-          "description": "하나의 작업 폴더에 모든 장표의 내용·디자인을 구성하고 오프라인 HTML 미리보기를 만듭니다."
-        },
-        {
-          "title": "초안 확인과 수정",
-          "description": "사용자가 실제 초안을 보고 제작 진행 또는 수정 내용을 선택합니다. 승인한 초안의 작업 정보를 유지합니다."
+          "description": "장표별 내용과 디자인을 만들고 사용자가 확인할 HTML을 먼저 제공합니다."
         },
         {
           "title": "편집 가능한 PPT 제작",
-          "description": "지원되는 텍스트·표·차트를 편집 가능한 개체로 만들고 기존 원본과 사용자의 PowerPoint 작업을 보존합니다."
+          "description": "확인한 디자인을 글자·도형·이미지·표·차트로 구성하고 관련 개체를 실제 그룹으로 묶습니다."
         },
         {
-          "title": "장표 검토 후 결과 전달",
-          "description": "모든 장표의 내용·수치·배치를 확인하고 오류를 수정합니다. 실제 검토 범위와 남은 제한을 알리며 최종 파일을 전달합니다."
+          "title": "구조와 확인 범위 검증",
+          "description": "편집 개체·그룹·페이지 구조를 확인합니다. 실제 렌더링을 확인하지 못했다면 그 한계를 표시합니다."
         }
       ]
     },
-    "sourceDir": "company-agent-plugin/skills/presentation",
-    "runtimeRequired": true,
+    "sourceDir": "standalone-skills/presentation",
+    "runtimeRequired": false,
     "packaging": {
-      "includeAdditionalPaths": []
-    }
+      "includeAdditionalPaths": [],
+      "runtimeModules": [
+        "business_artifacts.py",
+        "business_safety.py",
+        "content_layout.py",
+        "explanation_diagram.py",
+        "explanation_export.py",
+        "html_reference.py",
+        "ppt_html.py",
+        "ppt_html_import.py",
+        "ppt_scene.py",
+        "ppt_workflow.py",
+        "presentation_design.py",
+        "report_design.py",
+        "report_facts.py",
+        "report_styles.py",
+        "report_typography.py",
+        "ppt_dom_capture.js"
+      ],
+      "reviewedPluginDigest": "9c0eff9e975c815d724bf351f56c54f9ccdf356ef9cd2891961cccd36b5a0f3b"
+    },
+    "distribution": "portable"
   },
   "html-report": {
     "displayName": "오프라인 HTML 업무 보고서",
-    "desc": "업무 자료를 디자인·분량·표시 방식에 맞춰 오프라인 HTML 보고서로 만듭니다. 요청 시 작업 흐름과 구조도 설명합니다. Company Agent 실행 환경이 필요합니다.",
+    "desc": "자료의 수치와 근거를 보존하며 글꼴·디자인을 선택해 HTML 보고서를 만듭니다. 요청한 경우 업무 흐름·구조도도 포함합니다.",
     "workTags": [
       "HTML 보고서",
       "업무 보고",
@@ -140,40 +158,56 @@
       "업무 설명"
     ],
     "requirements": [
-      "Company Agent가 설치되어 있고 company_agent_runtime.cliCommand와 stateRoot가 현재 세션에 제공되어야 합니다.",
-      "business artifact-start, html, artifact-publish를 지원하는 Company Agent 런타임이 필요합니다.",
-      "사용이 허용된 자료와 결과 저장 위치를 지정합니다. 기존 입력 자료와 보고서는 덮어쓰지 않습니다.",
-      "화면 품질 확인에는 허용된 브라우저·이미지 검토 경로를 사용합니다. 파일 생성만으로 화면 검증 완료를 뜻하지 않습니다."
+      "Python 3.11 이상이 필요합니다. 기본 HTML 생성은 표준 라이브러리로 실행합니다.",
+      "첨부 HTML의 정적 색상·글꼴을 참고할 수 있습니다. 화면 확인은 현재 사용 가능한 브라우저를 이용합니다.",
+      "글꼴은 PC에 있는 글꼴과 대체 글꼴을 사용합니다. 외부 글꼴 연결은 사용자가 허용할 때만 사용합니다.",
+      "Company Harness·세션·후크 없이 포함된 제작 코드로 실행합니다. 템플릿 설치와 게시를 자동 실행하지 않습니다."
     ],
     "workflow": {
       "steps": [
         {
-          "title": "보고서 형식 선택",
-          "description": "확정된 디자인을 재사용하고 빠진 디자인·분량·스크롤 또는 페이지 방식을 순서대로 정합니다."
+          "title": "요청과 디자인 조건 확인",
+          "description": "이미 정한 조건을 재사용하고 필요한 디자인·표현 방식·글꼴만 확인합니다."
         },
         {
-          "title": "자료와 수치 구성",
-          "description": "허용된 자료로 제목·본문·표·차트와 표시 순서를 작성하고 합계·비율의 근거를 함께 정리합니다."
+          "title": "자료와 HTML 구성",
+          "description": "수치·단위·출처를 보존해 한 작업 폴더에서 명세와 보고서를 만듭니다."
         },
         {
-          "title": "오프라인 HTML 생성",
-          "description": "같은 작업 폴더와 명세를 사용해 보고서를 만듭니다. 작업 흐름 설명은 요청한 경우에만 포함합니다."
-        },
-        {
-          "title": "내용과 화면 검토",
-          "description": "원자료와 수치·결론을 대조하고 실제 HTML의 배치·읽기 흐름을 확인한 뒤 최종 파일을 전달합니다."
+          "title": "실제 내용과 화면 확인",
+          "description": "총계·표 넘침·한글 가독성을 확인하고 생성한 HTML을 전달합니다. 화면 미확인은 별도로 표시합니다."
         }
       ]
     },
-    "sourceDir": "company-agent-plugin/skills/html-report",
-    "runtimeRequired": true,
+    "sourceDir": "standalone-skills/html-report",
+    "runtimeRequired": false,
     "packaging": {
-      "includeAdditionalPaths": []
-    }
+      "includeAdditionalPaths": [],
+      "runtimeModules": [
+        "business_artifacts.py",
+        "business_safety.py",
+        "content_layout.py",
+        "explanation_diagram.py",
+        "explanation_export.py",
+        "html_reference.py",
+        "ppt_html.py",
+        "ppt_html_import.py",
+        "ppt_scene.py",
+        "ppt_workflow.py",
+        "presentation_design.py",
+        "report_design.py",
+        "report_facts.py",
+        "report_styles.py",
+        "report_typography.py",
+        "ppt_dom_capture.js"
+      ],
+      "reviewedPluginDigest": "183262045c56006927e94868dca37700bde90b9c1feb795d25f087ad1b3b170f"
+    },
+    "distribution": "portable"
   },
   "file-organizer": {
     "displayName": "되돌릴 수 있는 폴더 정리",
-    "desc": "Windows 폴더의 파일 정리 계획을 먼저 보여주고 승인 후 종류별로 이동합니다. 삭제·덮어쓰기 없이 정리하며 기록을 이용해 되돌립니다. Company Agent 실행 환경이 필요합니다.",
+    "desc": "지정 폴더의 파일 이동 계획을 보여주고 요청한 정리만 실행합니다. 삭제·덮어쓰기 없이 이동하고 기록으로 되돌립니다.",
     "workTags": [
       "폴더 정리",
       "파일 분류",
@@ -181,36 +215,33 @@
       "파일 관리"
     ],
     "requirements": [
-      "Windows의 Company Agent 런타임과 company_agent_runtime.cliCommand, stateRoot가 필요합니다.",
-      "business files-plan, files-execute, files-undo 및 Windows 사용자 확인 창을 사용할 수 있어야 합니다.",
-      "한 로컬 폴더의 직접 파일만 처리하며 최대 500개 항목, 파일당 최대 256 MiB를 지원합니다.",
-      "파일 이동은 계획 확인과 실제 Windows 확인 창 승인 후 수행합니다. 삭제·덮어쓰기·하위 폴더 정리는 하지 않습니다."
+      "Python 3.11 이상과 표준 라이브러리만 필요합니다.",
+      "한 로컬 폴더의 직접 파일, 최대 500개·파일당 256 MiB를 처리합니다.",
+      "계획 확인 후 이동합니다. 되돌릴 때 파일 변경이나 이름 충돌이 있으면 원본을 보존하고 중단합니다."
     ],
     "workflow": {
       "steps": [
         {
-          "title": "정리할 폴더 선택",
-          "description": "사용자가 지정한 한 로컬 폴더에서 지원되는 직접 파일과 제외 항목을 확인합니다."
+          "title": "정리 계획 만들기",
+          "description": "대상 폴더에서 종류별 이전·이후 경로와 제외 항목을 작성합니다. 아직 이동하지 않습니다."
         },
         {
-          "title": "이동 계획 확인",
-          "description": "문서·표자료·발표자료·이미지·압축자료로 나누는 원본 및 목적지 목록을 보여줍니다. 이 단계에서는 파일을 옮기지 않습니다."
+          "title": "요청한 이동 실행",
+          "description": "계획 확인과 실행 요청 뒤 바뀐 파일·충돌을 확인하고 이동 기록을 남깁니다."
         },
         {
-          "title": "승인 후 이동",
-          "description": "사용자가 실행을 요청하고 Windows 확인 창에서 승인하면 계획한 파일을 이동합니다. 충돌·변경 파일은 별도로 처리합니다."
-        },
-        {
-          "title": "결과 확인과 필요 시 복원",
-          "description": "이동 수와 실패 항목을 확인합니다. 명시적으로 되돌리기를 요청하면 이동 기록을 사용하되 수정되거나 충돌하는 파일은 자동 복원하지 않습니다."
+          "title": "결과와 원복 안내",
+          "description": "처리·미처리 범위를 보여줍니다. 원복 요청 시 기록을 이용하며 바뀐 파일을 덮어쓰지 않습니다."
         }
       ]
     },
-    "sourceDir": "company-agent-plugin/skills/file-organizer",
-    "runtimeRequired": true,
+    "sourceDir": "standalone-skills/file-organizer",
+    "runtimeRequired": false,
     "packaging": {
-      "includeAdditionalPaths": []
-    }
+      "includeAdditionalPaths": [],
+      "reviewedPluginDigest": "0d9e6ea562bec9871a3ed9dcedaeb6623d0483c156a419c1998d66a498c53657"
+    },
+    "distribution": "portable"
   },
   "karpathy-guidelines": {
     "displayName": "근거로 확인하는 개발 지침",
@@ -223,10 +254,7 @@
       "개발 지침"
     ],
     "requirements": [
-      "SKILL.md와 참조 문서를 읽을 수 있는 Claude 환경이 필요합니다. 이 스킬 자체에는 실행 프로그램이나 별도 패키지가 없습니다.",
-      "실제 코드 실행과 시험에 필요한 환경·권한은 작업 대상 프로젝트에 따릅니다.",
-      "Company Agent용으로 조정된 지침입니다. 기존 작업 흐름·권한·사용자 변경을 유지하며 별도 승인 절차나 전역 설정을 추가하지 않습니다.",
-      "재배포 시 SOURCE.md, SOURCE_LICENSE, references/UPSTREAM_SKILL.md를 함께 보존합니다."
+      "파일 읽기·수정·실행이 가능한 현재 에이전트와 작업 프로젝트가 필요합니다. 별도 런타임이나 후크는 설치하지 않습니다."
     ],
     "workflow": {
       "steps": [
@@ -248,11 +276,13 @@
         }
       ]
     },
-    "sourceDir": "company-agent-plugin/skills/karpathy-guidelines",
+    "sourceDir": "standalone-skills/karpathy-guidelines",
     "runtimeRequired": false,
     "packaging": {
-      "includeAdditionalPaths": []
-    }
+      "includeAdditionalPaths": [],
+      "reviewedPluginDigest": "54123ec32a6b772a35f8c59447ec1654bb00535b0d67c8bf100318b9d9d73147"
+    },
+    "distribution": "portable"
   },
   "platform-mcp-builder": {
     "displayName": "전사 MCP 제작 이전 이름 호환",
@@ -287,11 +317,13 @@
     "runtimeRequired": true,
     "packaging": {
       "includeAdditionalPaths": []
-    }
+    },
+    "distribution": "harness-only",
+    "distributionReason": "asset-factory로 통합된 이전 이름입니다. 별도 MCP 서버가 아니며 중복 배포하지 않습니다."
   },
   "asset-factory": {
     "displayName": "스킬·도구 제작 도우미",
-    "desc": "기존 자산을 확인한 뒤 업무 Skill 또는 회사 표준 MCP 도구를 만들고 수정·검증합니다. Company Agent 런타임이 필요한 제작용 Skill입니다.",
+    "desc": "개인 스킬·Python 스크립트·표준 tools.py MCP를 만들고 수정합니다. 현재 연결된 도구와 기본 스킬 폴더를 활용하며 등록·배포는 별도입니다.",
     "workTags": [
       "스킬 제작",
       "MCP 개발",
@@ -299,40 +331,37 @@
       "도구 검증"
     ],
     "requirements": [
-      "Claude Code와 Company Agent 플러그인·런타임이 설치된 세션이 필요합니다.",
-      "세션에서 company_agent_runtime의 cliCommand·stateRoot·project 정보를 제공해야 합니다.",
-      "MCP 실제 시험에는 승인된 mcp>=1.28,<2 환경과 사용할 외부 시스템의 권한이 필요합니다.",
-      "새 자산을 저장하기 전 개인 전체 또는 현재 프로젝트 범위를 선택합니다."
+      "스킬 생성 도우미는 Python 3.11 이상과 표준 라이브러리로 실행합니다.",
+      "포함된 MCP 예제를 실행할 때만 mcp>=1.28,<2와 uvicorn>=0.31,<1이 필요합니다.",
+      "다른 에이전트에서는 해당 제품의 스킬 폴더와 실행 권한을 따릅니다. MCP 연결·인증·배포를 자동 변경하지 않습니다."
     ],
     "workflow": {
       "steps": [
         {
-          "title": "기존 자산과 저장 범위 확인",
-          "description": "같은 기능의 Skill·도구와 이름 충돌을 확인하고 개인 전체 또는 현재 프로젝트 범위를 정합니다."
+          "title": "업무와 기존 도구 확인",
+          "description": "반복 업무의 입력·결과와 현재 사용 가능한 도구를 확인합니다."
         },
         {
-          "title": "Skill 또는 도구 작성",
-          "description": "업무 순서를 Skill로 작성하거나 실행 코드가 필요하면 회사 표준 tools.py 형식의 도구를 만듭니다."
+          "title": "범위 선택과 원본 만들기",
+          "description": "기존 범위를 재사용하며 새 스킬은 기본 스킬 폴더의 한 원본으로 만듭니다."
         },
         {
-          "title": "구조와 업무 사례 검증",
-          "description": "생성 자산의 구조를 검사하고 MCP는 정상·잘못된 입력 사례를 실제로 시험합니다."
+          "title": "필요한 실행 코드 구현",
+          "description": "필요한 경우 Python 코드 또는 표준 tools.py와 로컬 MCP 서버를 만듭니다."
         },
         {
-          "title": "요청한 연결과 사용 안내",
-          "description": "도구 연결까지 요청한 경우 검증 영수증으로 활성화하고 생성·검증·세션 호출 결과를 구분해 안내합니다."
+          "title": "합성 입력으로 검증",
+          "description": "입력 오류와 실제 실행을 시험하고 파일 위치·사용 방법을 안내합니다. 등록·전사 배포는 별도입니다."
         }
       ]
     },
-    "sourceDir": "company-agent-plugin/skills/asset-factory",
+    "sourceDir": "standalone-skills/asset-factory",
     "packaging": {
-      "includeAdditionalPaths": [
-        "skills/platform-mcp-builder/references/platform-contract.md",
-        "skills/platform-mcp-builder/scripts/create_project.py",
-        "skills/platform-mcp-builder/assets/template"
-      ]
+      "includeAdditionalPaths": [],
+      "reviewedPluginDigest": "22ce20d9787d2877958003a325e679fd764f6ea795d56885a76e707a8390aad3"
     },
-    "runtimeRequired": true
+    "runtimeRequired": false,
+    "distribution": "portable"
   },
   "company-agent": {
     "displayName": "Company Agent 업무 조율",
@@ -378,11 +407,13 @@
         "resources/manuals/Company-Agent-사용자-안내서.html"
       ]
     },
-    "runtimeRequired": true
+    "runtimeRequired": true,
+    "distribution": "harness-only",
+    "distributionReason": "회사 정책·모델 경로·작업자·후크를 연결하는 하네스 본체입니다."
   },
   "outlook-assistant": {
     "displayName": "Outlook 메일 업무 도우미",
-    "desc": "메일 제목·발신자·날짜로 후보를 좁힌 뒤 필요한 본문을 읽어 요약과 답장 초안, 정리 계획을 만듭니다. 회사 Outlook 연결과 권한이 필요합니다.",
+    "desc": "메일 목록을 먼저 좁힌 뒤 필요한 본문만 읽어 요약·답장 초안을 만듭니다. 기존 메일 연결, Classic Outlook 또는 선택한 EML을 사용합니다.",
     "workTags": [
       "메일 검색",
       "메일 요약",
@@ -390,42 +421,38 @@
       "메일 정리"
     ],
     "requirements": [
-      "Claude Code와 Company Agent의 cliCommand·stateRoot 문맥을 사용하는 Skill입니다.",
-      "회사 메일 작업에는 인증된 본인 계정의 corp-outlook-self MCP 연결과 해당 기능 권한이 필요합니다.",
-      "회사 연결이 없는 경우 로컬 조회는 실행 중인 Classic Outlook과 Company Agent의 읽기 전용 로컬 기능이 필요합니다.",
-      "로컬 Outlook 기능은 발송·이동을 지원하지 않으며 보호된 메일의 접근 제한은 유지합니다."
+      "현재 호스트에 실제 제공되는 메일 연결 또는 실행 중인 Windows Classic Outlook이 필요합니다.",
+      "로컬 Classic Outlook 도우미는 Python 3.11 이상과 pywin32가 필요합니다. 새 Outlook/Web Outlook은 COM 대상이 아닙니다.",
+      "EML 파일 읽기는 Python 표준 라이브러리만 필요합니다. 이 ZIP은 MCP 서버나 계정 연결을 설치하지 않습니다.",
+      "검색 목록·읽을 본문·총 글자수를 제한합니다. 로컬 도우미는 읽기 전용이며 발송·이동·삭제를 제공하지 않습니다."
     ],
     "workflow": {
       "steps": [
         {
-          "title": "조회 범위와 메일 후보 찾기",
-          "description": "계정·기간·폴더를 유지하며 제목·발신자·날짜 같은 메타데이터로 필요한 후보부터 찾습니다."
+          "title": "관련 메일 목록 찾기",
+          "description": "기간·발신자·주제로 메타데이터를 최대 20건부터 검색합니다."
         },
         {
           "title": "필요한 본문만 읽기",
-          "description": "요청에 관련된 메일을 고르고 허용된 연결과 범위 안에서 필요한 본문만 읽습니다."
+          "description": "관련 메일 기본 5건 이내, 건당 4,000자·합계 12,000자 한도로 시작합니다."
         },
         {
-          "title": "요약 또는 답장 초안 작성",
-          "description": "읽은 내용에 근거해 요청한 요약·초안을 작성하고 실제 확인한 범위와 남은 사항을 안내합니다."
-        },
-        {
-          "title": "요청한 후속 작업 확인",
-          "description": "실제 발송·정리를 요청한 경우 지원되는 회사 도구와 해당 도구의 확인 절차를 사용합니다. 로컬 조회 기능은 발송하지 않습니다."
+          "title": "요약·초안 작성",
+          "description": "출처와 조회 범위·잘림을 표시합니다. 로컬 도우미로 메일을 발송하거나 변경하지 않습니다."
         }
       ]
     },
-    "sourceDir": "company-agent-plugin/skills/outlook-assistant",
+    "sourceDir": "standalone-skills/outlook-assistant",
     "packaging": {
-      "includeAdditionalPaths": [
-        "skills/company-agent/references/business-protection.md"
-      ]
+      "includeAdditionalPaths": [],
+      "reviewedPluginDigest": "27e078c01d2c03fb6e976e025bbb9bec13a4c3bb200c714949c65df6e8c8dd95"
     },
-    "runtimeRequired": true
+    "runtimeRequired": false,
+    "distribution": "portable"
   },
   "personal-knowledge": {
     "displayName": "개인 업무 지식 관리",
-    "desc": "회사 용어·계산식·테이블·업무 기준을 조회하고 개인 적용 지식을 저장·보완합니다. 회사 원본을 유지하며 개인 전체와 현재 프로젝트 범위를 구분합니다.",
+    "desc": "업무 용어·지표·표 관계를 출처와 적용 범위가 있는 Markdown 지식으로 저장·조회합니다. 회사 원본은 보존합니다.",
     "workTags": [
       "업무 지식",
       "용어 관리",
@@ -433,40 +460,36 @@
       "지식 검색"
     ],
     "requirements": [
-      "Company Agent 런타임과 company_agent_runtime의 cliCommand·stateRoot·project가 필요합니다.",
-      "회사 공통 지식의 조회는 설치 환경에서 제공하는 Corporate Base에 따릅니다.",
-      "새 지식을 저장하기 전에 개인 전체 또는 현재 프로젝트 범위를 선택해야 합니다.",
-      "지식은 참고 자료이며 회사 정책·권한이나 보안 규칙을 바꾸지 않습니다."
+      "호스트의 로컬 파일 읽기·쓰기 기능과 사용자가 선택한 프로젝트 또는 개인 저장 폴더가 필요합니다.",
+      "Python·Company Harness·MCP 서버는 필요하지 않습니다. 저장 내용의 자동 주입은 제공하지 않습니다."
     ],
     "workflow": {
       "steps": [
         {
-          "title": "지식과 저장 범위 구분",
-          "description": "장기 보관할 업무 지식인지 확인하고 새 항목이면 개인 전체 또는 현재 프로젝트 범위를 정합니다."
+          "title": "사실과 저장 범위 확인",
+          "description": "사용자가 지정한 범위를 재사용하고 미지정일 때만 프로젝트 또는 개인 범위를 묻습니다."
         },
         {
-          "title": "기존 회사·개인 지식 확인",
-          "description": "유효한 색인과 관련 회사 문서를 검색해 같은 사실이나 기준이 이미 있는지 살펴봅니다."
+          "title": "관련 기록 찾기",
+          "description": "선택한 폴더의 관련 항목만 읽고 같은 사실은 기존 항목을 수정합니다."
         },
         {
-          "title": "추가·분기·신규 지식 저장",
-          "description": "회사 기준을 보완할지 개인 기준으로 분기할지 구분하고 추출한 사실만 작은 명세로 작성해 저장합니다."
-        },
-        {
-          "title": "저장 결과와 적용 기준 확인",
-          "description": "생성된 문서의 내용을 확인하고 저장한 제목과 회사 기준과의 관계를 설명합니다."
+          "title": "Markdown으로 저장·조회",
+          "description": "추린 사실·출처·적용 범위를 기록하고 파일 위치를 안내합니다. 자동 주입이나 상시 수집은 하지 않습니다."
         }
       ]
     },
-    "sourceDir": "company-agent-plugin/skills/personal-knowledge",
+    "sourceDir": "standalone-skills/personal-knowledge",
     "packaging": {
-      "includeAdditionalPaths": []
+      "includeAdditionalPaths": [],
+      "reviewedPluginDigest": "95414f3b3e6abe8edd95d82f71d3091dce23aea175179dff6e3c205f2d4de65b"
     },
-    "runtimeRequired": true
+    "runtimeRequired": false,
+    "distribution": "portable"
   },
   "personal-memory": {
     "displayName": "개인 선호·업무 기억 관리",
-    "desc": "지속적으로 사용할 개인 선호와 업무 맥락을 저장·검색하고 기존 기억을 조건부로 수정하거나 복원합니다. 일회성 요청과 장기 기억을 구분합니다.",
+    "desc": "개인 선호·업무 맥락을 범위를 선택해 Markdown 파일로 저장·조회·수정합니다. 자동 학습·대화 주입은 포함하지 않습니다.",
     "workTags": [
       "개인 기억",
       "업무 맥락",
@@ -474,36 +497,32 @@
       "기억 복원"
     ],
     "requirements": [
-      "Company Agent 런타임과 company_agent_runtime의 cliCommand·stateRoot·project가 필요합니다.",
-      "새 기억을 저장하기 전에 개인 전체 또는 현재 프로젝트 범위를 선택해야 합니다.",
-      "기존 기억 수정은 조회한 ID·revision·sha256와 원래 범위를 유지합니다.",
-      "이 ZIP에는 사용자의 기억 파일·대화 기록·개인 데이터가 포함되지 않습니다."
+      "호스트의 로컬 파일 읽기·쓰기 기능과 사용자가 선택한 프로젝트 또는 개인 저장 폴더가 필요합니다.",
+      "Python·Company Harness·MCP 서버는 필요하지 않습니다. 저장 내용의 자동 주입은 제공하지 않습니다."
     ],
     "workflow": {
       "steps": [
         {
-          "title": "저장할 기억과 적용 범위 확인",
-          "description": "지속할 개인 선호나 업무 맥락인지 판단하고 새 기억의 개인 전체 또는 프로젝트 범위를 확인합니다."
+          "title": "사실과 저장 범위 확인",
+          "description": "사용자가 지정한 범위를 재사용하고 미지정일 때만 프로젝트 또는 개인 범위를 묻습니다."
         },
         {
-          "title": "기존 기억 검색",
-          "description": "같은 사실이 있는지 확인하고 기존 항목이면 정확한 ID·버전·해시와 범위를 유지합니다."
+          "title": "관련 기록 찾기",
+          "description": "선택한 폴더의 관련 항목만 읽고 같은 사실은 기존 항목을 수정합니다."
         },
         {
-          "title": "기억 저장 또는 조건부 수정",
-          "description": "원문 대화나 민감한 자료 대신 추출한 사실만 명세로 작성하고 런타임의 memory upsert로 반영합니다."
-        },
-        {
-          "title": "검증 결과와 복원 범위 안내",
-          "description": "저장 응답의 내용 검증 결과와 적용 범위를 확인합니다. 되돌리기 요청은 해당 기억의 기록을 기준으로 처리합니다."
+          "title": "Markdown으로 저장·조회",
+          "description": "추린 사실·출처·적용 범위를 기록하고 파일 위치를 안내합니다. 자동 주입이나 상시 수집은 하지 않습니다."
         }
       ]
     },
-    "sourceDir": "company-agent-plugin/skills/personal-memory",
+    "sourceDir": "standalone-skills/personal-memory",
     "packaging": {
-      "includeAdditionalPaths": []
+      "includeAdditionalPaths": [],
+      "reviewedPluginDigest": "9a3ff5349ede357bdda259041c272815d9507581e4a90dfafbd6e5f3ea68e1f8"
     },
-    "runtimeRequired": true
+    "runtimeRequired": false,
+    "distribution": "portable"
   },
   "project-harness": {
     "displayName": "프로젝트 업무 하네스 제작",
@@ -546,11 +565,13 @@
         "skills/asset-factory/references/authoring.md"
       ]
     },
-    "runtimeRequired": true
+    "runtimeRequired": true,
+    "distribution": "harness-only",
+    "distributionReason": "프로젝트의 하네스 설치·정책과 실행 환경을 관리하는 기능입니다."
   },
   "self-learning": {
     "displayName": "검증된 교정·절차 학습",
-    "desc": "지속적인 명시적 교정과 검증된 반복 선택·개인 절차 개선을 학습 후보로 접수합니다. 모델 훈련이 아닌 Company Agent 내부 학습 지원 Skill입니다.",
+    "desc": "지속적인 교정과 검증된 반복 선택·절차 개선을 학습 후보로 접수합니다. 요청 시 접수·적용·보류와 기억 전달을 설명하며 모델 자체를 훈련하지 않습니다.",
     "workTags": [
       "개인화",
       "업무 개선",
@@ -579,7 +600,7 @@
         },
         {
           "title": "접수와 실제 적용 구분",
-          "description": "후보·보류·활성 적용 상태를 구분하며 학습 접수만으로 업무가 완료됐다고 판단하거나 실패 작업을 재개하지 않습니다."
+          "description": "후보·보류·적용을 구분합니다. 요청 시 기존 기억 전달 기록도 한국어로 설명하며 학습 접수만으로 업무 완료를 판단하거나 실패 작업을 재개하지 않습니다."
         }
       ]
     },
@@ -587,6 +608,49 @@
     "packaging": {
       "includeAdditionalPaths": []
     },
-    "runtimeRequired": true
+    "runtimeRequired": true,
+    "distribution": "harness-only",
+    "distributionReason": "작업 후 자동 학습과 기록 적용은 하네스의 저장소·후크가 필요합니다."
+  },
+  "web-interface": {
+    "displayName": "웹 화면 만들기·다듬기",
+    "desc": "기존 웹앱의 화면·페이지·컴포넌트를 기존 디자인과 실행 환경에 맞춰 개선합니다. 단일 HTML 보고서와 브라우저 업무 자동화는 별도 역할입니다.",
+    "workTags": [
+      "웹 화면 개선",
+      "반응형 UI",
+      "컴포넌트",
+      "접근성"
+    ],
+    "requirements": [
+      "수정할 웹 프로젝트와 기존 실행·빌드 방법이 필요합니다.",
+      "실제 화면 확인에는 사용 가능한 브라우저가 필요합니다. 글꼴·패키지를 자동 설치하지 않습니다."
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "title": "기존 화면과 요청 확인",
+          "description": "현재 컴포넌트·디자인 토큰·글꼴·완료 조건을 필요한 범위만 확인합니다."
+        },
+        {
+          "title": "누락된 디자인 조건 선택",
+          "description": "기존 글꼴은 유지하고 새로 정할 때만 추천·자동·직접 입력을 묻습니다."
+        },
+        {
+          "title": "화면 구현",
+          "description": "기존 프로젝트 파일에서 카드·버튼·배치·상태를 개선합니다."
+        },
+        {
+          "title": "화면과 동작 확인",
+          "description": "관련 빌드·테스트와 넓은 화면·좁은 화면을 확인하고 결과를 전달합니다."
+        }
+      ]
+    },
+    "sourceDir": "standalone-skills/web-interface",
+    "runtimeRequired": false,
+    "packaging": {
+      "includeAdditionalPaths": [],
+      "reviewedPluginDigest": "2bacd92311b54251747db9d3cec3bfb004d5220ac959d1c2c5867395102a21e5"
+    },
+    "distribution": "portable"
   }
 }

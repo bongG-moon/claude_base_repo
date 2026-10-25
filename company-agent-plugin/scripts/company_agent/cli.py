@@ -390,9 +390,16 @@ def cmd_learning(args: argparse.Namespace) -> int:
     root = _state_root(args)
     operation = args.learning_command
     if operation == "status":
-        session = load_session(args.session, root) if args.session else None
+        if getattr(args, "explain", False):
+            from .learning_explanation import read_explanation_session
+            session = read_explanation_session(root, args.session)
+        else:
+            session = load_session(args.session, root) if args.session else None
         result = {"ok": True, "learning": learning_status(root, session=session)}
-        if args.session:
+        if getattr(args, "explain", False):
+            from .learning_explanation import explain_learning
+            result = {"ok": True, "changed": False, "explanation": explain_learning(result["learning"])}
+        elif args.session:
             result["session"] = session
     elif operation in {"pause", "resume"}:
         result = set_learning_enabled(root, operation == "resume")
@@ -924,6 +931,7 @@ def build_parser() -> argparse.ArgumentParser:
             action.add_argument("--spec", required=True)
         elif operation == "status":
             action.add_argument("--session")
+            action.add_argument("--explain", action="store_true", help="기존 학습·기억 전달 기록을 짧은 한국어로 설명합니다. 추가 검사나 저장은 하지 않습니다.")
         elif operation == "rollback":
             action.add_argument("--change", required=True)
         action.set_defaults(func=cmd_learning)

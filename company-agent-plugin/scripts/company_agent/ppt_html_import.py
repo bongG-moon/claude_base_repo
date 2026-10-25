@@ -80,7 +80,7 @@ class StaticHTML(HTMLParser):
             raise ArtifactError('html_element_unsupported','지원하지 않는 HTML 요소가 있습니다. 정적 슬라이드 본문으로 준비해 주세요.')
         clean=[]
         for key,value in attrs:
-            if key in ('class','id','style','lang','dir','colspan','rowspan','width','height','alt'):
+            if key in ('class','id','style','lang','dir','colspan','rowspan','width','height','alt','data-ppt-group'):
                 if key=='style': self.check_css(value or '')
                 clean.append((key,value or ''))
         if tag=='img':

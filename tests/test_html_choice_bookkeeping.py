@@ -26,6 +26,7 @@ class HtmlChoiceBookkeepingTests(unittest.TestCase):
 
     def test_selection_steps_are_silent_and_keep_no_business_content(self):
         for spec in ({}, {"designMenu": "initial"}, {"designMenu": "additional"},
+                     {"fontChoiceRequired": True, "fontChoice": "custom", "fontName": "맑은 고딕"},
                      {"designMenu": "additional", "style": "4"}, {"style": "글래스모피즘"},
                      {"designMenu": "additional", "style": "neumorphism", "length": "detailed", "mode": "scroll"},
                      {"designMenu": "template", "htmlTemplate": {"path": str(self.root / "form.html"), "sha256": "a" * 64}}):

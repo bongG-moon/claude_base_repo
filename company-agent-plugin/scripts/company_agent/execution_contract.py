@@ -350,6 +350,9 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     elif head == ("session", "status"):
         allowed, required = {"--state-root", "--session"}, {"--session"}
     elif head == ("learning", "status"):
+        if args.count('--explain') > 1:
+            return "unknown"
+        args = [value for value in args if value != '--explain']
         allowed = {"--state-root", "--session"}
     elif head == ("context", "audit"):
         allowed = {"--project"}

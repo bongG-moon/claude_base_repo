@@ -204,8 +204,11 @@ def _structured(row, number, width, height, elements, text):
         kpi_w = usable/len(row['kpis'])
         for index, kpi in enumerate(row['kpis']):
             x = margin+index*kpi_w
+            first = len(elements)
             text(kpi['label']+(' · '+kpi['unit'] if kpi['unit'] else ''), x, top, kpi_w-16, 26, 15, 'muted')
             text(kpi['value'], x, top+28, kpi_w-16, 57, 38, 'accent', True)
+            for element in elements[first:]:
+                element['group'] = f'kpi-{index+1}'
         top += 103
     if top > bottom:
         raise DesignError(f'{number}장 제목·요약·지표가 본문 영역보다 큽니다. 내용을 줄이거나 장을 나누어 주세요.')
@@ -335,8 +338,11 @@ def plan(data, width=960., height=540.):
             kpi_w = usable / len(row['kpis'])
             for index, kpi in enumerate(row['kpis']):
                 x = margin + index*kpi_w
+                first = len(elements)
                 text(kpi['label'] + (' · '+kpi['unit'] if kpi['unit'] else ''), x, top, kpi_w-16, 26, 15, 'muted')
                 text(kpi['value'], x, top+28, kpi_w-16, 57, 38, 'accent', True)
+                for element in elements[first:]:
+                    element['group'] = f'kpi-{index+1}'
             top += 103
         if 'contentOrder' in row:
             blocks = _vertical(row, number, margin, top, usable, bottom, elements, text)
@@ -392,7 +398,7 @@ def render_python(data, draft, template):
     from pptx import Presentation
     from pptx.chart.data import CategoryChartData
     from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_LABEL_POSITION
-    from pptx.enum.text import MSO_ANCHOR, PP_ALIGN
+    from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
     from pptx.oxml.xmlchemy import OxmlElement
@@ -405,7 +411,7 @@ def render_python(data, draft, template):
     design = data['presentationPlan']
     palette = design['theme']
     color = lambda name: RGBColor.from_string(palette.get(name, name))
-    native = {'text': 0, 'tables': 0, 'charts': 0, 'images': 0, 'shapes':0}
+    native = {'text': 0, 'tables': 0, 'charts': 0, 'images': 0, 'shapes':0, 'groups':0}
     blank = min(prs.slide_layouts, key=lambda layout: len(layout.placeholders))
 
     def typeface(font, name=None):
@@ -422,6 +428,7 @@ def render_python(data, draft, template):
 
     def format_text(frame, size, ink='text', bold=False):
         frame.word_wrap = True
+        frame.auto_size = MSO_AUTO_SIZE.NONE
         frame.margin_top = frame.margin_bottom = Pt(2)
         frame.margin_left = frame.margin_right = Pt(0)
         for p in frame.paragraphs:
@@ -429,6 +436,9 @@ def render_python(data, draft, template):
             p.font.size = Pt(size)
             for run in p.runs:
                 typeface(run.font)
+                run.font.size = Pt(size)
+                run.font.bold = bold
+                run.font.color.rgb = color(ink)
             p.font.bold, p.font.color.rgb = bold, color(ink)
             p.space_before = p.space_after = Pt(0)
             p.line_spacing = 1.15
@@ -534,6 +544,8 @@ def render_python(data, draft, template):
                 picture = slide.shapes.add_picture(BytesIO(base64.b64decode(im['data'])), box[0], box[1], height=box[3])
                 fit_picture(picture,box,e.get('fit','contain'))
                 native['images'] += 1
+        from .ppt_scene import group_shapes
+        native['groups'] += group_shapes(slide, page['elements'])
     prs.core_properties.title, prs.core_properties.subject = data['title'], data['subtitle']
     prs.save(str(draft))
     return native
