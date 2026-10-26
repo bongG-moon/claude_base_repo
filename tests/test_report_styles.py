@@ -70,9 +70,9 @@ class ReportStylesTests(unittest.TestCase):
         self.assertEqual(['style'],pending['missing'])
         self.assertEqual({'length':'detailed'},pending['preservedChoices'])
 
-    def test_initial_options_are_two_designs_and_disclosure(self):
+    def test_initial_options_preserve_existing_and_add_three_references(self):
         result=styles.choices({})
-        self.assertEqual(4,len(result['initialDesignOptions']))
+        self.assertEqual(7,len(result['initialDesignOptions']))
         self.assertEqual('추가 디자인(미리보기)',result['initialDesignOptions'][2])
         self.assertEqual('HTML 양식 직접 첨부',result['initialDesignOptions'][3])
         self.assertNotIn('뉴모피즘',json.dumps(result,ensure_ascii=False))

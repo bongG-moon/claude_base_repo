@@ -428,6 +428,8 @@ class ActualPackageTests(unittest.TestCase):
             self.assertEqual(catalog['summary']['observed_sessions'], 0)
             self.assertTrue(any(a['title'] == 'weekly-report' for a in catalog['assets']))
             self.assertTrue((result / '업무현황.html').is_file())
+            markdown = (result / '업무자산.md').read_text(encoding='utf-8')
+            self.assertIn('weekly-report', markdown)
             self.assertEqual(source.read_bytes(), before)
 
 

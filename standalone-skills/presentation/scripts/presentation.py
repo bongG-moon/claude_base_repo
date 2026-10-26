@@ -65,11 +65,13 @@ def main(argv=None):
                         if not check.get("ok") or check.get("slideCount") != len(data["sections"]):
                             raise ValueError("출력 장수 또는 파일 구조 확인에 실패했습니다.")
                         layout = content_layout.check_ppt(draft, data) if not preserve else {"status": "not-requested"}
+                        quality = ppt_workflow.quality(draft)
                         ppt_workflow.verify_design_review(spec, args.template)
                         artifacts._publish(draft, target)
                     result = {"ok": True, "outputPath": str(target), "slides": check["slideCount"],
                               "engine": "python-pptx", "editability": native, "arithmetic": arithmetic,
                               "contentLayoutValidation": layout, "visualReview": "not_verified",
+                              "quality": quality,
                               "officeStarted": False, "harnessRequired": False,
                               "warnings": ["구조와 편집 가능한 개체를 확인했습니다. 실제 PowerPoint 화면의 글자 잘림·배치는 별도 확인이 필요합니다."]}
     except ModuleNotFoundError as exc:

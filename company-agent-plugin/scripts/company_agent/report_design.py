@@ -127,13 +127,59 @@ body[data-style] :is(button,summary,a):focus-visible{outline:3px solid var(--acc
 .chart-values summary{min-height:44px;display:list-item;align-content:center}
 body[data-view=scroll] .section:not(.layout-cover) h2{max-width:none;text-wrap:pretty}
 .section :is(.copy-block,.visual-block){min-width:0}
+/* An absent block must not reserve a second column. Prose-only panels use a
+   centered reading width instead of leaving half a wide panel unused. */
+body[data-style] .layout-split .section-content[data-content-columns="1"]{grid-template-columns:minmax(0,1fr)}
+.report-main>.section.text-panel{width:100%;max-width:960px;justify-self:center}
+.section.text-panel .text{max-width:none}
+.section .text{word-break:keep-all;overflow-wrap:anywhere}
+/* Progressive enhancement: all sections remain readable if the controller fails. */
+.report-masthead nav{display:none}.report-ready .report-masthead nav{display:flex}
+/* Only an intentional page change and control feedback move. No scroll reveal,
+   count-up, delay chain, layout animation or third-party animation runtime. */
+@keyframes report-page-enter{from{opacity:.55}to{opacity:1}}
+@media screen and (prefers-reduced-motion:no-preference){
+body.report-ready[data-view=slides][data-motion=subtle] main>.section.active{animation:report-page-enter 180ms cubic-bezier(.16,1,.3,1)}
+body[data-motion=subtle] .report-masthead button{transition:background-color 120ms ease-out,border-color 120ms ease-out}
+}
+.report-masthead button:not(:disabled):is(:hover,:focus-visible){border-color:var(--accent);background:var(--bg)}
+.report-masthead button:not(:disabled):active{border-color:var(--ink)}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+@media print{*,*::before,*::after{animation:none!important;transition:none!important}}
 """
+
+
+def _layout(row: dict) -> str:
+    return row.get("layout", "dashboard" if row.get("chart") or row.get("kpis") else "table" if row.get("table") else "summary")
+
+
+def _bento_wide_sections(rows: list[dict]) -> set[int]:
+    """Fill each consecutive run without reordering sections or inventing cards."""
+    wide = {i for i, row in enumerate(rows) if _layout(row) in ("cover", "table", "split", "dashboard")
+            or any(row.get(key) for key in ("table", "chart", "image", "diagram"))}
+    run = []
+    for i in range(len(rows) + 1):
+        if i == len(rows) or i in wide:
+            if len(run) % 2:
+                wide.add(run[-1])
+            run = []
+        else:
+            run.append(i)
+    return wide
 
 
 def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     from .report_styles import CSS as theme_css
     base_css = base_css + '\n' + CSS + '\n' + theme_css + '\n' + INTERFACE_CSS + '\n' + data.get('referenceCss', '')
+    if data.get('referencePreset'):
+        # Geometry only: the chosen palette and Korean typeface remain intact.
+        base_css += '''
+.reference-toc{display:flex;flex-wrap:wrap;gap:8px;padding:16px 30px;max-width:1440px;margin:auto;box-sizing:border-box}
+.reference-toc a{color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 12px;text-decoration:none;max-width:100%;overflow-wrap:anywhere}
+body[data-view=slides] .reference-toc{display:none}
+@media(min-width:761px){body[data-reference=reference-3] .layout-split .section-content[data-content-columns="2"]{grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr)}}
+@media print{.reference-toc{display:none}}
+'''
     if data['length'] == 'short' and data['mode'] == 'scroll' and not data.get('referenceCss'):
         base_css += '\n' + SHORT_SCROLL_CSS
     has_diagram = any(row.get('diagram') for row in data['sections'])
@@ -159,16 +205,21 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
         base_css += '\nbody[data-style] .section .section-content[data-content-layout="vertical"]{display:flex!important;flex-direction:column!important;align-items:stretch!important;gap:18px}'
         base_css += '\nbody[data-style] .section [data-content-layout="vertical"]>[data-content-block]{min-width:0;width:100%;order:0!important;grid-column:auto!important}'
     sections = []
+    bento_wide = _bento_wide_sections(data["sections"]) if data['style'] == 'bento-grid' else set()
     for i, row in enumerate(data["sections"], 1):
-        layout = row.get("layout", "dashboard" if row.get("chart") or row.get("kpis") else "table" if row.get("table") else "summary")
+        layout = _layout(row)
         diagram_class = ' has-diagram' if row.get('diagram') else ''
-        fragment = f'<section class="section layout-{layout}{diagram_class}" id="section-{i}"><span class="page-number">{i:02d} / {len(data["sections"]):02d} · {esc(row.get("eyebrow") or "업무 보고")}</span><h2>{esc(row["title"])}</h2>'
-        if layout == 'cover' and data['style'] in ('immersive-3d','editorial','retro-y2k') and not row.get('image'):
+        has_art = layout == 'cover' and data['style'] in ('immersive-3d','editorial','retro-y2k') and not row.get('image')
+        has_visual = any(row.get(key) for key in ('chart', 'table', 'image', 'diagram', 'kpis'))
+        text_class = ' text-panel' if not has_visual and layout != 'cover' and data['style'] != 'freeform' else ''
+        balance_class = (' bento-wide' if i - 1 in bento_wide else '') + (' has-theme-art' if has_art else '')
+        fragment = f'<section class="section layout-{layout}{diagram_class}{text_class}{balance_class}" id="section-{i}"><span class="page-number">{i:02d} / {len(data["sections"]):02d} · {esc(row.get("eyebrow") or "업무 보고")}</span><h2>{esc(row["title"])}</h2>'
+        if has_art:
             fragment += '<div class="theme-art" aria-hidden="true"><i></i><i></i><i></i></div>'
         if row.get("takeaway"):
             fragment += f'<p class="takeaway">{esc(row["takeaway"])}</p>'
         if row.get("kpis"):
-            fragment += '<div class="kpis">'+''.join(f'<div class="kpi"><div class="kpi-label">{esc(k["label"])}</div><div class="kpi-value">{esc(k["display"])}<span class="kpi-unit">{esc(k["unit"])}</span></div><div class="kpi-note">{esc(k["note"])}</div></div>' for k in row['kpis'])+'</div>'
+            fragment += f'<div class="kpis" data-kpi-count="{len(row["kpis"])}">'+''.join(f'<div class="kpi"><div class="kpi-label">{esc(k["label"])}</div><div class="kpi-value">{esc(k["display"])}<span class="kpi-unit">{esc(k["unit"])}</span></div><div class="kpi-note">{esc(k["note"])}</div></div>' for k in row['kpis'])+'</div>'
         blocks = {}
         if row['body']:
             blocks['body'] = f'<p class="text">{esc(row["body"])}</p>'
@@ -194,7 +245,14 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
         else:
             copy = blocks.get('body','') + blocks.get('bullets','')
             visuals = ''.join(blocks.get(k,'') for k in ('chart','table','image','diagram'))
-            fragment += '<div class="section-content"><div class="copy-block">'+copy+'</div><div class="visual-block">'+visuals+'</div></div>'
+            if copy or visuals:
+                columns = int(bool(copy)) + int(bool(visuals))
+                fragment += f'<div class="section-content" data-content-columns="{columns}">'
+                if copy:
+                    fragment += '<div class="copy-block">'+copy+'</div>'
+                if visuals:
+                    fragment += '<div class="visual-block">'+visuals+'</div>'
+                fragment += '</div>'
         if row.get('source'):
             fragment += f'<p class="section-source">{esc(row["source"])}</p>'
         sections.append(fragment+'</section>')
@@ -207,4 +265,9 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
         footer = '본문은 오프라인에서도 열립니다. Google Fonts 연결이 안 되면 PC 글꼴로 표시됩니다.'
     view='slides' if data['mode']=='slides' else 'scroll'
     toggle='<button id="toggle-view" type="button">페이지로 보기</button>' if data['mode']=='both' else ''
-    return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title>{font_link}<style>{base_css}</style></head>'+f'<body data-style="{data["style"]}" data-view="{view}" data-length="{data["length"]}"><header class="report-masthead"><div><div class="report-name">{esc(data["title"])}</div><p class="subtitle">{esc(data["subtitle"])}</p></div><nav aria-label="보고서 보기">{toggle}<button id="print" type="button">인쇄 / PDF 저장</button><span class="slide-controls"><button id="previous" type="button">이전</button> <span id="slide-count" aria-live="polite"></span> <button id="next" type="button">다음</button></span></nav></header><main class="report-main">'+''.join(sections)+'</main><footer>'+footer+'</footer><script>'+script+'</script></body></html>')
+    reference_attr = (' data-reference="' + esc(data['referencePreset']) + '"') if data.get('referencePreset') else ''
+    toc = ''
+    if data.get('referencePreset') == 'reference-2' and data['mode'] != 'slides' and len(data['sections']) > 1:
+        toc = '<nav class="reference-toc" aria-label="보고서 목차">' + ''.join(
+            f'<a href="#section-{i}">{i}. {esc(row["title"] or "내용")}</a>' for i, row in enumerate(data['sections'], 1)) + '</nav>'
+    return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title>{font_link}<style>{base_css}</style></head>'+f'<body data-style="{data["style"]}"{reference_attr} data-view="{view}" data-length="{data["length"]}" data-motion="{data.get("motion", "subtle")}"><header class="report-masthead"><div><div class="report-name">{esc(data["title"])}</div><p class="subtitle">{esc(data["subtitle"])}</p></div><nav aria-label="보고서 보기">{toggle}<button id="print" type="button">인쇄 / PDF 저장</button><span class="slide-controls"><button id="previous" type="button">이전</button> <span id="slide-count" aria-live="polite"></span> <button id="next" type="button">다음</button></span></nav></header>{toc}<main class="report-main">'+''.join(sections)+'</main><footer>'+footer+'</footer><script>'+script+'</script></body></html>')

@@ -7,7 +7,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = ROOT / 'standalone-skills/work-context-catalog'
 DEST = ROOT / 'company-agent-plugin/skills/work-context-catalog'
-FILES = ('SKILL.md', 'scripts/work_catalog.py', 'references/collection.md',
+FILES = ('SKILL.md', 'scripts/work_catalog.py', 'scripts/work_process.py', 'scripts/work_execution.py', 'scripts/work_purpose.py', 'scripts/work_asset_evidence.py',
+         'scripts/work_report.py', 'references/collection.md',
          'assets/NotoSansKR-Variable.woff', 'assets/OFL.txt', 'assets/SOURCE.json')
 
 

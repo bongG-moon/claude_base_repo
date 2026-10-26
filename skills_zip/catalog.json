@@ -3,15 +3,15 @@
   "sourceMode": "working-tree",
   "sourceVersion": "1.4.46",
   "distributionStandard": {
-    "sha256": "d14f41427382c45cac60ea930b0bb95e3046d188a5044d477a2289b49042f490",
+    "sha256": "76fe2cc06e5508e659897b6cb06e428d5dba0be9e8626de3844fe0135669a730",
     "files": {
-      "SKILL.md": "11530e38dfa3dd01450f572ba391a2cb57f3cfe3b3fa80b5733ae787da1dd408",
+      "SKILL.md": "840dee9b207e3b993570dfbf0c368718865bc70162856011f88d27290f1489f3",
       "assets/INSTALL_GUIDE.template.md": "421e804d4d3e918aa55c340d39f8682e8fd696a3a5f206f77103beafcebaa239",
       "assets/SELECT_SCOPE.template.ps1": "334c74877936ae67ca3ed6118ed0a27dd9d0ea5272531ead87490a2c07854c4f",
-      "assets/VERSION_CHECK_GUIDE.md": "3e4b356bed5e8750d5ba45f392e228d679b7303a432d13ac871d8acb00718305",
+      "assets/VERSION_CHECK_GUIDE.md": "3143534edc683e50a944b5a78b3bc6658670bb7193d109a679b7b899d8100e10",
       "assets/ai-square.example.json": "25bdb08392866e6f3285614d9c1dc69ab3eb6c1e1a9a99daa25d84d53aa470fc",
       "assets/registration.example.json": "7723e9df0d1afd6db233716d6a6e49dab282df95118c7232dfc4febdbea2aec3",
-      "references/local-mcp.md": "562b5915fc1fa67fd5e97b48662d7bbb43661d675c1ac83ce1b8accdc6dafc72",
+      "references/local-mcp.md": "4637441554656393f1ff97a5e388e34ced1f48d26edb0b011315313ce09496f9",
       "references/package-format.md": "1edc7a0e904267cd846a380d20eb171bfe665670ba77dd105631593b2fc7cb0f",
       "scripts/install_scope.py": "a458e0924f0684d5a304a7b9c54801dcaaee014621f2c18ac8d805a3f45b69dc",
       "scripts/package_contract.py": "c3c8e4143f35d6439a05afc8c28895474fe44de6d4d08e61d1e694059d778674",
@@ -33,8 +33,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "asset-factory",
-      "sha256": "a2da70b85e4c9cfa1278b7e9876cf6d825b5857430ebaba26415dbc818fd6035",
-      "size": 37574,
+      "sha256": "ca4f06e5ce096640aecf14a6e4bdc8c7a1fc7114fb6916840d8246e31764f2d5",
+      "size": 38198,
       "files": 24
     },
     {
@@ -47,8 +47,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "excel-to-pipeline",
-      "sha256": "fbb1e79a071e813b68932712031192c763a721e6e1c03a0bfdf38839c1f6bc97",
-      "size": 5499637,
+      "sha256": "f3babab917c3ed12dace8025efe061007aa449c6c549459f47fa4813334d72d3",
+      "size": 5500269,
       "files": 41
     },
     {
@@ -61,23 +61,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "file-organizer",
-      "sha256": "6054427117b55d84b6c14030bcbc022ed4a5808e8bcfc55c4da78cd449e72564",
-      "size": 23784,
+      "sha256": "13bbcec2e556617e8f72bf98fe8b145619341e4e8fbe2ba621315096cd3dd89a",
+      "size": 24403,
       "files": 11
     },
     {
       "slug": "html-report",
       "file": "html-report.zip",
       "name": "오프라인 HTML 업무 보고서",
-      "description": "자료의 수치와 근거를 보존하며 글꼴·디자인을 선택해 HTML 보고서를 만듭니다. 요청한 경우 업무 흐름·구조도도 포함합니다.",
+      "description": "수치·근거를 보존하며 선택한 글꼴·디자인으로 HTML 보고서를 만듭니다. 스토리형·데이터 리포트형·발표형 레퍼런스도 선택할 수 있으며 실행 중 참고 사이트 검색은 필요 없습니다.",
       "packageId": "company.skills.html-report",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "html-report",
-      "sha256": "ee18e42a63984605d97e9a54a9e00da6991b93d0b3db91985848c7be1ebc1240",
-      "size": 135501,
-      "files": 31
+      "sha256": "d24fe3b8c33bfa94d85db895eec4076ea11240894f8151ca351e8c88df1ba658",
+      "size": 148933,
+      "files": 32
     },
     {
       "slug": "karpathy-guidelines",
@@ -89,8 +89,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "karpathy-guidelines",
-      "sha256": "f33a2b89995b8f4b274c215beddc821179a75e58998ba29af61ffb80a6d383bf",
-      "size": 27850,
+      "sha256": "54315c0e49ae79b658df8767a14b85548a5996138ce9abeed0e6362e04a5c6bc",
+      "size": 28522,
       "files": 14
     },
     {
@@ -103,8 +103,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "outlook-assistant",
-      "sha256": "5929f3f5ba0feb6c653dab2f557338eabc64e0383713f212ae49f889ab5603aa",
-      "size": 26827,
+      "sha256": "3dccc7b5abca14c44600eec02dbd9800a71f903e53aaa8acb185467bd34c33c7",
+      "size": 27453,
       "files": 12
     },
     {
@@ -117,8 +117,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "personal-knowledge",
-      "sha256": "32b8ce379d8087785728eef73d88dccd4b6d11e8669f67cd75f94365370ab42b",
-      "size": 21520,
+      "sha256": "09466ea2f7ac3886e7423a79cf7dfa3e94bce40210b82634aaf598c36b3944e5",
+      "size": 22140,
       "files": 11
     },
     {
@@ -131,22 +131,22 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "personal-memory",
-      "sha256": "a5b10175d2a1bb99bc73941da59b184fc358b3e26aaa56771faeb1a0a4234949",
-      "size": 21521,
+      "sha256": "1f8c2704a7f4bb0351c4e75fa5e872097562651b78a2e5c185728c951518e1e0",
+      "size": 22143,
       "files": 11
     },
     {
       "slug": "presentation",
       "file": "presentation.zip",
       "name": "편집 가능한 업무 발표자료",
-      "description": "참고 PPT·HTML·이미지의 배치와 문장 스타일을 살펴 HTML 초안을 만들고 글자·도형·표·차트를 편집할 수 있는 PPT로 제작합니다.",
+      "description": "참고 PPT·HTML·이미지의 배치·말투·도형·색·글꼴을 살펴 한글 HTML 초안을 만들고 글자·도형·표·차트를 편집할 수 있는 PPT로 제작합니다.",
       "packageId": "company.skills.presentation",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "presentation",
-      "sha256": "9a52023edbab13f6c0625a127f5412f3e6a8ce2eeb2799a70fe83d5a441c408a",
-      "size": 138537,
+      "sha256": "6f2de4b572605c3ca8d684d85c8eb0aa0d9537868773017fe44dd914706cc4a8",
+      "size": 146714,
       "files": 32
     },
     {
@@ -159,23 +159,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "web-interface",
-      "sha256": "1ec2eb2e5fb245bfb1487365fe8375350e784e3cb573606be7bee0ac089caeb6",
-      "size": 21295,
+      "sha256": "3ed26163664c635d019448c8655512046c1e396517b1095ad463b034ddaebf94",
+      "size": 21921,
       "files": 10
     },
     {
       "slug": "work-context-catalog",
       "file": "work-context-catalog.zip",
       "name": "업무 맥락 모아 보기",
-      "description": "지정한 프로젝트의 스킬·기억·지식과 현재 사용자의 Claude·Codex 세션 기록을 출처별로 정리해 업무현황 HTML과 재집계 자료를 만듭니다. 상시 수집이나 개인 평가 도구는 아닙니다.",
+      "description": "전체 세션은 큰 업무 유형으로 분류하고, 스킬·기억·지식 저장 기록이 있는 업무만 상세 FLOW와 실제 도구 동작으로 정리합니다. HTML·Markdown·재집계 자료로 재사용할 업무와 도메인 지식을 모읍니다.",
       "packageId": "company.skills.work-context-catalog",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "work-context-catalog",
-      "sha256": "422e6afd6417ab69a5ffd45ecec8ddcc325cfa62c68bf29460916af973777ae0",
-      "size": 5388287,
-      "files": 15
+      "sha256": "b197d94fc2b583b465bbfae40386624115b1fcef39182a624c4ad927ad37455e",
+      "size": 5432055,
+      "files": 20
     },
     {
       "slug": "manufacturing-oracle-mcp",
@@ -243,19 +243,19 @@
     }
   ],
   "managedFiles": {
-    "SHA256SUMS.txt": "5d63b4ee3d119b9ebe3f2679251c81018a304db1d68a61f8f9cbe67234bb45c3",
-    "asset-factory.zip": "a2da70b85e4c9cfa1278b7e9876cf6d825b5857430ebaba26415dbc818fd6035",
-    "excel-to-pipeline.zip": "fbb1e79a071e813b68932712031192c763a721e6e1c03a0bfdf38839c1f6bc97",
-    "file-organizer.zip": "6054427117b55d84b6c14030bcbc022ed4a5808e8bcfc55c4da78cd449e72564",
-    "html-report.zip": "ee18e42a63984605d97e9a54a9e00da6991b93d0b3db91985848c7be1ebc1240",
-    "karpathy-guidelines.zip": "f33a2b89995b8f4b274c215beddc821179a75e58998ba29af61ffb80a6d383bf",
+    "SHA256SUMS.txt": "5d1809b62d2e4e763d4a5f350ecee5882b2636e465fb9e36fa193384036f70f7",
+    "asset-factory.zip": "ca4f06e5ce096640aecf14a6e4bdc8c7a1fc7114fb6916840d8246e31764f2d5",
+    "excel-to-pipeline.zip": "f3babab917c3ed12dace8025efe061007aa449c6c549459f47fa4813334d72d3",
+    "file-organizer.zip": "13bbcec2e556617e8f72bf98fe8b145619341e4e8fbe2ba621315096cd3dd89a",
+    "html-report.zip": "d24fe3b8c33bfa94d85db895eec4076ea11240894f8151ca351e8c88df1ba658",
+    "karpathy-guidelines.zip": "54315c0e49ae79b658df8767a14b85548a5996138ce9abeed0e6362e04a5c6bc",
     "manufacturing-oracle-mcp-0.1.0-20261024.zip": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
-    "outlook-assistant.zip": "5929f3f5ba0feb6c653dab2f557338eabc64e0383713f212ae49f889ab5603aa",
-    "personal-knowledge.zip": "32b8ce379d8087785728eef73d88dccd4b6d11e8669f67cd75f94365370ab42b",
-    "personal-memory.zip": "a5b10175d2a1bb99bc73941da59b184fc358b3e26aaa56771faeb1a0a4234949",
-    "presentation.zip": "9a52023edbab13f6c0625a127f5412f3e6a8ce2eeb2799a70fe83d5a441c408a",
-    "web-interface.zip": "1ec2eb2e5fb245bfb1487365fe8375350e784e3cb573606be7bee0ac089caeb6",
-    "work-context-catalog.zip": "422e6afd6417ab69a5ffd45ecec8ddcc325cfa62c68bf29460916af973777ae0",
-    "등록_설치_안내.html": "94556d137fdfd6e070fb38f4582e196a1e0b24193caa63f9da62b4c76d9912d1"
+    "outlook-assistant.zip": "3dccc7b5abca14c44600eec02dbd9800a71f903e53aaa8acb185467bd34c33c7",
+    "personal-knowledge.zip": "09466ea2f7ac3886e7423a79cf7dfa3e94bce40210b82634aaf598c36b3944e5",
+    "personal-memory.zip": "1f8c2704a7f4bb0351c4e75fa5e872097562651b78a2e5c185728c951518e1e0",
+    "presentation.zip": "6f2de4b572605c3ca8d684d85c8eb0aa0d9537868773017fe44dd914706cc4a8",
+    "web-interface.zip": "3ed26163664c635d019448c8655512046c1e396517b1095ad463b034ddaebf94",
+    "work-context-catalog.zip": "b197d94fc2b583b465bbfae40386624115b1fcef39182a624c4ad927ad37455e",
+    "등록_설치_안내.html": "58e7c160f1d017bda5b22fb1bca2cbb5cde3e88327210a350d33300c807102fa"
   }
 }

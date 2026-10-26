@@ -33,7 +33,7 @@ class ContentLayoutTests(unittest.TestCase):
         del self.row['contentOrder']
         result = artifacts.create_html(self.spec, self.root/'default.html')
         doc = Path(result['outputPath']).read_text(encoding='utf-8')
-        self.assertIn('<div class="section-content"><div class="copy-block">', doc)
+        self.assertIn('<div class="section-content" data-content-columns="2"><div class="copy-block">', doc)
         self.assertNotIn('data-content-block=', doc)
         self.assertEqual('not-requested', result['contentLayoutValidation']['status'])
         data = ppt_html.prepare(self.spec)[0]

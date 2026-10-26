@@ -13,7 +13,7 @@ Personal Knowledge uses the selected private resource root plus `knowledge`. The
 
 When authoring or reconciling terminology, table meanings or business definitions, read `references/term-quality.md`. Ordinary lookup does not load this authoring reference.
 
-Use the exact `company_agent_runtime.cliCommand` prefix and `stateRoot` for the argument examples below. Write the compact spec with Write under `<stateRoot>/tmp/knowledge-<unique-id>.json`; never guess a bare command, global state directory, or shell redirection. If runtime context is missing, resolve the installed runtime before writing.
+Use the exact `company_agent_runtime.cliCommand` prefix and `stateRoot` for the examples below. Write the compact spec under `<stateRoot>/tmp/knowledge-<unique-id>.json`. If context is missing, defer only storage and continue the requested explanation; report the missing context once. Never search settings/session folders/env, guess another installation, or claim the fact was saved.
 
 ## Decide what to store
 

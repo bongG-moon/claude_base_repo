@@ -18,12 +18,18 @@ JSON은 내부 명세이며 사용자에게 작성시키지 않습니다. 실행
 ```
 
 - `length`: short / standard / detailed, `mode`: scroll / slides / both. 본문 분량은 직접 맞춥니다.
+- `referencePreset`: 선택한 경우에만 reference-1(스토리형 설명) / reference-2(데이터 리포트형) / reference-3(발표형). 미지정 작업은 기존과 같습니다. 기존 style·fontChoice·length·mode는 유지하고 sections의 내용 흐름도 해당 구성에 맞춰 작성합니다.
+- `motion`: subtle 기본 / none. 페이지 전환·버튼 피드백만 짧게 표시하며 움직임 줄이기와 인쇄에서는 꺼집니다. 스크롤 내용은 즉시 보입니다.
 - `fontChoice`: noto-sans-kr / pretendard / nanum-square-neo / auto / custom. custom에는 `fontName`을 넣습니다.
 - `fontSource`: system 기본. google은 외부 연결을 허용한 경우만 사용합니다.
 - sections에는 title/body/bullets/table/chart/image를 필요한 만큼 넣습니다. image는 `{"path":"절대경로.png","alt":"설명"}`입니다.
+- 각 section의 `layout`: cover / summary / dashboard / split / table. 첫 결론·현황·비교·상세를 구분하며 전체 style은 바꾸지 않습니다.
+- `takeaway`는 제목 근처 핵심 문장, `source`는 출처·집계 범위·단위·기간입니다. 차트 다음 해석은 takeaway 대신 body와 contentOrder로 배치합니다.
+- `kpis`는 계산된 facts를 참조하는 `[{"fact":"total","note":"집계 조건"}]` 형식입니다. 별도 임의 value를 넣지 않습니다.
 - 표 `headers`와 각 `rows`의 열수를 맞춥니다. chart는 `type:column|bar|line|pie`, categories, series를 사용합니다.
   예: `{"type":"column","categories":["1월","2월"],"series":[{"name":"신청","values":[12,20]}]}`.
 - `contentOrder`는 각 section의 body/bullets/table/chart/image 중 존재하는 항목을 정확히 한 번씩 적습니다. 제목·출처는 제외합니다.
+  지정하면 세로 배치가 우선합니다. `contentLayout`은 `vertical`만 지원하며 생략할 수 있습니다. 좌우 비교는 contentOrder 없이 layout:split을 사용합니다.
 - 사실 `op`: value/sum/ratio/difference/percent_change. table/chart 좌표는 0부터 셉니다.
   참조 `{"fact":"total"}`은 앞서 정의한 사실만 사용합니다. `{{fact:id}}`로 제목·본문·표·차트에 같은 값을 재사용합니다.
   `expected`와 `checks:[{"left":"a","right":"b"}]`는 알려진 대조값이 있을 때만 사용합니다.

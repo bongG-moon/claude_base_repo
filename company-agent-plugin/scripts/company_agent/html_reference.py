@@ -33,6 +33,43 @@ class ReferenceParser(HTMLParser):
             self.styles.append(value)
 
 
+def _global_rules(css: str):
+    """Read flat rules only; conditional/nested CSS is not a global theme."""
+    start = 0
+    depth = 0
+    quote = ''
+    escaped = False
+    nested = False
+    selector = ''
+    for index, char in enumerate(css):
+        if escaped:
+            escaped = False
+            continue
+        if char == '\\':
+            escaped = True
+            continue
+        if quote:
+            if char == quote:
+                quote = ''
+            continue
+        if char in ('"', "'"):
+            quote = char
+        elif char == '{':
+            if depth == 0:
+                selector = css[start:index].strip().lower()
+                start = index + 1
+                nested = False
+            else:
+                nested = True
+            depth += 1
+        elif char == '}' and depth:
+            depth -= 1
+            if depth == 0:
+                if not nested and not selector.startswith('@'):
+                    yield selector, css[start:index]
+                start = index + 1
+
+
 def analyze(path: Path) -> dict:
     from .business_artifacts import _source, ArtifactError
     path = _source(path, ('.html', '.htm'))
@@ -71,41 +108,50 @@ def analyze(path: Path) -> dict:
                '--primary':'accent', '--brand':'accent', '--line':'line', '--tint':'tint'}
     # Only literal hex colors, a restricted font-family, and bounded px radii
     # cross into our renderer. No raw CSS, HTML, URLs or source text is copied.
-    for block in css.split('}'):
-        if '{' not in block:
-            continue
-        selector, body = block.rsplit('{', 1)
-        selector = selector.strip().lower()
+    for selector, body in _global_rules(css):
+        # A code snippet, icon, state variant, or child selector does not define
+        # the page font or every card's radius. This is not a CSS cascade engine.
+        selectors = {part.strip() for part in selector.split(',')}
+        root_scope = bool(selectors & {':root', 'html', 'body'})
+        text_scope = root_scope or bool(selectors & {'main', '.report-main'})
+        heading_scope = bool(selectors & {'h1', 'h2', 'h3'})
+        panel_scope = bool(selectors & {'section', 'article', '.section', '.card', '.panel'})
+        action_scope = bool(selectors & {'button', 'a', '.button', '.btn'})
         for declaration in body.split(';'):
             prop, separator, value = declaration.partition(':')
             prop, value = prop.strip().lower(), value.strip()
             if not separator or not re.fullmatch(r'[\w-]{1,40}', prop):
                 continue
-            target = aliases.get(prop)
-            if not target and re.search(r'\b(body|html)\b', selector):
+            target = aliases.get(prop) if root_scope else None
+            if not target and root_scope:
                 target = {'background':'bg', 'background-color':'bg', 'color':'ink'}.get(prop)
-            if not target and re.search(r'\b(button|a)\b', selector):
+            if not target and action_scope:
                 target = {'background':'accent', 'background-color':'accent'}.get(prop)
             if target and re.fullmatch(r'#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?', value):
                 tokens[target] = value.lower()
-            if prop in ('font-family', '--heading-font') and re.fullmatch(r"[\w\s,'\"-]{1,160}", value):
+            font_target = ('headingFont' if prop == '--heading-font' and root_scope else
+                           'font' if prop == 'font-family' and text_scope else
+                           'headingFont' if prop == 'font-family' and heading_scope else None)
+            if font_target and re.fullmatch(r"[\w\s,'\"-]{1,160}", value):
                 names = [part.strip().strip('\"\'').strip() for part in value.split(',')]
                 if names and all(re.fullmatch(r'[\w -]{1,60}', name) for name in names):
-                    tokens['font'] = ','.join(name if name in ('serif','sans-serif','monospace','system-ui') else '"'+name+'"' for name in names)
-            if prop in ('border-radius', '--section-radius') and re.fullmatch(r'\d{1,2}px', value):
+                    tokens[font_target] = ','.join(name if name in ('serif','sans-serif','monospace','system-ui') else '"'+name+'"' for name in names)
+            radius_scope = prop == '--section-radius' and root_scope or prop == 'border-radius' and panel_scope
+            if radius_scope and re.fullmatch(r'\d{1,2}px', value):
                 tokens['radius'] = f'{min(int(value[:-2]), 40)}px'
     return {'path': str(path), 'sha256': hashlib.sha256(raw).hexdigest(), 'tokens': tokens,
             'structure': {key: parser.counts[key] for key in ('header','main','section','article','table','h1','h2')},
             'externalResourcesIgnored': parser.external,
             'warnings': ['첨부 양식의 색상·글꼴·모서리와 구역 구성을 참고합니다. 원본 HTML을 그대로 복제하지 않습니다.',
-                         '스크립트·외부 CSS/글꼴·이미지는 실행하거나 가져오지 않습니다. 없는 글꼴은 PC 기본 글꼴로 표시됩니다.']}
+                         '스크립트·외부 CSS/글꼴·이미지는 실행하거나 가져오지 않습니다. 없는 글꼴은 PC 기본 글꼴로 표시됩니다.',
+                         '전체 CSS 계산이 아닙니다. 페이지·제목·주요 구획의 단순 규칙만 참고하며 조건부 CSS와 부분 요소 스타일은 전역 양식으로 쓰지 않습니다.']}
 
 
 def theme_css(reference: dict) -> str:
     # Called only with a fresh analyze() result, never arbitrary job fields.
     mapping = {'bg':['bg'], 'paper':['paper','surface','cell','cover'], 'ink':['ink'],
                'muted':['muted'], 'accent':['accent','series-0'], 'line':['line'],
-               'tint':['tint','head-fill','row-fill'], 'font':['heading-font'],
+               'tint':['tint','head-fill','row-fill'], 'font':[], 'headingFont':[],
                'radius':['section-radius','cell-radius']}
     tokens = reference['tokens']
     declarations = [f'--{variable}:{value}' for key, value in tokens.items() for variable in mapping[key]]
@@ -113,9 +159,14 @@ def theme_css(reference: dict) -> str:
         declarations.extend('--'+key+':#ffffff' for key in ('paper','surface','cell','cover'))
     if 'font' in tokens:
         declarations.append('font-family:'+tokens['font'])
+    if tokens.get('headingFont') or tokens.get('font'):
+        declarations.append('--heading-font:'+(tokens.get('headingFont') or tokens['font']))
     # Same specificity as the built-in theme, emitted after it. Otherwise the
     # reference tokens exist in HTML but lose in the browser's CSS cascade.
-    return ':is(body,.style-preview)[data-style]{'+';'.join(declarations)+'}'
+    css = ':is(body,.style-preview)[data-style]{'+';'.join(declarations)+'}'
+    if 'font' in tokens:
+        css += '\nbody[data-style] :is(button,input,select,textarea,svg text){font-family:inherit}'
+    return css
 
 
 def validate_review_metadata(review: dict) -> None:

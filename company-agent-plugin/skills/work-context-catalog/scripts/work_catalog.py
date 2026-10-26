@@ -2,17 +2,18 @@
 from __future__ import annotations
 
 import argparse
-import base64
 from collections import Counter, defaultdict
 from datetime import datetime, timezone
 import hashlib
-import html
 import json
 import os
 from pathlib import Path
 import re
 import stat
 import sys
+from work_report import render_report, render_markdown
+from work_process import MAX_REQUESTS, request_steps, sanitize_request, summarize_work
+from work_execution import ExecutionTrace, MAX_EXECUTIONS, merge_executions, sanitize_execution
 
 LIMITS = {"files": 1500, "entries": 10000, "depth": 8, "total_bytes": 16 * 1024 * 1024,
           "file_bytes": 512 * 1024, "session_files": 20000, "session_entries": 200000,
@@ -20,6 +21,13 @@ LIMITS = {"files": 1500, "entries": 10000, "depth": 8, "total_bytes": 16 * 1024 
           "session_events": 200000, "catalog_bytes": 256 * 1024 * 1024}
 SKIP_DIRS = {'.git', '.svn', 'node_modules', '__pycache__', '.venv', 'venv', 'build', 'dist',
              '.cache', 'cache', 'tool-results', 'logs', 'screenshots', 'images'}
+# Claude persists these bookkeeping records between the human request and calls.
+# They are not new requests. Ignore their bodies, including rendered attachments.
+PASSIVE_CLAUDE_RECORDS = {
+    'attachment', 'last-prompt', 'atis-latch', 'cost-state', 'mode',
+    'permission-mode', 'ai-title', 'api-request', 'api-request-shape',
+    'api-request-blob', 'file-history-delta',
+}
 TOPICS = {
     '자료 분석·정리': ('엑셀', 'excel', 'csv', '데이터', '집계', '전처리', '분석', 'query', 'sql'),
     '문서·보고': ('보고서', '리포트', 'ppt', 'presentation', 'slides', '문서', '발표', '요약'),
@@ -286,6 +294,9 @@ class Collector:
         flags = {'meaningful': False, 'ambiguous': False, 'greeting': False, 'context': False}
         file_hash = hashlib.sha256()
         partial = [False]
+        work_requests, request_ids, user_ordinal = [], set(), 0
+        workflow_partial = False
+        trace = ExecutionTrace(clean, self.limits['session_events'])
 
         def lines(stream):
             # Bounded memory, but not a prefix sample: drain an oversized JSONL row
@@ -306,6 +317,10 @@ class Collector:
                 oversized = len(raw) > self.limits['line_bytes']
                 unterminated = not raw.endswith(b'\n') and stream.tell() < path.stat().st_size
                 if oversized or unterminated:
+                    # A skipped row may contain a new human turn. Do not attach
+                    # subsequent calls to an earlier, unrelated work request.
+                    trace.set_requests([])
+                    trace.partial = True
                     while not raw.endswith(b'\n') and stream.tell() < path.stat().st_size:
                         remaining = self.limits['session_bytes'] - self.session_bytes
                         if remaining <= 0:
@@ -329,6 +344,8 @@ class Collector:
                 row = json.loads(raw)
                 if not isinstance(row, dict):
                     flags['ambiguous'] = True
+                    trace.set_requests([])
+                    trace.partial = True
                     continue
                 if row.get('isSidechain') is True:
                     self.warnings['하위 작업자 세션 이벤트 제외'] += 1
@@ -360,9 +377,18 @@ class Collector:
                 user_content = None
                 message = row.get('message')
                 if row.get('type') == 'user' and isinstance(message, dict):
-                    event_type = 'user'
                     user_content = message.get('content')
-                    user_text = extract_user_text(user_content)
+                    # Tool result rows have the user envelope in Claude logs,
+                    # but they are not human requests and must not move context.
+                    contains_result = isinstance(user_content, list) and any(
+                        isinstance(item, dict) and item.get('type') == 'tool_result' for item in user_content)
+                    if not contains_result:
+                        event_type = 'user'
+                        user_text = extract_user_text(user_content)
+                    else:
+                        # A result-only fragment is evidence of some work even
+                        # when its invocation/request is outside this fragment.
+                        flags['ambiguous'] = True
                 elif row.get('type') == 'assistant' and isinstance(message, dict):
                     content = message.get('content')
                     if isinstance(content, list):
@@ -396,9 +422,15 @@ class Collector:
                             if excerpt not in intents:
                                 intents.append(excerpt)
                 if not user_text and not tool_names:
+                    if event_type == 'user':
+                        trace.set_requests([])
+                        trace.partial = True
+                    trace.observe(row, '', allow_calls=False)
                     known_types = {'session_meta', 'turn_context', 'response_item', 'event_msg', 'user', 'assistant', 'system', 'summary', 'progress', 'file-history-snapshot', 'queue-operation'}
-                    if row.get('type') not in known_types:
+                    if row.get('type') not in known_types | PASSIVE_CLAUDE_RECORDS:
                         flags['ambiguous'] = True
+                        trace.set_requests([])
+                        trace.partial = True
                     continue
                 if any(name.lower() not in ('toolsearch', 'tool_search') for name in tool_names):
                     flags['meaningful'] = True
@@ -407,6 +439,9 @@ class Collector:
                 if self.session_event_count >= self.limits['session_events']:
                     self.warnings['세션 이벤트 보관 상한 · 이후 줄 분류는 계속'] += 1
                     partial[0] = True
+                    trace.observe(row, signature, allow_calls=False)
+                    if user_text:
+                        trace.set_requests([])
                     continue
                 seen_counts[signature] += 1
                 native_id = row.get('uuid')
@@ -422,6 +457,29 @@ class Collector:
                 self.session_event_count += min(event_cost, remaining_events)
                 if user_text:
                     events.add(event_id)
+                    current_requests = []
+                    if event_id not in request_ids:
+                        request_ids.add(event_id)
+                        # Capture order while streaming; sorted event hashes do
+                        # not encode chronology. Keep normalized labels only.
+                        user_ordinal += 1
+                        blocks = re.split(r'(?=별개로|다른 업무로|다른 작업으로)', user_text)
+                        for block_index, block in enumerate(b for b in blocks if b.strip()):
+                            if pure_greeting(block):
+                                continue
+                            if len(work_requests) >= MAX_REQUESTS:
+                                workflow_partial = True
+                                continue
+                            summary = request_steps(block, clean)
+                            summary.update(id=digest(event_id + ':work:' + str(block_index)), ordinal=user_ordinal * 100 + block_index)
+                            work_requests.append(sanitize_request(summary, clean))
+                            current_requests.append(summary['id'])
+                    else:
+                        # Repeated envelopes refer to the same captured request.
+                        prefix_ids = {digest(event_id + ':work:' + str(i)) for i in range(MAX_REQUESTS)}
+                        current_requests = [request['id'] for request in work_requests if request['id'] in prefix_ids]
+                    trace.set_requests(current_requests)
+                trace.observe(row, event_id, allow_calls=bool(tool_names), max_calls=len(tool_names))
                 for index, name in enumerate(tool_names):
                     name = clean(name, 100)
                     if name not in tools and len(tools) >= 500:
@@ -433,6 +491,8 @@ class Collector:
             except (ValueError, TypeError, UnicodeError, RecursionError):
                 self.warnings['세션 JSONL 형식 오류'] += 1
                 partial[0] = True
+                trace.set_requests([])
+                trace.partial = True
         if len(session_ids) > 1:
             self.warnings['한 파일의 복수 세션 ID · 혼합 기록 제외'] += 1
             self.session_skips['mixed_session_ids'] += 1
@@ -449,7 +509,8 @@ class Collector:
         for name, value in flags.items():
             previous[name] = previous[name] or value
         record = self.sessions.setdefault(key, {'id': key, 'evidence': 'observed_calls', 'origins': [],
-            'user_events': [], 'tool_events': {}, 'topics': [], 'intents': [], 'project_roots': [], 'unmapped_project': False})
+            'user_events': [], 'tool_events': {}, 'topics': [], 'intents': [], 'project_roots': [], 'unmapped_project': False,
+            'work_requests': [], 'workflow_partial': False, 'execution_events': [], 'execution_partial': False})
         if origin not in record['origins']:
             record['origins'].append(origin)
         record['user_events'] = sorted(set(record['user_events']) | events)
@@ -457,6 +518,24 @@ class Collector:
         record['project_roots'] = sorted(set(record['project_roots']) | projects)
         record['unmapped_project'] = record['unmapped_project'] or unmatched_cwd or not projects
         record['intents'] = list(dict.fromkeys(record['intents'] + intents))[:3]
+        known_requests = {r['id'] for r in record.setdefault('work_requests', [])}
+        record['work_requests'].extend(r for r in work_requests if r['id'] not in known_requests)
+        if len(record['work_requests']) > MAX_REQUESTS:
+            record['work_requests'] = sorted(record['work_requests'], key=lambda r: r['ordinal'])[:MAX_REQUESTS]
+            workflow_partial = True
+        record['workflow_partial'] = record.get('workflow_partial', False) or workflow_partial or partial[0]
+        try:
+            record['execution_events'] = merge_executions(record.get('execution_events', []), trace.events.values())
+        except ValueError:
+            # Conflicting copies remain visible as a partial trace; do not
+            # replace prior observations with a different reconstructed story.
+            self.warnings['실행 기록 사본 충돌 또는 보관 상한'] += 1
+            trace.partial = True
+        record['execution_partial'] = record.get('execution_partial', False) or trace.partial or partial[0]
+        if trace.partial:
+            self.warnings['실행 상세 한도 또는 형식 미지원'] += 1
+        if workflow_partial:
+            self.warnings['업무 단계 요약 한도 · 세션 집계는 계속'] += 1
         for name, ids in tools.items():
             record['tool_events'][name] = sorted(set(record['tool_events'].get(name, [])) | ids)
 
@@ -516,7 +595,38 @@ class Collector:
                         if key in self.session_flags:
                             self.session_flags[key]['ambiguous'] = True
                         item = target.setdefault(key, {'id': key, 'evidence': 'observed_calls', 'origins': [],
-                            'user_events': [], 'tool_events': {}, 'topics': [], 'intents': [], 'project_roots': [], 'unmapped_project': False})
+                            'user_events': [], 'tool_events': {}, 'topics': [], 'intents': [], 'project_roots': [], 'unmapped_project': False,
+                            'work_requests': [], 'workflow_partial': False, 'execution_events': [], 'execution_partial': False})
+                        requests = record.get('work_requests', [])
+                        if not isinstance(requests, list) or len(requests) > MAX_REQUESTS:
+                            raise ValueError('invalid work requests')
+                        known_requests = {r['id']: r for r in item.setdefault('work_requests', [])}
+                        for request in requests:
+                            normalized = sanitize_request(request, clean)
+                            previous = known_requests.get(normalized['id'])
+                            if previous and previous != normalized:
+                                raise ValueError('conflicting work request evidence')
+                            if previous is None:
+                                item['work_requests'].append(normalized)
+                                known_requests[normalized['id']] = normalized
+                        if len(item['work_requests']) > MAX_REQUESTS:
+                            raise ValueError('merged work request cap')
+                        execution_records = record.get('execution_events', [])
+                        if 'work_requests' not in record:
+                            if execution_records:
+                                self.warnings['요청 연결 없는 이전 집계 · 실행 상세 제외'] += 1
+                                item['execution_partial'] = True
+                            execution_records = []
+                        if not isinstance(execution_records, list) or len(execution_records) > MAX_EXECUTIONS:
+                            raise ValueError('invalid execution records')
+                        # Links must refer to requests in this exported session,
+                        # not requests found in a different import or local scan.
+                        source_request_ids = {request['id'] for request in requests}
+                        normalized_execution = [sanitize_execution(entry, clean, source_request_ids)
+                                                for entry in execution_records]
+                        item['execution_events'] = merge_executions(item.get('execution_events', []), normalized_execution)
+                        item['execution_partial'] = item.get('execution_partial', False) or bool(record.get('execution_partial'))
+                        item['workflow_partial'] = item.get('workflow_partial', False) or bool(record.get('workflow_partial'))
                         item['origins'].extend(origins)
                         item['user_events'] = sorted(set(item['user_events']) | valid_hashes(record.get('user_events'), self.limits['session_events']))
                         item['topics'] = sorted(set(item['topics']) | set(approved_topics))
@@ -536,7 +646,8 @@ class Collector:
                                 raise ValueError('invalid intents')
                             item['intents'] = list(dict.fromkeys(item['intents'] + [clean(s, 160) for s in record.get('intents', [])[:3]]))[:3]
             merged_events = sum(len(s['user_events']) + sum(len(v) for v in s['tool_events'].values()) for s in self.sessions.values())
-            if len(self.assets) > self.limits['files'] or len(self.sessions) > self.limits['session_files'] or merged_events > self.limits['session_events']:
+            merged_execution = sum(len(s.get('execution_events', [])) for s in self.sessions.values())
+            if len(self.assets) > self.limits['files'] or len(self.sessions) > self.limits['session_files'] or merged_events > self.limits['session_events'] or merged_execution > self.limits['session_events']:
                 raise ValueError('merged record cap')
             self.warnings['재집계 입력의 수집 한도·누락은 원본 보고서도 확인'] += 1
         except (OSError, ValueError, TypeError, UnicodeError, RecursionError):
@@ -559,12 +670,17 @@ class Collector:
         tools = Counter()
         for session in sessions:
             tools.update({name: len(ids) for name, ids in session['tool_events'].items()})
+        work = summarize_work(sessions, assets)
         return {'schema_version': 1, 'kind': 'work-context-catalog', 'generated_at': datetime.now(timezone.utc).isoformat(),
             'roots': self.roots, 'assets': assets, 'sessions': sessions,
+            'work_analysis': work,
             'summary': {'defined_assets': sum(a['kind'] != 'configuration' for a in assets),
                 'configuration_locations': sum(a['kind'] == 'configuration' for a in assets),
                 'inventory_records': len(assets), 'observed_sessions': len(sessions), 'tool_calls': sum(tools.values()),
+                'execution_details': sum(len(s.get('execution_events', [])) for s in sessions),
                 'tools': dict(tools), 'asset_kinds': dict(Counter(a['kind'] for a in assets)),
+                'process_workflows': len(work['workflows']), 'deferred_work': len(work['deferred_work']),
+                'excluded_work_candidates': sum(work['excluded_candidates'].values()),
                 'topic_definitions': dict(Counter(t for a in assets if a['kind'] != 'configuration' for t in a['topics'])),
                 'topic_sessions': dict(Counter(t for s in sessions for t in s['topics']))},
             'coverage': {'limits': self.limits, 'bytes_read': self.read_bytes, 'candidate_files': self.file_count,
@@ -643,48 +759,8 @@ def discover_session_roots(collector, environ=None, home=None):
 
 
 def render(report):
-    esc = lambda value: html.escape(str(value), quote=True)
-    font = Path(__file__).resolve().parents[1] / 'assets/NotoSansKR-Variable.woff'
-    font_css = ''
-    font_license = ''
-    if font.is_file():
-        font_css = "@font-face{font-family:'Noto Sans KR';font-style:normal;font-weight:100 900;src:url(data:font/woff;base64," + base64.b64encode(font.read_bytes()).decode() + ") format('woff')}"
-        license_path = font.with_name('OFL.txt')
-        if not license_path.is_file():
-            raise ValueError('Bundled font license missing')
-        font_license = '<details><summary>글꼴 라이선스</summary><pre style="white-space:pre-wrap">' + esc(license_path.read_text(encoding='utf-8')) + '</pre></details>'
-    counts = report['summary']
-    rows = ''.join('<tr><td><strong>' + esc(asset['title']) + '</strong><small>' + esc(asset['description']) + '</small></td><td>'
-        + esc({'skill':'스킬','instruction':'업무 지침','memory':'기억','knowledge':'지식','reference':'참고 문서','configuration':'설정 위치'}.get(asset['kind'], asset['kind']))
-        + '</td><td>' + esc(', '.join(asset['topics'])) + '</td><td>'
-        + '<br>'.join(esc(o['root'] + '/' + o['path']) for o in asset['origins']) + '</td></tr>' for asset in report['assets'])
-    topic_rows = ''.join('<tr><td>' + esc(name) + '</td><td>' + str(counts['topic_definitions'].get(name, 0)) + '</td><td>'
-        + str(counts['topic_sessions'].get(name, 0)) + '</td></tr>' for name in [*TOPICS, '미분류'])
-    session_rows = ''.join('<tr><td>' + esc(s['id'][:12]) + '<small>' + esc(', '.join(s.get('project_roots', [])) or '프로젝트 미연결') + (' · 미연결 범위 있음' if s.get('unmapped_project') else '') + '</small></td><td>' + str(len(s['user_events'])) + '</td><td>'
-        + esc(', '.join(name + ' ' + str(len(ids)) + '회' for name, ids in s['tool_events'].items()) or '호출 없음')
-        + '</td><td>' + esc(' / '.join(s['intents']) or '질문 원문 미포함') + '</td></tr>' for s in report['sessions'])
-    warning_rows = ''.join('<li>' + esc(reason) + ' · ' + str(count) + '건</li>' for reason, count in report['coverage']['warnings'].items()) or '<li>명시한 한도 안에서 별도 읽기 경고 없음</li>'
-    scan = report['coverage'].get('session_scan', {})
-    filter_labels = {'greeting_or_thanks_only':'인사·감사만 있는 대화', 'context_only':'환경 지침만 있는 기록', 'empty':'빈 대화'}
-    scan_text = '세션 파일 발견 {files_found} · 읽기 {files_scanned} · 읽은 줄 {lines_scanned} · 포함 파일 {files_kept} · 단순 대화 제외 파일 {files_filtered} · 부분 읽기 파일 {partial_files}'.format(**{k: scan.get(k, 0) for k in ('files_found','files_scanned','lines_scanned','files_kept','files_filtered','partial_files')})
-    filter_text = ' / '.join(filter_labels.get(k, k) + ' ' + str(v) + '개' for k, v in report['coverage'].get('session_filter_reasons', {}).items()) or '단순 대화 제외 없음'
-    skip_labels = {'same_file_already_scanned': '이미 확인한 같은 파일', 'file_limit': '파일 수 한도로 미확인',
-                   'byte_limit': '읽기 용량 한도로 미확인', 'mixed_session_ids': '서로 다른 세션이 섞인 기록'}
-    omitted_text = ' / '.join(skip_labels.get(k, '기타 제외') + ': ' + str(v) for k, v in report['coverage'].get('session_skip_reasons', {}).items())
-    roots = ''.join('<div class="root"><b>' + esc(r['id']) + '</b><span>'
-        + esc({'project':'프로젝트','profile':'개인 AI 설정','state':'관리형 상태 저장소','import':'검토한 내보내기'}.get(r['scope'], r['scope']))
-        + '</span><span>' + esc(r['environment']) + '</span></div>' for r in report['roots'])
-    return '''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; font-src data:; base-uri 'none'; form-action 'none'">
-<title>업무 맥락 현황</title><style>''' + font_css + '''
-*{box-sizing:border-box}body{margin:0;background:#f4f6f8;color:#1c3043;font-family:'Noto Sans KR',sans-serif;line-height:1.65}main{max-width:1160px;margin:auto;padding:48px 24px}header{border-top:5px solid #207b78;padding:28px 0}h1{font-size:36px;letter-spacing:-1px;margin:10px 0}h2{font-size:22px;margin:0 0 18px}p{max-width:780px;color:#526579}section{background:white;border:1px solid #dce3e8;border-radius:18px;margin:20px 0;padding:26px}.eyebrow{color:#207b78;font-weight:700}.metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}.metric{padding:24px;border-radius:14px;background:#e8f1f0}.metric strong{display:block;font-size:34px;color:#185d5b}.metric span{font-size:14px}.roots{display:flex;gap:12px;flex-wrap:wrap}.root{padding:14px 18px;border:1px solid #dce3e8;border-radius:12px;min-width:180px}.root span,small{display:block;color:#64758a;font-size:12px}.table{overflow:auto}table{width:100%;border-collapse:collapse;font-size:14px}th{text-align:left;background:#f1f5f8;font-weight:600}th,td{padding:13px 14px;border-bottom:1px solid #e2e9ed;vertical-align:top;overflow-wrap:anywhere}td:first-child{min-width:150px}td:last-child{max-width:380px}ul{padding-left:20px}.notice{border-left:4px solid #c98b30;background:#fff9ec;padding:16px 20px;color:#765622}footer{font-size:13px;color:#64758a}@media(max-width:650px){main{padding:24px 14px}h1{font-size:28px}section{padding:18px}.metrics{grid-template-columns:1fr}.metric{padding:14px 20px}.metric strong{font-size:28px}}@media print{body{background:white}main{padding:0}section{break-inside:avoid}.table{overflow:visible}th,td{font-size:10px;padding:6px}}
-</style></head><body><main><header><div class="eyebrow">업무 자산과 실제 활용 흔적</div><h1>업무 맥락 현황</h1><p>어떤 업무 기준과 재사용 자산이 있는지, 허용한 세션에서 어떤 도구가 호출됐는지를 구분해 봅니다. 파일이 있다는 이유만으로 사용 중이거나 업무가 성공했다고 판단하지 않습니다.</p></header>
-<div class="metrics"><div class="metric"><strong>''' + str(counts['defined_assets']) + '''</strong><span>발견한 정의 · 중복 내용 합산 제외</span></div><div class="metric"><strong>''' + str(counts['observed_sessions']) + '''</strong><span>관찰 세션 · 전체 사용량 아님</span></div><div class="metric"><strong>''' + str(counts['tool_calls']) + '''</strong><span>관찰 도구 호출 · 성공 여부 미판정</span></div></div>
-<section><h2>확인한 저장 영역</h2><div class="roots">''' + roots + '''</div><p>전체 경로는 내보내지 않습니다. 별칭 아래의 상대 위치로 출처를 구분합니다.</p></section>
-<section><h2>업무 유형별 분류 후보</h2><p>제목·설명과 허용된 질문의 키워드로 분류한 후보입니다. 여러 유형에 중복 포함될 수 있으며 업무량·개인 성과를 뜻하지 않습니다.</p><div class="table"><table><thead><tr><th>업무 유형</th><th>정의 발견</th><th>세션 관찰</th></tr></thead><tbody>''' + topic_rows + '''</tbody></table></div></section>
-<section><h2>스킬·지식·기억의 출처</h2><div class="table"><table><thead><tr><th>자산</th><th>종류</th><th>분류 후보</th><th>출처</th></tr></thead><tbody>''' + (rows or '<tr><td colspan="4">수집 범위에서 자산을 찾지 못했습니다.</td></tr>') + '''</tbody></table></div></section>
-<section><h2>세션의 업무 흔적</h2><p>인사·감사만 있는 대화와 빈·환경 지침 전용 기록은 제외합니다. 짧거나 실패한 업무, 의미가 불명확한 기록은 보존합니다. 세션을 읽더라도 대화 원문은 기본 내보내지 않습니다.</p><div class="table"><table><thead><tr><th>익명 세션 식별</th><th>사용자 역할 이벤트</th><th>도구 호출</th><th>선택 발췌</th></tr></thead><tbody>''' + (session_rows or '<tr><td colspan="4">수집하지 않았거나 포함할 업무 흔적이 없습니다. 아래 범위를 확인하세요.</td></tr>') + '''</tbody></table></div></section>
-<section><h2>수집 범위와 누락</h2><p>''' + esc(scan_text) + '</p><p>' + esc(filter_text) + '</p><p>' + esc(omitted_text) + '''</p><ul>''' + warning_rows + '''</ul><div class="notice">지정 폴더와 확인된 현재 사용자 세션 저장소의 관찰이며 PC 전체 탐색은 아닙니다. 상한·누락은 위에 표시됩니다. 자동 가림이 모든 기밀·개인정보를 제거하지는 않습니다. 공유 전에 제목·설명·출처·발췌를 확인하세요.</div></section><footer>로컬 생성 · 원본 수정 및 업로드 없음 · 재집계 자료: catalog.json''' + font_license + '''</footer></main></body></html>'''
+    # Presentation is isolated from collection; importing this module adds no scans.
+    return render_report(report)
 
 
 def main(argv=None):
@@ -728,19 +804,26 @@ def main(argv=None):
         collector.add_catalog(path)
     result = collector.result()
     page = render(result)
+    markdown = render_markdown(result)
     output.mkdir()
     (output / 'catalog.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     (output / '업무현황.html').write_text(page, encoding='utf-8')
+    (output / '업무자산.md').write_text(markdown, encoding='utf-8', newline='\n')
     print(json.dumps({'status': 'created', 'defined_assets': result['summary']['defined_assets'],
         'observed_sessions': result['summary']['observed_sessions'], 'warning_categories': len(collector.warnings),
         'topic_definitions': result['summary']['topic_definitions'],
         'topic_sessions': result['summary']['topic_sessions'],
+        'process_workflows': result['summary']['process_workflows'],
+        'workflow_examples': [{'title': w.get('asset_title') or w['title'], 'observed_groups': w['occurrences'],
+            'steps': [s['target'] + ' · ' + s['operation'] for s in w['steps'][:6]]}
+            for w in result['work_analysis']['workflows'][:5]],
+        'excluded_work_candidates': result['work_analysis']['excluded_candidates'],
         'session_scan': result['coverage']['session_scan'],
         'session_filter_reasons': result['coverage']['session_filter_reasons'],
         'asset_examples': [{'title': a['title'], 'description': a['description'][:120], 'kind': a['kind']}
                            for a in result['assets'] if a['kind'] != 'configuration'][:8],
         'examples_are_partial': result['summary']['defined_assets'] > 8,
-        'report': str(output / '업무현황.html'), 'catalog': str(output / 'catalog.json')}, ensure_ascii=False))
+        'report': str(output / '업무현황.html'), 'markdown': str(output / '업무자산.md'), 'catalog': str(output / 'catalog.json')}, ensure_ascii=False))
     return 0
 
 

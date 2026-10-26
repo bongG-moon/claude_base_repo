@@ -146,14 +146,19 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
     if 'contentOrder' in spec or 'contentLayout' in spec:
         raise ArtifactError('invalid_content_layout', 'contentOrder와 contentLayout은 전체 문서가 아닌 각 sections/slides 항목 안에 지정하세요.')
     _check_content_scope(spec)
+    from .report_styles import reference_choices
+    try:
+        spec = reference_choices(spec)
+    except ValueError as exc:
+        raise ArtifactError('invalid_choice', str(exc)) from None
     style = spec.get("style", "minimalism")
     aliases = {"글래스모피즘": "glassmorphism", "브루탈리즘": "brutalism", "뉴모피즘": "neumorphism",
                "미니멀리즘": "minimalism", "벤토그리드": "bento-grid", "그라디언트 메시": "gradient-mesh",
                "에디토리얼": "editorial", "자유양식": "freeform", "minimal": "minimalism", "bento": "bento-grid", "gradient_mesh": "gradient-mesh",
                "3D·이머시브": "immersive-3d", "3D 이머시브": "immersive-3d", "3D· 이머시브": "immersive-3d",
                "레트로·Y2K": "retro-y2k", "레트로 Y2K": "retro-y2k", "레트로· Y2K": "retro-y2k"}
-    # Numbers are meaningful ONLY inside the additional menu. Initial menu 4
-    # means attach HTML, not glassmorphism. Group labels never become styles.
+    # Reference menu items 5-7 were resolved above; theme numbers belong only to
+    # the additional menu. Initial item 4 is HTML attachment, not glassmorphism.
     if spec.get('designMenu') == 'additional':
         numbered = str(style).strip().removesuffix('번').strip()
         if numbered.isascii() and numbered.isdecimal() and 1 <= int(numbered) <= len(STYLES):
@@ -161,13 +166,18 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
     style = aliases.get(style, style)
     mode = spec.get("mode", "scroll")
     length = spec.get("length", "standard")
+    motion = spec.get("motion", "subtle")
+    if motion not in ("subtle", "none"):
+        raise ArtifactError("invalid_motion", "움직임은 subtle(짧은 전환) 또는 none(없음)으로 지정해 주세요.")
     if style not in STYLES or mode not in MODES or length not in ("short", "standard", "detailed"):
         raise ArtifactError("invalid_choice", "지원하는 디자인, 보기 방식, 분량을 선택해 주세요.")
     rows = spec.get("sections", spec.get("slides", []))
     if not isinstance(rows, list) or not 1 <= len(rows) <= 60:
         raise ArtifactError("invalid_sections", "본문은 1~60개 페이지 또는 구역으로 구성해 주세요.")
     result = {"title": _text(spec.get("title", "업무 보고서"), 300), "subtitle": _text(spec.get("subtitle", ""), 1000),
-              "style": style, "mode": mode, "length": length, "sections": []}
+              "style": style, "mode": mode, "length": length, "motion": motion, "sections": []}
+    if 'referencePreset' in spec:
+        result['referencePreset'] = spec['referencePreset']
     if "fontSource" in spec and spec["fontSource"] not in ("system", "google"):
         raise ArtifactError("invalid_font_source", "글꼴은 system 또는 google 중에서 선택해 주세요.")
     from . import report_typography
@@ -238,12 +248,30 @@ h2{font-size:clamp(24px,3vw,34px);line-height:1.3;margin:0 0 22px}h1,h2{overflow
 @media screen{table{min-width:calc(var(--columns,1)*7rem)}th{word-break:keep-all;overflow-wrap:normal}.table-wrap:focus-visible{outline:3px solid var(--accent)}}
 th,td{border-bottom:1px solid var(--line);padding:12px;vertical-align:top}th{color:var(--accent);font-weight:700}figure{margin:24px 0}img{max-width:100%;max-height:65vh;object-fit:contain}figcaption{font-size:14px;color:var(--muted)}
 nav{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:24px}button{border:1px solid var(--line);background:var(--paper);color:var(--ink);border-radius:8px;padding:10px 16px;font:inherit;cursor:pointer}button:disabled{opacity:.4}button:focus-visible{outline:3px solid var(--accent)}
-body[data-view=slides] main>.section{display:none}body[data-view=slides] main>.section.active{display:block;min-height:60vh}body[data-view=scroll] .slide-controls{display:none}.chart-data caption{text-align:left;font-weight:700;color:var(--accent)}
+body.report-ready[data-view=slides] main>.section{display:none}body.report-ready[data-view=slides] main>.section.active{display:block;min-height:60vh}body[data-view=scroll] .slide-controls{display:none}.chart-data caption{text-align:left;font-weight:700;color:var(--accent)}
 body[data-length=short] .text{max-width:58ch}body[data-length=detailed] .text{max-width:95ch}body[data-length=detailed] .section{padding:32px}
 @media(max-width:700px){header,main,footer{padding:20px}.section{padding:24px}body[data-style=bento-grid][data-view=scroll] main{display:block}.section{margin-bottom:24px!important}}
 @media print{body{background:white!important}header{padding-top:0}nav,footer{display:none!important}main{display:block!important}.section{display:block!important;box-shadow:none!important;backdrop-filter:none!important;break-inside:avoid;border-color:#ccc!important}body[data-view=slides] .section{break-after:page;min-height:0}img{max-height:600px}}
 """
-_JS = """'use strict';(()=>{const sections=[...document.querySelectorAll('main>.section')];let index=0;const count=document.getElementById('slide-count');const prev=document.getElementById('previous');const next=document.getElementById('next');function show(){sections.forEach((s,i)=>s.classList.toggle('active',i===index));count.textContent=(index+1)+' / '+sections.length;prev.disabled=index===0;next.disabled=index===sections.length-1}prev.addEventListener('click',()=>{index=Math.max(0,index-1);show()});next.addEventListener('click',()=>{index=Math.min(sections.length-1,index+1);show()});const toggle=document.getElementById('toggle-view');if(toggle)toggle.addEventListener('click',()=>{const scroll=document.body.dataset.view==='scroll';document.body.dataset.view=scroll?'slides':'scroll';toggle.textContent=scroll?'스크롤로 보기':'페이지로 보기';show()});document.getElementById('print').addEventListener('click',()=>window.print());document.addEventListener('keydown',event=>{if(document.body.dataset.view!=='slides'||/INPUT|TEXTAREA|BUTTON/.test(event.target.tagName))return;if(event.key==='ArrowRight')next.click();if(event.key==='ArrowLeft')prev.click()});show()})();"""
+_JS = """'use strict';(()=>{
+const sections=[...document.querySelectorAll('main>.section')];let index=0;
+const count=document.getElementById('slide-count'),prev=document.getElementById('previous'),next=document.getElementById('next');
+if(!sections.length||!count||!prev||!next)return;
+function show(){sections.forEach((s,i)=>s.classList.toggle('active',i===index));count.textContent=(index+1)+' / '+sections.length;prev.disabled=index===0;next.disabled=index===sections.length-1}
+prev.addEventListener('click',()=>{index=Math.max(0,index-1);show()});
+next.addEventListener('click',()=>{index=Math.min(sections.length-1,index+1);show()});
+const toggle=document.getElementById('toggle-view');
+if(toggle)toggle.addEventListener('click',()=>{const scroll=document.body.dataset.view==='scroll';document.body.dataset.view=scroll?'slides':'scroll';toggle.textContent=scroll?'스크롤로 보기':'페이지로 보기';show()});
+document.getElementById('print').addEventListener('click',()=>window.print());
+document.addEventListener('keydown',event=>{
+if(document.body.dataset.view!=='slides'||event.defaultPrevented||event.altKey||event.ctrlKey||event.metaKey||event.shiftKey)return;
+// Let tables scroll and native controls keep their own arrow-key behavior.
+if(event.target.closest('input,textarea,select,button,a,summary,[contenteditable],.table-wrap,.explanation-diagram'))return;
+if(event.key==='ArrowRight'){event.preventDefault();next.click()}
+if(event.key==='ArrowLeft'){event.preventDefault();prev.click()}
+});
+show();document.body.classList.add('report-ready');
+})();"""
 
 
 def _html_table(headers: list[str], rows: list[list[Any]], caption: str = "") -> str:
@@ -258,13 +286,15 @@ def html_choice_selection(spec: dict[str, Any], *, metadata_only: bool = False) 
     if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional', 'template'):
         raise ArtifactError('invalid_choice', '디자인 선택 단계의 형식을 확인해 주세요.')
     from .report_typography import FIELDS
-    if metadata_only and set(spec) - {'style', 'length', 'mode', 'designMenu', 'htmlTemplate', 'templateReview', *FIELDS}:
+    if metadata_only and set(spec) - {'style', 'referencePreset', 'length', 'mode', 'designMenu', 'htmlTemplate', 'templateReview', *FIELDS}:
         raise ArtifactError('invalid_choice', '선택 파일에는 디자인·분량·보기 선택만 넣어 주세요.')
-    fields = {key: spec[key] for key in ('style','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus', *FIELDS) if key in spec}
+    fields = {key: spec[key] for key in ('style','referencePreset','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus', *FIELDS) if key in spec}
     # Also used by the report generator: aliases and numbered styles stay identical.
     normalized = _normalize({**fields, 'sections': [{}]})
     selection = {key: normalized[key] for key in ('style','length','mode')}
     selection.update({key: normalized[key] for key in FIELDS if key in normalized})
+    if 'referencePreset' in normalized:
+        selection['referencePreset'] = normalized['referencePreset']
     if 'htmlTemplate' in spec:
         template = spec['htmlTemplate']
         if (not isinstance(template, dict) or set(template) != {'path', 'sha256'}
@@ -387,6 +417,8 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
                                         "note": bind(_text(kpi.get("note", ""), 500), facts)})
         except FactError as exc:
             raise ArtifactError("numeric_validation_failed", str(exc)) from None
+        from .report_styles import apply_reference
+        apply_reference(data)
         document = render(data, _CSS, _JS, _html_table)
         from .report_typography import selection as font_selection
         typography = font_selection(data) if 'fontChoice' in data or 'fontSource' in data else None
@@ -404,6 +436,7 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
         return {"ok": True, "status": "created", "outputPath": str(output), "style": data["style"], "mode": data["mode"],
                 "sections": len(data["sections"]), "offline": data.get("fontSource") != "google", "validation": validation,
                 "contentLayoutValidation": layout_check,
+                "referencePreset": data.get('referencePreset'),
                 "templateReference": reference,
                 "typography": typography,
                 "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."] + (reference['warnings'] if reference else [])

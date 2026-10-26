@@ -84,6 +84,48 @@ class HtmlReferenceTests(unittest.TestCase):
         self.assertNotIn('bg', ref['tokens'])
         self.assertNotIn('url(', reference.theme_css(ref))
 
+    def test_local_code_and_icon_styles_do_not_override_report_theme(self):
+        self.template.write_text('''<html><style>
+        :root{--accent:#246858} body{font-family:"Noto Sans KR",sans-serif}
+        .card{border-radius:20px} h2{font-family:"NanumSquareNeo",sans-serif}
+        code{font-family:monospace;border-radius:2px;--accent:#ff0000}
+        body .icon{font-family:"Icon Font";color:#ff0000;background:#000}
+        button:hover{background:#ff0000} .icon{border-radius:40px}
+        </style><body><code style="font-family:monospace;border-radius:2px">자료</code></body></html>''', encoding='utf-8')
+        result = reference.analyze(self.template)
+        self.assertEqual('"Noto Sans KR",sans-serif', result['tokens']['font'])
+        self.assertEqual('"NanumSquareNeo",sans-serif', result['tokens']['headingFont'])
+        self.assertEqual('20px', result['tokens']['radius'])
+        self.assertEqual('#246858', result['tokens']['accent'])
+        css = reference.theme_css(result)
+        self.assertIn('--heading-font:"NanumSquareNeo",sans-serif', css)
+        self.assertIn('svg text){font-family:inherit}', css)
+        self.assertNotIn('monospace', css)
+        self.assertNotIn('Icon Font', css)
+
+    def test_conditional_rules_cannot_replace_unconditional_reference(self):
+        self.template.write_text('''<html><style>
+        body{font-family:"Noto Sans KR",sans-serif;background:#ffffff}
+        section{border-radius:16px}
+        @media print{body{font-family:monospace;background:#000000} section{border-radius:0px}}
+        @supports(display:grid){body{font-family:serif} :root{--accent:#ff0000}}
+        .card{border-radius:18px}
+        </style><body>자료</body></html>''', encoding='utf-8')
+        tokens = reference.analyze(self.template)['tokens']
+        self.assertEqual('"Noto Sans KR",sans-serif', tokens['font'])
+        self.assertEqual('#ffffff', tokens['bg'])
+        self.assertEqual('18px', tokens['radius'])
+        self.assertNotIn('accent', tokens)
+
+    def test_unknown_complex_selectors_are_not_claimed_as_theme(self):
+        self.template.write_text('''<html><style>
+        body[data-theme="dark"]{font-family:monospace;--accent:#ff0000}
+        body > code{font-family:monospace} .unknown{border-radius:40px}
+        </style><body>자료</body></html>''', encoding='utf-8')
+        result = reference.analyze(self.template)
+        self.assertEqual({}, result['tokens'])
+        self.assertIn('전체 CSS 계산이 아닙니다', ''.join(result['warnings']))
+
     def test_changed_template_stops_publication_and_existing_output_is_preserved(self):
         selected = reference.inspect_template(self.template)['htmlTemplate']
         self.template.write_text('<html><body>changed</body></html>',encoding='utf-8')

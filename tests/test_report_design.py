@@ -11,6 +11,7 @@ import xml.etree.ElementTree as ET
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "company-agent-plugin/scripts"))
 from company_agent.business_artifacts import create_html, STYLES
+from company_agent.report_design import _bento_wide_sections
 
 
 class ReportDesignTests(unittest.TestCase):
@@ -132,6 +133,62 @@ class ReportDesignTests(unittest.TestCase):
         self.assertEqual(result["validation"]["freeTextClaims"],"not_verified")
         self.assertTrue(result["warnings"])
 
+    def test_split_omits_absent_columns_and_keeps_real_two_column_content(self):
+        chart = {"type":"column", "categories":["신청"], "series":[{"name":"인원", "values":[8]}]}
+        cases = [({"body":"설명만 있습니다."}, 1, True, False),
+                 ({"chart":chart}, 1, False, True),
+                 ({"body":"실제 설명", "chart":chart}, 2, True, True)]
+        for number, (content, columns, copy, visual) in enumerate(cases):
+            target = self.output.with_name(f"split-{number}.html")
+            result = create_html({"style":"freeform", "sections":[{"layout":"split", **content}]}, target)
+            self.assertTrue(result["ok"], result)
+            section = re.search(r'<section\b.*?</section>', target.read_text(encoding="utf-8"), re.S).group()
+            self.assertIn(f'data-content-columns="{columns}"', section)
+            self.assertEqual(copy, 'class="copy-block"' in section)
+            self.assertEqual(visual, 'class="visual-block"' in section)
+            self.assertNotIn('class="copy-block"></div>', section)
+            self.assertNotIn('class="visual-block"></div>', section)
+
+    def test_bento_balances_each_contiguous_card_run_without_reordering(self):
+        rows = [{"body":"앞 카드"}, {"table":{"headers":["열"], "rows":[["값"]]}},
+                {"body":"두 번째"}, {"body":"세 번째"}, {"body":"마지막"},
+                {"layout":"cover"}, {"body":"끝 카드"}]
+        self.assertEqual({0, 1, 4, 5, 6}, _bento_wide_sections(rows))
+        self.assertEqual(set(), _bento_wide_sections([{"body":"A"}, {"body":"B"}]))
+        result = create_html({"style":"bento-grid", "sections":rows}, self.output)
+        self.assertTrue(result["ok"], result)
+        rendered = re.findall(r'<section\b([^>]*)>(.*?)</section>', self.output.read_text(encoding="utf-8"), re.S)
+        self.assertEqual([f'section-{i+1}' for i in range(len(rows))],
+                         [re.search(r'id="([^"]+)"', attrs).group(1) for attrs, _ in rendered])
+        self.assertEqual([0, 1, 4, 5, 6], [i for i, (attrs, _) in enumerate(rendered) if 'bento-wide' in attrs])
+
+    def test_bento_kpi_count_is_available_for_filling_last_row(self):
+        for count in range(1, 7):
+            spec = {"style":"bento-grid", "facts":[{"id":"count", "op":"value", "inputs":[8]}],
+                    "sections":[{"kpis":[{"fact":"count"} for _ in range(count)]}]}
+            target = self.output.with_name(f"kpis-{count}.html")
+            self.assertTrue(create_html(spec, target)["ok"])
+            section = re.search(r'<section\b.*?</section>', target.read_text(encoding="utf-8"), re.S).group()
+            self.assertIn(f'data-kpi-count="{count}"', section)
+            self.assertEqual(count, section.count('class="kpi"'))
+            self.assertNotIn('class="section-content"', section)
+
+    def test_cover_reserves_art_space_only_when_art_exists(self):
+        from unittest.mock import patch
+        image = {"mime":"image/png", "data":"aGVsbG8=", "alt":"참고 이미지"}
+        for style in ("editorial", "immersive-3d", "retro-y2k"):
+            for with_image in (False, True):
+                target = self.output.with_name(f"{style}-{with_image}.html")
+                row = {"layout":"cover", "body":"표지 설명"}
+                if with_image:
+                    row["image"] = {"path":"unused.png"}
+                with patch('company_agent.business_artifacts._image', return_value=image):
+                    self.assertTrue(create_html({"style":style, "sections":[row]}, target)["ok"])
+                section = re.search(r'<section\b.*?</section>', target.read_text(encoding="utf-8"), re.S).group()
+                self.assertEqual(not with_image, 'has-theme-art' in section)
+                self.assertEqual(not with_image, 'class="theme-art"' in section)
+                self.assertEqual(with_image, 'class="visual-block"' in section)
+
     def test_difference_growth_and_rounding(self):
         spec={"facts":[{"id":"growth","op":"percent_change","inputs":[210,175],"decimals":2},
                        {"id":"diff","op":"difference","inputs":[210,175]},
@@ -144,7 +201,7 @@ class ReportDesignTests(unittest.TestCase):
         skill=ROOT/'company-agent-plugin/skills/html-report/SKILL.md'
         text=skill.read_text(encoding='utf-8')
         self.assertIn('references/design-and-numbers.md',text)
-        self.assertIn('current Skill catalog',text)
+        self.assertIn('Reuse current selected guidance',text)
         self.assertIn('not only individual input rows',text)
         guide=(skill.parent/'references/design-and-numbers.md').read_text(encoding='utf-8')
         example=json.loads(re.search(r'```json\n(.*?)\n```',guide,re.S).group(1))

@@ -34,10 +34,23 @@ class WorkCatalogIntegrationTests(unittest.TestCase):
         self.assertEqual(('load',self.skill['id']),(decision.mode,decision.candidate_id))
 
     def test_does_not_steal_unrelated_work(self):
-        for request in ('안녕', 'PPT 만들어줘', '새 스킬 만들어줘', '엑셀 수식 구조를 분석해줘',
+        for request in ('안녕', 'HTML 보고서 만들어줘', '위 내용을 HTML로 만들어줘',
+                        'PPT 만들어줘', '새 스킬 만들어줘', '엑셀 수식 구조를 분석해줘',
                         '이 문장을 기억해줘', 'Chrome에서 페이지를 읽어줘'):
             candidates = task_candidates(self.inventory, request)
             self.assertNotIn(self.skill['id'], candidates.get('strongIds',[]),request)
+
+    def test_html_creation_has_one_workflow_without_usage_inventory(self):
+        for request in ('HTML 보고서 만들어줘', '위 내용을 HTML로 만들어줘'):
+            candidates = task_candidates(self.inventory, request)
+            decision = decide_preparation(candidates, self.inventory['skills'], [])
+            html_skill = next(s for s in self.inventory['skills'] if s['name'] == 'html-report')
+            self.assertEqual(('load', html_skill['id']), (decision.mode, decision.candidate_id), request)
+
+    def test_usage_inventory_remains_discoverable_without_explicit_name(self):
+        candidates = task_candidates(self.inventory, 'Claude 사용 기록을 집계하고 업무 흐름을 설명해줘')
+        self.assertTrue(any(row['id'] == self.skill['id'] for group in candidates.get('groups', [])
+                            for row in group['candidates']))
 
     def test_distributed_files_match_and_no_fixtures_are_shipped(self):
         path=ROOT/'scripts/sync-work-context-skill.py'
@@ -56,7 +69,8 @@ class WorkCatalogIntegrationTests(unittest.TestCase):
         path = PLUGIN / 'skills/work-context-catalog/scripts/work_catalog.py'
         spec = importlib.util.spec_from_file_location('installed_work_catalog', path)
         module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(module)
+        with patch.object(sys, 'path', [str(path.parent), *sys.path]):
+            spec.loader.exec_module(module)
         profile = self.fixture_root / 'synthetic-profile'
         sessions = profile / 'projects' / 'fixture'
         sessions.mkdir(parents=True)

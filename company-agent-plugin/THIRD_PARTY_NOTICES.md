@@ -35,6 +35,27 @@ The Korean writing contribution is MIT, copyright (c) 2026 epoko77-ai; the
 permission/warranty text below applies separately to it. All adaptations are
 modified, company-authored selections, not claims of upstream endorsement.
 
+## HTML and Korean presentation review (2026-10-26)
+
+The following public source documents were reviewed again at their default
+branches on this date. These are selected, modified guidance adaptations and
+company-authored implementations, not installed upstream Skills. Existing user
+templates and the local rendering contract take precedence. No upstream agents,
+automatic design research, image generation, analytics or review loops are bundled.
+
+| Source | Selected integration |
+| --- | --- |
+| [Impeccable](https://github.com/pbakaus/impeccable) | Content hierarchy, restrained purpose-led transitions, progressive enhancement, keyboard and reduced-motion behavior in the existing HTML generator. Apache-2.0, Copyright 2025 Paul Bakaus. |
+| [PPT Master](https://github.com/hugohe3/ppt-master) | Reference design evidence, Korean text hierarchy, consistent editable-object composition and bounded quality checks. MIT, Copyright (c) 2025-2026 Hugo He. |
+| [Jinba Consulting PPTX Skill](https://github.com/carnot-tech/jinba-consulting-pptx-skill) | One substantive message per slide, evidence aligned to conclusions and layout chosen for the argument. Japanese wording and fixed corporate branding are not imported. MIT, Copyright (c) 2026 Carnot AI Inc. |
+| [im-not-ai](https://github.com/epoko77-ai/im-not-ai) | Reviewed `skills/humanize-korean/SKILL.md` and `references/quick-rules.md`: preserve substantive concepts, genre and uncertainty while editing new Korean prose. No scoring pipeline, rewrite agents or authorship claim. MIT, Copyright (c) 2026 epoko77-ai. |
+
+The full Apache-2.0 terms distributed in
+[licenses/frontend-design-Apache-2.0.txt](licenses/frontend-design-Apache-2.0.txt)
+also accompany the Impeccable guidance adaptation. Its attribution above is
+separate from Anthropic's. The MIT permission and warranty text below applies
+separately to each listed MIT contribution. No endorsement is implied.
+
 ## Offline guide typography
 
 The HTML user guides embed a character subset of **Noto Sans KR** (weights

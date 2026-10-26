@@ -12,6 +12,63 @@ STYLES = (
     ('retro-y2k', '레트로·Y2K', '크롬과 파스텔형', '은빛 크롬 테두리와 하늘색·분홍·보라, 별빛 장식으로 복고적인 화면을 만듭니다.'),
 )
 
+# Reviewed public examples, adapted locally. Selection never fetches the sites.
+REFERENCE_PRESETS = (
+    ('reference-1', '레퍼런스 1 · 스토리형 설명', '질문 → 예시·근거 → 해석 → 적용 조건. 차분한 글과 차트를 따라 읽는 구성입니다.', 'editorial'),
+    ('reference-2', '레퍼런스 2 · 데이터 리포트형', '핵심 지표 → 주제별 비교 → 상세 표. 목차로 필요한 내용을 찾아보는 구성입니다.', 'bento-grid'),
+    ('reference-3', '레퍼런스 3 · 발표형', '한 화면에 핵심 메시지 하나와 넓은 표·차트. 짧은 설명과 근거를 나란히 보여 줍니다.', 'minimalism'),
+)
+
+
+def reference_choices(spec):
+    """Resolve a named reference while preserving explicit theme/format choices."""
+    import re
+    result = dict(spec)
+    raw = spec.get('referencePreset')
+    style = spec.get('style')
+    if isinstance(style, int) and not isinstance(style, bool):
+        style = str(style)
+    from_style = False
+    if raw is None and 'referencePreset' not in spec and isinstance(style, str):
+        if re.fullmatch(r'(?:reference[- ]?|레퍼런스\s*)[123]', style.strip(), re.I):
+            raw, from_style = style, True
+        elif spec.get('designMenu') == 'initial' and style.strip().removesuffix('번').strip() in ('5', '6', '7'):
+            raw, from_style = 'reference-' + str(int(style.strip().removesuffix('번').strip()) - 4), True
+    if raw is None and 'referencePreset' not in spec:
+        return result
+    if not isinstance(raw, str):
+        raise ValueError('referencePreset은 reference-1, reference-2, reference-3 중에서 선택해 주세요.')
+    matched = re.fullmatch(r'(?:reference[- ]?|레퍼런스\s*)([123])', raw.strip(), re.I)
+    if not matched:
+        raise ValueError('referencePreset은 reference-1, reference-2, reference-3 중에서 선택해 주세요.')
+    preset = REFERENCE_PRESETS[int(matched[1]) - 1]
+    result['referencePreset'] = preset[0]
+    if 'style' not in result or from_style:
+        result['style'] = preset[3]
+    return result
+
+
+def apply_reference(data):
+    """Fill only absent layout choices; never reorder sections or change facts."""
+    preset = data.get('referencePreset')
+    if not preset:
+        return
+    for index, row in enumerate(data['sections']):
+        if 'layout' in row or 'contentOrder' in row:
+            continue
+        visuals = [key for key in ('chart', 'table', 'image', 'diagram') if row.get(key)]
+        copy = [key for key in ('body', 'bullets') if row.get(key)]
+        if preset == 'reference-1':
+            row['layout'] = 'summary'
+            if visuals and copy:
+                row['contentOrder'] = visuals + copy
+                row['contentLayout'] = 'vertical'
+        elif preset == 'reference-2':
+            row['layout'] = 'dashboard' if row.get('chart') or row.get('kpis') else 'table' if row.get('table') else 'summary'
+        elif preset == 'reference-3':
+            row['layout'] = 'split' if visuals and copy else 'table' if row.get('table') else 'cover' if index == 0 and not visuals else 'summary'
+
+
 # Scoped selectors are shared by full reports and miniature previews. No external
 # fonts, scripts, image assets or user-provided CSS are evaluated.
 CSS = r'''
@@ -59,8 +116,11 @@ CSS = r'''
 :is(body,.style-preview)[data-style=freeform][data-view=scroll] .section:nth-child(even){margin-left:36px}
 :is(body,.style-preview)[data-style=bento-grid][data-view=scroll] .report-main{grid-template-columns:repeat(2,minmax(0,1fr));gap:22px}
 :is(body,.style-preview)[data-style=bento-grid] :is(.layout-cover,.layout-table,.layout-split,.layout-dashboard){grid-column:1/-1}
+:is(body,.style-preview)[data-style=bento-grid] .bento-wide{grid-column:1/-1}
 :is(body,.style-preview)[data-style=bento-grid] .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
 :is(body,.style-preview)[data-style=bento-grid] .kpi:first-child{grid-column:span 2}
+:is(body,.style-preview)[data-style=bento-grid] .kpis:is([data-kpi-count="1"],[data-kpi-count="3"],[data-kpi-count="6"]) .kpi:last-child{grid-column:1/-1}
+:is(body,.style-preview)[data-style=bento-grid] .kpis[data-kpi-count="4"] .kpi:last-child{grid-column:span 2}
 :is(body,.style-preview)[data-style=bento-grid] .kpi:first-child{background:#1d2c48;--ink:#f5f7ff;--muted:#c0cce3;--accent:#a4b7ff;--line:#304362}
 :is(body,.style-preview)[data-style=bento-grid] .kpi:nth-child(3n){background:#eef7f3}
 :is(body,.style-preview)[data-style=brutalism] .report-masthead{background:#143ddc;color:#fff;border:3px solid #171717;box-shadow:6px 6px 0 #171717}
@@ -75,16 +135,16 @@ CSS = r'''
 :is(body,.style-preview)[data-style=retro-y2k] .section::before{content:'';display:block;height:6px;border-radius:8px;background:linear-gradient(90deg,#68b7ff,#b99bf6,#ee9edb);margin-bottom:22px}
 /* Data-free cover artwork: decorative CSS geometry, not a fake chart or product. */
 .theme-art{display:none;pointer-events:none}
-:is(body,.style-preview)[data-style=immersive-3d] .layout-cover{padding-right:40%;min-height:500px}
+:is(body,.style-preview)[data-style=immersive-3d] .layout-cover.has-theme-art{padding-right:40%;min-height:500px}
 :is(body,.style-preview)[data-style=immersive-3d] .theme-art{display:block;position:absolute;right:5%;top:18%;width:28%;height:280px;isolation:isolate}
 :is(body,.style-preview)[data-style=immersive-3d] .theme-art::before{content:'';position:absolute;inset:70% -8% -2%;border-radius:50%;background:linear-gradient(#d0c2ad,#b09a7c);box-shadow:12px 22px 22px #67503b38,inset 0 3px 3px #fff9}
 :is(body,.style-preview)[data-style=immersive-3d] .theme-art i{position:absolute;display:block;bottom:20%;border-radius:6px;transform:skewY(-12deg);box-shadow:12px 12px 16px #5a412e35,inset 3px 3px 2px #fff8,inset -10px 0 0 #0001}
 :is(body,.style-preview)[data-style=immersive-3d] .theme-art i:nth-child(1){left:8%;width:40%;height:64%;background:linear-gradient(105deg,#eee5d6,#ac9575)}
 :is(body,.style-preview)[data-style=immersive-3d] .theme-art i:nth-child(2){left:43%;width:39%;height:82%;background:repeating-linear-gradient(90deg,#71604d 0 3px,#9c876b 3px 6px)}
 :is(body,.style-preview)[data-style=immersive-3d] .theme-art i:nth-child(3){left:35%;width:55%;height:47%;background:linear-gradient(120deg,#c97b50,#944523);border-radius:45% 5px 5px 5px}
-:is(body,.style-preview)[data-style=editorial] .layout-cover{padding-right:38%}
+:is(body,.style-preview)[data-style=editorial] .layout-cover.has-theme-art{padding-right:38%}
 :is(body,.style-preview)[data-style=editorial] .theme-art{display:block;position:absolute;right:4%;top:12%;width:28%;height:65%;max-height:300px;border-radius:80% 0 0 0;background:repeating-conic-gradient(from 230deg at 100% 100%,#541b2b 0deg 7deg,#8c4a5a 7deg 8deg,#283c51 8deg 15deg,#698096 15deg 16deg);box-shadow:inset -20px -12px 32px #10172344}
-:is(body,.style-preview)[data-style=retro-y2k] .layout-cover{padding-right:32%}
+:is(body,.style-preview)[data-style=retro-y2k] .layout-cover.has-theme-art{padding-right:32%}
 :is(body,.style-preview)[data-style=retro-y2k] .theme-art{display:block;position:absolute;right:5%;top:12%;width:21%;height:210px;background:conic-gradient(#fff,#b8c8e8,#687b9a,#fff,#cea2e6,#fff);clip-path:polygon(50% 0,58% 36%,85% 12%,66% 43%,100% 50%,64% 57%,85% 87%,56% 66%,50% 100%,43% 65%,12% 89%,35% 58%,0 50%,36% 43%,13% 13%,43% 35%)}
 :is(body,.style-preview)[data-style] .theme-art~.section-content{position:relative}
 :is(body,.style-preview)[data-style=brutalism] h2{letter-spacing:-1.6px;font-weight:900}
@@ -95,8 +155,9 @@ CSS = r'''
 @media(prefers-reduced-transparency:reduce){:is(body,.style-preview)[data-style=glassmorphism] :is(.section,.layout-cover,.kpi,.chart-frame,.report-masthead){background:#fafafa!important;backdrop-filter:none;-webkit-backdrop-filter:none}}
 @media(max-width:760px){body[data-style] .section{padding:26px 22px}body[data-style] .report-main{grid-template-columns:minmax(0,1fr)!important;padding:12px 20px;gap:28px}body[data-style] .layout-split .section-content{display:block}body[data-style=freeform][data-view=scroll] .section:nth-child(even){margin-left:0}body[data-style=bento-grid] .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}body[data-style=bento-grid] .kpi:first-child{grid-column:auto}body[data-style=neumorphism] .kpi{padding:18px}body[data-style=glassmorphism]{background-attachment:scroll}}
 @media(max-width:760px){body[data-style] .kpi-unit{display:block;margin:5px 0 0;white-space:nowrap}}
-@media(max-width:760px){body[data-style][data-view] .layout-cover{padding-right:22px}body[data-style][data-view] .theme-art{position:relative;top:auto;right:auto;margin:22px auto;width:210px;height:180px}body[data-style=editorial][data-view] .theme-art{height:160px}body[data-style] .report-masthead{margin:12px 20px}body[data-style] .report-masthead nav{display:flex;flex-wrap:wrap;gap:8px}}
-@media print{.theme-art{display:none!important}body[data-style] .layout-cover{padding-right:24px}body[data-style] .report-masthead{background:white!important;color:#172132!important;box-shadow:none!important}body[data-style] .report-masthead .subtitle{color:#344154!important}body[data-style] .kpi{--ink:#172132;--muted:#344154;--accent:#172132}}
+@media(max-width:760px){:is(body,.style-preview)[data-style=bento-grid] .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}:is(body,.style-preview)[data-style=bento-grid] .kpis[data-kpi-count] .kpi:is(:first-child,:last-child){grid-column:auto}:is(body,.style-preview)[data-style=bento-grid] .kpis:is([data-kpi-count="1"],[data-kpi-count="3"],[data-kpi-count="5"]) .kpi:last-child{grid-column:1/-1}}
+@media(max-width:760px){body[data-style][data-view] :is(.layout-cover,.layout-cover.has-theme-art){padding-right:22px}body[data-style][data-view] .theme-art{position:relative;top:auto;right:auto;margin:22px auto;width:210px;height:180px}body[data-style=editorial][data-view] .theme-art{height:160px}body[data-style] .report-masthead{margin:12px 20px}body[data-style] .report-masthead nav{display:flex;flex-wrap:wrap;gap:8px}}
+@media print{.theme-art{display:none!important}body[data-style][data-view] :is(.layout-cover,.layout-cover.has-theme-art){padding-right:24px}body[data-style] .report-masthead{background:white!important;color:#172132!important;box-shadow:none!important}body[data-style] .report-masthead .subtitle{color:#344154!important}body[data-style] .kpi{--ink:#172132;--muted:#344154;--accent:#172132}}
 @media print{body[data-style] :is(.kpi-value,.kpi-label,.kpi-note){color:#172132!important}}
 @media print{:is(body,.style-preview)[data-style]{background:white!important;--ink:#172132;--muted:#344154}body[data-style] .report-main{display:block!important}:is(body,.style-preview)[data-style] :is(.section,.layout-cover,.kpi,.chart-frame){box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;background:white!important;border-color:#aaa}body[data-style] .section{margin:0 0 24px!important}body[data-style=freeform][data-view=scroll] .section:nth-child(even){margin-left:0}}
 '''
@@ -104,10 +165,11 @@ CSS = r'''
 
 def choices(spec):
     from . import report_typography
+    spec = reference_choices(spec)
     # Expose ONLY the current step. Length/view questions must not be bundled
     # with the initial design question or an unresolved additional-design menu.
     pending = {'ok': False, 'status': 'input_required', 'code': 'report_choices_required',
-               'preservedChoices': {key: spec[key] for key in ('style','length','mode','htmlTemplate','templateReview', *report_typography.FIELDS) if key in spec}}
+               'preservedChoices': {key: spec[key] for key in ('style','referencePreset','length','mode','htmlTemplate','templateReview', *report_typography.FIELDS) if key in spec}}
     if spec.get('designMenu') == 'template' or 'htmlTemplate' in spec:
         template = spec.get('htmlTemplate')
         if not (isinstance(template, dict) and isinstance(template.get('path'), str) and template['path']
@@ -141,7 +203,14 @@ def choices(spec):
                            previewCommand='business html-designs --open', previewOptional=True,
                            previewInstruction='미리보기를 선택하면 로컬 화면 열기를 요청하고 링크를 안내한 뒤 같은 디자인 질문에서 선택을 기다리세요. 창 표시 여부는 단정하지 않습니다.')
         else:
-            pending['initialDesignOptions']=['깔끔한 업무형(추천)', '지표 중심형', '추가 디자인(미리보기)', 'HTML 양식 직접 첨부']
+            pending['initialDesignOptions']=['깔끔한 업무형(추천)', '지표 중심형', '추가 디자인(미리보기)', 'HTML 양식 직접 첨부'] + [name for _, name, _, _ in REFERENCE_PRESETS]
+            pending['referenceOptions'] = [{'referencePreset': key, 'name': name, 'description': description, 'defaultStyle': style}
+                                           for key, name, description, style in REFERENCE_PRESETS]
+            pending['selectionPrompt'] = '\n'.join(f'{i}. {name}' for i, name in enumerate(pending['initialDesignOptions'][:4], 1)) + '\n' + '\n'.join(
+                f'{i}. {name} — {description}' for i, (_, name, description, _) in enumerate(REFERENCE_PRESETS, 5))
+            pending['selectionInput'] = 'chat-number-or-name'
+            pending['selectionInstruction'] = '일곱 항목과 설명을 채팅에 한 번에 보여주고 번호나 이름을 받으세요. 질문 도구의 항목 제한에 맞춰 여러 질문으로 나누지 마세요.'
+            pending['waitForUser'] = True
         return pending
     missing = [key for key in ('length','mode') if key not in spec]
     missing += report_typography.missing(spec)
@@ -190,6 +259,7 @@ PICKER_JS = r'''"use strict";
     custom.hidden=font.value!=='custom';
     if(font.value!=='keep')parts.push('글꼴: '+(font.value==='custom'?(custom.value.trim()||'직접 입력할 이름을 물어봐줘'):font.options[font.selectedIndex].text));
     result.value='HTML 보고서를 만들어줘. '+parts.join(' / ')+'. 따로 지정하지 않은 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목만 물어봐줘. 원자료와 요청 내용은 앞서 전달한 것을 사용해줘.';
+    if(choice.startsWith('reference-'))result.value='HTML 보고서를 '+label+' 구성으로 만들어줘. '+(parts.length>1?parts.slice(1).join(' / ')+'. ':'')+'이미 정한 색상 스타일·글꼴·분량·보기 방식은 유지하고, 미정인 항목만 물어봐줘. 스킬에 있는 레퍼런스 구성으로 원자료를 정리해줘.';
     if(choice==='template')result.value='HTML 보고서에 내가 첨부할 HTML 양식을 참고해줘. '+(parts.length>1?parts.slice(1).join(' / ')+'. ':'')+'먼저 양식 파일을 받고 미리보기를 보여줘. 따로 지정하지 않은 분량과 보기 방식은 이미 정한 조건을 유지하고, 정하지 않은 항목은 양식 확인 후에만 물어봐줘.';
     status.textContent='이 선택은 아직 Claude에 전달되지 않았습니다. 아래 문장을 복사해 채팅에 붙여 넣어 주세요.';
   }
@@ -229,6 +299,10 @@ def picker_html():
         specific='<header class="report-masthead"><div class="report-name">월간 운영 보고 · 가상 예시</div><span>6–8월</span></header>'+specific
         preview = specific.replace('id="', f'id="{key}-').replace('aria-labelledby="', f'aria-labelledby="{key}-')
         cards.append(f'<article class="design-card"><div class="mini-window" aria-hidden="true" inert><div class="style-preview" data-style="{key}">{preview}</div></div><h3>{number}. {name}</h3><p>{escape(description)}</p><button type="button" data-choice="{key}" data-label="{name}({label})" aria-pressed="false">{name} 선택</button></article>')
+    reference_cards = ''.join(
+        f'<article class="reference-card"><h3>{escape(name)}</h3><p>{escape(description)}</p>'
+        f'<button type="button" data-choice="{key}" data-label="{escape(name)}" aria-pressed="false">{escape(name.split(" · ")[0])} 선택</button></article>'
+        for key, name, description, _ in REFERENCE_PRESETS)
     digest=base64.b64encode(hashlib.sha256(PICKER_JS.encode()).digest()).decode()
     gallery_css='''
 body.picker{background:#f4f6fa;color:#20364c;font:16px/1.65 'Malgun Gothic','Segoe UI',sans-serif;margin:0}
@@ -237,6 +311,7 @@ body.picker{background:#f4f6fa;color:#20364c;font:16px/1.65 'Malgun Gothic','Seg
 .picker button[aria-pressed=true]{background:#193e67;color:white;border-color:#193e67}.picker button:focus-visible,.picker summary:focus-visible,.picker select:focus-visible,.picker textarea:focus-visible{outline:3px solid #d38321;outline-offset:3px}
 .design-options{border:1px solid #d2dce7;background:#fff;border-radius:12px;padding:16px;margin:16px 0}.design-options>summary{font-size:18px;font-weight:700;cursor:pointer}.design-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:22px;margin-top:18px}
 .design-card{border:1px solid #d2dce7;border-radius:10px;padding:12px;min-width:0;overflow:hidden;background:#fff}.design-card h3{font-size:19px;margin:14px 0 5px}.design-card p{font-size:14px;min-height:48px;margin:6px 0 14px}
+.reference-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}.reference-card{padding:18px;border:1px solid #d2dce7;border-radius:12px;background:#fff;min-width:0;display:flex;flex-direction:column;align-items:flex-start}.reference-card h3{font-size:18px;margin:0}.reference-card p{font-size:14px;flex:1;word-break:keep-all;overflow-wrap:anywhere}
 .mini-window{height:218px;overflow:hidden;background:#eef2f7;border:1px solid #d6dfe8;border-radius:6px;pointer-events:none}.style-preview{width:960px;min-height:775px;padding:34px;transform:scale(.28);transform-origin:top left;box-sizing:border-box}
 .style-preview .section{margin:0;padding:30px}.style-preview .kpis{grid-template-columns:1fr 1fr}.style-preview .chart-frame{margin:8px 0;padding:16px}.style-preview h2{font-size:36px!important}.style-preview .report-chart{min-width:0}.style-preview .chart-values{display:none}
 .style-preview .report-masthead{padding:18px 24px;margin:0 0 22px;font-size:14px}.style-preview .report-masthead .report-name{font-size:16px}
@@ -245,6 +320,7 @@ body.picker{background:#f4f6fa;color:#20364c;font:16px/1.65 'Malgun Gothic','Seg
 .selection-panel{background:white;border:1px solid #d2dce7;border-radius:12px;padding:22px;margin-top:24px}.selection-panel h2{font-size:20px}.choice-fields{display:flex;flex-wrap:wrap;gap:20px;margin:16px 0}.choice-fields label{display:flex;gap:10px;align-items:center}
 .choice-fields :is(label,select,input){max-width:100%;min-width:0}.choice-fields :is(select,input){min-height:44px;font:inherit}.choice-fields label{flex-wrap:wrap}
 .picker textarea{display:block;width:100%;min-height:115px;box-sizing:border-box;font:15px/1.7 'Malgun Gothic',sans-serif;padding:12px;border:1px solid #bdccdc;border-radius:8px;margin:16px 0}.note{font-size:14px;color:#536477}.picker footer{padding:20px 0;font-size:13px;color:#536477}
+@media(max-width:760px){.reference-grid{grid-template-columns:1fr}}
 @media(max-width:620px){.picker-wrap{padding:24px 16px}.picker h1{font-size:25px}.design-grid{grid-template-columns:1fr}.choice-fields label{flex-wrap:wrap}}
 @media print{.picker button{display:none}.mini-window{break-inside:avoid}}
 '''
@@ -253,6 +329,7 @@ body.picker{background:#f4f6fa;color:#20364c;font:16px/1.65 'Malgun Gothic','Seg
             +'<body class="picker"><main class="picker-wrap"><h1>어떤 느낌의 보고서로 만들까요?</h1><p class="intro">바로 시작하려면 추천 디자인을 고르세요. 더 보고 싶을 때만 ‘추가 디자인’을 펼치면 됩니다. 이 화면에는 예시 자료만 있으며 업무 파일이나 개인 설정은 읽거나 바꾸지 않습니다.</p>'
             +'<div class="quick-choices"><button type="button" data-choice="minimalism" data-label="미니멀리즘(깔끔한 업무형)" aria-pressed="true">깔끔한 업무형 · 추천</button><button type="button" data-choice="bento-grid" data-label="벤토그리드(지표 중심형)" aria-pressed="false">지표 중심형</button><button type="button" data-choice="template" data-label="HTML 양식 직접 첨부" aria-pressed="false">HTML 양식 직접 첨부</button></div><p class="note">첨부 양식을 선택했다면 아래 문장을 채팅에 붙여 넣고 HTML 파일을 첨부하세요. 이 화면에서 파일을 업로드하거나 원본을 실행하지 않습니다.</p>'
             +f'<details id="additional-designs" class="design-options"><summary>추가 디자인 · 설명과 미리보기</summary><p class="note">{len(STYLES)}가지 디자인을 같은 가상 자료로 비교합니다. 원하는 카드를 바로 선택하세요. 축소 예시이며 실제 분량·자료에 따라 배치는 달라집니다. 입체 오브제는 장식용이며 업무 데이터를 뜻하지 않습니다.</p><div class="design-grid">'+''.join(cards)+'</div></details>'
+            +'<section aria-labelledby="reference-options"><h2 id="reference-options">검토한 HTML 자료의 구성으로 선택</h2><p class="note">공개 사례에서 정리한 구성입니다. 실제 내용은 내 자료로 만들며 이미 정한 색상과 글꼴은 유지합니다.</p><div class="reference-grid">'+reference_cards+'</div></section>'
             +'<section class="selection-panel"><h2 id="selected-design">선택한 디자인: 미니멀리즘(깔끔한 업무형)</h2><div class="choice-fields"><label for="length-choice">분량<select id="length-choice"><option value="keep" selected>기존 선택 유지</option><option value="short">핵심</option><option value="standard">보통</option><option value="detailed">상세</option></select></label><label for="mode-choice">보기<select id="mode-choice"><option value="keep" selected>기존 선택 유지</option><option value="scroll">스크롤</option><option value="slides">페이지 넘김</option><option value="both">둘 다</option></select></label></div>'
             +'<div class="choice-fields"><label for="font-choice">글꼴<select id="font-choice"><option value="keep" selected>기존 선택 유지 / 미정이면 질문</option>'+''.join('<option value="'+key+'">'+escape(name)+'</option>' for key,name,_ in OPTIONS)+'</select></label><input id="font-name" aria-label="직접 입력할 글꼴 이름" placeholder="예: 맑은 고딕" maxlength="80" hidden></div><p class="note">글꼴을 자동 설치하지 않습니다. PC에 없으면 대체 글꼴로 표시됩니다. 위 축소 예시는 디자인 비교용입니다.</p>'
             +'<label for="choice-result">Claude에 전달할 문장</label><textarea id="choice-result" readonly></textarea><button type="button" id="copy-choice">선택 내용 복사</button><p id="copy-status" role="status" aria-live="polite"></p><noscript>화면 동작이 제한되어 있습니다. 디자인 이름·분량·보기 방식·글꼴을 직접 Claude 채팅에 입력해 주세요.</noscript></section><footer>인터넷 연결 불필요 · 자동 설치/설정 변경/자료 전송 없음</footer></main><script>'+PICKER_JS+'</script></body></html>')

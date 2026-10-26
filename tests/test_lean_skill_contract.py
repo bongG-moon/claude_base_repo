@@ -22,6 +22,7 @@ class LeanSkillContractTests(unittest.TestCase):
             "karpathy-guidelines", "outlook-assistant", "personal-knowledge",
             "personal-memory", "presentation", "project-harness", "self-learning",
             "platform-mcp-builder",
+            "excel-to-pipeline", "web-interface", "work-context-catalog",
         })
 
     def test_conditional_reference_links_exist_inside_plugin(self):

@@ -1,5 +1,7 @@
 import copy
+import base64
 import json
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -282,7 +284,11 @@ class CatalogTests(unittest.TestCase):
         source = self.root / 'source'; write(source / 'AGENTS.md', '# 분석 업무')
         output = self.root / 'output'
         self.assertEqual(0, main(['--root', str(source), '--no-auto-sessions', '--output', str(output)]))
-        self.assertEqual({'catalog.json','업무현황.html'}, {p.name for p in output.iterdir()})
+        self.assertEqual({'catalog.json','업무현황.html','업무자산.md'}, {p.name for p in output.iterdir()})
+        page = (output / '업무현황.html').read_text(encoding='utf-8')
+        embedded = re.search(r'data:text/markdown;charset=utf-8;base64,([A-Za-z0-9+/=]+)', page)
+        self.assertIsNotNone(embedded)
+        self.assertEqual((output / '업무자산.md').read_bytes(), base64.b64decode(embedded[1]))
         with self.assertRaises(SystemExit):
             main(['--root', str(source), '--no-auto-sessions', '--output', str(output)])
 

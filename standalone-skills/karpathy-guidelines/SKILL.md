@@ -41,8 +41,9 @@ The user does not need to name this Skill when the task matches its description.
 - Do not rewrite unrelated code or delete existing unused code merely because
   it was encountered. Remove an orphan introduced by this change only when its
   lack of remaining uses is verified.
-- Preserve the user's chosen scope for skills and notes. Do not overwrite an
-  existing user Skill or append these rules to global or project CLAUDE.md.
+- Preserve the chosen scope. New Skills use the host's discoverable skill folder;
+  existing Skills keep one actual source, without copies or relocation. Keep notes
+  in their existing stores; do not append these rules to global/project CLAUDE.md.
 - Commit, push, or deploy only within the user's requested scope. This Skill
   does not authorize automatic commits or introduce a new approval gate.
 - A request to review or diagnose stays read-only unless it also requests a fix.

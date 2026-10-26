@@ -42,9 +42,10 @@ The user does not need to name this Skill when the task matches its description.
 - Do not rewrite unrelated code or delete existing unused code merely because
   it was encountered. Remove an orphan introduced by this change only when its
   lack of remaining uses is verified.
-- Keep personal Skills, Memory, and Knowledge in the scope's User State, not
-  the installed Company Agent plugin. Do not overwrite an existing user Skill
-  or append these rules to the user's global or project CLAUDE.md.
+- New Skills use the selected native Claude skill folder; existing native/private
+  Skills keep their actual source. Memory/Knowledge keep their scoped User State.
+  Never write personal assets into the installed plugin, copy existing Skills,
+  or append these rules to global/project CLAUDE.md.
 - Commit, push, or deploy only within the user's requested scope. This Skill
   does not authorize automatic commits or introduce a new approval gate.
 - A request to review or diagnose stays read-only unless it also requests a fix.

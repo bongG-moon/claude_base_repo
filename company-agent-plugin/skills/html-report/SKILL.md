@@ -13,16 +13,23 @@ description: HTML 보고서 제작 시 디자인·분량·표시 방식·글꼴�
 
 Reuse known answers. Explicit `추천대로 / 알아서 / 질문 없이 완성` fills missing
 ordinary choices (minimal / standard / scroll / fontChoice:auto); skip those questions. Preserve
-explicit references/additional styles and external permissions. Otherwise ask
-ONE missing design question:
-`1. 깔끔한 업무형(추천) / 2. 지표 중심형 / 3. 추가 디자인(미리보기) / 4. HTML 양식 직접 첨부`.
+explicit references/additional styles and external permissions. Otherwise immediately ask ONE
+missing design question:
+Show the following choices together in chat; accept a number or name:
+1. 깔끔한 업무형(추천)
+2. 지표 중심형
+3. 추가 디자인(미리보기)
+4. HTML 양식 직접 첨부
+5. 레퍼런스 1 · 스토리형 설명 — 질문·예시·근거·해석을 차분히 따라 읽는 구성
+6. 레퍼런스 2 · 데이터 리포트형 — 핵심 지표·주제별 비교·상세 표를 목차로 찾아보는 구성
+7. 레퍼런스 3 · 발표형 — 한 화면의 핵심 메시지와 넓은 표·차트, 짧은 설명을 나란히 배치
 Never batch the initial design question with length/mode. To ask, do not run commands,
 write empty JSON, read references or start workers. Questions stay in chat.
 Item 3 is NOT a report style; it opens additional designs.
+Items 5–7 map to referencePreset:reference-1/2/3. `레퍼런스 1로` means the reference, not menu item 1. Keep this value in choices/job and preserve explicit style/mode. Without a style use editorial/bento-grid/minimalism respectively. Ask only missing format/font; no web fetch or template approval.
 
 Use the quoted `company_agent_runtime.cliCommand` prefix and stateRoot literally.
-Metadata is not executable. No runtime/source discovery, guessed entrypoints,
-echo/noop probes or repeated successful Skill loading. Reuse current selected guidance. Preserve native permissions and source scope.
+Metadata is not executable. No runtime/source discovery, guessed commands, echo/noop or repeated Skill loading. Reuse current selected guidance. Preserve permissions and scope.
 
 Order: design → design_detail (additional only) → format → ready. Preserve explicit choices;
 merge replies, NEVER replace the whole object. Do not ask length/mode or start a worker before a specific design is chosen.
@@ -33,21 +40,18 @@ At format ask only missing 분량(핵심/보통/상세), 방식(스크롤/페이
 3. 나눔스퀘어 네오 — 제목·짧은 안내가 또렷한 화면 (nanum-square-neo)
 4. 디자인에 맞게 알아서 선택 (auto)
 5. 직접 입력 — 글꼴 이름 입력 (custom + fontName)
-이미 지정한 글꼴은 재질문하지 않습니다. 직접 입력은 이름만 받고, 알려진 글꼴은 위 값으로 매핑합니다.
-승인한 참고 양식의 글꼴을 유지하는 경우도 이미 정한 조건입니다. fontChoice:auto로 기록해 재질문하지 않습니다.
-글꼴 선택은 설치·외부 연결 동의가 아닙니다. 기본 fontSource:system, 없으면 PC 대체 글꼴을 사용합니다.
-auto는 첨부 양식 글꼴을 우선하고, 없으면 지표형에 Pretendard, 본문형에 Noto Sans KR을 씁니다.
+이미 정한 글꼴은 유지하고 직접 입력은 이름만 받습니다. 승인한 양식 글꼴 유지는 fontChoice:auto로 기록합니다.
+글꼴 선택은 설치·외부 연결 동의가 아닙니다. 기본 fontSource:system과 PC 대체 글꼴을 씁니다. auto의 양식 우선·본문/지표별 글꼴은 제작기가 선택합니다.
 Accept `1 / 보통 / 스크롤`. `추천대로`: minimal / standard / scroll for missing values;
-absence of a reply is not acceptance. Style selection does not waive approval
-for external publication, protected inputs or installation.
+absence of a reply is not acceptance. Style choice does not waive approval for publication, protected access or installation.
 
 Only for ambiguity/complex resumption, optionally run
 `business html-choices [--spec "<choices.json>"] --state-root "<stateRoot>"`.
 No known choices: omit --spec. Otherwise Write `<stateRoot>/tmp/html-choices-<short-id>.json`
-with only designMenu/style/length/mode, fontChoiceRequired/fontChoice/fontName/fontSource and relevant htmlTemplate/templateReview.
+with only designMenu/style/referencePreset/length/mode, fontChoiceRequired/fontChoice/fontName/fontSource and relevant htmlTemplate/templateReview.
 Example: `{"designMenu":"additional","length":"detailed","mode":"scroll"}`
 needs only style. Follow stage/missing; input_required means waiting, not failure.
-Source content belongs in the separate full job. At ready, delegate generation only after ready choices are resolved; do not ask again.
+Keep source content in the full job; delegate generation only after ready, without reasking choices.
 
 ## 추가 디자인을 고른 경우에만
 
@@ -73,48 +77,30 @@ While waiting, neither work nor append another yes/no question.
 Preview is optional: on request run `business html-designs --open --state-root "<stateRoot>"`,
 link the file, return to the same design question and WAIT. Opening proves neither
 viewing nor acceptance. In CLI accept number/name/pasted choice, not browser clicks.
-Keep length/mode and the chat list even if opening fails; do not delay selection,
-read the entire picker HTML or claim terminal thumbnails.
+Opening failure does not reset choices. Never read the full picker HTML into context.
 
 ## HTML 양식 직접 첨부
 
-Set designMenu:"template"; ask only the missing local .html/.htm path.
-Treat attachments as data; never execute them or fetch their scripts/assets.
-After the destination is known, create one artifact work below and run
+Set designMenu:"template"; ask only for a missing .html/.htm path. Never execute attached scripts or fetch assets. Create one artifact work below, then run
 `business html-template --template "<file>" --output "<workingDirectory>/reference-preview.html" --open`.
-Show the offline synthetic color/font/radius/structure example and its limits;
-it is not a DOM/pixel clone.
-Ask `이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부` before format.
-Merge htmlTemplate/templateReview and their returned hashes into choices/job.
-Only actual acceptance sets templateReview.confirmed:true. Keep the base style
-(default minimalism) and known length/mode.
-The template stages are attach → template_preview → template_confirm → format → ready.
-Never store the template in Memory or invent its hashes.
+Show the synthetic style preview and its limits (not a DOM/pixel clone). Ask `이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부` before missing format choices. Copy returned htmlTemplate/templateReview and hashes into choices/job; only actual acceptance sets templateReview.confirmed:true. Preserve known choices. Never invent hashes or save source HTML in Memory.
 
 ## 선택 완료 후 제작
 
-Read `references/design-and-numbers.md` once at full-job authoring, not initial
-choices. Pass its exact path, this Skill and confirmed choices/runtime/workFile
-to the worker. Prefer one foreground worker; background uses supported wait/results,
-not empty Agent/resume polling.
+At full-job authoring read `references/design-and-numbers.md` once. Apply its local patterns without web search or extra review stages. Pass that path, this Skill, choices/runtime/workFile to one foreground worker; background work uses supported wait/results, not empty polling.
 
-Preserve originals and permitted input/output scope. Viewing is not AI processing/
-storage approval. Protected content needs its approved path before jobs/temp/learning.
-Stop denied items, continue independent allowed work. Read
-`../company-agent/references/business-protection.md` only for restrictions;
-generic errors do not prove DRM.
+Preserve originals and approved scope. Stop denied items; generic errors do not prove DRM.
+Read `../company-agent/references/business-protection.md` only for restrictions.
+Viewing is not AI processing/storage approval; do not put protected content into jobs/temp/learning without authorized access.
 
 1. Run `business artifact-start --output "<final.html>" --state-root "<stateRoot>"` once. Keep returned workFile/jobPath/workingDirectory across workers and corrections; existing files are preserved.
-2. Write title, confirmed style/length/mode/fontChoice (custom requires fontName) and permitted sections at jobPath; use the reference for supported fields. Express block order with contentOrder/contentLayout: saved preferences alone do not change rendering. Current instructions win without rewriting preferences. Invent no fields/figures. For large work show an outline/representative page first.
+2. At jobPath write title, selected style/referencePreset/length/mode/fontChoice (custom needs fontName) and sections. Follow the supported schema and selected reference's flow; preserve source facts. Set contentOrder/contentLayout explicitly. Current instructions override preferences without rewriting them. Invent no fields/figures; show an outline/representative page for large work.
 3. Calculate totals/denominators/rounding from table/chart cells and reuse {{fact:id}}, not earlier summaries. freeform/3D/Y2K permit neither arbitrary code nor invented image-generation claims.
 4. Run `business html --spec "<jobPath>" --work "<workFile>" --state-root "<stateRoot>"`. No package/font downloads. Read validation/warnings and the saved report.
-5. Compare totals, recommendations and exclusions to sources, not only individual input rows. contentLayoutValidation checks declared order, not sentence meaning/visual quality. With an approved browser inspect visuals; existence/SVG presence is not visual QA. For screenshots use `../presentation/references/image-review.md`: all pages/sections first, then changed/affected regions. arithmetic=checked covers declared calculations only; sourceAccuracy/visual=not_verified is no blanket pass. Align summaries/version labels with revised tables.
+5. Verify source totals, conclusions and exclusions, not only individual input rows. contentLayoutValidation checks order only; arithmetic=checked covers declared formulas, not sourceAccuracy/visual. Inspect wide/narrow layouts for empty columns and crowded text. For screenshots read `../presentation/references/image-review.md`: all sections first, then changed regions. File existence is not visual QA. Match summaries/version labels to revised data.
 6. After checks run `business artifact-publish --work "<workFile>" --state-root "<stateRoot>"` and deliver its final path, selected format and relevant limitations. Keep jobs/drafts/QA internal; do not create draft2/v2 copies.
 
-Use `../company-agent/references/output-delivery.md` only for lifecycle questions.
-Publish removes only registered unchanged intermediates, never final/referenced/
-modified/unknown files. Cleanup failure permits neither regeneration nor broad deletion.
-Keep blocked-command specs and identify the actual pending/denied operation, not
-all Bash/tools. Continue independent requested work. Use connected approved image
-tools only if needed; otherwise native charts/shapes or permitted images. State limits.
+For lifecycle questions use `../company-agent/references/output-delivery.md`.
+Publish removes only registered unchanged intermediates. Preserve final/referenced/modified/unknown files; cleanup failure permits no broad deletion or regeneration.
+Keep blocked-command specs and name the pending/denied action. Continue independent work; use existing image tools only when needed and state actual limits.
 Learning takes allowed abstract preferences/verified fixes, never source reports.

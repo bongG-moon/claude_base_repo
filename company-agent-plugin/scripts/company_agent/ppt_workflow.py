@@ -180,6 +180,68 @@ def installed_fonts():
     return result
 
 
+def _declared_shape_style(node, namespace):
+    """Small explicit-format evidence, never a computed theme or visual claim."""
+    a = '{' + namespace + '}'
+    props = next((child for child in node if child.tag.endswith('}spPr')), None)
+    if props is None:
+        return {}
+    result = {}
+    preset = props.find(a + 'prstGeom')
+    if preset is not None and preset.get('prst'):
+        result['preset'] = preset.get('prst')[:40]
+    elif props.find(a + 'custGeom') is not None:
+        result['customGeometry'] = True
+    def paint(parent):
+        if parent.find(a + 'noFill') is not None:
+            return {'type':'none'}
+        fill = parent.find(a + 'solidFill')
+        if fill is not None and len(fill):
+            color = fill[0]
+            value = {color.tag.split('}')[-1]:color.get('val', '')[:40]}
+            # Preserve tint/alpha evidence without pretending it is resolved RGB.
+            adjustments = {c.tag.split('}')[-1]:c.get('val', '')[:20]
+                           for c in list(color)[:4] if c.get('val') is not None}
+            return {'type':'solid', 'color':value, **({'adjustments':adjustments} if adjustments else {})}
+        for kind in ('gradFill', 'pattFill', 'blipFill'):
+            if parent.find(a + kind) is not None:
+                return {'type':kind}
+        return None
+    fill = paint(props)
+    if fill:
+        result['fill'] = fill
+    line = props.find(a + 'ln')
+    if line is not None:
+        details = {'widthEmu':line.get('w')[:20]} if line.get('w') else {}
+        stroke = paint(line)
+        if stroke:
+            details['paint'] = stroke
+        dash = line.find(a + 'prstDash')
+        if dash is not None and dash.get('val'):
+            details['dash'] = dash.get('val')[:40]
+        if details:
+            result['line'] = details
+    if props.find(a + 'effectLst/' + a + 'outerShdw') is not None:
+        result['outerShadow'] = True
+    return result
+
+
+def _declared_paragraph_style(props, namespace):
+    a = '{' + namespace + '}'
+    sample = {k:props.get(k)[:30] for k in ('algn','lvl','marL','indent') if props.get(k) is not None}
+    for tag in ('lnSpc','spcBef','spcAft'):
+        spacing = props.find(a + tag)
+        if spacing is not None and len(spacing):
+            child = spacing[0]
+            sample[tag] = {child.tag.split('}')[-1]:child.get('val', '')[:20]}
+    for tag in ('buNone','buChar','buAutoNum'):
+        bullet = props.find(a + tag)
+        if bullet is not None:
+            sample['bullet'] = {'type':tag, **{k:v[:20] for k,v in bullet.attrib.items() if k in ('char','type','startAt')}}
+            break
+    return sample
+
+
 def analyze(template, selected_slides=None, *, first_slides=None):
     if (selected_slides is not None and (not isinstance(selected_slides, list)
             or not 1 <= len(selected_slides) <= 60
@@ -243,6 +305,8 @@ def analyze(template, selected_slides=None, *, first_slides=None):
             shapes=[]
             text_styles=[]
             style_keys=set()
+            shape_styles, paragraph_styles = [], []
+            shape_keys, paragraph_keys = set(), set()
             for node in root.findall(f'.//{{{P}}}sp') + root.findall(f'.//{{{P}}}graphicFrame') + root.findall(f'.//{{{P}}}pic'):
                 identity=node.find(f'.//{{{P}}}cNvPr')
                 if identity is None:
@@ -254,6 +318,20 @@ def analyze(template, selected_slides=None, *, first_slides=None):
                         geometry[part.tag.split('}')[-1]]=dict(part.attrib)
                 # Text is only a bounded preview in this request, never a durable profile.
                 text=' '.join(t.text or '' for t in node.findall(f'.//{{{A}}}t'))
+                if len(shapes) < 80:
+                    sample = _declared_shape_style(node, A)
+                    key = repr(sample)
+                    if sample and key not in shape_keys and len(shape_styles) < 12:
+                        shape_keys.add(key)
+                        shape_styles.append({'shapeId':int(identity.get('id','0')), **sample})
+                    for props in node.findall(f'.//{{{A}}}pPr'):
+                        if len(paragraph_styles) >= 8:
+                            break
+                        sample = _declared_paragraph_style(props, A)
+                        key = repr(sample)
+                        if sample and key not in paragraph_keys:
+                            paragraph_keys.add(key)
+                            paragraph_styles.append({'shapeId':int(identity.get('id','0')), **sample})
                 # Bounded evidence for the existing reference review, not another
                 # model call or a claim to resolve inherited theme formatting.
                 for props in node.iter():
@@ -282,7 +360,9 @@ def analyze(template, selected_slides=None, *, first_slides=None):
                 if re.fullmatch('[a-fA-F0-9]{6}',node.get('val','')):
                     colors[node.get('val').upper()]+=1
             pages.append({'part':name,'sourceSlide':order.get(name),'shapes':shapes[:80], 'shapesTruncated':len(shapes)>80,
-                          'declaredTextStyles':text_styles, 'groupCount':len(root.findall(f'.//{{{P}}}grpSp'))})
+                          'declaredTextStyles':text_styles, 'declaredShapeStyles':shape_styles,
+                          'declaredParagraphStyles':paragraph_styles,
+                          'groupCount':len(root.findall(f'.//{{{P}}}grpSp'))})
     if hashlib.sha256(Path(template).read_bytes()).hexdigest() != inspected['sha256']:
         return {'ok':False,'status':'blocked','code':'template_changed','message':'분석 중 양식이 변경되었습니다. 저장을 마친 뒤 다시 확인해 주세요.'}
     pages.sort(key=lambda page: page['sourceSlide'] if page['sourceSlide'] is not None else 9999)
@@ -298,6 +378,51 @@ def analyze(template, selected_slides=None, *, first_slides=None):
             'declaredFonts':[{'name':f,'available':f in available} for f,_ in fonts.most_common(12)],
             'slides':pages[:60], 'visualReview':'not_performed', 'savedToMemory':False,
             'message':'양식의 개체·명시된 색상·폰트를 확인했습니다. 상속된 최종 모양과 혼합 서식은 실제 미리보기에서 확인해야 합니다.'}
+
+
+def _estimated_text_overflow(shape):
+    """Flag obvious crowding only; font metrics and Office rendering remain unknown."""
+    import math
+    import unicodedata
+    from pptx.enum.text import MSO_AUTO_SIZE
+    frame = shape.text_frame
+    if (not frame.text.strip() or frame.auto_size in (MSO_AUTO_SIZE.TEXT_TO_FIT_SHAPE, MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT)
+            or frame._txBody.bodyPr.get('vert') not in (None, 'horz')):
+        return False
+    width = (shape.width - frame.margin_left - frame.margin_right) / 12700
+    height = (shape.height - frame.margin_top - frame.margin_bottom) / 12700
+    if min(width, height) <= 0:
+        return True
+    estimate = 0.
+    horizontal_overflow = False
+    for paragraph in frame.paragraphs:
+        advances = [0.]
+        sizes = []
+        for run in paragraph.runs:
+            size = run.font.size or paragraph.font.size
+            if size is None:
+                return False  # An inherited font is not enough evidence for a size estimate.
+            sizes.append(size.pt)
+            for char in run.text:
+                if char in ('\n', '\v'):
+                    advances.append(0.)
+                else:
+                    advances[-1] += size.pt * (1 if unicodedata.east_asian_width(char) in 'WF' else .5)
+        if not sizes:
+            continue
+        # DrawingML soft breaks are outside runs; retain them in the line count.
+        if '\v' in paragraph.text:
+            advances = [sum(max(sizes) * (1 if unicodedata.east_asian_width(c) in 'WF' else .5) for c in text)
+                        for text in paragraph.text.split('\v')]
+        lines = sum(max(1, math.ceil(value/width)) for value in advances)
+        if frame.word_wrap is False:
+            lines = len(paragraph.text.split('\v'))
+            horizontal_overflow |= max(advances) > width * 1.3
+        spacing = paragraph.line_spacing
+        line_height = spacing.pt if hasattr(spacing, 'pt') else max(sizes) * (spacing if spacing is not None else 1.15)
+        estimate += lines * line_height
+        estimate += sum(value.pt for value in (paragraph.space_before, paragraph.space_after) if value is not None)
+    return horizontal_overflow or estimate > height * 1.3 + 3
 
 
 def quality(path):
@@ -325,6 +450,10 @@ def quality(path):
             if x < 0 or y < 0 or x+w > deck.slide_width+12700 or y+h > deck.slide_height+12700:
                 issues.append({'slide':index,'shapeId':shape.shape_id,'code':'out_of_bounds','message':'개체가 슬라이드 영역을 벗어납니다.'})
             frames=[shape.text_frame] if shape.has_text_frame else []
+            if shape.has_text_frame and _estimated_text_overflow(shape):
+                issues.append({'slide':index,'shapeId':shape.shape_id,'code':'estimated_text_overflow',
+                               'severity':'warning','basis':'approximate_text_metrics',
+                               'message':'글자량이 텍스트 영역보다 많을 수 있습니다. 실제 장표의 잘림·줄바꿈을 확인해 주세요.'})
             if shape.has_table:
                 frames += [cell.text_frame for row in shape.table.rows for cell in row.cells]
             for frame in frames:
