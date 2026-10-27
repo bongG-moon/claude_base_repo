@@ -1,8 +1,8 @@
 # Company Harness 설치와 배포 — Windows
 
-1.4.46은 HTML·PPT 편집성, 기억 검색·스킬 선택 보완과 하네스 없이 사용하는 개별 스킬 ZIP을 포함합니다. [변경 이력](UPDATE_1.4.46.md)에 기능·수집 범위와 검증 한계를 정리했습니다.
+1.4.47은 소스 ZIP을 설치 파일로 실행했을 때의 안내를 수정하고, 최신 HTML·PPT·업무 기록 분석 스킬과 플랫폼 규격의 개별 스킬 ZIP을 함께 배포합니다. 설치는 Releases의 Company-Harness-Setup.exe 또는 company-agent-1.4.47-2026.09.03.zip으로 진행합니다. Code → Download ZIP과 Source code (zip)은 설치용이 아닙니다.
 
-현재 소스의 배포 대상은 **1.4.46**, 회사 지식팩은 **2026.09.03**입니다. 직원은 담당자가 제공한 **Company-Harness-Setup.exe**를 두 번 클릭해 설치합니다. 이번 버전은 XLSX·XLSM의 표·수식·접근 가능한 VBA를 분석하는 `company-agent:excel-to-pipeline`을 추가합니다. 일반 OOXML은 직접 읽고 필요한 바이너리 파일 후보만 Excel·xlwings로 확인하며, 데이터 대소문자를 임의로 바꾸지 않습니다. VBA 접근 거절 시 가능한 범위만 처리하고 매크로는 실행하지 않습니다. 기존 설치·백업·개인 자료·모델·MCP 설정을 보존하며 평소 업무에 추가 모델 호출이나 검증을 넣지 않습니다. 담당자는 [1.4.46 변경 내용](UPDATE_1.4.46.md)을 확인합니다. 로컬 설치 파일 생성과 GitLab 게시·사내 PC 적용은 별도이며, 이전 Release와 별도 Workspace 앱 변경은 이번 배포에 포함하지 않습니다. 이미 설치된 PC는 자동 갱신되지 않습니다.
+현재 소스의 배포 대상은 **1.4.47**, 회사 지식팩은 **2026.09.03**입니다. 직원은 담당자가 제공한 **Company-Harness-Setup.exe**를 두 번 클릭해 설치합니다. 이번 버전은 XLSX·XLSM의 표·수식·접근 가능한 VBA를 분석하는 `company-agent:excel-to-pipeline`을 추가합니다. 일반 OOXML은 직접 읽고 필요한 바이너리 파일 후보만 Excel·xlwings로 확인하며, 데이터 대소문자를 임의로 바꾸지 않습니다. VBA 접근 거절 시 가능한 범위만 처리하고 매크로는 실행하지 않습니다. 기존 설치·백업·개인 자료·모델·MCP 설정을 보존하며 평소 업무에 추가 모델 호출이나 검증을 넣지 않습니다. 담당자는 [1.4.47 변경 내용](UPDATE_1.4.47.md)을 확인합니다. 로컬 설치 파일 생성과 GitLab 게시·사내 PC 적용은 별도이며, 이전 Release와 별도 Workspace 앱 변경은 이번 배포에 포함하지 않습니다. 이미 설치된 PC는 자동 갱신되지 않습니다.
 
 관련 스킬 우선 적용·관련 스킬이 없을 때 일반 실행·중복 후보 선택·개인 자료 보존은 유지합니다. 실제 회사 DRM·Office·사내 모델 연동과 체감 속도는 운영 PC에서 별도로 확인해야 합니다. 기존 설치 PC는 같은 범위로 업데이트하며 개인 자료와 기존 규칙·Hook을 유지합니다. 자동 학습은 기본 활성화이며 Claude에서 “자동 학습을 잠시 멈춰줘”라고 변경할 수 있습니다. ZIP 생성 자체는 게시를 수행하지 않습니다.
 
@@ -271,7 +271,7 @@ powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZi
 
 ```powershell
 # 담당자용: 주소는 실제 사내 GitLab 프로젝트 페이지로 바꿉니다.
-powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZip ".\dist\company-agent-1.4.46-2026.09.03.zip" -OutputDirectory ".\build\gitlab-harness-delivery" -ProjectUrl "https://gitlab.example.com/team/company-agent"
+powershell.exe -NoProfile -File .\deploy\New-GitLabHarnessDelivery.ps1 -BundleZip ".\dist\company-agent-1.4.47-2026.09.03.zip" -OutputDirectory ".\build\gitlab-harness-delivery" -ProjectUrl "https://gitlab.example.com/team/company-agent"
 ```
 
 사내 주소를 아직 정하지 않았다면 `-ProjectUrl`을 생략해 파일만 준비할 수 있습니다. 출력 폴더가 이미 있으면 새 폴더를 지정합니다. 기존 배포 파일을 덮어쓰지 않습니다. 도구는 ZIP의 구성 파일·해시·안내서 일치를 확인한 뒤 설치 ZIP, 단독 HTML 안내서, 두 `.sha256` 파일과 게시용 설명을 만듭니다. 직원 PC에는 이 도구가 필요 없습니다.

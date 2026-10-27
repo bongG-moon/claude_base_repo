@@ -32,6 +32,75 @@ class NoviceSetupMessagesTests(unittest.TestCase):
         self.assertIn('버전 번호가 올라간', result.stdout)
         self.assertIn('지우지 말고', result.stdout)
 
+    def test_source_zip_is_identified_without_git_and_without_writes(self):
+        with tempfile.TemporaryDirectory(prefix='CA-source-') as folder:
+            root = Path(folder)
+            for relative in ('company-agent-plugin/.claude-plugin/plugin.json', 'deploy/New-OfflineBundle.ps1'):
+                item = root / relative
+                item.parent.mkdir(parents=True, exist_ok=True)
+                item.write_text('{}', encoding='utf-8')
+            before = sorted(str(p.relative_to(root)) for p in root.rglob('*'))
+            escaped = str(root).replace("'", "''")
+            result = self.functions(f"try {{ Assert-SetupBundleSource '{escaped}' }} catch {{ Get-SetupFriendlyFailure $_.Exception.Message; exit 8 }}")
+            self.assertEqual(8, result.returncode, result.stdout + result.stderr)
+            self.assertIn('소스 코드', result.stdout)
+            self.assertIn('압축을 다시 풀어도', result.stdout)
+            self.assertIn('releases/latest/download/Company-Harness-Setup.exe', result.stdout)
+            self.assertEqual(before, sorted(str(p.relative_to(root)) for p in root.rglob('*')))
+
+    def test_incomplete_zip_has_distinct_download_guidance(self):
+        with tempfile.TemporaryDirectory(prefix='CA-incomplete-') as folder:
+            escaped = folder.replace("'", "''")
+            result = self.functions(f"try {{ Assert-SetupBundleSource '{escaped}' }} catch {{ Get-SetupFriendlyFailure $_.Exception.Message; exit 8 }}")
+            self.assertEqual(8, result.returncode, result.stdout + result.stderr)
+            self.assertIn('필수 파일이 없습니다', result.stdout)
+            self.assertIn('Source code (zip)', result.stdout)
+            self.assertEqual([], list(Path(folder).iterdir()))
+
+    def test_real_scoped_source_entry_preserves_isolated_profile(self):
+        for scope in ('User', 'Project'):
+            with self.subTest(scope=scope), tempfile.TemporaryDirectory(prefix='CA-entry-') as folder:
+                root = Path(folder)
+                source = root / 'downloaded source'
+                for relative in ('company-agent-plugin/.claude-plugin/plugin.json', 'deploy/New-OfflineBundle.ps1'):
+                    item = source / relative
+                    item.parent.mkdir(parents=True, exist_ok=True)
+                    item.write_text('{}', encoding='utf-8')
+                profile = root / 'profile'
+                profile.mkdir()
+                config = profile / '.claude'
+                config.mkdir()
+                sentinel = config / 'settings.json'
+                original = b'{"env":{"ANTHROPIC_MODEL":"fixture-preserve"}}'
+                sentinel.write_bytes(original)
+                project = root / 'project'
+                project.mkdir()
+                before = sorted(str(p.relative_to(root)) for p in root.rglob('*'))
+                args = {'BundleRoot':source, 'ProjectRoot':project, 'ClaudeConfigRoot':config,
+                        'InvokingUserProfile':profile, 'InvokingLocalAppData':profile / 'AppData/Local'}
+                values = ' '.join(f"-{key} '" + str(value).replace("'", "''") + "'" for key, value in args.items())
+                path = str(ROOT / 'deploy/Setup-CompanyAgent.ps1').replace("'", "''")
+                result = self.invoke(f"& '{path}' -Scope {scope} {values} -FriendlyOutput -NonInteractive -SkipAdminCheck -SkipPrerequisiteCheck")
+                self.assertEqual(1, result.returncode, result.stdout + result.stderr)
+                self.assertIn('소스 코드입니다', result.stdout)
+                self.assertEqual(original, sentinel.read_bytes())
+                self.assertEqual(before, sorted(str(p.relative_to(root)) for p in root.rglob('*')))
+
+    def test_existing_manifest_still_requires_real_integrity_validation(self):
+        with tempfile.TemporaryDirectory(prefix='CA-manifest-') as folder:
+            (Path(folder) / 'bundle-manifest.json').write_text('{}', encoding='utf-8')
+            escaped = folder.replace("'", "''")
+            result = self.functions(f"Assert-SetupBundleSource '{escaped}'; 'LAYOUT_ACCEPTED'; try {{ Test-CompanyAgentBundleIntegrity '{escaped}'; exit 9 }} catch {{ 'INTEGRITY_REJECTED'; exit 8 }}")
+            self.assertEqual(8, result.returncode, result.stdout + result.stderr)
+            self.assertIn('LAYOUT_ACCEPTED', result.stdout)
+            self.assertIn('INTEGRITY_REJECTED', result.stdout)
+
+    def test_tampered_bundle_is_not_misreported_as_source_zip(self):
+        result = self.functions("Get-SetupFriendlyFailure 'Bundle hash mismatch: PRIVATE_PATH'")
+        self.assertIn('묶음을 확인하지 못했습니다', result.stdout)
+        self.assertNotIn('소스 코드입니다', result.stdout)
+        self.assertNotIn('PRIVATE_PATH', result.stdout)
+
     def test_backup_failures_explain_cause_without_raw_settings(self):
         codes = {'PATH_TOO_LONG': '경로', 'ACCESS_DENIED': '접근', 'FILE_IN_USE': '사용 중',
                  'DISK_FULL': '공간', 'PATH_MISSING': '찾지 못', 'INVALID_JSON': 'JSON',

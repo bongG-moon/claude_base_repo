@@ -1,8 +1,10 @@
 # Company Agent Harness
 
+설치하려면 **[Company-Harness-Setup.exe 다운로드](https://github.com/bongG-moon/claude_base_repo/releases/latest/download/Company-Harness-Setup.exe)**를 사용하세요. GitHub의 **Code → Download ZIP**은 개발용 소스이며 설치용 파일이 아닙니다. 개별 스킬만 필요하면 [개별 스킬 안내](skills_zip/등록_설치_안내.html)에서 선택하세요.
+
 처음이라면 **[Company Agent 사용자 안내서](docs/Company-Agent-사용자-안내서.html)** 하나를 여세요. 시작하기, Claude Code 기본 사용법, 업무 예문, 기억·스킬·후크·학습, 명령어·단축키, 디자인 용어를 모두 담았습니다. 회사 자료나 참고 PPT 없이 가상 자료로 연습합니다.
 
-**[Company Workspace 로컬 업무 화면](docs/LOCAL_WORKSPACE.md)**은 기존 Claude Code 설정을 사용하는 채팅·파일 선택·질문·승인 화면입니다. `Company-Workspace.vbs`를 더블클릭해 시작합니다. 기존 [1.4.32 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.32)의 별도 Workspace 묶음 **0.9**(`company-workspace-preview-0.9-*.zip`)는 그대로 보존합니다. 이번 1.4.46 배포 대상은 HTML·PPT 편집성, 기억 검색·스킬 선택 보완, 독립 스킬 ZIP을 포함한 하네스·간편 설치기·사용자 안내서이며, 별도 개발 중인 Workspace 변경은 포함하지 않습니다. 사내 HCP·DRM 문서의 실제 업무 검증은 필요합니다.
+**[Company Workspace 로컬 업무 화면](docs/LOCAL_WORKSPACE.md)**은 기존 Claude Code 설정을 사용하는 채팅·파일 선택·질문·승인 화면입니다. `Company-Workspace.vbs`를 더블클릭해 시작합니다. 기존 [1.4.32 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.32)의 별도 Workspace 묶음 **0.9**(`company-workspace-preview-0.9-*.zip`)는 그대로 보존합니다. 이번 1.4.47 배포 대상은 HTML·PPT 편집성, 기억 검색·스킬 선택 보완, 독립 스킬 ZIP을 포함한 하네스·간편 설치기·사용자 안내서이며, 별도 개발 중인 Workspace 변경은 포함하지 않습니다. 사내 HCP·DRM 문서의 실제 업무 검증은 필요합니다.
 
 Workspace는 **회사 공통 / 개인 전체 / 이 프로젝트**를 먼저 나누고 각 범위에서 **기억·지식 / 업무 구성**을 확인합니다. 새 기억·지식·스킬·도구는 개인 전체 또는 이 프로젝트를 선택한 뒤 저장하며 회사 공통은 읽기 전용입니다. 자동 학습은 기존 설치 범위에서만 작동하고 명시적 저장 선택으로 범위가 바뀌지 않습니다. 5단계 첫 업무 코스와 사용량/대기 시간·결과 확인도 제공합니다. 화면 조회에 추가 모델 호출은 없고 기존 데이터·로그인·모델·MCP 설정은 보존합니다. **Workspace 0.9는 별도 배포본으로 유지**하며 하네스를 업데이트할 때 기존 앱은 먼저 종료하세요. 기본 Office Reader 제거와 가상 보고서 체험은 유지합니다. 기존 설치가 자동 갱신되지는 않습니다.
 
@@ -12,19 +14,19 @@ Workspace는 **회사 공통 / 개인 전체 / 이 프로젝트**를 먼저 나�
 
 **기억·하네스 관리 → 구성 한눈에**는 선택한 폴더 기준으로 회사 공통·개인 전체·이 프로젝트의 저장 위치와 설정 상태를 비교하고 HTML로 저장합니다. 설정 켜짐과 실제 스킬 본문 로드 기록은 구분하며, 조회에 AI를 호출하거나 설정을 변경하지 않습니다. [구성 지도 구현·검증 결과](docs/VALIDATION_HARNESS_MAP_2026-09-19.md)를 참고하세요.
 
-이번 배포 대상 버전은 **1.4.46**입니다. [개별 스킬·MCP 안내](skills_zip/등록_설치_안내.html)에서 Company Harness 없이 쓸 스킬 11개와 별도 MCP 1개를 선택할 수 있습니다. HTML 글꼴 선택·PPT 네이티브 그룹/서식·요청형 학습 설명을 보완했으며 일반 작업에 새 후크나 모델 호출을 추가하지 않았습니다. `company-agent:excel-to-pipeline`으로 XLSX·XLSM의 시트·표·수식과 접근 가능한 VBA를 분석하고 Python 전처리 초안을 만듭니다. 일반 OOXML 파일은 직접 읽고, 직접 해석할 수 없는 바이너리 파일 후보만 설치된 Excel·xlwings로 한 번 확인합니다. 오류만으로 DRM이라고 단정하거나 권한 거절을 우회하지 않습니다. 데이터 대소문자를 임의로 바꾸지 않으며 기존 수식의 명시적 변환은 별도로 구분합니다. 기본 모델용 요약은 표별 5행·전체 12,000자로 제한하고, 평소 업무에 추가 연결 시험이나 상시 검증을 넣지 않습니다. [1.4.46 변경 이력](docs/UPDATE_1.4.46.md)을 확인하세요. 기존 비전·PPT·Outlook·개인 자료 보존 기능은 유지하며, 실제 사내 DRM 파일 검증은 별도로 필요합니다.
+이번 배포 대상 버전은 **1.4.47**입니다. [개별 스킬·MCP 안내](skills_zip/등록_설치_안내.html)에서 Company Harness 없이 쓸 스킬 11개와 별도 MCP 1개를 선택할 수 있습니다. HTML 참조 스타일 3가지와 배치, PPT 편집성, 업무 기록 분석 및 플랫폼 배포 설명을 동기화했으며 일반 작업에 새 후크나 모델 호출을 추가하지 않았습니다. `company-agent:excel-to-pipeline`으로 XLSX·XLSM의 시트·표·수식과 접근 가능한 VBA를 분석하고 Python 전처리 초안을 만듭니다. 일반 OOXML 파일은 직접 읽고, 직접 해석할 수 없는 바이너리 파일 후보만 설치된 Excel·xlwings로 한 번 확인합니다. 오류만으로 DRM이라고 단정하거나 권한 거절을 우회하지 않습니다. 데이터 대소문자를 임의로 바꾸지 않으며 기존 수식의 명시적 변환은 별도로 구분합니다. 기본 모델용 요약은 표별 5행·전체 12,000자로 제한하고, 평소 업무에 추가 연결 시험이나 상시 검증을 넣지 않습니다. [1.4.47 변경 이력](docs/UPDATE_1.4.47.md)을 확인하세요. 기존 비전·PPT·Outlook·개인 자료 보존 기능은 유지하며, 실제 사내 DRM 파일 검증은 별도로 필요합니다.
 
 **필요할 때만 하는 비전 입력 비교:** 별도 파일 `VLM-Input-Check-20261013.zip`을 풀고 `시작하기.html`을 여세요. 가상 PNG 2장과 선택 실행 스크립트로 일반 이미지 입력(A)·합성 Read 도구 결과(B)를 비교하고, 실제 Claude Code 읽기(C)는 별도로 확인합니다. B는 실제 CLI가 아닙니다. 기본 실행은 오프라인이며 명시적으로 전송할 때만 A/B 두 번을 호출합니다. 이 키트는 하네스에 자동 설치·등록되지 않습니다. [키트 안내](standalone-guides/vision-input-check/README.md)를 참고하세요.
 
 **감사 보완 반영:** [감사 결과와 검증 범위](docs/AUDIT_HARNESS_2026-09-20.md)에 유명 스킬의 선별 반영과 미도입 항목을 정리했습니다. 해당 수정은 1.4.19부터 포함하며 이번 버전에도 유지합니다. 기존 Release ZIP과 이미 설치된 PC는 변경하지 않습니다.
 
-1.4.46 직원 배포 파일은 `Company-Harness-Setup.exe`이며, ZIP 대체 설치용 파일명은 `company-agent-1.4.46-2026.09.03.zip`입니다. 담당자가 공유한 Release 페이지의 첨부 파일을 사용합니다. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다. 이전 Release와 설치 파일은 보존합니다.
+1.4.47 직원 배포 파일은 `Company-Harness-Setup.exe`이며, ZIP 대체 설치용 파일명은 `company-agent-1.4.47-2026.09.03.zip`입니다. 담당자가 공유한 Release 페이지의 첨부 파일을 사용합니다. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다. 이전 Release와 설치 파일은 보존합니다.
 
 사내에서는 같은 직원 설치 ZIP을 GitLab Release에 첨부해 배포할 수 있습니다. 담당자는 `deploy/New-GitLabHarnessDelivery.ps1`로 설치 ZIP·통합 안내서·해시·게시 설명을 준비합니다. 직원은 배포 페이지 주소 하나에서 내려받아 설치합니다. [GitLab 배포 절차](docs/DEPLOYMENT.md#사내-gitlab에서-직원에게-배포하기)를 참고하세요.
 
-**단일 EXE 설치 구현본은 1.4.46입니다.** 직원은 `Company-Harness-Setup.exe`를 두 번 클릭하고 **Company Harness 설치** 화면에서 사용 범위를 고른 뒤 **설치하기**를 누릅니다. 기존 설치·백업·개인 자료 보존 절차를 그대로 사용합니다. 담당자는 `deploy/New-CompanyAgentSetup.ps1`로 검증된 직원 ZIP을 EXE로 만들고 GitLab 배포 준비 도구에 `-SetupExe`를 전달합니다. EXE에는 코드 서명이 없으므로 회사의 승인된 실행 정책을 따릅니다. 실제 GitLab 업로드·게시는 담당자가 수동으로 진행합니다. 공개 Release와 사내 게시는 별도입니다. [변경 내용](docs/UPDATE_1.4.46.md)을 확인하세요.
+**단일 EXE 설치 구현본은 1.4.47입니다.** 직원은 `Company-Harness-Setup.exe`를 두 번 클릭하고 **Company Harness 설치** 화면에서 사용 범위를 고른 뒤 **설치하기**를 누릅니다. 기존 설치·백업·개인 자료 보존 절차를 그대로 사용합니다. 담당자는 `deploy/New-CompanyAgentSetup.ps1`로 검증된 직원 ZIP을 EXE로 만들고 GitLab 배포 준비 도구에 `-SetupExe`를 전달합니다. EXE에는 코드 서명이 없으므로 회사의 승인된 실행 정책을 따릅니다. 실제 GitLab 업로드·게시는 담당자가 수동으로 진행합니다. 공개 Release와 사내 게시는 별도입니다. [변경 내용](docs/UPDATE_1.4.47.md)을 확인하세요.
 [폴더별 자동 스킬 목록](docs/SKILL_CATALOG.md)과 각 PC의 Python 탐색을 유지합니다. Ouroboros 등 다른 플러그인의 연결 교정은 담당자가 별도로 요청한 경우에만 수행합니다.
-기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.46 설치 파일에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.46`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
+기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.47 설치 파일에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.47`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
 
 Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARGE 모델을 사용하는 개인화 하네스입니다. 공통 엔진과 개인 Knowledge·Memory·Skill을 분리하고 사용자 또는 프로젝트 범위로 설치합니다.
 
@@ -99,10 +101,10 @@ Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지�
 
 ```powershell
 # PC에 이미 설치된 승인 Python을 사용하는 기본 직원 ZIP 생성
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.46 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.47 -KnowledgeVersion 2026.09.03
 ```
 
-결과는 `dist\company-agent-1.4.46-2026.09.03.zip`입니다. 뒤의 날짜는 회사 지식팩 버전이며 ZIP 생성일이 아닙니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 배포한 내용과 다른 소스를 패키징할 때는 같은 버전을 재사용하지 말고 새 CoreVersion과 일치하는 플러그인 manifest 버전을 사용합니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
+결과는 `dist\company-agent-1.4.47-2026.09.03.zip`입니다. 뒤의 날짜는 회사 지식팩 버전이며 ZIP 생성일이 아닙니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 배포한 내용과 다른 소스를 패키징할 때는 같은 버전을 재사용하지 말고 새 CoreVersion과 일치하는 플러그인 manifest 버전을 사용합니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
 
 로컬 ZIP은 기본적으로 Git 추적에서 제외합니다. 게시를 요청받으면 소스·안내서를 검증한 뒤 새 버전의 ZIP을 Release에 첨부하고 다운로드 SHA-256을 확인합니다. 과거 Git에 기록했던 1.2.0 파일을 최신 설치본으로 취급하지 마세요.
 

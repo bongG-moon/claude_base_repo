@@ -340,7 +340,7 @@ work-context-catalog 스킬로 지금까지의 Claude 사용 기록과 이 폴�
 
 ## 10. 업데이트와 의견 보내기
 
-[최신 Release](https://github.com/bongG-moon/claude_base_repo/releases/latest)의 직원용 설치 ZIP 전체를 풀고 기존과 같은 범위를 선택해 업데이트합니다. `Source code (zip)`은 직원용 설치 파일이 아닙니다. Workspace 사용자는 같은 Release의 별도 미리보기 ZIP을 사용합니다. 개인 기억·스킬·지식·모델·MCP·다른 플러그인을 임의로 초기화하지 않습니다. 업데이트 후 Claude Code를 다시 시작하세요.
+[최신 Release](https://github.com/bongG-moon/claude_base_repo/releases/latest)의 `Company-Harness-Setup.exe`에서 기존과 같은 범위로 업데이트합니다. ZIP 설치는 직원용 ZIP 전체를 압축 해제하세요. `Code → Download ZIP`과 `Source code (zip)`은 개발용 소스입니다. Workspace 앱은 별도 앱 배포 파일을 사용합니다. 개인 기억·스킬·지식·모델·MCP·다른 플러그인을 임의로 초기화하지 않습니다. 업데이트 후 Claude Code를 다시 시작하세요.
 
 ```text
 설치 버전 / 사용 화면 (CLI·VS Code·Workspace):

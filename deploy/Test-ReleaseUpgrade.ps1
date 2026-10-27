@@ -21,7 +21,9 @@ function Get-ReleaseTreeSnapshot {
     param([string] $Path)
     return (@(Get-CompanyAgentTreeRecords -Root $Path | ConvertTo-Json -Depth 10 -Compress) -join '')
 }
-$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('CompanyAgent-ReleaseUpgrade-' + [guid]::NewGuid().ToString('N'))
+# Keep the fixture profile close to a real user's path length. A long test name
+# can exceed legacy PowerShell Copy-Item limits before the update is exercised.
+$testRoot = Join-Path ([IO.Path]::GetTempPath()) ('ca-ru-' + [guid]::NewGuid().ToString('N').Substring(0, 12))
 $savedEnvironment = @{}
 foreach ($name in @('CLAUDE_CONFIG_DIR', 'CLAUDE_CODE_SUBAGENT_MODEL', 'CLAUDE_CODE_SUBAGENT_MODEL_FORCE')) {
     $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
@@ -202,7 +204,7 @@ finally {
     if (-not $KeepArtifacts -and (Test-Path -LiteralPath $testRoot)) {
         $resolved = ConvertTo-CompanyAgentFullPath -Path $testRoot
         $tempRoot = (ConvertTo-CompanyAgentFullPath -Path ([IO.Path]::GetTempPath())).TrimEnd('\')
-        if (-not $resolved.StartsWith(($tempRoot + '\'), [StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notlike 'CompanyAgent-ReleaseUpgrade-*') { throw 'Unsafe release upgrade cleanup path.' }
+        if (-not $resolved.StartsWith(($tempRoot + '\'), [StringComparison]::OrdinalIgnoreCase) -or (Split-Path -Leaf $resolved) -notmatch '^ca-ru-[0-9a-f]{12}$') { throw 'Unsafe release upgrade cleanup path.' }
         $cleanupIO = '\\?\' + $resolved
         if (([IO.File]::GetAttributes($cleanupIO) -band [IO.FileAttributes]::ReparsePoint) -ne 0) { throw 'Unsafe release upgrade cleanup link.' }
         # The fixture now deliberately contains paths beyond MAX_PATH too.

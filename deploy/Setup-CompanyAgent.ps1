@@ -1079,6 +1079,19 @@ function Invoke-SetupElevation {
     return $childResult.result
 }
 
+function Assert-SetupBundleSource {
+    param([Parameter(Mandatory = $true)][string] $BundleRoot)
+
+    # GitHub/GitLab source archives lack the built payload and integrity manifest.
+    # Detect the source layout without relying on .git, a folder name or network.
+    if (Test-Path -LiteralPath (Join-Path $BundleRoot 'bundle-manifest.json') -PathType Leaf) { return }
+    if ((Test-Path -LiteralPath (Join-Path $BundleRoot 'company-agent-plugin\.claude-plugin\plugin.json') -PathType Leaf) -and
+        (Test-Path -LiteralPath (Join-Path $BundleRoot 'deploy\New-OfflineBundle.ps1') -PathType Leaf)) {
+        throw '[SETUP_SOURCE_ARCHIVE] Source code archive, not an employee installation bundle.'
+    }
+    throw '[SETUP_BUNDLE_INCOMPLETE] Installation bundle manifest missing.'
+}
+
 function Get-SetupFriendlyFailure {
     param([string] $Message)
     # Recovery failures take precedence. Never promise an uncertain rollback.
@@ -1111,6 +1124,12 @@ function Get-SetupFriendlyFailure {
     }
     if ($Message -match '(?i)project folder|Project installation needs|Select a project folder') {
         return '프로젝트 폴더를 확인하지 못했습니다. 실제로 존재하는 작업 폴더를 선택하고 다시 실행해 주세요.'
+    }
+    if ($Message -match '\[SETUP_SOURCE_ARCHIVE\]') {
+        return "Git의 Download ZIP으로 받은 소스 코드입니다. 이 ZIP은 압축을 다시 풀어도 설치할 수 없습니다.`n설치하려면 Releases의 Company-Harness-Setup.exe를 내려받아 실행하세요.`nhttps://github.com/bongG-moon/claude_base_repo/releases/latest/download/Company-Harness-Setup.exe`n사내에서 전달받는 경우 담당자에게 같은 이름의 설치 파일을 요청하세요. 기존 설정은 변경하지 않았습니다."
+    }
+    if ($Message -match '\[SETUP_BUNDLE_INCOMPLETE\]') {
+        return '설치용 ZIP의 필수 파일이 없습니다. Releases에서 company-agent-버전-지식팩버전.zip을 받아 전체 압축을 푼 뒤 실행하거나 Company-Harness-Setup.exe를 사용하세요. Git의 Download ZIP과 Source code (zip)은 설치 파일이 아닙니다. 기존 설정은 변경하지 않았습니다.'
     }
     if ($Message -match '(?i)extract|bundle.*manifest|bundle.*(hash|integrity)|hash mismatch') {
         return '설치 파일 묶음을 확인하지 못했습니다. ZIP 전체를 새 폴더에 압축 해제한 뒤 Install-CompanyAgent.cmd를 실행해 주세요. 계속되면 담당자에게 원본 파일 확인을 요청하세요.'
@@ -1295,9 +1314,7 @@ try {
     $InvokingUserProfile = Get-SetupFullPath -Path $InvokingUserProfile
     $InvokingLocalAppData = Get-SetupFullPath -Path $InvokingLocalAppData
 
-    if (-not (Test-Path -LiteralPath (Join-Path $BundleRoot 'bundle-manifest.json') -PathType Leaf)) {
-        throw "This easy installer must be run from an extracted Company Agent offline bundle. Extract the ZIP first, then run deploy\Install-CompanyAgent.cmd. Bundle root checked: $BundleRoot"
-    }
+    Assert-SetupBundleSource -BundleRoot $BundleRoot
 
     Write-Host ''
     Write-Host 'Company Agent easy setup'

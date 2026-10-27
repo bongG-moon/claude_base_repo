@@ -302,9 +302,7 @@ foreach ($protected in @($BundleRoot, $ClaudeConfigRoot, $distributionRoot, $reg
         throw "UserStateRoot must be separate from package, registration, and Claude configuration folders: $protected"
     }
 }
-if (-not (Test-Path -LiteralPath (Join-Path $BundleRoot 'bundle-manifest.json') -PathType Leaf)) {
-    throw "Extract the complete Company Agent ZIP first, then double-click Install-CompanyAgent.cmd. Checked: $BundleRoot"
-}
+Assert-SetupBundleSource -BundleRoot $BundleRoot
 # Verify the proposed version before presenting it as an available update.
 $manifest = $(if ($SkipBundleVerification) { Read-CompanyAgentJson -Path (Join-Path $BundleRoot 'bundle-manifest.json') } else { Test-CompanyAgentBundleIntegrity -BundleRoot $BundleRoot })
 Assert-CompanyAgentVersion -Version ([string]$manifest.coreVersion) -Name 'CoreVersion'
