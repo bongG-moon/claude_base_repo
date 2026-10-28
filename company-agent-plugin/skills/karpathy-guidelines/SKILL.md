@@ -1,75 +1,34 @@
 ---
 name: karpathy-guidelines
 company-agent-role: support
-description: 코드·스크립트·MCP·실행형 스킬을 만들거나 검토할 때 범위를 작게 유지하고 근거로 확인하는 개발 지침입니다. 일반 요약이나 업무 문서 작성에는 별도로 실행하지 않습니다.
+description: 코드, 스크립트, MCP와 실행형 스킬을 만들거나 검토할 때 범위를 작게 유지하고 실제 결과로 확인하는 개발 지침입니다. 일반 요약이나 업무 문서에 별도 절차로 실행하지 않습니다.
 license: MIT
 ---
 
-# Karpathy Guidelines for Company Agent
+# 개발할 때 지킬 네 가지
 
-Use these four principles within the current task. This is supporting guidance,
-not a second interview, planning workflow, or approval process. Follow the
-existing Company Agent model routing and personal Skill activation behavior.
-The user does not need to name this Skill when the task matches its description.
+현재 작업 안에서 적용하는 보조 지침입니다. 별도 인터뷰, 계획, 승인이나 검토 단계를 만들지 않고 기존 라우팅과 권한을 유지합니다.
 
-## 1. Think before coding
+## 1. 먼저 이해하기
 
-- Read the relevant project files and reuse facts, choices, and authorization
-  already provided by the user.
-- State a material assumption briefly. For a routine, reversible implementation
-  choice, use the simplest option consistent with the request and continue.
-- Ask only when a missing choice materially changes the outcome or is needed
-  to perform an action within the user's authority. Ask one short question at a
-  time, with a recommendation when useful; do not ask again about settled choices.
-- If a simpler approach satisfies the request, explain it briefly and use it.
+관련 파일을 읽고 이미 제공된 요구사항, 선택과 권한을 재사용합니다. 결과에 중요한 가정은 짧게 밝힙니다. 되돌릴 수 있는 일상적인 구현 선택은 가장 단순한 방법으로 진행합니다. 결과나 허용 범위가 달라지는 필수 정보만 묻고 결정된 사항을 다시 묻지 않습니다.
 
-## 2. Simplicity first
+## 2. 단순하게 만들기
 
-- Implement the smallest change that satisfies the requested result.
-- Avoid speculative features, new dependencies, abstractions for one use, and
-  configuration the task does not need. Reuse the project's existing tools.
-- Keep necessary input validation, error handling, and the company's tool
-  permission boundaries. Simplicity is not a reason to bypass them.
-- After tracing the relevant flow, prefer existing code, then standard-library or native platform features, then installed dependencies, before new code. Choose the smallest readable solution that meets all explicit requirements, not the fewest lines. Document a deliberate limitation and its measured upgrade condition only when one actually exists.
-- Use the installed Windows/offline runtime and project conventions. If a
-  necessary dependency is unavailable, identify it rather than downloading
-  executable code from the public internet.
+요청을 충족하는 가장 작은 읽기 쉬운 변경을 선택합니다. 기존 코드 → 표준 라이브러리/플랫폼 기능 → 설치된 의존성 순서로 확인한 뒤 새 코드를 고려합니다. 줄 수를 줄이려고 검증, 오류 처리나 권한 경계를 없애지 않습니다. 불필요한 기능, 의존성, 일회성 추상화와 설정을 추가하지 않습니다. 설치된 Windows/오프라인 런타임을 사용하고 없는 의존성은 실제 한계로 알리며 실행 코드를 임의 다운로드하지 않습니다.
 
-## 3. Surgical changes
+## 3. 필요한 곳만 고치기
 
-- Preserve existing user edits, working behavior, comments, and conventions.
-  Every changed file must support the user's requested outcome.
-- Do not rewrite unrelated code or delete existing unused code merely because
-  it was encountered. Remove an orphan introduced by this change only when its
-  lack of remaining uses is verified.
-- New Skills use the selected native Claude skill folder; existing native/private
-  Skills keep their actual source. Memory/Knowledge keep their scoped User State.
-  Never write personal assets into the installed plugin, copy existing Skills,
-  or append these rules to global/project CLAUDE.md.
-- Commit, push, or deploy only within the user's requested scope. This Skill
-  does not authorize automatic commits or introduce a new approval gate.
-- A request to review or diagnose stays read-only unless it also requests a fix.
-- For a reported code/runtime defect, read `references/evidence-diagnosis.md`; do not load it for ordinary feature work or business summaries. It supports the current workflow and retry budget, not another review loop.
+사용자의 변경, 기존 동작과 프로젝트 관례를 보존합니다. 수정 파일은 요청 결과에 직접 필요해야 합니다. 무관한 리팩터링이나 기존 미사용 코드 삭제를 하지 않으며 이번 변경에서 생긴 고아 코드만 참조가 없음을 확인한 후 정리합니다.
 
-## 4. Goal-driven execution
+개인 자산은 선택한 native 스킬 폴더와 기존 실제 원본에서 다룹니다. 기억/지식은 원래 범위의 저장소를 유지합니다. 설치 플러그인에 개인 자료를 쓰거나 스킬을 복제하거나 이 지침을 CLAUDE.md에 붙이지 않습니다. 커밋/푸시/배포는 사용자 요청 범위로 한정합니다. 검토만 요청했다면 읽기만 합니다.
 
-- Define observable success criteria. Reuse the current workflow's plan and
-  completion checks instead of starting another one.
-- For a behavior change or bug fix, run relevant tests or reproduce the failure
-  when feasible, make the change, and check the actual result. For a refactor,
-  verify the intended behavior before and after. Do not invent tests for a
-  simple text-only change with no behavioral effect.
-- For a regression, first confirm the check detects the original defect, then
-  confirm it passes after the fix. Do not weaken the expected behavior merely
-  to make a test pass. If reproduction is unavailable, state that limitation.
-- On failure, use the evidence to make a scoped correction within the existing
-  harness retry budget. Do not start an independent unbounded review loop.
-- Report what was verified and what remains unverified. A generated test file,
-  a model's self-review, or a saved completion record is not evidence that the
-  program ran successfully.
-- Use results from after the latest relevant change. Inspect the actual exit
-  status, failures and skipped checks; an old pass or a worker's claim is not
-  current evidence. Passing tests alone does not prove every user requirement.
+구체적인 오류를 진단할 때만 `references/evidence-diagnosis.md`를 읽습니다. 일반 기능 제작이나 업무 요약에는 불필요하며 기존 재시도 예산 안에서 사용합니다.
 
-Source and adaptation details are in [SOURCE.md](SOURCE.md). The preserved
-upstream text under `references/` is provenance, not a second active workflow.
+## 4. 결과로 확인하기
+
+현재 계획과 완료 기준을 재사용하고 관찰 가능한 성공 조건을 정합니다. 오류 수정은 가능하면 원래 결함을 잡는 재현/검사를 확인한 뒤 수정 후 통과를 확인합니다. 통과시키기 위해 기대 동작을 약하게 만들지 않습니다. 리팩터링은 의도한 동작의 전후를 비교합니다. 단순 문구 수정에 동작을 흉내 낸 테스트를 만들지 않습니다.
+
+최신 변경 이후의 실제 종료 상태, 실패와 생략된 검사를 확인합니다. 낡은 통과 결과, 작업자의 결론, 테스트 파일 생성이나 완료 기록만으로 실행 성공을 주장하지 않습니다. 관련 검사를 통과해도 검사하지 않은 요구사항까지 증명된 것은 아닙니다. 실패는 현재 예산 안에서 가장 작은 수정으로 대응하며 무한 리뷰를 시작하지 않습니다. 재현하지 못한 환경과 검증한 범위를 구분해 알립니다.
+
+[출처와 적용 내용](SOURCE.md), 보존된 upstream 문서는 근거 자료이며 추가 실행 절차가 아닙니다.

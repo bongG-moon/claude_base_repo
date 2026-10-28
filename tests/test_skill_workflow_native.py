@@ -118,6 +118,33 @@ class SkillWorkflowNativeTests(native.NativeRuntimeTestBase):
                   tool_response={"type": "text", "file": {"filePath": str(file), "content": raw,
                       "startLine": 1, "totalLines": len(raw.splitlines()), "numLines": len(raw.splitlines())}})
 
+    def test_source_only_company_choice_roundtrips_real_windows_hook(self):
+        local_skill = self.project / '.claude/skills/html-report/SKILL.md'
+        atomic_write_text(local_skill, '---\nname: html-report\ndescription: HTML 보고서 작성\n---\n프로젝트 절차\n')
+        result = self.hook('UserPromptSubmit', prompt='html-report HTML 보고서 작성')
+        group = next(g for g in self.brief_groups(result) if g['name'] == 'html-report')
+        company = next(c for c in group['candidates'] if c['source'] == 'company')
+        denied = self.hook('PreToolUse', tool_name='Skill', tool_input={'skill': 'company-agent:html-report'})
+        self.assertEqual('deny', denied['hookSpecificOutput']['permissionDecision'])
+        question = 'HTML 보고서에 사용할 html-report 스킬이 두 곳에 있습니다. 어느 쪽으로 진행할까요?'
+        inputs = {'questions': [{'question': question, 'header': '스킬 선택',
+                  'options': [{'label': '회사 스킬', 'description': '회사에서 제공하는 보고서 방식'},
+                              {'label': '프로젝트 스킬', 'description': '프로젝트에서 제공하는 보고서 방식'}],
+                  'multiSelect': False}]}
+        self.assertEqual({}, self.hook('PreToolUse', tool_name='AskUserQuestion',
+                                      tool_use_id='source-choice-1', tool_input=inputs))
+        answered = {**inputs, 'answers': {question: '회사 스킬'}}
+        self.hook('PostToolUse', tool_name='AskUserQuestion', tool_use_id='source-choice-1',
+                  tool_input=answered, tool_response=answered)
+        state = load_session(self.payload['session_id'], Path(self.record['userStateRoot']))
+        self.assertEqual(company['id'], state['skillWorkflow']['choiceAnswer']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', tool_name='Skill',
+                                      tool_input={'skill': 'company-agent:html-report'}))
+        self.hook('PostToolUse', tool_name='Skill', tool_input={'skill': 'company-agent:html-report'},
+                  tool_response={'success': True})
+        self.assertEqual({}, self.hook('PreToolUse', tool_name='Write',
+                                      tool_input={'file_path': str(self.project / 'report.html')}))
+
     def test_korean_choice_cli_preserves_state_and_does_not_require_verification(self):
         local_skill = self.project / '.claude/skills/html-report/SKILL.md'
         atomic_write_text(local_skill, '---\nname: html-report\ndescription: HTML 보고서 작성\n---\n한글 — 자료 😀\n')

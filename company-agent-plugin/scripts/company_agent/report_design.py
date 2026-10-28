@@ -127,6 +127,13 @@ body[data-style] :is(button,summary,a):focus-visible{outline:3px solid var(--acc
 .chart-values summary{min-height:44px;display:list-item;align-content:center}
 body[data-view=scroll] .section:not(.layout-cover) h2{max-width:none;text-wrap:pretty}
 .section :is(.copy-block,.visual-block){min-width:0}
+/* Dense working data needs a broad workspace, not a tall marketing cover. */
+body[data-style] .section.data-panel{padding:28px 32px}
+body[data-style] .section.data-panel h2{font-size:clamp(23px,2.4vw,32px);max-width:none;letter-spacing:-.7px}
+.section.data-panel .takeaway{font-size:15px;margin-bottom:16px;border-left:0;padding-left:0;color:var(--muted)}
+.section.data-panel .page-number{margin-bottom:10px}
+.section.data-panel .report-data-table{margin-bottom:0}
+@media(max-width:760px){body[data-style] .section.data-panel{padding:22px 16px}}
 /* An absent block must not reserve a second column. Prose-only panels use a
    centered reading width instead of leaving half a wide panel unused. */
 body[data-style] .layout-split .section-content[data-content-columns="1"]{grid-template-columns:minmax(0,1fr)}
@@ -171,6 +178,10 @@ def _bento_wide_sections(rows: list[dict]) -> set[int]:
 def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     from .report_styles import CSS as theme_css
     base_css = base_css + '\n' + CSS + '\n' + theme_css + '\n' + INTERFACE_CSS + '\n' + data.get('referenceCss', '')
+    if any(row.get('table') or row.get('chart') for row in data['sections']):
+        from .report_tables import CSS as table_css, JS as table_js
+        base_css += '\n' + table_css
+        script += '\n' + table_js
     if data.get('referencePreset'):
         # Geometry only: the chosen palette and Korean typeface remain intact.
         base_css += '''
@@ -212,6 +223,8 @@ body[data-view=slides] .reference-toc{display:none}
         has_art = layout == 'cover' and data['style'] in ('immersive-3d','editorial','retro-y2k') and not row.get('image')
         has_visual = any(row.get(key) for key in ('chart', 'table', 'image', 'diagram', 'kpis'))
         text_class = ' text-panel' if not has_visual and layout != 'cover' and data['style'] != 'freeform' else ''
+        if row.get('table') and len(row['table']['rows']) > 12:
+            text_class += ' data-panel'
         balance_class = (' bento-wide' if i - 1 in bento_wide else '') + (' has-theme-art' if has_art else '')
         fragment = f'<section class="section layout-{layout}{diagram_class}{text_class}{balance_class}" id="section-{i}"><span class="page-number">{i:02d} / {len(data["sections"]):02d} · {esc(row.get("eyebrow") or "업무 보고")}</span><h2>{esc(row["title"])}</h2>'
         if has_art:
@@ -230,7 +243,7 @@ body[data-view=slides] .reference-toc{display:none}
             blocks['chart'] = svg_chart(chart, i)
             blocks['chart'] += '<details class="chart-values"><summary>차트 수치 원자료 펼치기</summary>'+table_renderer(['항목']+[s['name'] for s in chart['series']], [[cat]+[s['values'][n] for s in chart['series']] for n, cat in enumerate(chart['categories'])], '차트 원자료')+'</details>'
         if row.get('table'):
-            blocks['table'] = table_renderer(row['table']['headers'],row['table']['rows'])
+            blocks['table'] = table_renderer(row['table']['headers'],row['table']['rows'], options=row['table'])
         if row.get('image'):
             im=row['image'];blocks['image'] = f'<figure><img src="data:{im["mime"]};base64,{im["data"]}" alt="{esc(im["alt"])}"><figcaption>{esc(im["alt"])}</figcaption></figure>'
         if row.get('diagram'):

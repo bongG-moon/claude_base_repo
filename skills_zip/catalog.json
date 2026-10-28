@@ -34,9 +34,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "asset-factory",
-      "sha256": "38e34a47f0535cc8729c724e3364f0e91a850513a5c66fe0f885edfc6f3c3624",
-      "size": 38253,
-      "files": 24
+      "sha256": "6a7f74ea400fa7a85fa0e96774b9548b898c5162a72760a1c4b760a437729bd4",
+      "size": 40191,
+      "files": 25
     },
     {
       "slug": "excel-to-pipeline",
@@ -48,9 +48,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "excel-to-pipeline",
-      "sha256": "91e25e45dbf26420b1c21a0d5a9311d3b64232652d24554ecd795b275eb4228d",
-      "size": 5500318,
-      "files": 41
+      "sha256": "d52f169bc839600e40b8acbe2852823b1ec1e93c9d2b898e91432af11152ecab",
+      "size": 5501838,
+      "files": 43
     },
     {
       "slug": "file-organizer",
@@ -62,23 +62,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "file-organizer",
-      "sha256": "63c072ab8bf6afe3aec9abd64e87c23edd81ad29433488d98430392ff4416536",
-      "size": 24466,
-      "files": 11
+      "sha256": "b29eb2e2cd5474d78104949484d1f89bc25b546c93287ca311ceb8df9bd0efd7",
+      "size": 26352,
+      "files": 12
     },
     {
       "slug": "html-report",
       "file": "html-report.zip",
       "name": "오프라인 HTML 업무 보고서",
-      "description": "수치, 근거를 보존하며 선택한 글꼴, 디자인으로 HTML 보고서를 만듭니다. 스토리형, 데이터 리포트형, 발표형 레퍼런스도 선택할 수 있으며 실행 중 참고 사이트 검색은 필요 없습니다.",
+      "description": "수치와 근거를 보존하며 선택한 글꼴과 디자인으로 HTML 보고서를 만듭니다. 데이터 표는 검색, 정렬, 페이지 이동과 CSV 다운로드를 지원하며 스토리형, 데이터 리포트형, 발표형 레퍼런스를 선택할 수 있습니다.",
       "packageId": "company.skills.html-report",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "html-report",
-      "sha256": "897369bdc059cf2bf2220f87b0952f39582b601bddbfa1d8695e8bcd536ec3e5",
-      "size": 148990,
-      "files": 32
+      "sha256": "8f4a82e9fa67ddc09fec23f02a02fcb21e596cb4a7dc1253a09f0f3eb4e8fbce",
+      "size": 161055,
+      "files": 35
     },
     {
       "slug": "karpathy-guidelines",
@@ -90,9 +90,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "karpathy-guidelines",
-      "sha256": "e6496abb0b4315875d428a462c8da42f51f8e2eaed8dcfac43ea6c6204127c8e",
-      "size": 28584,
-      "files": 14
+      "sha256": "7246d3065782d423ef0d9bd13f2fd4c8c4ac660bab5eb9a84edcfc4e604fdfc6",
+      "size": 29849,
+      "files": 15
     },
     {
       "slug": "outlook-assistant",
@@ -104,9 +104,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "outlook-assistant",
-      "sha256": "e5c4a28fcbd37603674f3a98c48936a4d154295c3a27180c8b5af976eddc0eeb",
-      "size": 27503,
-      "files": 12
+      "sha256": "38372f72c78fd5dae771d551624a9c0bae8c9965e1764c18eee8b5c2bf75906d",
+      "size": 29367,
+      "files": 13
     },
     {
       "slug": "personal-knowledge",
@@ -118,9 +118,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "personal-knowledge",
-      "sha256": "130a2da4743a4c3e23f822a29e3db3db8c8c6d427d2321278348c9727afd1e62",
-      "size": 22189,
-      "files": 11
+      "sha256": "1f1283f169a258ec3c300287ebcaa063149f0300e757c20ea1ea62bb69558252",
+      "size": 24197,
+      "files": 12
     },
     {
       "slug": "personal-memory",
@@ -132,9 +132,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "personal-memory",
-      "sha256": "d1b367c9f2a06ecfada812941e32a6c84daca8ee6802f96d20db9c60729bd94d",
-      "size": 22228,
-      "files": 11
+      "sha256": "1afc05f910172a5d1688c54f5e1898b7ae77c56513284b1913bc3120342e9e97",
+      "size": 24211,
+      "files": 12
     },
     {
       "slug": "presentation",
@@ -146,9 +146,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "presentation",
-      "sha256": "1f463fc24957b769552c3e2b8b4ed8088fe5d13f066d8f46a45580ccade683dd",
-      "size": 146762,
-      "files": 32
+      "sha256": "156448385360355a886bba2d71434a2f677bab96343646c7fc617d8cfa5cde83",
+      "size": 157468,
+      "files": 35
     },
     {
       "slug": "web-interface",
@@ -160,9 +160,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "web-interface",
-      "sha256": "4155666f6dc87f9e0514e01223f843de64e3a546770ba0da68aa74b80ed5c3d8",
-      "size": 21964,
-      "files": 10
+      "sha256": "0adbd740ad881183effb5b48d2cb8a13d99b65b86f3495f58d00e2177c96c81c",
+      "size": 23920,
+      "files": 11
+    },
+    {
+      "slug": "website-rebuild",
+      "file": "website-rebuild.zip",
+      "name": "참고 화면으로 웹 만들기",
+      "description": "URL이나 화면 이미지를 참고해 웹 디자인과 필요한 동작을 재현합니다. 실제 확인한 화면과 추정한 부분을 구분하고 기존 프로젝트에 편집 가능한 코드로 만듭니다.",
+      "packageId": "company.skills.website-rebuild",
+      "runtimeRequired": false,
+      "type": "Skill",
+      "legacyAlias": false,
+      "installName": "website-rebuild",
+      "sha256": "530543c48f6c9b18eab96ca464bd1fc5d7dae012c0d731a639acd0bd386b071c",
+      "size": 28191,
+      "files": 13
     },
     {
       "slug": "work-context-catalog",
@@ -174,9 +188,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "work-context-catalog",
-      "sha256": "c1765d8c437f30770fd3f61fb51e207e8eb2f4dbe71f8b69fb04529e8bc9aa28",
-      "size": 5431916,
-      "files": 20
+      "sha256": "89da9b81b38b77f960c2c1a51af62135246dc21e1cd4a294cca007140638cd9a",
+      "size": 5432318,
+      "files": 21
     },
     {
       "slug": "manufacturing-oracle-mcp",
@@ -244,19 +258,20 @@
     }
   ],
   "managedFiles": {
-    "SHA256SUMS.txt": "7b7eb6d66a4afb12e098c674bfd188b61b04a5d464dd74184b605107c6162732",
-    "asset-factory.zip": "38e34a47f0535cc8729c724e3364f0e91a850513a5c66fe0f885edfc6f3c3624",
-    "excel-to-pipeline.zip": "91e25e45dbf26420b1c21a0d5a9311d3b64232652d24554ecd795b275eb4228d",
-    "file-organizer.zip": "63c072ab8bf6afe3aec9abd64e87c23edd81ad29433488d98430392ff4416536",
-    "html-report.zip": "897369bdc059cf2bf2220f87b0952f39582b601bddbfa1d8695e8bcd536ec3e5",
-    "karpathy-guidelines.zip": "e6496abb0b4315875d428a462c8da42f51f8e2eaed8dcfac43ea6c6204127c8e",
+    "SHA256SUMS.txt": "662b911f81ae1ae3d2f7b5577cfd0367b08e123c7ff5653eb515c858d7b5a0a0",
+    "asset-factory.zip": "6a7f74ea400fa7a85fa0e96774b9548b898c5162a72760a1c4b760a437729bd4",
+    "excel-to-pipeline.zip": "d52f169bc839600e40b8acbe2852823b1ec1e93c9d2b898e91432af11152ecab",
+    "file-organizer.zip": "b29eb2e2cd5474d78104949484d1f89bc25b546c93287ca311ceb8df9bd0efd7",
+    "html-report.zip": "8f4a82e9fa67ddc09fec23f02a02fcb21e596cb4a7dc1253a09f0f3eb4e8fbce",
+    "karpathy-guidelines.zip": "7246d3065782d423ef0d9bd13f2fd4c8c4ac660bab5eb9a84edcfc4e604fdfc6",
     "manufacturing-oracle-mcp-0.1.0-20261024.zip": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
-    "outlook-assistant.zip": "e5c4a28fcbd37603674f3a98c48936a4d154295c3a27180c8b5af976eddc0eeb",
-    "personal-knowledge.zip": "130a2da4743a4c3e23f822a29e3db3db8c8c6d427d2321278348c9727afd1e62",
-    "personal-memory.zip": "d1b367c9f2a06ecfada812941e32a6c84daca8ee6802f96d20db9c60729bd94d",
-    "presentation.zip": "1f463fc24957b769552c3e2b8b4ed8088fe5d13f066d8f46a45580ccade683dd",
-    "web-interface.zip": "4155666f6dc87f9e0514e01223f843de64e3a546770ba0da68aa74b80ed5c3d8",
-    "work-context-catalog.zip": "c1765d8c437f30770fd3f61fb51e207e8eb2f4dbe71f8b69fb04529e8bc9aa28",
-    "등록_설치_안내.html": "ba4e189c21bfb2d0a4c750f2b0bdebb12717713eb956a951533e55901fdcc3cc"
+    "outlook-assistant.zip": "38372f72c78fd5dae771d551624a9c0bae8c9965e1764c18eee8b5c2bf75906d",
+    "personal-knowledge.zip": "1f1283f169a258ec3c300287ebcaa063149f0300e757c20ea1ea62bb69558252",
+    "personal-memory.zip": "1afc05f910172a5d1688c54f5e1898b7ae77c56513284b1913bc3120342e9e97",
+    "presentation.zip": "156448385360355a886bba2d71434a2f677bab96343646c7fc617d8cfa5cde83",
+    "web-interface.zip": "0adbd740ad881183effb5b48d2cb8a13d99b65b86f3495f58d00e2177c96c81c",
+    "website-rebuild.zip": "530543c48f6c9b18eab96ca464bd1fc5d7dae012c0d731a639acd0bd386b071c",
+    "work-context-catalog.zip": "89da9b81b38b77f960c2c1a51af62135246dc21e1cd4a294cca007140638cd9a",
+    "등록_설치_안내.html": "c4ad58aa617cc88762999d23fcd746ac24635d604f54f3a4e24a5223dfe9e89d"
   }
 }

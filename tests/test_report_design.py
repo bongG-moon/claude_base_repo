@@ -197,15 +197,22 @@ class ReportDesignTests(unittest.TestCase):
         self.assertTrue(create_html(spec,self.output)["ok"])
         self.assertIn('20.00 / 35 / 1.01',self.output.read_text(encoding="utf-8"))
 
-    def test_skill_requires_design_reference_and_distinct_checks(self):
+    def test_skill_design_reference_examples_execute(self):
         skill=ROOT/'company-agent-plugin/skills/html-report/SKILL.md'
         text=skill.read_text(encoding='utf-8')
         self.assertIn('references/design-and-numbers.md',text)
-        self.assertIn('Reuse current selected guidance',text)
-        self.assertIn('not only individual input rows',text)
         guide=(skill.parent/'references/design-and-numbers.md').read_text(encoding='utf-8')
-        example=json.loads(re.search(r'```json\n(.*?)\n```',guide,re.S).group(1))
-        self.assertTrue(create_html(example,self.output)['ok'])
+        examples=[json.loads(block) for block in re.findall(r'```json\n(.*?)\n```',guide,re.S)]
+        # Execute both the minimal job and the table-linked arithmetic example.
+        # This checks the published contract without requiring English boilerplate.
+        self.assertGreaterEqual(len(examples),2)
+        for index,example in enumerate(examples):
+            with self.subTest(example=index):
+                output=self.output.with_name(f'documented-{index}.html')
+                result=create_html(example,output)
+                self.assertTrue(result['ok'],result)
+                if example.get('facts'):
+                    self.assertNotIn('{{fact:',output.read_text(encoding='utf-8'))
 
 
 if __name__ == '__main__':

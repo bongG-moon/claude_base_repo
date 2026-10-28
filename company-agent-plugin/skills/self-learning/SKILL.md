@@ -1,88 +1,46 @@
 ---
 name: self-learning
 company-agent-role: support
-description: 지속적인 명시적 교정·독립된 반복 선택·검증된 개인 절차 개선만 조용히 학습합니다. 후보·실제 적용·보류를 구분하며 학습만으로 업무를 재개하지 않습니다.
+description: 지속적인 명시 교정, 독립된 반복 선택과 검증된 개인 절차 개선만 조용히 기록합니다. 후보, 적용, 보류를 구분하며 학습을 위해 업무를 재개하지 않습니다.
 ---
 
-# Personal learning
+# 경험에서 배우기
 
-모델을 훈련하지 않습니다. 재사용할 교정만 개인 선호나 기존 개인 스킬의 작은 점검 항목으로 반영합니다.
-학습 이력은 `runtime.stateRoot`에 남깁니다. 기억과 기존 private 스킬의 범위는 유지합니다.
-새 native 스킬은 제작기에 등록된 정확한 원본만 대상이며 현재 프로젝트 밖으로 옮기거나 복제하지 않습니다.
-직접 설치한 사용자 스킬·회사 배포본·프로젝트 CLAUDE.md는 자동 수정하지 않습니다.
-명시적인 새 기억·스킬 저장은 personal-memory/asset-factory의 범위 선택을 따릅니다.
-그 선택은 자동 학습 설정을 바꾸지 않습니다. 이미 허용한 안전한 자동 업데이트마다 다시 승인받지 마세요.
-기존 기억의 내용 교정은 personal-memory에서 원래 범위·ID를 유지한 조건부 수정으로 처리합니다.
-새 프로젝트 전용 선호도 그 범위의 명시 기억으로 저장하며 개인 전체 자동학습으로 바꾸지 않습니다.
-현재 learning submit은 관찰별 저장 범위 변경이나 임의 기존 기억 ID 수정을 지원하지 않습니다.
+모델을 재훈련하지 않습니다. 재사용할 교정을 개인 선호 또는 **기존 개인 스킬의 작은 점검 항목**으로 반영합니다. 일반 답변과 조회에 회고, 작업자, 추가 모델 호출이나 Stop 재개를 붙이지 않습니다.
 
-## Learn only when there is evidence
+## 언제 실행하는가
 
-- A durable explicit correction may be submitted while work is active; it does not require task completion.
-  Do not infer durability from a one-time choice, quoted text, silence, or an ambiguous correction.
-  “이번만” and unclear directions apply only to the current task, not long-term Memory.
-- A repeated choice needs independent work units with completion or actual current-turn verification,
-  not retries or extra turns of the same work.
-- A reusable procedural fix needs an existing personal Skill's full-load evidence, the exact observed
-  version, outcome success and actual relevant verification pass for the current turn/latest change.
-  A verified_fix also needs an observed failure and successful fix.
-  Capture is not application; missing evidence leaves a candidate deferred, never a fabricated pass.
-- Assess a prior improvement only after observing its actual next use at that exact version.
-  Reading a file or providing it to the model is not proof it was applied or helped.
-- Skip ordinary answers, lookups and empty reviews. No every-turn review, separate model service,
-  learning-only Stop continuation, forced worker, or background scan of a closed conversation.
+| 근거 | 조건 |
+| --- | --- |
+| 지속적인 명시 교정 | 작업 중에도 접수 가능. 이번만, 불명확한 말, 인용과 침묵은 장기 선호가 아님 |
+| 반복 선택 | 서로 독립된 업무의 완료/현재 검증 근거 필요. 같은 업무의 재시도나 후속 발언은 별개 근거가 아님 |
+| 개인 절차 개선 | 실제 사용한 스킬의 전체 본문 로드, 정확한 버전, 최신 변경에 대한 실제 관련 검증과 성공 필요. verified_fix는 관찰한 실패 후 수정 성공도 필요 |
+| 이전 개선 평가 | 바뀐 정확한 버전의 다음 실제 사용을 관찰한 경우만 평가. 파일 로드/모델 전달만으로 유용했다고 평가하지 않음 |
 
-## Submit once using the current context
+근거가 없으면 제출하지 않습니다. 미제출과 `no_candidates` 접수는 다릅니다. 학습을 위해 완료를 선언하거나 같은 업무를 새 업무로 만드는 행위는 금지합니다.
 
-Use exact injected `company_agent_runtime.cliCommand`, `stateRoot`, `company_agent_session_id`
-and the current `company_agent_learning.turnId`. They are JSON values, not environment variables.
-Replace the `company-agent` prefix below with the full already-quoted cliCommand.
-Missing exact context: defer learning and continue the business result. Never search settings, hooks,
-session folders, env or transcripts, invent IDs, change roots, or run discovery commands.
+## 어디에 무엇을 기록하는가
 
-1. Read [review-schema.md](references/review-schema.md) only when eligible evidence exists.
-   Use only evidence already in the current conversation. After compaction, missing evidence is unknown.
-2. Distill the smallest scoped lesson using the existing schema. Reuse stable taskType/key for the
-   same fact; preserve the latest explicit correction without creating contradictory active entries.
-   For skill/evaluation details, use the captured exact name/hash; never guess or hash a different version.
-3. Use Write once at `<stateRoot>/tmp/learning-review-<turnId>.json`.
-   Do not write a shell payload, workspace spec, raw prompt, tool output, business row or credential.
-4. Run exactly one normal submission:
-   `company-agent learning submit --session "<session-id>" --turn "<turnId>" --spec "<exact spec path>"`.
-   No status/stage/checkpoint prerequisite. The engine owns eligibility, deduplication and history;
-   submitting never declares the business work complete or clears unfinished verification.
-5. Use the returned result; do not repeat status, submit, or the business action for reassurance.
-   A safe schema/path correction may use the remaining retry budget, never an unchanged denied retry.
-   Accepted/duplicate/disabled/deferred submissions need no additional review command or retry ritual.
+- 현재 설치의 `runtime.stateRoot`가 자동 학습 범위입니다. 명시적 저장에서 고른 개인/프로젝트 범위가 자동 학습 설정을 바꾸지 않습니다.
+- 기존 기억 수정은 personal-memory에서 원래 ID와 범위를 유지해 조건부 수정합니다. 새 프로젝트 전용 사실도 그 범위의 기억으로 저장하며 개인 전체 학습에 넣지 않습니다. submit은 관찰별 범위 변경과 임의 기존 기억 ID 지정을 지원하지 않습니다.
+- 절차는 제작기에 등록된 정확한 개인 스킬 원본과 엔진 소유 체크리스트만 대상으로 합니다. 직접 설치한 다른 사용자 스킬, 회사 배포본, CLAUDE.md, 실행 코드, 정책/권한/도구 설정은 자동 변경하지 않습니다.
+- 새 스킬이나 복제는 asset-factory를 통한 별도 요청/제안 수락이 필요합니다. 자동 학습의 작은 허용 업데이트마다 다시 승인받지는 않습니다.
+- 원문 대화, 메일, DB 행, 인증 값, 민감한 개인 추론이나 모델이 추측한 회사 사실은 저장하지 않습니다.
 
-## Interpret the result, preserve the user's work
+## 한 번 제출
 
-- Submission accepted is a receipt, not “everything learned”. Only active changes mean actual application;
-  observing candidates or deferred changes remain unapplied. No submission is not “submitted with no lesson”.
-  A valid no_candidates receipt records no lesson; do not create a preference to fill an empty report.
-- A remembered item supplied to a later model is only provided-to-model evidence, not observed application.
-  Preserve that distinction in requested status reports and do not promise measured improvement.
-- The engine may defer version/manual-edit conflicts, insufficient evidence, protected scope or capacity.
-  Do not bypass deferral by memory upsert, editing a Skill directly, changing task names or creating fake work.
-- Submission consumes only the unchanged canonical spec; report retained-file warnings only when useful.
-  Never rerun a completed deliverable or external action because a learning record was missing.
-- Waiting for approval/worker, failed or incomplete checks and exhausted correction budgets are not
-  reasons to keep a Stop loop running. Keep pending evidence; return the result and its real limitation.
-- Preserve source privacy: no raw mail, transcripts, DB rows, authentication, hidden personal traits,
-  company facts guessed by the model, or copied source documents in specs or learning history.
-- Never change settings, authorization, company policy, executable code, tool activation or common Skills.
-  A new Skill or copy needs a separate user request/proposal acceptance through asset-factory.
-- Keep successful internal bookkeeping quiet and user-facing questions/results in Korean.
-  Do not replace the requested deliverable with a learning-status narrative.
+주입된 `company_agent_runtime.cliCommand`, `stateRoot`, `company_agent_session_id`, `company_agent_learning.turnId`를 그대로 사용합니다. JSON 값이지 환경변수가 아닙니다. 정확한 정보가 없으면 학습만 보류하고 업무 결과를 전달합니다. 설정, 후크, 환경변수, 세션 폴더를 찾거나 ID/실행 경로를 추측하지 않습니다.
 
-## User controls
+1. 위 조건에 맞는 근거가 있을 때만 [review-schema.md](references/review-schema.md)를 읽습니다. 현재 문맥에 실제로 있는 근거만 사용하며 compact 후 사라진 근거는 미확인입니다.
+2. 같은 사실의 안정적인 taskType/key를 재사용해 가장 작은 교정만 작성합니다. skill/evaluation의 이름과 해시는 캡처된 정확한 버전을 사용합니다.
+3. Write로 `<stateRoot>/tmp/learning-review-<turnId>.json`을 만듭니다. 셸 인라인 명세나 작업 폴더의 원문 사본은 만들지 않습니다.
+4. 예문의 company-agent를 정확한 cliCommand로 바꾸어 한 번 실행합니다: `company-agent learning submit --session "<session-id>" --turn "<turnId>" --spec "<exact spec path>" --state-root "<stateRoot>"`.
+5. 반환된 접수/변경 결과를 사용합니다. status/stage/checkpoint 선행 호출은 없습니다. 정상 accepted/duplicate/disabled/deferred 응답을 재시도하지 않습니다. 실제 명세 오류 수정만 남은 보정 예산에서 처리하며 변경 없는 거절은 반복하지 않습니다.
 
-`/company-agent:learning` supports status, pause/resume and rollback of an identified automatic change.
-Use `learning status --explain` on request only. Pause preserves existing Memory/Skills and their use.
-Rollback preserves manual edits and does not undo business files, mail, DB writes or other plugins.
-For preferences, rollback means deactivate this learned preference, not restore its
-previous text. For Skills, it restores only the engine-owned checklist block.
-An explicit memory edit uses personal-memory's same-scope revision restore instead;
-do not claim it is in the automatic-learning ledger. When interpreting scope or
-undo, use the actual receipt; a missing observed scope is not proof of personal-wide storage.
-For prior-feedback links, version receipts and checklist-update limits, use the schema reference.
+## 결과 해석과 사용자 제어
+
+접수 accepted는 적용 완료가 아닙니다. active 변경만 실제 적용이며 observing/deferred는 후보입니다. `provided-to-model`은 모델에 전달한 근거이지 실제 사용이나 성능 개선의 증거가 아닙니다. 버전 충돌, 수동 수정, 범위 제한, 근거 부족은 보류하고 직접 스킬 편집이나 memory upsert로 우회하지 않습니다.
+
+학습 접수는 미완료 업무나 실패 검사를 해소하지 않습니다. 작업자/사용자 대기, 검사 미완료나 보정 예산 소진 시 근거를 남기고 실제 결과와 한계를 전달합니다. 누락 기록 때문에 완료된 결과나 외부 작업을 다시 실행하지 않습니다. 정상 내부 기록은 조용히 처리합니다.
+
+사용자가 학습 상태를 묻거나 제어할 때만 `/company-agent:learning` 또는 `learning status --explain`을 사용합니다. pause는 기존 기억과 스킬 사용을 중단하지 않습니다. preference rollback은 해당 자동 선호를 비활성화하며 이전 본문 복원이 아닙니다. Skill rollback은 엔진 소유 체크리스트만 복원합니다. 기억의 이전 본문은 personal-memory의 같은 범위 revision restore를 사용합니다. 업무 파일, 메일과 다른 플러그인까지 되돌렸다고 하지 않습니다. 범위와 복원 여부는 실제 응답으로 판단합니다. Claude 종료 후 학습을 수행하는 백그라운드 수집은 없습니다.

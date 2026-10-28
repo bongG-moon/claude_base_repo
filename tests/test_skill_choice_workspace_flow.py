@@ -20,6 +20,7 @@ import test_skill_execution as execution
 import test_skill_discovery as discovery
 from company_agent.paths import atomic_write_text
 from company_agent.skill_registry import inventory_skills
+from company_agent.skill_workflow import _answer_candidate, _non_execution_question
 from company_agent.state import begin_turn
 from local_app.bridge import ClaudeSession
 
@@ -106,6 +107,258 @@ class WorkspaceSkillChoiceFlowTests(unittest.TestCase):
         # required success flag; Workspace's input map alone is insufficient.
         inputs = reply['updatedInput']
         return {key: deepcopy(inputs[key]) for key in ('questions', 'answers')}
+
+    def same_name_source_choice(self, source, *, question=None, labels=None, answer=None, description=None):
+        """Same named company/project skills and the actual Workspace response shape."""
+        self.f.skill('html-report', 'HTML 보고서 제작', source='project')
+        self.output('HTML 보고서 만들어줘')
+        route = self.state()['skillWorkflow']
+        data = inventory_skills(self.f.state, project_root=self.f.project,
+                                plugin_root=discovery.PLUGIN, claude_root=self.f.claude)
+        choices = [item for item in data['skills'] if item['id'] in route['requiredChoiceIds']]
+        self.assertEqual({'company', 'project'}, {item['source'] for item in choices})
+        self.assertEqual({'html-report'}, {item['name'] for item in choices})
+        target = next(item for item in choices if item['source'] == source)
+        labels = labels or ('회사 스킬', '프로젝트 스킬')
+        inputs = {'questions': [{'question': question or
+                  'HTML 보고서 제작에 사용할 html-report 스킬이 회사와 프로젝트 두 곳에 있습니다. 어느 쪽으로 진행할까요?',
+                  'header': '스킬 선택',
+                  'options': [{'label': label, 'description': description or '해당 출처의 업무 방식'} for label in labels],
+                  'multiSelect': False}]}
+        self.assert_pending(target['invocation'])
+        tool_id, shown = self.prepare(inputs)
+        answer = answer if answer is not None else ('회사 스킬' if source == 'company' else '프로젝트 스킬')
+        reply = self.answer_in_workspace(shown, answer)
+        self.hook('PostToolUse', 'AskUserQuestion', reply['updatedInput'],
+                  tool_id=tool_id, response=self.returned(reply))
+        return target
+
+    def test_source_only_company_option_records_actual_choice_and_loads_company_skill(self):
+        target = self.same_name_source_choice('company')
+        route = self.state()['skillWorkflow']
+        self.assertEqual(target['id'], route['choiceAnswer']['id'])
+        self.assertEqual(target['id'], route['requestChoice']['id'])
+        self.assertNotIn('choiceIds', route['executionPlan'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+        self.hook('PostToolUse', 'Skill', {'skill': target['invocation']}, response={'success': True})
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['selected']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Write', {'file_path': str(self.f.project / 'report.html')}))
+
+    def test_source_only_project_option_records_actual_choice_and_loads_project_skill(self):
+        target = self.same_name_source_choice('project')
+        route = self.state()['skillWorkflow']
+        self.assertEqual(target['id'], route['choiceAnswer']['id'])
+        self.assertEqual(target['id'], route['requestChoice']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+        self.hook('PostToolUse', 'Skill', {'skill': target['invocation']}, response={'success': True})
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['selected']['id'])
+
+    def test_source_only_options_when_question_uses_qualified_skill_name(self):
+        target = self.same_name_source_choice('company', question='company-agent:html-report 스킬을 어느 쪽으로 사용할까요?')
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_source_only_unrelated_question_does_not_select_a_skill(self):
+        target = self.same_name_source_choice('company', question='완성한 보고서의 저장 위치는 어디인가요?',
+                                              labels=('회사 스킬', '프로젝트 스킬'))
+        self.assert_pending(target['invocation'])
+
+    def test_source_only_skill_storage_question_does_not_select_execution_skill(self):
+        target = self.same_name_source_choice('company', question='html-report 스킬을 어디에 저장할까요?')
+        self.assert_pending(target['invocation'])
+
+    def test_source_only_skill_install_or_edit_question_does_not_select_execution_skill(self):
+        for operation in ('설치', '수정', '변경'):
+            with self.subTest(operation=operation):
+                target = self.same_name_source_choice('company', question=f'어떤 html-report 스킬을 {operation}할까요?')
+                self.assert_pending(target['invocation'])
+
+    def test_negative_and_explanatory_skill_questions_do_not_record_execution_choice(self):
+        questions = ('html-report 스킬 중 어떤 것을 사용하지 않을까요?',
+                     'html-report 스킬 중 어떤 것을 제외할까요?',
+                     'html-report 스킬 중 어떤 것을 뺄까요?',
+                     'html-report 스킬 중 어떤 것을 쓰면 안 될까요?',
+                     'html-report 스킬 중 어떤 스킬의 설명을 볼까요?',
+                     '어느 html-report 스킬의 사용법을 설명해 드릴까요?',
+                     '어느 html-report 스킬을 소개해 드릴까요?')
+        for labels, answer in ((('회사 스킬', '프로젝트 스킬'), '회사 스킬'),
+                               (('html-report (회사)', 'html-report (프로젝트)'), 'html-report (회사)')):
+            for question in questions:
+                with self.subTest(question=question, labels=labels):
+                    target = self.same_name_source_choice('company', question=question, labels=labels, answer=answer)
+                    self.assert_pending(target['invocation'])
+
+    def test_polite_question_word_malsseum_does_not_block_real_selection(self):
+        target = self.same_name_source_choice('company', question='사용할 html-report 스킬을 말씀해 주세요.')
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_compare_then_use_question_records_actual_workspace_choice(self):
+        question = 'html-report 스킬의 설명과 차이를 비교한 뒤 어느 것을 사용할까요?'
+        target = self.same_name_source_choice('company', question=question)
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_report_edit_and_html_file_storage_are_valid_skill_execution_choices(self):
+        for question in ('보고서 수정에 사용할 html-report 스킬은 무엇인가요?',
+                         'HTML 파일 저장에 사용할 html-report 스킬은 무엇인가요?'):
+            with self.subTest(question=question):
+                target = self.same_name_source_choice('company', question=question)
+                self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+                self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_content_constraints_do_not_reject_skill_execution_choices(self):
+        for question in ('개인정보를 제외하고 html-report 스킬 중 사용할 것은?',
+                         '수치는 바꾸지 말고 html-report 스킬 중 선택할 것은?'):
+            with self.subTest(question=question):
+                target = self.same_name_source_choice('company', question=question)
+                self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+                self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_option_description_excluding_personal_data_still_selects_skill(self):
+        target = self.same_name_source_choice('company', description='개인정보를 제외하고 보고서 작성')
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_not_inside_english_skill_name_is_not_a_negative_command(self):
+        candidates = [{'id': 'company:sample', 'name': 'im-not-ai',
+                       'invocation': 'company-agent:im-not-ai', 'source': 'company'},
+                      {'id': 'project:sample', 'name': 'im-not-ai',
+                       'invocation': 'im-not-ai', 'source': 'project'}]
+        self.assertFalse(_non_execution_question('어떤 im-not-ai 스킬을 사용할까요?'))
+        self.assertEqual('company:sample', _answer_candidate('im-not-ai (회사)', candidates))
+        self.assertIsNone(_answer_candidate('do not use im-not-ai (회사)', candidates))
+
+    def test_execution_and_load_question_accept_source_only_answers(self):
+        for verb in ('실행', '불러올'):
+            with self.subTest(verb=verb):
+                target = self.same_name_source_choice('company', question=f'어떤 html-report 스킬을 {verb}까요?')
+                self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+                self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_source_only_ambiguous_option_and_cancellation_do_not_select_a_skill(self):
+        target = self.same_name_source_choice('company', labels=('회사 또는 프로젝트 스킬', '취소'), answer='회사 또는 프로젝트 스킬')
+        self.assert_pending(target['invocation'])
+
+    def test_exclusion_option_does_not_become_positive_selection(self):
+        for labels in (('회사 스킬 사용하지 않음', '프로젝트 스킬'),
+                       ('html-report (회사) 사용하지 않음', 'html-report (프로젝트)'),
+                       ('html-report (회사) 제외', 'html-report (프로젝트)')):
+            with self.subTest(labels=labels):
+                target = self.same_name_source_choice('company', labels=labels, answer=labels[0])
+                self.assert_pending(target['invocation'])
+
+    def test_source_only_cancel_answer_does_not_select_a_skill(self):
+        target = self.same_name_source_choice('company', answer='취소')
+        self.assert_pending(target['invocation'])
+
+    def test_named_option_with_colloquial_refusal_is_not_execution_choice(self):
+        target = self.same_name_source_choice('company',
+                   labels=('html-report (회사) 사용 안 해요', 'html-report (프로젝트)'),
+                   answer='html-report (회사) 사용 안 해요')
+        self.assert_pending(target['invocation'])
+
+    def test_source_only_free_text_does_not_guess_a_choice(self):
+        target = self.same_name_source_choice('company', answer='회사 스킬로 진행해 주세요')
+        self.assert_pending(target['invocation'])
+
+    def test_source_only_option_with_surrounding_whitespace_is_exactly_recognized(self):
+        target = self.same_name_source_choice('company', labels=(' 회사 스킬 ', ' 프로젝트 스킬 '),
+                                              answer=' 회사 스킬 ')
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_mixed_named_and_source_only_options_resolve_company(self):
+        target = self.same_name_source_choice('company', labels=('회사 스킬', 'html-report (프로젝트)'), answer='회사 스킬')
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_mixed_named_and_source_only_options_resolve_project(self):
+        target = self.same_name_source_choice('project', labels=('회사 스킬', 'html-report (프로젝트)'), answer='html-report (프로젝트)')
+        self.assertEqual(target['id'], self.state()['skillWorkflow']['choiceAnswer']['id'])
+        self.assertEqual({}, self.hook('PreToolUse', 'Skill', {'skill': target['invocation']}))
+
+    def test_source_option_is_not_guessed_when_two_project_candidates_share_scope(self):
+        self.f.skill('html-report', 'HTML 보고서 제작', source='project')
+        self.f.skill('team-report', 'HTML 보고서 제작', source='project')
+        self.output('HTML 보고서 만들어줘')
+        route = self.state()['skillWorkflow']
+        data = inventory_skills(self.f.state, project_root=self.f.project,
+                                plugin_root=discovery.PLUGIN, claude_root=self.f.claude)
+        choices = [item for item in data['skills'] if item['id'] in route['requiredChoiceIds']]
+        self.assertEqual(2, sum(item['source'] == 'project' for item in choices))
+        original = {'questions': [{'question': 'HTML 보고서에 사용할 스킬을 선택해 주세요.', 'header': '스킬 선택',
+                    'options': [{'label': '회사 스킬', 'description': '회사에서 제공'},
+                                {'label': '프로젝트 스킬', 'description': '프로젝트에서 제공'}],
+                    'multiSelect': False}]}
+        tool_id, shown = self.prepare(original)
+        reply = self.answer_in_workspace(shown, '프로젝트 스킬')
+        self.hook('PostToolUse', 'AskUserQuestion', reply['updatedInput'],
+                  tool_id=tool_id, response=self.returned(reply))
+        self.assert_pending('html-report')
+
+    def test_failed_selection_retry_stays_denied_with_short_stop_guidance(self):
+        self.f.skill('html-report', 'HTML 보고서 제작', source='project')
+        self.output('HTML 보고서 만들어줘')
+        skill = {'skill': 'company-agent:html-report'}
+        first = self.hook('PreToolUse', 'Skill', skill)['hookSpecificOutput']
+        self.assertEqual('deny', first['permissionDecision'])
+        # An unrelated storage question must not create the required choice.
+        question = {'questions': [{'question': 'html-report 스킬을 어디에 저장할까요?', 'header': '스킬 선택',
+                    'options': [{'label': '회사 스킬', 'description': '회사에서 제공'},
+                                {'label': '프로젝트 스킬', 'description': '프로젝트에서 제공'}],
+                    'multiSelect': False}]}
+        tool_id, shown = self.prepare(question)
+        reply = self.answer_in_workspace(shown, '회사 스킬')
+        self.hook('PostToolUse', 'AskUserQuestion', reply['updatedInput'],
+                  tool_id=tool_id, response=self.returned(reply))
+        for _ in range(2):
+            repeated = self.hook('PreToolUse', 'Skill', skill)['hookSpecificOutput']
+            self.assertEqual('deny', repeated['permissionDecision'])
+            reason = repeated['permissionDecisionReason']
+            self.assertLess(len(reason), len(first['permissionDecisionReason']))
+            self.assertIn('반복', reason)
+            self.assertTrue(any(word in reason for word in ('중지', '중단', '멈추')))
+            self.assertIn('재질문하지', reason)
+            self.assertNotIn('"tool":"Bash"', reason)
+        self.assertNotIn('choiceAnswer', self.state()['skillWorkflow'])
+
+    def test_host_skill_conflict_retry_stays_denied_with_short_stop_guidance(self):
+        self.output('HTML 보고서 만들어줘')
+        self.hook('PostToolUse', 'Skill', {'skill': 'artifact-design'}, response={'success': True})
+        skill = {'skill': 'company-agent:html-report'}
+        first = self.hook('PreToolUse', 'Skill', skill)['hookSpecificOutput']
+        self.assertEqual('deny', first['permissionDecision'])
+        for _ in range(2):
+            repeated = self.hook('PreToolUse', 'Skill', skill)['hookSpecificOutput']
+            self.assertEqual('deny', repeated['permissionDecision'])
+            reason = repeated['permissionDecisionReason']
+            self.assertLess(len(reason), len(first['permissionDecisionReason']))
+            self.assertIn('반복', reason)
+            self.assertIn('재질문하지', reason)
+            self.assertIn('중단', reason)
+        self.assertFalse(self.state()['skillWorkflow']['hostChoice']['selected'])
+
+    def test_host_skill_exclusion_option_and_negative_question_do_not_select(self):
+        self.output('HTML 보고서 만들어줘')
+        self.hook('PostToolUse', 'Skill', {'skill': 'artifact-design'}, response={'success': True})
+        for question, labels, answer in (
+                ('이번 보고서에 사용할 스킬을 선택해 주세요.', ('artifact-design 제외', 'company-agent:html-report'), 'artifact-design 제외'),
+                ('이번 보고서에 사용할 스킬을 선택해 주세요.', ('artifact-design', 'company-agent:html-report 사용하지 않음'), 'company-agent:html-report 사용하지 않음'),
+                ('어떤 스킬을 사용하지 않을까요?', ('artifact-design', 'company-agent:html-report'), 'company-agent:html-report')):
+            with self.subTest(question=question, labels=labels):
+                original = {'questions': [{'question': question, 'header': '스킬 선택',
+                           'options': [{'label': label, 'description': '확인한 방식'} for label in labels],
+                           'multiSelect': False}]}
+                tool_id, shown = self.prepare(original)
+                reply = self.answer_in_workspace(shown, answer)
+                self.hook('PostToolUse', 'AskUserQuestion', reply['updatedInput'],
+                          tool_id=tool_id, response=self.returned(reply))
+                route = self.state()['skillWorkflow']
+                self.assertFalse(route['hostChoice']['selected'])
+                self.assertNotIn('choiceAnswer', route)
+                result = self.hook('PreToolUse', 'Skill', {'skill': 'company-agent:html-report'})
+                self.assertEqual('deny', result['hookSpecificOutput']['permissionDecision'])
 
     def test_translated_workspace_answer_records_choice_and_releases_selected_skill(self):
         selected, original = self.overlap()

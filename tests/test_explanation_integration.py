@@ -84,7 +84,10 @@ class ExplanationIntegrationTests(unittest.TestCase):
     def test_ordinary_report_has_no_diagram_js_css_or_font_requests(self):
         spec = {'title':'일반 보고', 'style':'minimalism', 'mode':'scroll', 'length':'short', 'sections':[{'title':'요약','body':'간단한 글'}]}
         _, page = self.build(spec)
-        for token in ('explanation-', 'diagram-export', 'googleapis', 'google_font', 'XMLSerializer'):
+        # A keyboard-scope guard can mention the diagram selector without
+        # loading the optional diagram renderer or creating a diagram.
+        for token in ('id="explanation-', 'class="explanation-diagram', 'diagram-export',
+                      'googleapis', 'google_font', 'XMLSerializer'):
             self.assertNotIn(token, page)
         self.assertEqual(re.findall(r'<script>(.*?)</script>', page, re.S), [artifacts._JS])
 

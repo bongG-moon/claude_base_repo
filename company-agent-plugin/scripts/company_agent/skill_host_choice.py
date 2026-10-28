@@ -9,8 +9,17 @@ from __future__ import annotations
 import re
 
 _INVOCATION = re.compile(r"[A-Za-z0-9][A-Za-z0-9:_-]{0,159}\Z")
-_NEGATIVE = re.compile(r"말고|대신|취소|아니|안\s*쓸|쓰지|하지\s*마|둘\s*다|모두|"
-                       r"\b(?:not|cancel|instead|never|none|neither|both)\b", re.I)
+_NEGATIVE = re.compile(r"제외|빼|뺄|말고|대신|취소|아니|안\s*쓸|쓰지|하지\s*마|비활성|미사용|미선택|불사용|둘\s*다|모두|"
+                       r"(?:사용|선택|적용|진행|실행|호출|불러|쓰).{0,8}"
+                       r"(?:하지|않|말아|말지|마세요|마십시오|없|못|불가|안\s*(?:될|되|함|하|해|합|할|쓰))|"
+                       r"(?<![A-Za-z0-9:_-])(?:not|cancel|instead|never|none|without|exclude|except|avoid|disable|neither|both)(?![A-Za-z0-9:_-])", re.I)
+
+
+def _negative(text: str) -> bool:
+    text = re.sub(r'(?:개인정보|민감정보|고객정보|비밀번호|수치|숫자)(?:는|은|을|를|이|가)?\s*'
+                  r'(?:제외(?:하고|한|하여)|빼고|(?:바꾸지|변경하지|수정하지|저장하지|사용하지)\s*(?:말고|않고|않는))',
+                  '', text, flags=re.I)
+    return bool(_NEGATIVE.search(text))
 
 
 def _current(route: dict) -> dict | None:
@@ -86,7 +95,7 @@ def checkpoint(route: dict, data: dict) -> dict | None:
 
 
 def _identity(text: str, choice: dict, target: dict) -> str | None:
-    if not isinstance(text, str) or len(text) > 1000 or _NEGATIVE.search(text):
+    if not isinstance(text, str) or len(text) > 1000 or _negative(text):
         return None
     def has(value):
         return bool(value and re.search(r'(?<![A-Za-z0-9:_-])' + re.escape(value)
@@ -130,7 +139,7 @@ def observe_answer(route: dict, data: dict, inputs: dict, response) -> dict | No
             kind = _identity(option['label'] + ' ' + str(option.get('description', '')), choice, target)
             if kind:
                 mapping[option['label']] = kind
-        if len(mapping) != 2 or set(mapping.values()) != {'host', 'local'} or _NEGATIVE.search(answer):
+        if len(mapping) != 2 or set(mapping.values()) != {'host', 'local'} or _negative(answer):
             continue
         kind = mapping.get(answer) or _short_identity(answer, choice, target)
         if kind:
@@ -148,7 +157,7 @@ def continuation(route: dict, prompt: str, newturn: str, newrevision: str) -> di
     """Carry a short exact-name reply, not numeric guesses or a new task."""
     choice = _current(route)
     if (not choice or newrevision != choice['revision'] or not newturn
-            or not isinstance(prompt, str) or len(prompt) > 180 or _NEGATIVE.search(prompt)):
+            or not isinstance(prompt, str) or len(prompt) > 180 or _negative(prompt)):
         return None
     plan = route.get('executionPlan', {})
     target = {'id': choice['targetId'], 'name': plan.get('name'), 'invocation': plan.get('invocation')}

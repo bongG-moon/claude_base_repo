@@ -140,7 +140,7 @@ def _check_content_scope(spec):
         raise ArtifactError("protected_input", "보호 또는 접근 제한이 표시된 자료는 자동 처리하지 않습니다.")
 
 
-def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
+def _normalize(spec: dict[str, Any], *, html_tables: bool = False) -> dict[str, Any]:
     if not isinstance(spec, dict):
         raise ArtifactError("invalid_spec", "작업 내용은 JSON 객체로 전달해 주세요.")
     if 'contentOrder' in spec or 'contentLayout' in spec:
@@ -197,13 +197,20 @@ def _normalize(spec: dict[str, Any]) -> dict[str, Any]:
         section["bullets"] = [_text(value, 2000) for value in bullets]
         if "table" in row:
             table = row["table"]
-            if not isinstance(table, dict) or not isinstance(table.get("headers"), list) or not 1 <= len(table["headers"]) <= 12:
-                raise ArtifactError("invalid_table", "표에는 1~12개의 열 제목이 필요합니다.")
+            max_columns, max_rows = (64, 5000) if html_tables else (12, 100)
+            if not isinstance(table, dict) or not isinstance(table.get("headers"), list) or not 1 <= len(table["headers"]) <= max_columns:
+                raise ArtifactError("invalid_table", f"표에는 1~{max_columns}개의 열 제목이 필요합니다.")
             headers = [_text(value, 1000) for value in table["headers"]]
             cells = table.get("rows", [])
-            if not isinstance(cells, list) or len(cells) > 100 or any(not isinstance(v, list) or len(v) != len(headers) for v in cells):
-                raise ArtifactError("invalid_table", "표는 열 수가 일치하는 100행 이하의 데이터가 필요합니다.")
-            section["table"] = {"headers": headers, "rows": [[_text(v, 2000) for v in r] for r in cells]}
+            if not isinstance(cells, list) or len(cells) > max_rows or any(not isinstance(v, list) or len(v) != len(headers) for v in cells):
+                raise ArtifactError("invalid_table", f"표는 열 수가 일치하는 {max_rows:,}행 이하의 데이터가 필요합니다. 더 큰 원자료는 별도 파일로 제공해 주세요.")
+            if "interactive" in table and not isinstance(table["interactive"], bool):
+                raise ArtifactError("invalid_table", "표의 interactive 값은 true 또는 false입니다.")
+            if any(isinstance(v, float) and not math.isfinite(v) for r in cells for v in r):
+                raise ArtifactError("invalid_table", "표의 숫자는 유한한 값이어야 합니다.")
+            section["table"] = {"headers": headers, "rows": [[_text(v, 2000) for v in r] for r in cells],
+                                "interactive": table.get("interactive", True),
+                                "cellKinds": [["number" if isinstance(v, (int, float)) and not isinstance(v, bool) else "text" for v in r] for r in cells]}
         if "chart" in row:
             chart = row["chart"]
             if not isinstance(chart, dict) or chart.get("type", "column") not in ("column", "bar", "line", "pie"):
@@ -274,11 +281,9 @@ show();document.body.classList.add('report-ready');
 })();"""
 
 
-def _html_table(headers: list[str], rows: list[list[Any]], caption: str = "") -> str:
-    esc = lambda value: html.escape(str(value), quote=True)
-    return (f'<div class="table-wrap" tabindex="0" role="region" aria-label="가로로 스크롤할 수 있는 표"><table style="--columns:{len(headers)}">' + (f'<caption>{esc(caption)}</caption>' if caption else '') +
-            '<thead><tr>' + ''.join(f'<th scope="col">{esc(v)}</th>' for v in headers) + '</tr></thead><tbody>' +
-            ''.join('<tr>' + ''.join(f'<td>{esc(v)}</td>' for v in row) + '</tr>' for row in rows) + '</tbody></table></div>')
+def _html_table(headers: list[str], rows: list[list[Any]], caption: str = "", *, options=None) -> str:
+    from .report_tables import render
+    return render(headers, rows, caption, options=options)
 
 
 def html_choice_selection(spec: dict[str, Any], *, metadata_only: bool = False) -> dict[str, Any]:
@@ -360,7 +365,7 @@ def html_designs(output: Path | None = None, *, open_preview: bool = False) -> d
 def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = False, template_preview: bool = False) -> dict[str, Any]:
     try:
         output = _target(output, ".html")
-        data = _normalize(spec)
+        data = _normalize(spec, html_tables=True)
         if require_choices or spec.get('fontChoiceRequired'):
             from .report_styles import choices
             pending = choices(spec)
@@ -395,7 +400,24 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
                 row["bullets"] = [bind(value, facts) for value in row["bullets"]]
                 if "table" in row:
                     row["table"]["headers"] = [bind(value, facts) for value in row["table"]["headers"]]
-                    row["table"]["rows"] = [[bind(v, facts) for v in cells] for cells in row["table"]["rows"]]
+                    bound_rows, numeric_rows = [], []
+                    for ri, cells in enumerate(row["table"]["rows"]):
+                        bound_cells, numeric_cells = [], []
+                        for ci, value in enumerate(cells):
+                            bound_cells.append(bind(value, facts))
+                            pure_fact = re.fullmatch(r"\{\{fact:([a-zA-Z][a-zA-Z0-9_-]{0,63})\}\}", value)
+                            if pure_fact:
+                                # The display can contain grouping separators or
+                                # rounding. Keep its actual numeric value separate
+                                # for sorting/export; labels and unit text stay text.
+                                row["table"]["cellKinds"][ri][ci] = "number"
+                                numeric_cells.append(str(facts[pure_fact.group(1)]["number"]))
+                            else:
+                                numeric_cells.append(None)
+                        bound_rows.append(bound_cells)
+                        numeric_rows.append(numeric_cells)
+                    row["table"]["rows"] = bound_rows
+                    row["table"]["cellNumbers"] = numeric_rows
                 if "chart" in row:
                     row["chart"]["title"] = bind(_text(raw["chart"].get("title", "지표 비교"), 300), facts)
                     row["chart"]["categories"] = [bind(value, facts) for value in row["chart"]["categories"]]

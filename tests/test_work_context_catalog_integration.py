@@ -36,7 +36,13 @@ class WorkCatalogIntegrationTests(unittest.TestCase):
     def test_does_not_steal_unrelated_work(self):
         for request in ('안녕', 'HTML 보고서 만들어줘', '위 내용을 HTML로 만들어줘',
                         'PPT 만들어줘', '새 스킬 만들어줘', '엑셀 수식 구조를 분석해줘',
-                        '이 문장을 기억해줘', 'Chrome에서 페이지를 읽어줘'):
+                        '이 문장을 기억해줘', 'Chrome에서 페이지를 읽어줘',
+                        '방금 작업한 흐름을 그림으로 보여줘', '구조를 정리해줘',
+                        'Claude 세션 연결 오류를 분석해줘', 'Claude 사용 기록이 무슨 뜻인지 알려줘',
+                        '여러 세션 간 인증 상태 공유 구조를 설명해줘',
+                        'Claude 사용 기록을 집계하는 방법을 알려줘',
+                        'Claude 사용 기록 분석 기능의 사용법을 설명해줘',
+                        'Explain how to summarize Claude usage history'):
             candidates = task_candidates(self.inventory, request)
             self.assertNotIn(self.skill['id'], candidates.get('strongIds',[]),request)
 
@@ -51,6 +57,27 @@ class WorkCatalogIntegrationTests(unittest.TestCase):
         candidates = task_candidates(self.inventory, 'Claude 사용 기록을 집계하고 업무 흐름을 설명해줘')
         self.assertTrue(any(row['id'] == self.skill['id'] for group in candidates.get('groups', [])
                             for row in group['candidates']))
+        decision = decide_preparation(candidates, self.inventory['skills'], [])
+        self.assertEqual(('load', self.skill['id']), (decision.mode, decision.candidate_id))
+
+    def test_current_task_and_usage_history_remain_distinct_scopes(self):
+        for prompt in ('Claude 사용 기록을 업무별로 정리해줘', '모든 세션을 업무 유형으로 분류해줘',
+                       'Claude 사용 기록을 HTML로 만들어줘',
+                       'Summarize Claude usage history and show the workflows'):
+            with self.subTest(prompt=prompt):
+                candidates = task_candidates(self.inventory, prompt)
+                decision = decide_preparation(candidates, self.inventory['skills'], [])
+                self.assertEqual(('load', self.skill['id']), (decision.mode, decision.candidate_id))
+
+    def test_usage_analysis_keeps_separate_ppt_delivery_and_skill_authoring(self):
+        candidates = task_candidates(self.inventory, 'Claude 사용 기록을 집계하고 PPT 발표자료 만들어줘')
+        names = {row['name'] for group in candidates.get('groups', []) for row in group['candidates']}
+        self.assertTrue({'work-context-catalog', 'presentation'} <= names, names)
+        self.assertNotEqual('choose', decide_preparation(candidates, self.inventory['skills'], []).mode)
+        candidates = task_candidates(self.inventory, 'Claude 사용 기록을 분석하는 새 스킬 만들어줘')
+        choice = decide_preparation(candidates, self.inventory['skills'], [])
+        asset = next(s for s in self.inventory['skills'] if s['name'] == 'asset-factory')
+        self.assertEqual(('load', asset['id']), (choice.mode, choice.candidate_id))
 
     def test_distributed_files_match_and_no_fixtures_are_shipped(self):
         path=ROOT/'scripts/sync-work-context-skill.py'

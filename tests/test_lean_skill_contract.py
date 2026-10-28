@@ -22,7 +22,7 @@ class LeanSkillContractTests(unittest.TestCase):
             "karpathy-guidelines", "outlook-assistant", "personal-knowledge",
             "personal-memory", "presentation", "project-harness", "self-learning",
             "platform-mcp-builder",
-            "excel-to-pipeline", "web-interface", "work-context-catalog",
+            "excel-to-pipeline", "web-interface", "website-rebuild", "work-context-catalog",
         })
 
     def test_conditional_reference_links_exist_inside_plugin(self):
@@ -39,14 +39,14 @@ class LeanSkillContractTests(unittest.TestCase):
             source = self.read(parent)
             for reference in references:
                 with self.subTest(parent=parent, reference=reference):
-                    self.assertIn(f"`{reference}`", source)
+                    self.assertIn(reference, source)
                     target = (SKILLS / parent).parent.joinpath(reference).resolve()
                     self.assertTrue(target.is_relative_to(PLUGIN.resolve()))
                     self.assertTrue(target.is_file())
                     self.assertNotIn(f"@{reference}", source)
-        self.assertIn("other tasks do not load them", self.read("asset-factory/SKILL.md"))
-        self.assertIn("Ordinary lookup does not load", self.read("personal-knowledge/SKILL.md"))
-        self.assertIn("do not load it for ordinary feature work", self.read("karpathy-guidelines/SKILL.md"))
+        self.assertRegex(self.read("asset-factory/SKILL.md"), r"해당 흐름 하나|필요한 자료")
+        self.assertRegex(self.read("personal-knowledge/SKILL.md"), r"조회만.*(?:읽지|불필요)")
+        self.assertRegex(self.read("karpathy-guidelines/SKILL.md"), r"일반 기능.*불필요")
 
     def test_context_budget_and_no_blanket_import(self):
         main = self.read("company-agent/SKILL.md")
@@ -57,13 +57,15 @@ class LeanSkillContractTests(unittest.TestCase):
             "asset-factory/references/authoring.md", "asset-factory/references/windows-setup.md",
             "personal-knowledge/references/term-quality.md", "karpathy-guidelines/references/evidence-diagnosis.md",
         ):
-            self.assertLessEqual(len(self.read(relative).splitlines()), 40)
+            limit = 80 if relative.endswith('/authoring.md') else 40
+            self.assertLessEqual(len(self.read(relative).splitlines()), limit)
+            self.assertLessEqual(len(self.read(relative)), 4000)
         self.assertNotIn("ponytail", (PLUGIN / "hooks/hooks.json").read_text(encoding="utf-8"))
         self.assertNotIn("i-have-adhd", (PLUGIN / "hooks/hooks.json").read_text(encoding="utf-8"))
 
     def test_core_workflows_limit_loaded_text_not_only_line_count(self):
         # Long paragraphs formerly met 180 lines while repeating startup work.
-        for name, limit in (("company-agent", 10000), ("presentation", 7500), ("html-report", 8000)):
+        for name, limit in (("company-agent", 6500), ("presentation", 4500), ("html-report", 4500)):
             with self.subTest(name=name):
                 text = self.read(f"{name}/SKILL.md")
                 self.assertLessEqual(len(text), limit)
@@ -71,6 +73,7 @@ class LeanSkillContractTests(unittest.TestCase):
                 self.assertIn('cliCommand', text)
         for path in SKILLS.glob('*/SKILL.md'):
             self.assertLessEqual(len(path.read_text(encoding='utf-8').splitlines()), 180, path)
+            self.assertLessEqual(len(path.read_text(encoding='utf-8')), 6500, path)
 
     def test_drafting_references_do_not_restart_choice_or_discovery(self):
         ppt = self.read('presentation/references/design-and-quality.md')
@@ -98,18 +101,23 @@ class LeanSkillContractTests(unittest.TestCase):
 
     def test_result_style_keeps_completeness_and_uncertainty(self):
         main = self.read("company-agent/SKILL.md")
-        for text in ("preserve all requested items and exact counts", "Give full detail when requested",
-                     "never guess an error's cause", "without inventing a next task",
-                     "do not repeat a plan every turn", "not invented precision",
-                     "explicit durable-memory requests still use personal-memory",
-                     "Routine learning success/no-change stays silent"):
-            self.assertIn(text, main)
+        # These are explicit authoring contracts, not evidence that a model
+        # follows them. Runtime selection and execution use scenario tests.
+        for pattern in (r"요청한 항목과 수량.*보존", r"상세 설명 요청.*답",
+                        r"실패 원인.*임의로.*않", r"매번 계획.*반복하지",
+                        r"명시적 기억 저장.*personal-memory",
+                        r"기록 성공/변경 없음.*조용히"):
+            self.assertRegex(main, pattern)
 
     def test_authoring_uses_existing_factory_and_windows_security(self):
+        import json
         guide = self.read("asset-factory/references/authoring.md")
-        for text in ("one primary job", "observable completion criteria", "No second Stop gate",
-                     "references/reference-1.md", "not invent frontmatter or JSON fields"):
-            self.assertIn(text, guide)
+        spec = json.loads(re.search(r'```json\n(.*?)\n```', guide, re.S).group(1))
+        self.assertEqual('skill', spec['type'])
+        self.assertEqual({'type', 'name', 'description', 'instructions'}, set(spec))
+        self.assertTrue(spec['instructions'])
+        self.assertIn('references/reference-1.md', guide)
+        self.assertRegex(guide, r'새 Stop 후크.*붙이지')
         wizard = self.read("asset-factory/references/windows-setup.md")
         for text in ("explicitly requested", "Bash, WSL, public downloads", "hidden",
                      "rejected by the personal asset factory", "isolated fixture"):
@@ -137,8 +145,8 @@ class LeanSkillContractTests(unittest.TestCase):
     def test_current_evidence_adaptation_does_not_add_another_workflow(self):
         adapter = self.read('karpathy-guidelines/SKILL.md')
         completion = self.read('company-agent/references/completion.md')
-        self.assertIn('check detects the original defect', adapter)
-        self.assertIn('Do not weaken the expected behavior', adapter)
+        self.assertRegex(adapter, r'원래 결함.*재현/검사')
+        self.assertRegex(adapter, r'기대 동작.*약하게.*않')
         self.assertIn('after the latest relevant change', completion)
         self.assertIn('failures and skipped checks', completion)
         self.assertIn('requirements it never tests', completion)

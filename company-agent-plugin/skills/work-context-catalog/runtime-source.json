@@ -2,7 +2,7 @@
   "source": "standalone-skills/work-context-catalog",
   "generatedBy": "scripts/sync-work-context-skill.py",
   "files": {
-    "SKILL.md": "090762a266bc0bfccd88f869167399e4fd71f44dca4141d546795ded669acfef",
+    "SKILL.md": "ca8516d7d1cff8513c795d3c3a242563cf6bcef1fe1206aa2ab66ee3a081d817",
     "scripts/work_catalog.py": "cbd7449466b2d834cbe8781bc56d8197bf1c6c9b8338130b52223c3ab709dc3e",
     "scripts/work_process.py": "276315a2b747930398f1ff8a78970c46acce432efa55f8d610c941f23c9e1447",
     "scripts/work_execution.py": "b6d37a757da86061257df46948df863d0eeebd6ded0a4648462d401288eab035",

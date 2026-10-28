@@ -56,6 +56,23 @@ also accompany the Impeccable guidance adaptation. Its attribution above is
 separate from Anthropic's. The MIT permission and warranty text below applies
 separately to each listed MIT contribution. No endorsement is implied.
 
+## Data reports and reference-based reconstruction (2026-10-28)
+
+Huashu Design (https://github.com/alchaincyf/huashu-design), MIT License,
+Copyright (c) 2026 alchaincyf (花叔 · 花生), was reviewed for reference-first
+visual grammar, purpose-led composition and editable HTML-to-PPT delivery.
+The MIT permission and warranty text below applies to this selected guidance
+adaptation. No upstream runtime, style database, appearance ledger, automatic
+research or mandatory multi-draft pipeline is bundled.
+
+Impeccable and Jinba were reviewed again for hierarchy, restrained motion,
+responsive interaction states and evidence-led slides under their attribution
+and licenses above. Website reconstruction references and specific reviewed
+paths are documented in `skills/website-rebuild/references/sources.md`.
+Those website projects inform original guidance; their engines and installers
+are not included. Similar appearance does not imply copied source or proven
+backend equivalence. No upstream endorsement is implied.
+
 ## Offline guide typography
 
 The HTML user guides embed a character subset of **Noto Sans KR** (weights

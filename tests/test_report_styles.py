@@ -294,16 +294,18 @@ class ReportStylesTests(unittest.TestCase):
                 self.assertTrue(result['ok'],result)
                 self.assertIn('class="theme-art" aria-hidden="true"',target.read_text(encoding='utf-8'))
 
-    def test_additional_choice_instructions_no_longer_require_group_question(self):
-        skill=(ROOT/'company-agent-plugin/skills/html-report/SKILL.md').read_text(encoding='utf-8')
-        self.assertIn('END THIS TURN',skill)
-        self.assertIn('same chat menu in CLI and Workspace', skill)
-        self.assertNotIn('workspaceChoice', skill)
-        self.assertNotIn('workspaceUi', skill)
-        self.assertNotIn('Do not repeat\nthe list', skill)
-        self.assertNotIn('After a group answer',skill)
-        self.assertNotIn('four-option designQuestions',skill)
-        self.assertIn('immersive-3d',skill)
+    def test_additional_choice_reference_matches_helper_menu(self):
+        skill_path=ROOT/'company-agent-plugin/skills/html-report/SKILL.md'
+        skill=skill_path.read_text(encoding='utf-8')
+        self.assertIn('references/choices.md',skill)
+        guide=(skill_path.parent/'references/choices.md').read_text(encoding='utf-8')
+        documented=re.findall(r'^\d+\. .+\(`([a-z0-9-]+)`\)$',guide,re.M)
+        pending=artifacts.html_choices({'designMenu':'additional'})
+        self.assertEqual([item['style'] for item in pending['designOptions']],documented)
+        self.assertEqual('chat-number-or-name',pending['selectionInput'])
+        self.assertTrue(pending['waitForUser'])
+        for unsupported in ('workspaceChoice','workspaceUi','four-option designQuestions'):
+            self.assertNotIn(unsupported,skill+guide)
 
     def test_reduced_transparency_and_print_use_opaque_readable_surfaces(self):
         self.assertIn('@supports not ((backdrop-filter:', styles.CSS)

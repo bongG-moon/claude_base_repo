@@ -1,7 +1,9 @@
 # Internal completion procedure
 
-Read this only before finalizing changed work or when the Company Agent Stop
-notice asks for completion checking. This is an execution reference, not text
+Read this only when waiting-worker handling, incomplete verification, a missing
+completion record, or a Company Agent Stop notice needs resolution. Reuse the
+current workflow's completed checks; ordinary verified work needs no extra read.
+This is an execution reference, not text
 to copy into progress messages or the final answer. A reminder is not evidence
 that a test failed. The native CLI may show its own brief hook status.
 

@@ -3,31 +3,38 @@ name: file-organizer
 description: Windows 폴더 정리 계획을 먼저 보여주고 승인 후 파일을 종류별로 옮깁니다. 삭제·덮어쓰기 없이 정리하며 이동 기록으로 되돌릴 수 있습니다.
 ---
 
-# File organizer
+# 파일 정리
 
-Use the active runtime cliCommand and stateRoot, preserving known choices.
-Read `../company-agent/references/business-protection.md` only for source restrictions.
+이미 정한 대상과 범위를 재사용합니다. 아래 명령은 제공된 `cliCommand` 문자열 뒤에
+붙이고 실제 `stateRoot`를 사용합니다. 보호 자료 제한이 있을 때만
+[business-protection.md](../company-agent/references/business-protection.md)를 읽습니다.
 
-1. Ask only for the missing target folder. First release handles direct files in
-   one local folder (at most 500 entries, each file at most 256 MiB). It groups by
-   extension into 문서/표자료/발표자료/이미지/압축자료. Existing child folders,
-   unclassified files, executable files and duplicates stay where they are.
-   For semantic/monthly/custom grouping explain this limit; do not claim the
-   fixed organizer implements it or silently run a custom shell move instead.
-2. Run `business files-plan --state-root "<stateRoot>" --folder "<target>"`.
-   This records a plan in personal state but does not move work files. Show the
-   exact source/destination summary and exclusions. A plan-only request ends here.
-3. When organization/execution is requested, run `business files-execute --state-root
-   "<stateRoot>" --plan "<returned planId>"`. A Windows confirmation window lists
-   the actual operations. Use this confirmation without a second chat approval.
-   The user must approve it; never simulate a click,
-   supply an approval flag, bypass it, or ask them to disable security settings.
-4. Report counts and failures accurately. A blocked file does not justify a retry
-   through another command. Changed files/destination conflicts need a new plan.
-5. On explicit undo, run `business files-undo --state-root "<stateRoot>" --plan
-   "<id>"`. Explain that files changed since the move or conflicting destinations
-   cannot be automatically restored. Empty category folders may remain. This is
-   not a global transaction or a recovery mechanism for external edits/crashes.
+1. 빠진 대상 폴더만 확인합니다. 한 로컬 폴더의 직접 포함 파일을 확장자에 따라
+   문서/표자료/발표자료/이미지/압축자료로 나눕니다. 최대 500개 항목, 파일당 256 MiB입니다.
+   하위 폴더, 분류 불명, 실행 파일, 이름 충돌은 그대로 둡니다.
+   내용별/월별/사용자 지정 분류는 지원 범위를 설명하며 임의 이동 코드로 대신하지 않습니다.
+2. 계획을 만들고 실제 이동 위치와 제외 항목을 간단히 보여줍니다. 원본 파일은 이동하지 않습니다.
+   **계획이나 설명만 요청했다면 여기서 마칩니다.**
 
-Do not delete files or rename existing folders. Follow safety and original scope
-even if a lower-tier worker or remembered preference recommends a shortcut.
+   ```text
+   business files-plan --state-root "<stateRoot>" --folder "<대상 폴더>"
+   ```
+
+3. 정리 실행을 요청받았다면 다음 명령을 사용합니다. 실제 이동 목록을 보여주는 Windows
+   확인 창에서 사용자 승인을 받으므로 같은 계획을 채팅에서 다시 승인받지 않습니다.
+   클릭을 대신하거나 승인 플래그와 다른 명령으로 확인 창을 우회하지 않습니다.
+
+   ```text
+   business files-execute --state-root "<stateRoot>" --plan "<반환된 planId>"
+   ```
+
+4. 이동 건수와 실패를 알립니다. 파일 변경이나 목적지 충돌은 새 계획이 필요하며 다른
+   명령으로 강제 이동하지 않습니다. 원복을 요청받았을 때만 다음 명령을 사용합니다.
+
+   ```text
+   business files-undo --state-root "<stateRoot>" --plan "<기존 planId>"
+   ```
+
+파일이나 기존 폴더를 삭제, 덮어쓰기, 이름 변경하지 않습니다. 이동 후 바뀐 파일이나
+충돌은 자동 복구하지 않으며 빈 분류 폴더는 남을 수 있습니다. 전체 트랜잭션이나 외부
+변경, 중단에 대한 자동 복구 기능은 아닙니다.

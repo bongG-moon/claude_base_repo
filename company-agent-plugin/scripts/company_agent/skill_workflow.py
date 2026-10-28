@@ -75,11 +75,25 @@ def _choice_continuation(prompt: str, names: list[str], *, pending: bool) -> boo
                 or re.fullmatch(r'(?:그|해당|방금|같은)\s*스킬\s*' + suffix, text))
 
 
+def _negative_choice_text(text: str) -> bool:
+    # Data-handling constraints such as "개인정보를 제외하고" describe
+    # the work, not a refusal to use the chosen skill. Restrict this removal
+    # to explicit data nouns; never strip "스킬을 제외하고".
+    text = re.sub(r'(?:개인정보|민감정보|고객정보|비밀번호|수치|숫자)(?:는|은|을|를|이|가)?\s*'
+                  r'(?:제외(?:하고|한|하여)|빼고|(?:바꾸지|변경하지|수정하지|저장하지|사용하지)\s*(?:말고|않고|않는))',
+                  '', text, flags=re.I)
+    return bool(re.search(
+        r'제외|빼|뺄|말고|취소|아닌|아니|대신|쓰지|안\s*쓸|하지\s*마|비활성|미사용|미선택|불사용|'
+        r'(?:사용|선택|적용|진행|실행|호출|불러|쓰).{0,8}'
+        r'(?:하지|않|말아|말지|마세요|마십시오|없|못|불가|안\s*(?:될|되|함|하|해|합|할|쓰))|'
+        r'(?<![A-Za-z0-9:_-])(?:not|cancel|instead|never|none|without|exclude|except|avoid|disable)(?![A-Za-z0-9:_-])', text, re.I))
+
+
 def _answer_candidate(text: str, candidates: list[dict]) -> str | None:
     """Match a real answer to catalogue identities, never semantic guesses."""
     if not isinstance(text, str) or len(text) > 1000:
         return None
-    if re.search(r'말고|대신|취소|아니|쓰지|하지\s*마|\b(?:not|cancel|instead|never|none)\b', text, re.I):
+    if _negative_choice_text(text):
         return None
     def contains(value):
         return bool(value and re.search(r'(?<![A-Za-z0-9:_-])' + re.escape(value) + r'(?![A-Za-z0-9:_-])', text, re.I))
@@ -94,6 +108,89 @@ def _answer_candidate(text: str, candidates: list[dict]) -> str | None:
                     'plugin': r'플러그인|\bplugin\b', 'corporate': r'공유|\bcorporate\b'}
     scoped = [x for x in named if re.search(source_words.get(x.get('source'), r'(?!)'), text, re.I)]
     return scoped[0]['id'] if len(scoped) == 1 else None
+
+
+def _non_execution_question(text: Any) -> bool:
+    """Do not turn a question about exclusion or explanation into a selection."""
+    if not isinstance(text, str) or len(text) > 1000:
+        return True
+    if _negative_choice_text(text):
+        return True
+    info = re.search(r'(?:설명|차이|소개|정보).{0,12}(?:볼|보|확인|알려|비교|조회|읽)|'
+                     r'(?:설명|소개)(?:을|를)?\s*(?:해|드|할|하)|(?:사용법|사용\s*방법)|'
+                     r'(?<![A-Za-z0-9:_-])(?:describe|explain|compare)(?![A-Za-z0-9:_-])', text, re.I)
+    if not info:
+        return False
+    # Comparing candidates before explicitly choosing one is still a choice.
+    return not bool(re.search(r'선택|사용|적용|진행|실행|호출|불러|쓸|쓰겠|'
+                              r'\b(?:choose|select|use|run|load|invoke)\b', text[info.end():], re.I))
+
+
+def _source_only_options(question: dict, candidates: list[dict]) -> dict[str, str]:
+    """Match source-only labels only for one named skill's selection question.
+
+    This is used after the host answer receipt is validated, not for free text.
+    Every option must identify a different candidate so an unrelated storage
+    question or two candidates from the same source cannot select a skill.
+    """
+    text = question.get('question')
+    options = question.get('options')
+    if (_non_execution_question(text) or not isinstance(options, list)
+            or len(options) != len(candidates) or not 2 <= len(options) <= 4):
+        return {}
+    names = {str(x.get('name', '')).casefold() for x in candidates}
+    if len(names) != 1 or not next(iter(names)):
+        return {}
+    name = next(iter(names))
+    identifiers = {name} | {str(x.get('invocation', '')).lstrip('/') for x in candidates}
+    has_identifier = any(value and re.search(r'(?<![A-Za-z0-9:_-])' + re.escape(value)
+                                              + r'(?![A-Za-z0-9:_-])', text, re.I)
+                         for value in identifiers)
+    skill_change = re.search(
+        r'(?:스킬|skill)(?:을|를|의|은|는|이|가)?\s*'
+        r'(?:(?:어디|어느\s*(?:곳|폴더|위치|경로|범위))(?:에|로)?\s*)?(?:직접\s*)?'
+        r'(?:저장|설치|등록|삭제|수정|변경|복사|이동)|'
+        r'(?:저장|설치|등록|삭제|수정|변경|복사|이동)(?:할|하는|될)\s+[^.?!]{0,35}(?:스킬|skill)|'
+        r'\bskill\s+(?:to\s+)?(?:save|install|register|delete|edit|modify|copy|move)\b|'
+        r'\b(?:save|install|register|delete|edit|modify|copy|move)\s+(?:(?:the|a|this)\s+)?skill\b', text, re.I)
+    if (not has_identifier
+            or not re.search(r'스킬|\bskill\b', text, re.I)
+            or not re.search(r'선택|사용|적용|진행|실행|호출|불러|쓸|쓰겠|\b(?:choose|select|use|run|load|invoke)\b', text, re.I)
+            or skill_change):
+        return {}
+    aliases = {
+        'company': r'(?:회사(?:\s*공통)?|공통|company)',
+        'project': r'(?:프로젝트|project)',
+        'user': r'(?:개인|사용자|user)',
+        'personal': r'(?:개인|personal)',
+        'plugin': r'(?:플러그인|plugin)',
+        'corporate': r'(?:공유|corporate)',
+    }
+    mapping: dict[str, str] = {}
+    for option in options:
+        if not isinstance(option, dict) or not isinstance(option.get('label'), str):
+            return {}
+        label = option['label']
+        # The host may translate its recommendation marker after PreToolUse.
+        plain = re.sub(r'\s*\((?:추천|recommended)\)\s*$', '', label.strip(), flags=re.I)
+        sources = [source for source, pattern in aliases.items()
+                   if re.fullmatch(pattern + r'(?:\s*(?:스킬|skill))?', plain, re.I)]
+        matches = [x for x in candidates if x.get('source') in sources]
+        description = option.get('description', '')
+        if not matches:
+            candidate_id = _answer_candidate(label + ' ' + str(description), candidates)
+            matches = [x for x in candidates if x['id'] == candidate_id]
+        if (len(matches) != 1 or not isinstance(description, str) or len(description) > 1000
+                or _negative_choice_text(description)):
+            return {}
+        # Do not guess an option whose description refers to another source.
+        for other_source in {x.get('source') for x in candidates}:
+            pattern = aliases.get(other_source)
+            if (pattern and other_source != matches[0].get('source')
+                    and re.search(r'(?<![A-Za-z0-9_-])' + pattern + r'(?![A-Za-z0-9_-])', description, re.I)):
+                return {}
+        mapping[label] = matches[0]['id']
+    return mapping if len(mapping) == len(options) and set(mapping.values()) == {x['id'] for x in candidates} else {}
 
 
 def _preparation_caution(prompt: str) -> str:
@@ -359,7 +456,8 @@ def _observe_choice(route: dict, data: dict, inputs: dict, response: Any) -> Non
     candidates = [x for x in data['skills'] if x['id'] in ids]
     selected = set()
     for question in questions[:4]:
-        if not isinstance(question, dict) or question.get('multiSelect'):
+        if (not isinstance(question, dict) or question.get('multiSelect')
+                or _non_execution_question(question.get('question'))):
             continue
         answer = answers.get(question.get('question'))
         options = question.get('options')
@@ -371,6 +469,13 @@ def _observe_choice(route: dict, data: dict, inputs: dict, response: Any) -> Non
                 candidate = _answer_candidate(option['label'] + ' ' + str(option.get('description', '')), candidates)
                 if candidate:
                     mapping[option['label']] = candidate
+        if len(set(mapping.values())) < 2:
+            # Short source-only labels are accepted only as the exact returned
+            # option of a named, unambiguous skill-selection question.
+            mapping = _source_only_options(question, candidates)
+            if answer in mapping:
+                selected.add(mapping[answer])
+            continue
         if len(set(mapping.values())) >= 2:
             candidate = mapping.get(answer) or _answer_candidate(answer, candidates)
             if candidate:
@@ -422,13 +527,18 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
                     return
                 data = _snapshot(root, project, route)
                 response = payload.get('tool_response')
-                host_answer = skill_host_choice.observe_answer(route, data, inputs, response)
+                # Keep the validated receipt intact, but never interpret an
+                # exclusion/explanation question as an execution choice.
+                questions = inputs.get('questions')
+                choice_inputs = {**inputs, 'questions': [q for q in questions
+                                 if isinstance(q, dict) and not _non_execution_question(q.get('question'))]} if isinstance(questions, list) else inputs
+                host_answer = skill_host_choice.observe_answer(route, data, choice_inputs, response)
                 if host_answer and host_answer['kind'] == 'local':
                     item = next(x for x in data['skills'] if x['id'] == host_answer['id'])
                     _apply_choice(route, item, data, _current(item, route))
                     route.pop('hostChoice', None)
                 elif not host_answer:
-                    _observe_choice(route, data, inputs, response)
+                    _observe_choice(route, data, choice_inputs, response)
             finally:
                 # One write under the same lock, including failures/cancellation
                 # and catalogue errors. Never store the question/answer text.
@@ -663,6 +773,16 @@ def _fallback_guidance(command: str | None, tool: str) -> str:
     return '후보가 무관하면 제공된 목록의 용도를 비교한 뒤 다음 현재 요청 전용 명령을 그대로 실행하세요: ' + action + ' '
 
 
+def _repeat_choice_guidance(route: dict) -> dict:
+    previous = route.get('reviewCheckpoint', {})
+    if (not isinstance(previous, dict) or previous.get('status') != 'redirected'
+            or previous.get('turn') != route.get('turn') or previous.get('revision') != route.get('revision')):
+        return {}
+    return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
+            'permissionDecisionReason': '[스킬 선택] 같은 호출을 반복하지 마세요. 아직 묻지 않았다면 스킬 이름과 출처를 '
+            '한 번 물어보세요. 이미 답을 받았는데도 확인되지 않으면 재질문하지 말고 중단한 뒤 확인 실패를 알려주세요.'}}
+
+
 def _list_review_checkpoint(route: dict, data: dict, *, recovery: Callable[[], str] | None = None) -> dict:
     """Require a definite task's body, not just any earlier list/body receipt.
 
@@ -673,7 +793,7 @@ def _list_review_checkpoint(route: dict, data: dict, *, recovery: Callable[[], s
         return {}
     host_check = skill_host_choice.checkpoint(route, data)
     if host_check:
-        return host_check
+        return _repeat_choice_guidance(route) or host_check
     if skill_host_choice.chosen(route):
         return {}  # User's current workflow choice; never a native permission allow.
     plan = route.get('executionPlan', {})
@@ -687,6 +807,9 @@ def _list_review_checkpoint(route: dict, data: dict, *, recovery: Callable[[], s
                 _current(candidate, route)
         except (OSError, ValueError):
             return {}
+        repeated = _repeat_choice_guidance(route)
+        if repeated:
+            return repeated
         return {'hookSpecificOutput': {'hookEventName': 'PreToolUse', 'permissionDecision': 'deny',
                 'permissionDecisionReason': '[스킬 선택] 같은 업무의 후보가 겹칩니다. AskUserQuestion으로 이름·출처·차이를 '
                 '한국어로 한 번 물으세요. 실제 답변은 자동 기록되므로 선택한 스킬을 불러오면 됩니다. '
@@ -821,7 +944,7 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
                 return _list_review_checkpoint(route, data, recovery=recovery)
             host_check = skill_host_choice.checkpoint(route, data)
             if host_check and plan.get('id') in ids:
-                return host_check
+                return _repeat_choice_guidance(route) or host_check
             return {}
         if route.get('reviewProtocol') == 1:
             return _list_review_checkpoint(route, data, recovery=recovery)

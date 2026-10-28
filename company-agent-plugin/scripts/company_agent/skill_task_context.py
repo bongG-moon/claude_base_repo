@@ -21,7 +21,7 @@ TASK_SKILL_RULE = (
     '개인 파일·호출명 충돌·우선 설정으로 지정한 정확한 파일은 Read로 확인하되, '
     'fork·model·allowed-tools·동적 치환은 성공한 정확한 Skill 호출만 적용합니다. Read로 대체하지 마세요. '
     '후보는 검색 힌트이지 자동 선택이나 전체 목록이 아닙니다. 읽기와 생성처럼 서로 다른 단계의 스킬은 중복이 아닙니다. '
-    '같은 업무를 수행할 후보가 겹치고 명시 선택·저장된 우선 설정이 없으면 AskUserQuestion으로 '
+    '같은 업무를 수행할 후보가 겹치고 명시 선택·저장된 우선 설정이 없으면 첫 Skill 호출 전에 AskUserQuestion으로 '
     '이름·출처·차이를 한국어로 보여주고 하나를 물으세요. 도구가 없으면 질문 후 답변을 기다리세요. '
     '사용자 대신 선택하지 말고 /company-agent:skills 실행을 사용자에게 떠넘기지 마세요. '
     '질문 옵션에는 후보의 정확한 이름·출처를 넣으세요. AskUserQuestion의 실제 답변은 자동 기록되므로 선택한 load로 진행하세요. '
@@ -400,6 +400,23 @@ def _features(text: str, *, metadata: bool = False, owner_names: tuple = ()) -> 
     if _explanation_intent(positive):
         domains.add('explanation')
         actions.add('make')
+    # History aggregation has a different input scope from explaining the
+    # current task. Match the scope in both requests and metadata so a usage
+    # catalogue does not compete for every ordinary workflow diagram.
+    history = re.search(
+        r'(?:claude|codex|클로드|코덱스).{0,24}(?:사용\s*기록|대화\s*기록|세션\s*(?:기록|이력)|usage|history)|'
+        r'(?:전체|모든|여러)\s*(?:대화|세션).{0,30}업무|'
+        r'\b(?:usage|session|conversation)\s+(?:history|histories|logs?|records?)\b', positive)
+    history_help = not metadata and re.search(
+        r'(?:방법|사용법|뜻|의미).{0,16}(?:알려|설명|뭐|무엇)|'
+        r'\b(?:how\s+(?:to|do|can)|explain\s+how|what\s+is)\b', positive)
+    if history and not history_help and re.search(r'집계|분류|정리|요약|보고|보여|분석|구조|흐름|통계|html|'
+                             r'\b(?:aggregat|categor|summari|report|analy|show|workflow)', positive):
+        # The catalogue owns its HTML explanation, but a separate requested
+        # PPT/Excel/mail deliverable must keep its own candidate as well.
+        domains.difference_update({'explanation', 'html'})
+        domains.add('usage-history')
+        actions.update({'read', 'make'})
     if _ORGANIZE.search(positive):
         actions.add('organize')
     return domains, actions

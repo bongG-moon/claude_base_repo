@@ -37,7 +37,9 @@ class ReportMotionTests(unittest.TestCase):
         self.assertIn('180ms', text)
         self.assertIn('120ms', text)
         self.assertNotIn('IntersectionObserver', script)
-        self.assertNotIn('setTimeout', script)
+        # Navigation never waits. CSV download cleanup may revoke its Blob URL
+        # later so Chromium can finish handing the file to the download manager.
+        self.assertNotIn('setTimeout', _JS)
         self.assertNotIn('requestAnimationFrame', script)
         self.assertNotIn('<script src=', text)
 

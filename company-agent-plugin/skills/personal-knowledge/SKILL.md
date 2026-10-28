@@ -1,58 +1,35 @@
 ---
 name: personal-knowledge
-description: 공통 기억인 회사 용어·계산식·테이블·연결 규칙·지표·업무 기준을 조회하고, 내 기억의 업무 지식을 기록·검색·보완합니다. 공통 원본은 유지하며 개인 적용 기준을 구분합니다.
+description: 회사 용어, 계산식, 테이블 관계와 업무 기준을 조회하고 개인 적용 지식을 저장하거나 보완합니다. 공통 원본은 유지하며 개인 선호나 반복 실행 절차와 구분합니다.
 ---
 
-# Personal Knowledge writer
+# 개인 업무 지식
 
-사용자에게 Corporate Base는 ‘공통 기억’, Personal Knowledge는 ‘내 기억의 업무 지식’으로 안내합니다. 회사 정책·공통 절차는 ‘공통 하네스’이며 참고 지식과 다릅니다. 개인 저장·로컬 검토용 내보내기를 공통 반영이나 실시간 공유로 설명하지 마세요.
+회사 공통 지식은 참고 원본이고, 개인 지식은 그 원본의 보완 또는 별도 정의입니다. 회사 정책이나 공통 하네스와 혼동하지 않습니다. 개인 저장과 내보내기는 공통 반영이나 실시간 공유가 아닙니다.
 
-Personal Knowledge uses the selected private resource root plus `knowledge`. The administrator's Corporate Base remains immutable. 화면에서는 회사 공통 / 개인 전체 / 이 프로젝트 안의 ‘기억·지식’으로 구분합니다.
+## 조회부터 필요한 만큼
 
-새 지식 저장 범위가 미지정이면 AskUserQuestion으로 **개인 전체(여러 프로젝트)** / **이 프로젝트(현재 작업에서만)**를 한 번 묻고 답변을 기다립니다. 질문 도구가 없으면 일반 질문 후 멈춥니다. 회사 공통 저장은 선택지에 넣지 않습니다. 명시한 범위는 다시 묻지 않고 기존 항목은 원래 범위에서 수정합니다. 생성·수정·내보내기 명령에 `--storage-scope personal|project --project-root "<company_agent_runtime.project>"`를 붙이고 runtime.stateRoot는 그대로 둡니다. 범위 없는 조회는 현재 프로젝트와 개인 전체만 확인하며 다른 프로젝트를 검색하지 않습니다.
+예문의 `company-agent`는 정확한 `company_agent_runtime.cliCommand`로 대체하고 주입된 `stateRoot`, `project`를 사용합니다.
 
-When authoring or reconciling terminology, table meanings or business definitions, read `references/term-quality.md`. Ordinary lookup does not load this authoring reference.
+`company-agent knowledge search "<query>" --state-root "<stateRoot>" --project-root "<project>" --limit 5`
 
-Use the exact `company_agent_runtime.cliCommand` prefix and `stateRoot` for the examples below. Write the compact spec under `<stateRoot>/tmp/knowledge-<unique-id>.json`. If context is missing, defer only storage and continue the requested explanation; report the missing context once. Never search settings/session folders/env, guess another installation, or claim the fact was saved.
+범위를 지정하지 않은 조회는 현재 프로젝트와 개인 전체의 유효 지식을 찾으며 다른 프로젝트는 검색하지 않습니다. 관련 공통 원본만 확인하고 이미 받은 최신 결과는 재사용합니다. **조회만 하는 요청에는 저장 범위를 묻거나 작성 참고자료를 읽지 않습니다.**
 
-## Decide what to store
+## 저장 또는 수정
 
-- A durable business fact, term, table meaning, join rule, metric, or query convention becomes Personal Knowledge.
-- A reusable multi-step procedure becomes a Skill; use the Asset Factory instead.
-- A tone or interaction preference becomes Personal Memory, not business knowledge.
-- A one-off value, query result, email body, credential, or personal/sensitive row must not be stored.
+1. 영구 저장을 요청한 업무 정의인지 확인합니다. 개인 선호는 personal-memory, 재사용 실행 절차는 asset-factory를 사용합니다. 일회성 수치, 조회 결과, 원본 메일, 인증 값과 민감 행은 저장하지 않습니다. 단순한 이번 작업 교정을 미래의 회사 지식으로 자동 저장하지 않습니다.
+2. 새 저장 범위가 미지정일 때만 **개인 전체 / 이 프로젝트**를 한 번 묻습니다. 명시한 범위와 기존 항목의 위치는 유지합니다. 회사 공통 저장은 선택지가 아닙니다.
+3. 용어, 표 의미와 계산 기준을 작성/조정할 때 `references/term-quality.md`를 읽습니다. 중복과 관련 공통 원본을 확인하고 아래 모드를 고릅니다. 현재 지식을 조회한 결과가 있으면 다시 검색하지 않습니다.
+4. Write로 `<stateRoot>/tmp/knowledge-<unique-id>.json`에 추출한 사실만 작성합니다. `references/storage-spec.md`의 작은 명세를 사용합니다.
+5. `company-agent knowledge upsert --spec "<spec.json>" --state-root "<stateRoot>" --storage-scope personal --project-root "<project>"`를 실행합니다. 프로젝트 저장은 personal을 project로 바꾸며 runtime.stateRoot는 그대로 둡니다.
+6. 반환된 정확한 Markdown 경로를 읽어 의도한 내용과 범위를 한 번 확인합니다. 이 명령의 `ok/path` 응답만으로 내용 대조까지 완료됐다고 하지 않습니다. 제목, 적용 범위와 공통 정의와의 차이를 짧게 전달합니다.
 
-An explicit durable request such as “기억해” or “등록해” can save a validated extracted fact after scope selection. A correction alone is not permission to retain a company fact: use it in the current task and ask if durable storage is unclear. Do not guess the destination from a file's location.
+| 모드 | 목적 |
+| --- | --- |
+| `extend` | 공통 정의를 보존하며 별칭, 예시, 필터와 주의점 보완 |
+| `fork` | 공통 정의를 보존하고 다른 개인 계산/적용 기준을 명시 |
+| `personal-new` | 공통 원본에 없는 새 업무 정의 |
 
-## Write safely
+런타임 정보가 없으면 저장만 보류하고 가능한 설명을 계속합니다. 설정/환경변수/세션 폴더를 탐색하거나 다른 설치를 추측하지 않습니다. 권한 거절을 직접 파일 수정으로 우회하지 않습니다.
 
-1. Search the effective index and relevant Corporate Markdown first.
-2. Choose one mode:
-   - `extend`: add aliases, examples, filters, or cautions without replacing the corporate fact.
-   - `fork`: intentionally use a different personal rule; preserve and label the corporate rule.
-   - `personal-new`: create a fact not present in the Corporate Base.
-3. Create a compact JSON spec. Store only the extracted fact and a short reason; never include the transcript.
-4. Run:
-
-   `company-agent knowledge upsert --spec "<spec.json>"`
-
-5. Read back the generated Markdown and report its title and mode in plain language.
-
-Only documents and overlays with `status: active` enter the effective catalog. `draft`, `deprecated`, and `example` content remains available for authoring or history but is never used at runtime. Active overlay aliases, tags, table/schema/column metadata, and body terms are searchable together with the Corporate Base.
-
-Example spec:
-
-```json
-{
-  "title": "WIP_HISTORY 개인 조회 기준",
-  "mode": "extend",
-  "extends": "table.mes.wip_history",
-  "body": "# 개인 적용 기준\n\n라인 A 분석에서는 TEST 이벤트도 제외한다.",
-  "reason": "사용자가 향후 조회 기준으로 명시",
-  "source": "explicit_user_feedback"
-}
-```
-
-If a Corporate update conflicts with a personal `fork`, do not silently choose. Present: combine both, use corporate, or keep personal. Security restrictions are never a valid fork target.
-
-If a Corporate item is removed or deprecated, its active Personal Overlay becomes detached. Report it for reconciliation and exclude it from runtime lookup; a detached overlay alone must not prevent rebuilding the rest of the valid catalog. An `extend` may auto-rebase only when the Corporate item's kind and kind-required structural frontmatter are unchanged. Otherwise treat it as a conflict requiring review.
+active 지식만 실제 조회에 적용하며 draft/deprecated/example은 작성 참고와 이력입니다. 공통 항목이 삭제/폐기되면 연결된 개인 보완은 detached로 제외하되 다른 유효 지식은 계속 사용합니다. `extend`의 자동 재연결은 공통 항목 종류와 필수 구조가 그대로일 때만 허용합니다. 구조 변경이나 `fork` 충돌은 차이를 보여주고 그때만 병합/공통 기준/개인 기준 중 필요한 선택을 받습니다. 개인 정의로 회사 정책과 접근 권한을 완화할 수 없습니다.

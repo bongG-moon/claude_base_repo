@@ -3,55 +3,42 @@ name: outlook-assistant
 description: Outlook 메일을 목록부터 좁혀 검색하고 필요한 본문만 읽어 요약·답장 초안·정리 계획을 만듭니다. 회사 MCP 우선, 로컬 Outlook은 읽기 전용입니다.
 ---
 
-# Outlook assistant
+# 필요한 Outlook 메일만 찾아 사용하기
 
-Use the installed cliCommand/stateRoot and the connected `corp-outlook-self`
-tools' actual schemas. Do not register/replace a connection or invent endpoints.
-Keep the user's selected account, dates, folders, query and message IDs for this
-task; do not ask again or rediscover an already established scope.
+현재 연결된 회사 Outlook 도구를 우선 사용합니다. `corp-outlook-self`가 있으면 그 도구의
+실제 스키마를 따르며 이름이나 인자를 추측하지 않습니다. 연결을 새로 등록하거나 교체하지
+않습니다. 이미 정한 계정, 기간, 폴더, 검색어, 메일 ID는 후속 작업에서도 재사용합니다.
 
-## Read the smallest useful set
+## 목록 → 필요한 본문 → 요청한 결과
 
-1. Search metadata first: IDs, subject, sender, received date, attachment count.
-   Start with 20 candidates; use the schema's supported date/folder/filter/page/
-   field/limit controls only. Do not request all bodies or attachment content.
-   For a supplied exact message ID, skip search and read that selected message.
-2. Choose relevant candidates from the metadata yourself when the request is clear.
-   For an ordinary summary, start with at most 5 relevant bodies, up to 4,000
-   characters each and 12,000 body characters in total. Reuse already read text.
-   These are working defaults, not another question or a change to explicit scope.
-3. Read only bodies needed for the requested answer. A narrow follow-up may need
-   one message; a list/count request normally needs no bodies. Read an attachment
-   only when explicitly relevant and supported by the approved tool/reader.
-4. Stop when evidence is sufficient. Do not fetch every page, re-read complete
-   threads or increase limits automatically after a partial result. If the user
-   requested broader coverage, continue with supported bounded pages only for
-   that purpose and report remaining coverage instead of claiming completeness.
-   Corporate MCP limits are available only if its real schema supports them;
-   local bridge options are not MCP arguments. If an MCP cannot select metadata
-   or bound bodies/results, explain that limit before another broad read and
-   use a narrower supported query or return the available metadata. Do not keep
-   retrieving full-mail batches, invent truncation controls or use a new parser.
+1. 메타데이터(ID, 제목, 보낸 사람, 날짜, 첨부 개수)부터 20건 이내로 검색합니다.
+   실제 스키마의 기간, 폴더, 필터, 필드, 페이지 한도만 사용합니다.
+   정확한 메일 ID가 주어졌으면 검색을 건너뛰고 그 메일만 읽습니다.
+2. 일반 요약은 관련 본문 최대 5건, 건당 4,000자, 합계 12,000자로 시작합니다.
+   명확한 요청은 직접 관련 메일을 골라 진행하며 목록이나 건수 요청에는 본문을 읽지 않습니다.
+   이 값은 기본 작업 예산이며 MCP에 없는 인자를 넣거나 추가 선택 질문을 만들라는 뜻이 아닙니다.
+3. 읽은 본문을 재사용하고 요청에 필요한 첨부만 지원되는 도구로 확인합니다.
+   전체 스레드나 모든 페이지를 습관적으로 읽지 않고 근거가 충분하면 멈춥니다.
+   명시적으로 넓은 범위를 요청한 경우에만 제한된 페이지로 이어 읽습니다.
+4. 결과에 출처 제목과 날짜, 실제 확인 건수와 중요한 생략을 알립니다.
+   일부 검색의 일치 없음은 전체 부재가 아니며 읽지 않은 첨부는 요약하지 않습니다.
+   내부 ID와 예산 기록은 요청하지 않으면 나열하지 않습니다.
 
-## Connection, protection and delivery
+MCP가 메타데이터 선택이나 본문 한도를 지원하지 않으면 더 좁은 검색을 사용하거나
+확인한 목록만 전달합니다. 다음 대량 읽기 전에 한계를 알리되 새 파서나 없는 옵션으로
+우회하지 않습니다. 로컬 브리지의 옵션을 다른 MCP 인자로 사용하지 않습니다.
 
-- Use authenticated own-account evidence from Outlook/MCP. Claude/Windows login
-  and an address in a prompt do not prove mailbox identity. Ask an account choice
-  only when genuinely missing/ambiguous; never infer another account's authority.
-- If the corporate connection is absent and a local read is needed, read
-  `references/local-pilot.md`. For selected `.eml` files only, read
-  `references/local-eml.md`. Other tasks do not load these references.
-- For protected/partial source handling, read
-  `../company-agent/references/business-protection.md` only when needed. Never
-  bypass DRM, substitute another copy or store mail text in Memory/Knowledge.
-- Draft replies in conversation. Before sending, show actual recipients, body
-  and attachments, then use the tool's real permission confirmation. Do not add
-  a duplicate chat approval to the same send. Changed content/recipients need new
-  confirmation; actual refusal remains binding. The local pilot cannot send.
-- Grouping in an answer does not move mail. For an actual archive/move/cleanup
-  request only, read `references/mail-actions.md` and use supported corporate tools.
-- Return the requested answer with source subject/date and unresolved decisions.
-  State how many candidates/bodies were actually read and meaningful omissions,
-  including truncation. Partial no-match does not prove absence. Never summarize
-  an unread attachment or equate profile access with a completed mailbox search.
-  Keep IDs, limits bookkeeping and learning receipts internal unless requested.
+## 필요한 경우만
+
+- **계정 불명확:** Outlook/MCP의 인증된 본인 계정 근거를 확인합니다. Windows 로그인이나
+  질문에 적힌 메일 주소는 권한 증거가 아닙니다. 여러 계정 중 선택이 필요할 때만 묻습니다.
+- **회사 연결 없이 로컬 읽기:** [local-pilot.md](references/local-pilot.md).
+  선택한 `.eml` 파일은 [local-eml.md](references/local-eml.md). 로컬 실행 명령은
+  제공된 cliCommand/stateRoot를 사용하며 로컬 방식은 발송하지 못합니다.
+- **보호 자료나 부분 읽기:** [business-protection.md](../company-agent/references/business-protection.md).
+  DRM이나 권한 거절을 우회하지 않고 메일 본문을 Memory/Knowledge에 저장하지 않습니다.
+- **답장:** 우선 대화에 초안을 만듭니다. 발송 요청이 있으면 실제 수신자, 본문, 첨부를 보여주고
+  도구의 실제 확인 절차로 승인받습니다. 같은 발송에 중복 채팅 승인을 추가하지 않으며
+  내용이나 수신자가 바뀌면 다시 확인합니다.
+- **이동이나 보관 요청:** [mail-actions.md](references/mail-actions.md)의 지원 도구를 사용합니다.
+  대화에서 분류한 것과 실제 메일 이동은 구분합니다.

@@ -12,7 +12,7 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = "business_artifacts business_safety content_layout explanation_diagram explanation_export html_reference ppt_html ppt_html_import ppt_scene ppt_workflow presentation_design report_design report_facts report_styles report_typography".split()
+MODULES = "business_artifacts business_safety content_layout explanation_diagram explanation_export html_reference ppt_html ppt_html_import ppt_scene ppt_workflow presentation_design report_design report_facts report_styles report_tables report_typography".split()
 FILES = [n + ".py" for n in MODULES] + ["ppt_dom_capture.js"]
 ISOLATED_PPTX = subprocess.run([sys.executable, "-I", "-c", "import pptx"],
                                capture_output=True, timeout=20).returncode == 0
