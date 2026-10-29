@@ -169,7 +169,7 @@ def wrapper(slug, info, original):
     entry = f'source/skills/{slug}/SKILL.md'
     need = ('기존 Company Agent 런타임과 원본이 요구하는 세션 문맥이 필요합니다. '
             '없으면 제한을 안내하고 임의 CLI 경로·세션을 만들지 마세요.' if info['runtimeRequired'] else
-            'Company Agent 없이 사용 가능합니다. 필요한 Python 등 의존성은 INSTALL.md를 확인하세요.')
+            '이 ZIP에 필요한 작업 지침과 실행 자료가 포함되어 있습니다. 별도 하네스 설치는 필요하지 않으며, Python 등 사용 환경은 INSTALL.md를 확인하세요.')
     return f'''---
 name: {slug}
 description: {json.dumps(info['desc'], ensure_ascii=False)}
@@ -221,7 +221,7 @@ def index_html(rows, version, standard_sha, excluded=None):
     return f'''<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>개별 스킬 · MCP 배포 파일</title><style>
 body{{margin:0;background:#f4f6fa;color:#16223a;font:16px/1.7 'Noto Sans KR','Malgun Gothic',sans-serif}}main{{max-width:1120px;margin:auto;padding:40px 24px}}h1{{font-size:32px}}section{{background:white;border:1px solid #e3e7ef;border-radius:16px;padding:24px;margin:20px 0}}a{{color:#245dbe}}table{{border-collapse:collapse;width:100%}}td,th{{padding:15px;text-align:left;border-bottom:1px solid #e5e9f0;vertical-align:top}}small{{display:block;color:#66748a}}.table{{overflow-x:auto}}td:first-child{{min-width:210px}}@media(max-width:640px){{main{{padding:16px}}section{{padding:16px}}h1{{font-size:26px}}}}</style></head><body><main>
 <small>P&amp;T AI SQUARE · 등록 준비 파일</small><h1>필요한 스킬을 하나씩 배포하세요.</h1>
-<p>개별 사용 스킬 {len(rows)}개 · 별도 MCP {len(external)}개. 다른 하네스에서도 필요한 스킬만 가져다 사용할 수 있습니다.</p>
+<p>개별 사용 스킬 {len(rows)}개, 별도 MCP {len(external)}개. 각 스킬은 ZIP 하나로 설치하며 특정 하네스에 연결되지 않습니다. 등록 ID, 설치 폴더와 호출 이름은 <code>html-report</code>처럼 스킬 이름을 그대로 사용합니다.</p>
 <section><h2>등록하는 방법</h2><ol><li>아래에서 필요한 ZIP을 선택합니다.</li><li>플랫폼의 도구 등록 화면에 ZIP 자체를 올립니다.</li><li>채워진 설명·사용 조건·동작 흐름을 확인하고 조직·업무 분류·공개 범위를 직접 선택합니다.</li><li>업데이트는 기존 도구의 새 버전 등록을 사용합니다. 플랫폼은 최초 packageId를 유지하며 새 ZIP의 식별자가 달라도 등록할 수 있습니다. ZIP 내부를 수정할 필요가 없습니다.</li></ol><p>여기까지는 파일 준비입니다. 서버 게시나 사용자 PC 설치는 실행하지 않았습니다.</p></section>
 <section class="table"><h2>개별 Skill · 작업 방법과 실행 자료</h2><table><thead><tr><th>스킬 / ZIP</th><th>사용 조건</th><th>설명</th></tr></thead><tbody>{table}</tbody></table></section>
 {external_section}
@@ -308,12 +308,12 @@ def build(root, standard, stage, metadata_path):
                                      'textNormalization': TEXT_NORMALIZATION},
             'files': {f'source/{p}': {'repoPath': src, 'sha256': digest(raw)} for p, (src, raw) in sorted(selected.items())},
             'localReferences': sorted(links, key=lambda x: (x['from'], x['to']))})
-        manifest = dict(schemaVersion=1, packageId='company.skills.' + slug, name=info['displayName'],
+        manifest = dict(schemaVersion=1, packageId=slug, name=info['displayName'],
                         desc=info['desc'], platform='Claude', type='Skill', entryPoint='SKILL.md', guideFile='INSTALL.md',
                         requiredFiles=[entry, 'install_skill.py', 'install_scope.py', 'PACKAGE_CONTENTS.json', 'PACKAGE_SOURCE.json'],
                         requirements=info['requirements'], workTags=info['workTags'], workflow=info['workflow'],
-                        environment='Claude Code · ' + ('Company Agent 필요' if info['runtimeRequired'] else '단독 Skill'),
-                        changes=f'하네스 {version} 현재 파일 기준. 원본·상대 참조 보존 및 플랫폼 등록 정보 포함. 실제 게시 번호는 플랫폼에서 부여합니다.')
+                        environment='Claude Code, 독립 실행 스킬',
+                        changes='스킬 이름을 원본 packageId와 설치 이름으로 사용합니다. 작업 지침, 실행 코드와 참고 자료를 함께 포함하며 별도 하네스 설치는 필요하지 않습니다. 개별 사용 환경은 설치 안내를 확인하세요.')
         files['ai-square.json'] = encoded(manifest)
         files['PACKAGE_CONTENTS.json'] = encoded({'files': {p: digest(raw) for p, raw in sorted(files.items())}})
         package = stage / 'packages' / slug

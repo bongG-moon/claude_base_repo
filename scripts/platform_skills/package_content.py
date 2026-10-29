@@ -98,7 +98,7 @@ def source_files(slug, info, tree):
 
 
 def make_guide(slug, info, install_name, version):
-    dependency = ('Company Agent 하네스 없이 사용합니다. 아래 의존성은 별도로 필요합니다.'
+    dependency = ('이 ZIP 하나에 작업 지침과 실행 자료가 들어 있습니다. 별도 하네스 설치는 필요하지 않으며, 아래 프로그램이나 연결은 사용하는 기능에 따라 필요합니다.'
                   if not info['runtimeRequired'] else
                   f'Company Agent {version} 소스를 기준으로 작성했습니다. 해당 기능을 제공하는 기존 설치와 활성 세션이 필요합니다. 이 ZIP은 하네스·후크·작업자·MCP 연결을 설치하지 않습니다. 일반 Claude에 ZIP만 복사해도 모든 기능이 동작하는 독립 도구가 아닙니다.')
     return f'''# {info['displayName']} — 설치와 사용
@@ -135,10 +135,11 @@ python -X utf8 "압축해제폴더/install_skill.py" --scope project --project-d
 
 ## 실행
 Claude Code에서 해당 프로젝트를 열고 새 대화를 시작한 뒤 `/{install_name}`와 함께 할 일을 적습니다. 실제 본문은 `source/skills/{slug}/SKILL.md`에 있습니다. 그 본문에서 말하는 스킬 폴더는 해당 하위 폴더입니다. 다른 호스트는 그 제품의 스킬 설치 위치에 전체 폴더를 두세요. 이 설치기는 Claude Code의 파일 위치만 지원하며 다른 제품의 설정을 변경하지 않습니다.
+등록용 원본 `packageId`와 설치 폴더 이름은 `{slug}`입니다. 다른 스킬이나 하네스를 먼저 설치할 필요는 없습니다.
 {('이 항목은 이전 이름 호환용입니다. 신규 사용자는 스킬·도구 제작 도우미(asset-factory)를 우선 사용하세요.' if slug == 'platform-mcp-builder' else '')}
 
 ## 새 버전 및 제거
-P&T AI SQUARE의 같은 도구에서 새 버전을 등록합니다. `packageId`는 그대로 유지하고 파일·안내·흐름을 새 내용으로 갱신합니다. 플랫폼이 배포 번호를 부여합니다. 이 패키지에는 아직 게시 후의 도구 ID나 배포 번호가 없으므로 자동 버전 조회를 연결했다고 표시하지 않습니다.
+P&T AI SQUARE의 같은 도구에서 새 버전을 등록합니다. 새 원본 `packageId`는 `{slug}`이며 이후에도 이 이름을 유지합니다. 예전에 `company.skills.{slug}`로 등록한 도구도 기존 도구를 선택해 업데이트할 수 있습니다. 이때 플랫폼의 고정 ID는 과거 값으로 남을 수 있고, 새 파일의 원본 ID는 `{slug}`로 표시됩니다. 설치 이름과 실행에는 영향이 없습니다. 플랫폼이 배포 번호를 부여하며 이 ZIP은 자동 업데이트나 플랫폼 접속을 요구하지 않습니다.
 제거는 위에서 본인이 선택한 `skills/{install_name}` 폴더만 삭제합니다. 설치 도우미가 추가로 설정한 항목은 없습니다.
 
 ## 플랫폼 등록

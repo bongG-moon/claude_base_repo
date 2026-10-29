@@ -1,5 +1,14 @@
 # Company Harness 1.4.47 검증 기록
 
+## 2026-10-29 Individual Skills 갱신 검증
+
+- 패키지 규격과 실제 플랫폼 업로드 정보 추출 34개, 설치 범위와 이전 ID 호환 및 개인 수정 보존 31개, 빈 프로필의 독립 실행 23개로 총 88개 테스트가 통과했습니다.
+- 12개 스킬의 packageId, 설치 이름과 SKILL.md 이름이 일치하며 하네스 의존성은 없습니다. 기능별 외부 프로그램과 라이브러리 요구는 유지합니다.
+- 생성기 `--check`가 통과했습니다. 최종 묶음의 파일 16개는 스킬 ZIP 12개, 기존 Oracle MCP ZIP, catalog, 체크섬과 설치 안내 HTML이며 `skills_zip` 정본 바이트와 모두 같습니다.
+- 하네스 설치 EXE와 ZIP 및 기존 태그는 이번 갱신 대상이 아닙니다. 실제 사내 모델, Office와 메일 연결, Oracle 접속은 이번 독립 설치 검증으로 보장하지 않습니다.
+
+## 2026-10-27 하네스 설치 파일 검증
+
 2026-10-27. 공개 main `bdfc995`의 격리 사본에 이번 설치 안내 수정과 버전 변경만 적용했습니다. 어제 스킬 개선 `cfb0f26`과 오늘 플랫폼 설명 개선 `bdfc995`가 모두 포함됩니다. 별도 Workspace 및 진행 중인 비전 변경은 포함하지 않았습니다.
 
 ## 기능 검사
@@ -38,4 +47,4 @@
 | Company-Agent-User-Guide.html | 98c5955cb6201db762168bc76d56d90c6ef505d9e898d3a6040ccf1f70b6fa75 |
 | Company-Harness-GitLab-Delivery-1.4.47.zip | 3bf9d8786db564547a18c65596016aa2288f6d94c783c091c80f8a2895691e5b |
 | Company-Harness-Setup.exe | ed490b9da02a5f9fb07839f3a38a3aa5c4a6b38ce5714df936f9842a880c9391 |
-| Individual-Skills-1.4.47.zip | 1fc258a0ecc2a1a10274817f9759524bf31a5cba770fb5786a3e6a4b88572b74 |
+| Individual-Skills-1.4.47.zip (2026-10-29 갱신) | 1bd02a320884107a8db992d62f313b1affadc98a813910873d17936214a42b25 |

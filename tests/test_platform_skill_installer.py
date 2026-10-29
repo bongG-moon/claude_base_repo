@@ -41,7 +41,7 @@ class InstallerTests(unittest.TestCase):
         self.home.mkdir()
         self.files = {
             "SKILL.md": b"---\nname: test\ndescription: synthetic\n---\n# Test\n",
-            "ai-square.json": json.dumps({"schemaVersion": 1, "packageId": "company.skills.test"}).encode(),
+            "ai-square.json": json.dumps({"schemaVersion": 1, "packageId": "test"}).encode(),
             "INSTALL.md": b"Test only.\n",
             "references/info.md": b"Synthetic test documentation.\n",
         }
@@ -77,6 +77,7 @@ class InstallerTests(unittest.TestCase):
         return target
 
     def test_legacy_name_remains_installable(self):
+        self.files["ai-square.json"] = json.dumps({"schemaVersion": 1, "packageId": "company.skills.test"}).encode()
         self.files["SKILL.md"] = self.files["SKILL.md"].replace(b"name: test", b"name: square-company-test")
         self.write_package()
         result = self.run_install()
@@ -116,9 +117,10 @@ class InstallerTests(unittest.TestCase):
         self.assertEqual((legacy / "keep.md").read_text(encoding="utf-8"), "user changes")
 
     def test_new_name_blocks_legacy_same_package_install(self):
+        self.files["ai-square.json"] = json.dumps({"schemaVersion": 1, "packageId": "company.skills.test"}).encode()
         self.files["SKILL.md"] = self.files["SKILL.md"].replace(b"name: test", b"name: square-company-test")
         self.write_package()
-        current = self.related_install(name="test", metadata=json.dumps({"packageId": "company.skills.test"}))
+        current = self.related_install(name="test", metadata=json.dumps({"packageId": "test"}))
         with self.assertRaisesRegex(installer.InstallError, "같은 스킬.*다른 이름"):
             self.run_install()
         self.assertEqual((current / "keep.md").read_text(encoding="utf-8"), "user changes")
@@ -161,6 +163,7 @@ class InstallerTests(unittest.TestCase):
         result = self.run_install()
         target = self.project / ".claude/skills/test"
         self.assertEqual(Path(result["target"]), target)
+        self.assertEqual(result["packageId"], "test")
         self.assertEqual({x.relative_to(target).as_posix() for x in target.rglob("*") if x.is_file()}, set(self.files) | {"PACKAGE_CONTENTS.json"})
         for name, data in self.files.items():
             self.assertEqual((target / name).read_bytes(), data)
@@ -252,6 +255,36 @@ class InstallerTests(unittest.TestCase):
         self.write_package()
         with self.assertRaisesRegex(installer.InstallError, "packageId"):
             self.run_install()
+
+    def test_legacy_package_id_with_plain_name_remains_installable(self):
+        self.files["ai-square.json"] = json.dumps({"packageId": "company.skills.test"}).encode()
+        self.write_package()
+        result = self.run_install()
+        self.assertEqual(result["packageId"], "company.skills.test")
+        self.assertEqual(Path(result["target"]), self.project / ".claude/skills/test")
+
+    def test_plain_id_cannot_install_a_legacy_or_other_name(self):
+        for name in ("square-company-test", "different"):
+            with self.subTest(name=name):
+                self.files["SKILL.md"] = f"---\nname: {name}\ndescription: synthetic\n---\n".encode()
+                self.write_package()
+                with self.assertRaisesRegex(installer.InstallError, "packageId"):
+                    self.run_install()
+                self.assertFalse((self.project / ".claude").exists())
+
+    def test_reinstall_with_old_or_new_id_preserves_actual_user_edits(self):
+        result = self.run_install()
+        target = Path(result["target"])
+        (target / "references/info.md").write_text("personal workflow", encoding="utf-8")
+        before = {p.relative_to(target).as_posix(): p.read_bytes() for p in target.rglob("*") if p.is_file()}
+        for package_id in ("test", "company.skills.test"):
+            with self.subTest(package_id=package_id):
+                self.files["ai-square.json"] = json.dumps({"packageId": package_id}).encode()
+                self.write_package()
+                with self.assertRaisesRegex(installer.InstallError, "덮어쓰지"):
+                    self.run_install()
+                self.assertEqual(before, {p.relative_to(target).as_posix(): p.read_bytes() for p in target.rglob("*") if p.is_file()})
+        self.assertEqual([p.name for p in target.parent.iterdir()], ["test"])
 
     def test_reparse_parent_and_source_rejected(self):
         original = Path.lstat

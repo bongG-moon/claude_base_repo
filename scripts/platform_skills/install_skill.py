@@ -18,6 +18,7 @@ sys.dont_write_bytecode = True
 from install_scope import select_scope
 
 LEGACY_PREFIX = "square-company-"
+LEGACY_PACKAGE_PREFIX = "company.skills."
 SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 
 
@@ -109,10 +110,12 @@ def verified_package(source: Path):
     if len(names) != 1 or len(names[0]) > 64 or not SKILL_NAME.fullmatch(names[0]):
         raise InstallError("SKILL.md의 name은 64자 이하의 영문 소문자·숫자·하이픈 이름이어야 합니다.")
     safe_relative(names[0])  # Also reject Windows reserved device names.
-    if package_id.startswith("company.skills."):
-        slug = package_id.removeprefix("company.skills.")
+    if package_id.startswith(LEGACY_PACKAGE_PREFIX):
+        slug = package_id.removeprefix(LEGACY_PACKAGE_PREFIX)
         if not SKILL_NAME.fullmatch(slug) or names[0] not in {slug, LEGACY_PREFIX + slug}:
             raise InstallError("SKILL.md의 이름이 packageId의 스킬 이름과 다릅니다. 올바른 ZIP을 다시 받아 주세요.")
+    elif SKILL_NAME.fullmatch(package_id) and names[0] != package_id:
+        raise InstallError("SKILL.md의 이름과 packageId가 다릅니다. 올바른 ZIP을 다시 받아 주세요.")
     # Snapshot verified bytes. Copying does not reopen unverified source paths.
     files["PACKAGE_CONTENTS.json"] = raw_manifest
     return names[0], package_id, files
@@ -122,7 +125,8 @@ def reject_related_install(skills_root: Path, name: str, package_id: str) -> Non
     """Check only the old/new sibling name in the explicitly selected scope.
 
     A name change is not authorization to migrate, overwrite or delete user
-    edits. The package ID identifies compatibility; no profile-wide scan runs.
+    edits. The former company.skills ID and the plain Skill ID identify the
+    same package; no profile-wide scan or automatic migration runs.
     """
     related_name = name.removeprefix(LEGACY_PREFIX) if name.startswith(LEGACY_PREFIX) else LEGACY_PREFIX + name
     if not related_name:
@@ -143,10 +147,18 @@ def reject_related_install(skills_root: Path, name: str, package_id: str) -> Non
                 installed_id = metadata.get("packageId")
     except (OSError, ValueError):
         pass
+    def identity(value):
+        if isinstance(value, str) and value.startswith(LEGACY_PACKAGE_PREFIX):
+            slug = value.removeprefix(LEGACY_PACKAGE_PREFIX)
+            if SKILL_NAME.fullmatch(slug):
+                return slug
+        return value
+
+    same_package = identity(installed_id) == identity(package_id)
     if (isinstance(installed_id, str) and re.fullmatch(r"[a-z][a-z0-9.-]{2,79}", installed_id)
-            and installed_id != package_id):
+            and not same_package):
         return  # A different package is not a known old-name installation.
-    reason = ("같은 스킬이 다른 이름으로 이미 설치되어 있습니다" if installed_id == package_id
+    reason = ("같은 스킬이 다른 이름으로 이미 설치되어 있습니다" if same_package
               else "이전/새 이름의 폴더가 있지만 설치 정보를 확인할 수 없습니다")
     raise InstallError(f"{reason}: {related}\n중복 설치하지 않았습니다. 기존 내용과 사용자 수정 사항을 확인하고, 유지할 스킬을 정한 뒤 기존 폴더를 skills 밖에 백업·이동하고 다시 실행하세요. 자동 이동·삭제는 하지 않습니다.")
 

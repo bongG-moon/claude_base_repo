@@ -1,5 +1,13 @@
 # Company Harness 1.4.47
 
+## 2026-10-29 Individual Skills 파일 갱신
+
+`Individual-Skills-1.4.47.zip`과 해당 SHA-256 파일을 갱신했습니다. 개별 스킬은 12개이며 `website-rebuild`도 포함합니다. 각 스킬의 원본 packageId, 설치 폴더와 호출 이름은 `html-report`, `presentation`처럼 스킬 이름을 사용합니다. `company.skills.` 접두어를 제거했습니다.
+
+각 ZIP에 지침, 코드와 참고 자료가 포함되어 하네스 없이 사용할 수 있습니다. Python 패키지와 메일 연결 등 기능별 환경은 INSTALL.md에 안내합니다. 기존 `company.skills.*`와 `square-company-*` 설치는 호환 대상으로 확인하며 개인 수정분을 덮어쓰거나 중복 설치하지 않습니다. 플랫폼에 이미 등록한 도구의 고정 ID는 유지될 수 있고 새 파일의 원본 ID만 변경됩니다.
+
+스킬 지침 간소화, HTML 표 기능과 PPT 디자인 개선도 이 개별 스킬 묶음에 포함됩니다. 이번 갱신 범위는 Individual Skills 묶음과 체크섬이며, 아래 내용은 10월 27일 게시한 하네스 설치 파일의 기록입니다. 기존 태그와 하네스 설치 EXE 및 ZIP은 그대로 유지합니다.
+
 ## 설치 파일 구분
 
 GitHub의 **Code → Download ZIP**과 **Source code (zip)**은 개발용 소스입니다. 직원 설치는 Release의 **Company-Harness-Setup.exe**를 실행하세요. ZIP 설치를 원하면 **company-agent-1.4.47-2026.09.03.zip**을 모두 압축 해제한 뒤 **Install-CompanyAgent.cmd**를 실행합니다.

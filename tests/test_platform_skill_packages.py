@@ -273,7 +273,7 @@ class PackageUnitTests(unittest.TestCase):
         standard_skill.write_text(standard_skill.read_text(encoding='utf-8') + '\nTest revision\n', encoding='utf-8')
         revised = build(4); self.assertNotEqual(changed['demo.zip'], revised['demo.zip'])
         for artifacts in (first, changed, revised):
-            self.assertEqual(json.loads(artifacts['catalog.json'])['packages'][0]['packageId'], 'company.skills.demo')
+            self.assertEqual(json.loads(artifacts['catalog.json'])['packages'][0]['packageId'], 'demo')
         out = root / 'dist'; export.reconcile(out, first)
         (standard / 'scripts/prepare_package.py').write_text('raise ValueError("new unsupported contract")', encoding='utf-8')
         with self.assertRaisesRegex(ValueError, '규격 검사 실패'):
@@ -305,7 +305,11 @@ class ActualPackageTests(unittest.TestCase):
                 self.assertEqual(export.digest(path.read_bytes()), row['sha256'])
                 with ZipFile(path) as z:
                     manifest = read_package(z)
-                    self.assertEqual(manifest['packageId'], 'company.skills.' + row['slug'])
+                    self.assertEqual(manifest['packageId'], row['slug'])
+                    self.assertEqual(row['packageId'], row['slug'])
+                    self.assertEqual(row['installName'], row['slug'])
+                    self.assertEqual(row['file'], row['slug'] + '.zip')
+                    self.assertNotIn('Company', manifest['name'])
                     self.assertGreater(len(manifest['workflow']['steps']), 0)
                     source = json.loads(z.read('PACKAGE_SOURCE.json'))
                     self.assertEqual(source['textNormalization'], 'utf8-crlf-to-lf')
