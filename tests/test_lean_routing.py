@@ -33,6 +33,13 @@ class LeanRoutingTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 self.assertEqual([], self.names(prompt))
 
+    def test_draft_confirmation_does_not_advertise_a_reading_capability(self):
+        self.f.skill('deck-builder', 'PPT 초안은 사용자의 확인을 받아 제작합니다.')
+        self.assertNotIn('deck-builder', self.names('PPT 내용을 읽고 요약해줘'))
+        self.assertIn('deck-builder', self.names('새 PPT를 만들어줘'))
+        self.f.skill('deck-reader', 'PPT 내용을 확인하고 요약합니다.')
+        self.assertIn('deck-reader', self.names('PPT 내용을 확인해줘'))
+
     def test_new_ppt_and_multi_step_request(self):
         self.assertEqual(['presentation'], self.names('월간 실적 PPT를 새로 만들어줘'))
         names = self.names('기존 PPT 내용을 읽고 새 PPT를 만들어줘')

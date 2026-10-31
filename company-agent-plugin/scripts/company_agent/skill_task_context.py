@@ -243,7 +243,9 @@ _DOMAINS = {
     'mail': r'(?<![a-z])(?:outlook|email|mail)(?![a-z])|아웃룩|메일',
     'image': r'(?<![a-z])(?:images?|pictures?|photos?|png|jpe?g)(?![a-z])|이미지|사진',
 }
-_READ = re.compile(r'읽|요약|분석|추출|파악|확인|\bread|summari[sz]|extract|analy[sz]')
+# Receiving approval ("초안을 확인받아 제작") is not a document-reading
+# capability. Actual "내용을 확인/요약" still counts for every skill source.
+_READ = re.compile(r'읽|요약|분석|추출|파악|확인(?!\s*(?:을\s*)?받)|\bread|summari[sz]|extract|analy[sz]')
 _COMPLETED_READ_REFERENCE = re.compile(
     r'(?<![가-힣])(?:읽은|읽었던|읽어\s*둔|요약한|분석한|추출한|파악한|확인한)'
     r'(?=\s*(?:내용|자료|파일|문서|표|결과))'

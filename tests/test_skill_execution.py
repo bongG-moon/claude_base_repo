@@ -210,6 +210,16 @@ class SkillExecutionTests(unittest.TestCase):
         self.assertFalse(self.state()['skillWorkflow'].get('providedSkills'))
         self.assertLess(len(text), 5000)
 
+    def test_text_prompt_defers_full_vision_contract_to_image_operation(self):
+        from company_agent.vision_routing import VISION_RULE
+        full = self.f.context(source='startup')
+        self.assertIn('backupModel', full['visionRouting'])
+        ctx, text = self.output()
+        self.assertEqual({'enabled', 'agent', 'setupRequired'}, set(ctx['visionRouting']))
+        self.assertEqual('company-agent:vision-worker', ctx['visionRouting']['agent'])
+        self.assertIn('NEEDS_VISION', ctx['instructions'])
+        self.assertNotIn(VISION_RULE, text)
+
     def test_native_read_receipt_remains_distinct(self):
         self.output()
         self.f.read(discovery.PLUGIN / 'skills/html-report/SKILL.md')

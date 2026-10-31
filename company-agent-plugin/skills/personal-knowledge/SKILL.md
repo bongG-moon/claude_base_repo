@@ -20,7 +20,7 @@ description: 회사 용어, 계산식, 테이블 관계와 업무 기준을 조�
 1. 영구 저장을 요청한 업무 정의인지 확인합니다. 개인 선호는 personal-memory, 재사용 실행 절차는 asset-factory를 사용합니다. 일회성 수치, 조회 결과, 원본 메일, 인증 값과 민감 행은 저장하지 않습니다. 단순한 이번 작업 교정을 미래의 회사 지식으로 자동 저장하지 않습니다.
 2. 새 저장 범위가 미지정일 때만 **개인 전체 / 이 프로젝트**를 한 번 묻습니다. 명시한 범위와 기존 항목의 위치는 유지합니다. 회사 공통 저장은 선택지가 아닙니다.
 3. 용어, 표 의미와 계산 기준을 작성/조정할 때 `references/term-quality.md`를 읽습니다. 중복과 관련 공통 원본을 확인하고 아래 모드를 고릅니다. 현재 지식을 조회한 결과가 있으면 다시 검색하지 않습니다.
-4. Write로 `<stateRoot>/tmp/knowledge-<unique-id>.json`에 추출한 사실만 작성합니다. `references/storage-spec.md`의 작은 명세를 사용합니다.
+4. Write로 `<stateRoot>/tmp/knowledge-<unique-id>.json`에 추출한 사실만 작성합니다. `references/storage-spec.md`의 작은 명세를 사용합니다. 확인 필요 표시는 실제 빠진 근거에만 붙이고 원문이 확정한 적용기간 등은 그대로 보존합니다.
 5. `company-agent knowledge upsert --spec "<spec.json>" --state-root "<stateRoot>" --storage-scope personal --project-root "<project>"`를 실행합니다. 프로젝트 저장은 personal을 project로 바꾸며 runtime.stateRoot는 그대로 둡니다.
 6. 반환된 정확한 Markdown 경로를 읽어 의도한 내용과 범위를 한 번 확인합니다. 이 명령의 `ok/path` 응답만으로 내용 대조까지 완료됐다고 하지 않습니다. 제목, 적용 범위와 공통 정의와의 차이를 짧게 전달합니다.
 

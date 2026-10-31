@@ -34,8 +34,11 @@ python -X utf8 -B scripts/build-skill-packages.py --distribution-skill "최신 p
 새로 작성하는 제목, 소개와 안내에서 나열용 가운데점을 쓰지 않습니다. `글자와 도형, 표, 차트`처럼 쉼표나 연결 표현으로 쓰며, 코드와 식별자 및 공식 고유명은 유지합니다.
 
 - 하네스 `skills/*/SKILL.md`를 기준으로 목록을 자동 발견합니다. 각 항목은 `portable` 또는 이유가 있는 `harness-only`로 분류합니다. 새 항목을 조용히 누락하지 않습니다.
+- 하네스에 넣지 않는 독립 스킬은 `standalone-skills/<이름>`에 정본을 두고 카탈로그에 `standaloneOnly: true`, `distribution: portable`을 명시합니다. 조회 스킬 3개와 가상 조회 실습이 이 방식이며 하네스 설치에 자동 추가되지 않습니다. 정본이나 등록 정보가 없으면 ZIP 생성이 실패합니다.
+- 조회 스킬의 공통 실행 코드는 `scripts/query_skills/query_core`에서 관리합니다. 변경 후 `python -X utf8 -B scripts/sync-query-skills.py`와 같은 명령의 `--check`를 먼저 실행한 뒤 ZIP을 생성합니다. 각 독립 스킬에는 전체 실행 코드가 들어가므로 다른 스킬 설치를 요구하지 않습니다. 동기화는 개인 접속 정보와 저장 쿼리를 읽거나 수정하지 않습니다.
 - 개별 업무 스킬은 `standalone-skills`의 독립형 지침·코드·참고자료를 사용합니다. Company 세션·CLI·후크·작업자 없이 사용할 수 있습니다. 원래 하네스용 스킬은 그대로 유지합니다.
 - HTML/PPT는 같은 제작 엔진의 순수 모듈을 `packaging.runtimeModules`로 지정하여 ZIP에 함께 담습니다. 원본 엔진을 두 벌로 수정하지 않으며 빌드 시 정확한 원본 바이트를 포함합니다. 런처·정책·세션·후크 모듈은 포함하지 않습니다.
+- 독립 실행의 기준은 `skills_zip`의 전체 ZIP을 설치한 폴더입니다. 특히 HTML/PPT의 `standalone-skills` 원본 폴더에는 패키징할 때 넣는 공통 제작 모듈이 아직 없으므로 그 폴더나 SKILL.md만 복사한 상태를 완성된 실행 배포본으로 안내하지 않습니다.
 - `company-agent`, `project-harness`, `self-learning`은 하네스 설치 기능으로 남깁니다. `platform-mcp-builder`는 asset-factory의 이전 이름이므로 중복 ZIP을 만들지 않습니다. 제외 사유는 catalog의 `harnessOnly`와 HTML에서 확인합니다.
 - 개인 기억·지식의 독립판은 요청에 따라 범위를 선택한 Markdown 파일을 저장·조회합니다. 하네스의 자동 학습·적용·이력 저장소와 같은 기능이라고 설명하지 않습니다.
 - 루트 SKILL.md는 실제 지침으로 연결하는 짧은 진입점이며 상대 경로는 보존합니다. 이미 하네스로 쓰는 기능은 중복 설치하지 않아도 됩니다.

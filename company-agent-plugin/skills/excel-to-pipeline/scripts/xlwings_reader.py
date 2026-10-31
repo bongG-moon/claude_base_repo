@@ -24,7 +24,8 @@ from openpyxl.utils import get_column_letter, range_boundaries
 from openpyxl.workbook.defined_name import DefinedName
 from openpyxl.worksheet.table import Table
 from openpyxl.styles import Font, PatternFill
-from openpyxl.utils.datetime import CALENDAR_MAC_1904, CALENDAR_WINDOWS_1900
+from openpyxl.styles.numbers import is_timedelta_format
+from openpyxl.utils.datetime import CALENDAR_MAC_1904, CALENDAR_WINDOWS_1900, from_excel
 
 MAX_CELLS = 250_000
 MAX_SHEETS = 100
@@ -179,6 +180,15 @@ def parse_range_xml(xml, formulas, origin, shape, formula_cells=None, values=Non
                 _limit(isinstance(formula, str) and formula.startswith("="), "Excel A1 수식을 확인하지 못했습니다.")
             style_id = cell.get(SS + "StyleID", row.get(SS + "StyleID", "Default"))
             fmt = number_format(style_id)
+            if value is not None and kind in {"n", "d"} and is_timedelta_format(fmt):
+                # 누적 시간의 XML DateTime 표시는 날짜 기준에 따라 달라질 수 있습니다.
+                # 이미 한 번 읽은 Value2의 원래 일수를 사용하고 새 COM 호출은 하지 않습니다.
+                serial = observed_values[row_index-1][col_index-1] if observed_values is not None else value
+                if isinstance(serial, dt.timedelta):
+                    serial = serial.total_seconds() / 86400
+                if not isinstance(serial, (int, float)) or isinstance(serial, bool) or not math.isfinite(serial):
+                    raise NativeReadError("native_duration_unavailable", "누적 시간의 원래 숫자 값을 확인하지 못했습니다. 시각이나 날짜로 추정하지 않았습니다.")
+                value, kind = serial, "n"
             if data is not None or formula is not None:
                 cells.append([r, c, value, kind, formula, fmt, header_style(style_id)])
             col_index += across
@@ -419,7 +429,14 @@ def snapshot_to_workbooks(snapshot):
         for record in item["cells"]:
             row, col, value, kind, formula, fmt = record[:6]
             style = record[6] if len(record) > 6 else {}
-            if kind == "d" and value is not None:
+            if kind == "n" and value is not None and is_timedelta_format(fmt):
+                # OOXML 직접 읽기와 같은 누적 시간 자료형/밀리초 정밀도를 사용합니다.
+                try:
+                    value = from_excel(value, timedelta=True)
+                except (TypeError, ValueError, OverflowError):
+                    raise NativeReadError("native_duration_unavailable", "누적 시간 값이 지원 범위를 벗어납니다.")
+                kind = "d"
+            elif kind == "d" and value is not None:
                 value = dt.datetime.fromisoformat(value)
             for target, is_formula in ((ws, bool(formula)), (observed, False)):
                 cell = target.cell(row, col)

@@ -99,6 +99,14 @@ def cmd_state_check(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_vision(args: argparse.Namespace) -> int:
+    from .vision_settings import configure, status
+    result = (configure(_state_root(args), args.model) if args.vision_command == 'configure'
+              else status(_state_root(args)))
+    _print_json(result)
+    return 0
+
+
 def _issues_payload(issues: list[Any]) -> list[dict[str, Any]]:
     return [item.__dict__ for item in issues]
 
@@ -697,6 +705,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    vision = subparsers.add_parser('vision', help='이미지 전용 모델 확인·변경 (일반 모델은 유지).')
+    vision_sub = vision.add_subparsers(dest='vision_command', required=True)
+    for operation in ('status', 'configure'):
+        action = vision_sub.add_parser(operation)
+        _add_state_argument(action)
+        if operation == 'configure':
+            action.add_argument('--model', required=True, help='사용자가 선택한 실제 모델 ID (표시 이름 아님).')
+        action.set_defaults(func=cmd_vision)
+
     state = subparsers.add_parser("state", help="Check personal state compatibility without changing files.")
     state_sub = state.add_subparsers(dest="state_command", required=True)
     state_check = state_sub.add_parser("check")
@@ -991,6 +1008,8 @@ def build_parser() -> argparse.ArgumentParser:
         action.add_argument('--project-root')
     from .business import register as register_business
     register_business(subparsers)
+    from .usability import register as register_usability
+    register_usability(subparsers)
     return parser
 
 

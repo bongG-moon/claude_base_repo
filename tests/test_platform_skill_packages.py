@@ -291,6 +291,9 @@ class ActualPackageTests(unittest.TestCase):
 
     def test_all_discovered_skills_have_one_zip(self):
         actual = {p.parent.name for p in (ROOT / 'company-agent-plugin/skills').glob('*/SKILL.md')}
+        metadata = json.loads((ROOT / 'scripts/platform_skills/catalog-metadata.json').read_text(encoding='utf-8'))
+        actual |= {slug for slug, info in metadata.items() if info.get('standaloneOnly') is True
+                   and (ROOT / info['sourceDir'] / 'SKILL.md').is_file()}
         self.assertEqual(actual, {r['slug'] for r in self.skills} | {r['slug'] for r in self.catalog['harnessOnly']})
         self.assertTrue(all(not r['runtimeRequired'] for r in self.skills))
         self.assertTrue(all(r['file'] == r['slug'] + '.zip' for r in self.skills))

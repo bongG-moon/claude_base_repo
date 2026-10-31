@@ -32,6 +32,8 @@ python -X utf8 "<스킬 폴더>/scripts/excel_pipeline.py" "<입력.xlsx>" --out
 - 읽는 도중 Excel이 제공한 값은 `excel_observed_not_recalculated`로 구분한다.
   `cached_value` 필드는 비교용 관찰값을 담으며 `cached_value_origin`으로 출처를 확인한다.
   새로 재계산하거나 원본 매크로를 실행해 검증한 값은 아니다.
+- `[h]:mm:ss` 같은 누적 시간은 이미 읽은 Value2의 원래 일수로 복원한다.
+  `26:00:00`처럼 24시간을 넘는 기간을 보존하며, 날짜나 시각만으로 기간을 추정하지 않는다.
 - Excel이 열면서 정규화한 문자열은 파일 내부 문자열과 다를 수 있다. 실제 시험 파일의
   `t="str"` 셀에서 `" c03 "`을 Excel 자체가 `"c03"`으로 읽는 사례를 확인했다.
   스킬은 Value2로 관찰한 문자열을 추가로 trim하지 않지만, 원문과 완전 동일하다고 보장하지 않는다.

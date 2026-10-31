@@ -8,6 +8,7 @@ import datetime as dt
 import hashlib
 import json
 import math
+import re
 from collections import Counter
 from pathlib import Path
 
@@ -20,6 +21,21 @@ def _decode(value, meta):
     if value is None:
         return None
     kind = meta["kind"]
+    if kind == "duration":
+        if isinstance(value, dt.timedelta):
+            return value
+        # 날짜/시각과 혼동하지 않도록 기간만 명시적으로 복원합니다.
+        # 문자열의 시간은 24를 넘을 수 있고, 소수 초는 최대 6자리입니다.
+        match = re.fullmatch(r"(-?)(\d+):([0-5]\d):([0-5]\d)(?:\.(\d{1,6}))?", value) if isinstance(value, str) else None
+        if match:
+            sign, hours, minutes, seconds, fraction = match.groups()
+            try:
+                micros = ((int(hours) * 3600 + int(minutes) * 60 + int(seconds)) * 1_000_000
+                          + int((fraction or "").ljust(6, "0")))
+                return dt.timedelta(microseconds=-micros if sign else micros)
+            except (OverflowError, ValueError):
+                pass
+        raise ValueError("기간은 timedelta 또는 누적 시간 H:MM:SS 문자열이어야 합니다. 예: 26:00:00")
     if kind == "date":
         if isinstance(value, (dt.datetime, dt.date, dt.time)):
             return value

@@ -16,13 +16,14 @@ class ImageReviewEfficiencyTests(unittest.TestCase):
 
     def test_current_skills_load_review_only_at_visual_stage(self):
         for skill, reference, stage in (
-            ("presentation", "references/image-review.md", "7. "),
-            ("html-report", "../presentation/references/image-review.md", "5. "),
+            ("presentation", "references/image-review.md", "검토"),
+            ("html-report", "../presentation/references/image-review.md", "화면"),
         ):
             with self.subTest(skill=skill):
                 text = (SKILLS / skill / "SKILL.md").read_text(encoding="utf-8")
                 reference_line = next(line for line in text.splitlines() if f"`{reference}`" in line)
-                self.assertTrue(reference_line.startswith(stage))
+                # Step numbers can change; review must remain in its conditional visual stage.
+                self.assertRegex(reference_line, rf"^\d+\. \*\*[^*]*{stage}[^*]*\*\*")
                 target = (SKILLS / skill / reference).resolve()
                 self.assertTrue(target.is_relative_to(SKILLS.resolve()))
                 self.assertTrue(target.is_file())
@@ -65,7 +66,7 @@ class ImageReviewEfficiencyTests(unittest.TestCase):
         compact = re.sub(r"\s+", " ", self.sections["대화가 압축된 뒤"])
         for constraint in ("스킬 본문이 없으면", "지금 단계에 필요한 참조만", "전체 목록이나",
                            "경로만 있다는 이유", "같은 파일 버전", "기록/버전이",
-                           "미검증", "재시도하지 않고 텍스트 모델로 대체하지", "구조/내용 검사",
+                           "미검증", "임의 재시도하거나 텍스트 모델로 대체하지", "구조/내용 검사",
                            "모델·권한·자동 압축 기준", "압축을 끄지 않는다"):
             self.assertIn(constraint, compact)
 

@@ -102,6 +102,25 @@ def discover(tree, metadata):
     prefix = 'company-agent-plugin/skills/'
     slugs = {p[len(prefix):].split('/')[0] for p in tree
              if p.startswith(prefix) and p[len(prefix):].count('/') == 1 and p.endswith('/SKILL.md')}
+    standalone_prefix = 'standalone-skills/'
+    standalone = {p[len(standalone_prefix):].split('/')[0] for p in tree
+                  if p.startswith(standalone_prefix) and p[len(standalone_prefix):].count('/') == 1 and p.endswith('/SKILL.md')}
+    # Some independent tools are deliberately not installed by the harness.
+    # Require an explicit catalog entry instead of manufacturing a plugin copy.
+    for slug in standalone - slugs:
+        if slug not in metadata:
+            raise ValueError('새 스킬의 배포 설명을 catalog-metadata.json에 추가하세요: ' + slug)
+        if metadata[slug].get('standaloneOnly') is not True:
+            raise ValueError('하네스에 없는 독립 스킬은 standaloneOnly를 명시하세요: ' + slug)
+    for slug, info in metadata.items():
+        if 'standaloneOnly' in info and type(info['standaloneOnly']) is not bool:
+            raise ValueError('standaloneOnly는 boolean이어야 합니다: ' + slug)
+        if info.get('standaloneOnly'):
+            if slug in slugs or info.get('sourceDir') != standalone_prefix + slug or info.get('distribution') != 'portable':
+                raise ValueError('독립 전용 스킬의 배포 경로 또는 구분이 맞지 않습니다: ' + slug)
+            if slug not in standalone:
+                raise ValueError('독립 스킬 정본 SKILL.md가 없습니다: ' + slug)
+            slugs.add(slug)
     missing = slugs - metadata.keys()
     if missing:
         raise ValueError('새 스킬의 배포 설명·의존성·흐름을 catalog-metadata.json에 추가하세요: ' + ', '.join(sorted(missing)))

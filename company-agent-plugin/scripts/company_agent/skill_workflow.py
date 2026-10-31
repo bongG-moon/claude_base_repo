@@ -54,6 +54,21 @@ def _load_plan(item: dict, data: dict, raw: bytes) -> dict:
     return plan
 
 
+def _selected_skill(item: dict, data: dict, raw: bytes) -> dict:
+    """Retain the verified load contract for workers without rereading the body."""
+    plan = _load_plan(item, data, raw)
+    selected = {key: item[key] for key in ('id', 'name', 'path', 'sha256')}
+    selected.update(load=plan['load'], nativeRequired=bool(plan.get('nativeRequired')))
+    from .frontmatter import parse_frontmatter_text
+    try:
+        meta, _ = parse_frontmatter_text(raw.decode('utf-8-sig'))
+        if meta.get('context') == 'fork':
+            selected['forked'] = True
+    except (ValueError, UnicodeError):
+        pass  # _load_plan already keeps unknown semantics on the native path.
+    return selected
+
+
 def _choice_continuation(prompt: str, names: list[str], *, pending: bool) -> bool:
     """Carry IDs across a short answer, never infer which numbered option won."""
     text = prompt.strip().casefold()
@@ -436,7 +451,7 @@ def _apply_choice(route: dict, item: dict, data: dict, raw: bytes) -> dict:
               and (not plan.get('nativeRequired') or route.get('nativeLoads', {}).get(candidate) == item['sha256']))
     route.update(selected=None, fallback=None)
     if loaded and _frontmatter_field(raw, 'company-agent-role') != 'support':
-        route['selected'] = {key: item[key] for key in ('id', 'name', 'path', 'sha256')}
+        route['selected'] = _selected_skill(item, data, raw)
     return {'ok': True, 'scope': 'current-request', 'readPath': item['path'],
             'load': plan['load'], 'nativeRequired': bool(plan.get('nativeRequired')),
             **({'limitation': plan['limitation']} if plan.get('limitation') else {}),
@@ -638,7 +653,7 @@ def observe(root: Path, project: Path, payload: dict) -> dict | None:
         # Reading orchestration/coding advice must not replace a business
         # workflow or satisfy selection before a real task Skill is chosen.
         if native_ready and _frontmatter_field(raw, 'company-agent-role') != 'support':
-            route.update(selected={key: item[key] for key in ("id", "name", "path", "sha256")}, fallback=None)
+            route.update(selected=_selected_skill(item, data, raw), fallback=None)
             _review_observed(route, 'skill-loaded')
         from .state import _remember_personal_skill_load
         _remember_personal_skill_load(state, item, root)
@@ -702,7 +717,7 @@ def select(root: Path, project: Path, session_id: str, turn: str, *, name: str |
                 raise ValueError("선택한 SKILL.md를 먼저 끝까지 읽어 주세요.")
             if _native_semantics(raw) and route.get('nativeLoads', {}).get(item['id']) != item['sha256']:
                 raise ValueError('이 스킬의 native 실행 조건은 정확한 Skill 호출 성공이 필요합니다. Read로 대체할 수 없습니다.')
-            route.update(selected={key: item[key] for key in ("id", "name", "path", "sha256")}, fallback=None)
+            route.update(selected=_selected_skill(item, data, raw), fallback=None)
         else:
             raise ValueError("스킬 이름 또는 관련 스킬 없음 중 하나를 선택하세요.")
         atomic_write_json(path, state)
@@ -711,6 +726,12 @@ def select(root: Path, project: Path, session_id: str, turn: str, *, name: str |
 
 def internal_command(command: str, session_id: str, state: dict, root: Path) -> bool:
     from .execution_contract import _trusted_arguments, _fields, _same
+    from .execution_contract import usability_report_command
+    if usability_report_command(command, root, (state.get('skillWorkflow') or {}).get('project')):
+        return True
+    from .execution_contract import vision_configuration_command
+    if vision_configuration_command(command, root):
+        return True
     args = _trusted_arguments(command)
     if not args or args[:2] not in (["skill", "route"], ["skill", "choose"]):
         return False

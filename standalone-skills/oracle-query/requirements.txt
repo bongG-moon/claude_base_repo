@@ -1,0 +1,2 @@
+sqlglot==28.5.0
+oracledb==3.3.0

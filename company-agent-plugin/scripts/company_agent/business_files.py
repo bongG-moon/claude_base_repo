@@ -18,6 +18,26 @@ GROUPS = {"문서": {".pdf", ".doc", ".docx", ".txt", ".md", ".hwp", ".hwpx"},
           "이미지": {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}, "압축자료": {".zip", ".7z"}}
 
 
+class DestinationParentConflict(ValueError):
+    pass
+
+
+def _check_destination(destination: Path) -> None:
+    safe_path(destination.parent)
+    if os.path.lexists(destination.parent) and not destination.parent.is_dir():
+        raise DestinationParentConflict("Destination parent is not a directory.")
+    safe_path(destination)
+    if os.path.lexists(destination):
+        raise ValueError("Destination exists. No overwrite allowed.")
+
+
+def _move_failure(exc: BaseException, name: str) -> dict[str, Any]:
+    result = {"name": name, **failure_result(exc)}
+    if isinstance(exc, DestinationParentConflict):
+        result.update(code="destination_parent_not_directory", message="목적지 부모 경로가 폴더가 아닙니다. 충돌을 정리한 뒤 새 계획을 만드세요.")
+    return result
+
+
 def _fingerprint(path: Path) -> dict[str, Any]:
     before = path.stat()
     if before.st_size > 256 * 1024 * 1024:
@@ -53,26 +73,35 @@ def create_plan(state: Path, folder: Path) -> dict[str, Any]:
     items = sorted(root.iterdir(), key=lambda p: p.name.casefold())
     if len(items) > 500:
         raise ValueError("Choose a smaller folder (at most 500 direct entries). Nothing was moved.")
-    operations, skipped = [], []
+    operations, skipped, blocked = [], [], []
     for item in items:
         group = next((name for name, endings in GROUPS.items() if item.suffix.lower() in endings), None)
         try:
             source = safe_path(item, exists=True)
             if not source.is_file() or not group:
                 continue
-            destination = safe_path(root / group / source.name)
+            destination = root / group / source.name
+            safe_path(destination.parent)
+            if os.path.lexists(destination.parent) and not destination.parent.is_dir():
+                raise DestinationParentConflict("Destination parent is not a directory.")
+            safe_path(destination)
             if destination.exists():
                 skipped.append({"name": item.name, "code": "destination_exists"})
                 continue
             operations.append({"source": source.name, "destination": group + "/" + source.name,
                                "fingerprint": _fingerprint(source)})
         except (OSError, ValueError) as exc:
-            skipped.append({"name": item.name, "code": failure_result(exc)["code"]})
+            issue = _move_failure(exc, item.name)
+            skipped.append({"name": item.name, "code": issue["code"]})
+            if isinstance(exc, DestinationParentConflict):
+                blocked.append(issue)
     job_id = uuid.uuid4().hex
     plan = {"schemaVersion": 1, "planId": job_id, "root": str(root), "status": "planned",
-            "operations": operations, "skipped": skipped, "completed": []}
+            "operations": operations, "skipped": skipped, "blocked": blocked, "completed": []}
     atomic_write_json(_job(state, job_id), plan)
-    return {"ok": True, **plan, "message": "정리안만 만들었습니다. 파일은 이동하지 않았습니다. 실행 시 별도 확인 창이 표시됩니다."}
+    message = ("목적지 부모 경로 충돌 때문에 실행할 수 없습니다. 파일은 이동하지 않았습니다. 충돌을 정리한 뒤 새 계획을 만드세요."
+               if blocked else "정리안만 만들었습니다. 파일은 이동하지 않았습니다. 실행 시 별도 확인 창이 표시됩니다.")
+    return {"ok": True, **plan, "message": message}
 
 
 def _operation_paths(root: Path, op: dict[str, Any]) -> tuple[Path, Path]:
@@ -114,6 +143,21 @@ def run_plan(state: Path, job_id: str, *, undo: bool = False) -> dict[str, Any]:
         return _run_plan(state, job_id, undo=undo)
 
 
+def _finish_plan(path: Path, plan: dict, done: list, failures: list, total: int, *, undo: bool, phase: str) -> dict[str, Any]:
+    plan["status"] = "partial" if failures else "undone" if undo else "completed"
+    plan["failures"] = failures
+    plan["phase"] = phase
+    plan["plannedCount"] = total
+    recorded = {op["source"] for op in done} | {item["name"] for item in failures}
+    plan["notAttemptedCount"] = total - len(recorded)
+    atomic_write_json(path, plan)
+    return {"ok": not failures, "status": plan["status"], "planId": plan["planId"],
+            "changedCount": len(done), "failures": failures, "phase": phase,
+            "plannedCount": total, "notAttemptedCount": plan["notAttemptedCount"],
+            "message": f"{len(done)}개 파일을 처리했습니다. {len(failures)}개는 {'실행 전에 차단했습니다' if phase == 'preflight' else '처리하지 못했습니다'}. "
+                       f"{plan['notAttemptedCount']}개는 시도하지 않았습니다. 삭제·덮어쓰기는 하지 않았습니다."}
+
+
 def _run_plan(state: Path, job_id: str, *, undo: bool = False) -> dict[str, Any]:
     path = _job(state, job_id)
     plan = json.loads(path.read_text(encoding="utf-8-sig"))
@@ -148,6 +192,22 @@ def _run_plan(state: Path, job_id: str, *, undo: bool = False) -> dict[str, Any]
         if undo:
             source, destination = destination, source
         checked.append((op, source, destination))
+    blocked = [] if undo else plan.get("blocked", [])
+    if not isinstance(blocked, list) or any(not isinstance(row, dict) for row in blocked):
+        raise ValueError("Invalid blocked operations in plan.")
+    def preflight():
+        failures = list(blocked)
+        for _, source, destination in checked:
+            try:
+                _check_destination(destination)
+            except (OSError, ValueError) as exc:
+                failures.append(_move_failure(exc, source.name))
+        if failures:
+            return _finish_plan(path, plan, [], failures, len(checked) + len(blocked), undo=undo, phase="preflight")
+        return None
+    rejected = preflight()
+    if rejected:
+        return rejected
     if not checked:
         return {"ok": True, "status": "no_changes", "message": "이동할 파일이 없습니다."}
     title = "파일 정리 되돌리기" if undo else "파일 정리 실행 확인"
@@ -160,15 +220,17 @@ def _run_plan(state: Path, job_id: str, *, undo: bool = False) -> dict[str, Any]
         raise ValueError("The plan changed. Prepare a new preview.")
     if os.name != "nt":
         raise ValueError("File execution is Windows-only to preserve no-overwrite rename semantics.")
+    # The destination may have changed while the existing approval window was open.
+    rejected = preflight()
+    if rejected:
+        return rejected
     done, failures = [], []
     plan["status"] = "undo_running" if undo else "running"
     atomic_write_json(path, plan)
     for op, source, destination in checked:
         try:
             safe_path(source, exists=True)
-            safe_path(destination)
-            if destination.exists():
-                raise ValueError("Destination exists. No overwrite allowed.")
+            _check_destination(destination)
             if _fingerprint(source) != op["fingerprint"]:
                 raise ValueError("The file changed. Prepare a new preview.")
             destination.parent.mkdir(exist_ok=True)
@@ -186,15 +248,8 @@ def _run_plan(state: Path, job_id: str, *, undo: bool = False) -> dict[str, Any]
             plan.pop("pendingOperation", None)
             atomic_write_json(path, plan)
         except (OSError, ValueError) as exc:
-            failures.append({"name": source.name, **failure_result(exc)})
-            if plan.get("pendingOperation"):
-                # Preserve intent and stop on an uncertain move; a later undo
-                # reconciles it. Never overwrite the pending journal with the
-                # next operation after a filesystem/receipt error.
-                break
-    plan["status"] = "partial" if failures else "undone" if undo else "completed"
-    plan["failures"] = failures
-    atomic_write_json(path, plan)
-    return {"ok": not failures, "status": plan["status"], "planId": job_id,
-            "changedCount": len(done), "failures": failures,
-            "message": f"{len(done)}개 파일을 처리했습니다. {len(failures)}개는 처리하지 못했습니다. 삭제·덮어쓰기는 하지 않았습니다."}
+            failures.append(_move_failure(exc, source.name))
+            # Preserve a pending intent on an uncertain move for later undo.
+            # Stop before another move so the remaining count is explicit.
+            break
+    return _finish_plan(path, plan, done, failures, len(checked), undo=undo, phase="execution")

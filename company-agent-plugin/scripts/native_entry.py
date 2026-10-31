@@ -45,13 +45,26 @@ def main() -> int:
                 # active only while Claude actually invokes this plugin hook.
                 print(json.dumps(danger, ensure_ascii=True))
                 return 0
+            from company_agent import vision_dispatch
+            if vision_dispatch.relevant(payload):
+                scoped = configure_runtime(plugin, Path(str(payload.get('cwd') or os.getcwd())))
+                result = vision_dispatch.preflight(user_state_root(), plugin, payload) if scoped else {}
+                print(json.dumps(result or {}, ensure_ascii=True))
+                return 0
             from company_agent.vision_routing import preflight as vision_preflight, recovery_candidate, handoff_reason
             vision = vision_preflight(payload)
             vision_scoped = False
             if vision is None and recovery_candidate(payload):
                 vision_scoped = configure_runtime(plugin, Path(str(payload.get("cwd") or os.getcwd())))
                 if vision_scoped:
-                    vision = vision_preflight(payload, recovery_root=user_state_root())
+                    from company_agent.vision_handoff import recover, HandoffAlreadyUsed
+                    from company_agent.vision_routing import VISION_AGENT, _deny
+                    try:
+                        repaired = recover(user_state_root(), payload, VISION_AGENT)
+                        if repaired is not None:
+                            vision = vision_dispatch.preflight(user_state_root(), plugin, repaired)
+                    except HandoffAlreadyUsed:
+                        vision = _deny('[비전 결과 확인] 이 대상의 인계는 이미 요청했습니다. 추가 실행하지 말고 완료 결과를 확인하세요.')
             if vision is not None:
                 # Pure routing / ordinary Read fast path: no catalogue scan,
                 # session lookup, model probe or new permission grant.
@@ -70,6 +83,12 @@ def main() -> int:
                         vision['hookSpecificOutput']['permissionDecisionReason'] = handoff_reason(payload, marker)
                 print(json.dumps(vision, ensure_ascii=True))
                 return 0
+        from company_agent import vision_dispatch
+        if event in {'PostToolUse', 'PostToolUseFailure'} and vision_dispatch.relevant(payload):
+            scoped = configure_runtime(plugin, Path(str(payload.get('cwd') or os.getcwd())))
+            result = vision_dispatch.result_context(user_state_root(), payload, event) if scoped else {}
+            print(json.dumps(result or {}, ensure_ascii=True))
+            return 0
         from company_agent.vision_routing import result_context as vision_result_context
         vision = vision_result_context(event, payload)
         if vision is not None:
@@ -116,6 +135,7 @@ def main() -> int:
             print(json.dumps(result, ensure_ascii=True))
             return 0
         if event == "SessionStart":
+            vision_dispatch.session_start(user_state_root(), payload)
             result = session_start(plugin, cwd, session_id=str(payload.get("session_id") or ""), source=str(payload.get("source") or ""))
             runtime_text = result.get('hookSpecificOutput', {}).get('additionalContext', '')
         elif event == "PermissionRequest":

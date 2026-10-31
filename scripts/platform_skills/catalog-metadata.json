@@ -27,7 +27,7 @@
         },
         {
           "title": "Python 처리와 설명서 생성",
-          "description": "입력 DATA와 계산 PROCESS를 나누고, 실행 진입점, 추출 표, 업무흐름 HTML을 한 결과 폴더에 만듭니다."
+          "description": "입력 DATA와 계산 PROCESS를 나누고 기간값을 날짜와 구분해 보존합니다. 실행 진입점, 추출 표, 업무흐름 HTML을 한 결과 폴더에 만듭니다."
         },
         {
           "title": "결과와 재사용 범위 확인",
@@ -72,7 +72,7 @@
         },
         {
           "title": "업무를 나누고 처리 순서 정리",
-          "description": "대화 기록을 업무별로 분류합니다. 스킬, 메모, 지식을 저장하거나 수정한 기록이 있는 업무는 실행 순서도 정리하고, 실패했거나 확인하지 못한 부분을 표시합니다."
+          "description": "인사만인 기록은 제외합니다. 업무명과 순서 근거로 후속 저장을 연결하고, 실패나 연결 근거 부족은 확인된 FLOW와 구분합니다."
         },
         {
           "title": "보고서에서 다시 쓸 자료 찾기",
@@ -115,11 +115,11 @@
         },
         {
           "title": "편집 가능한 PPT 제작",
-          "description": "확인한 디자인을 글자, 도형, 이미지, 표, 차트로 구성하고 관련 개체를 실제 그룹으로 묶습니다."
+          "description": "사용자 승인 기록과 승인한 HTML 초안 및 내용의 일치를 확인한 뒤 글자, 도형, 이미지, 표, 차트로 제작하고 관련 개체를 실제 그룹으로 묶습니다."
         },
         {
           "title": "구조와 확인 범위 검증",
-          "description": "편집 개체, 그룹, 페이지 구조와 예상 글자 넘침을 확인합니다. 근사 경고는 실제 렌더링 검사를 대신하지 않으며 화면 미확인을 별도로 표시합니다."
+          "description": "개체와 배치를 확인합니다. 직접 보정한 내용은 재생성 원본에 반영하고 보정 시 같은 원본 재빌드의 의미와 배치를 비교합니다. 구조 비교와 실제 렌더 검증은 구분합니다."
         }
       ]
     },
@@ -146,7 +146,7 @@
         "report_typography.py",
         "ppt_dom_capture.js"
       ],
-      "reviewedPluginDigest": "ef6182daf6f62cc906b3c4f0ac8cc7d51dd8a058e78774cc3e65214c71d249dc"
+      "reviewedPluginDigest": "d69398fcd06d301e2fefdb7922085a0ab0b17535f905e623c15fdc1d9f8e06b2"
     },
     "distribution": "portable"
   },
@@ -174,11 +174,11 @@
         },
         {
           "title": "자료와 HTML 구성",
-          "description": "선택한 스타일로 근거와 해석을 배치합니다. 데이터 표에는 정렬과 CSV 다운로드를, 긴 표에는 검색, 필터와 페이지 이동을 적용합니다."
+          "description": "선택한 스타일로 근거와 해석을 배치합니다. 표와 주석은 같은 수치, 기간과 집계 범위를 재사용하고 표 검색, 정렬과 CSV를 제공합니다."
         },
         {
           "title": "실제 내용과 화면 확인",
-          "description": "총계, 좌우 공간, 표의 검색과 페이지 이동, 검색 결과와 전체 CSV를 확인합니다. 한글과 좁은 화면도 살피고 직접 확인하지 못한 부분은 구분합니다."
+          "description": "내용, 표 동작과 화면을 확인합니다. 반복 생성기를 만들 때만 실패 시 정상 결과 묶음을 보존하는 동봉 예제를 사용합니다. 미확인 화면은 구분합니다."
         }
       ]
     },
@@ -205,7 +205,7 @@
         "report_typography.py",
         "ppt_dom_capture.js"
       ],
-      "reviewedPluginDigest": "9d5562d434f97e353ffb05a1c11ea455cc9dd58a25281f0f0b1749e1787e2774"
+      "reviewedPluginDigest": "40d3a99dc157eb6138d7ce6f2ea05c127b9f822f70bbf6071d8c8e8466b809ed"
     },
     "distribution": "portable"
   },
@@ -227,11 +227,11 @@
       "steps": [
         {
           "title": "정리 계획 만들기",
-          "description": "정리할 폴더에서 삭제와 덮어쓰기 없는 이동 계획을 만듭니다. 계획만 요청하면 계획을 전달하고 마칩니다."
+          "description": "정리할 폴더에서 삭제와 덮어쓰기 없는 이동 계획을 만듭니다. 목적지 부모가 파일인 충돌은 차단 항목으로 표시합니다."
         },
         {
           "title": "요청한 이동 실행",
-          "description": "계획 확인과 실행 요청 뒤 바뀐 파일, 충돌을 확인하고 이동 기록을 남깁니다."
+          "description": "기존 실행 요청 범위에서 전체 목적지를 먼저 검사한 뒤 이동합니다. 충돌은 첫 이동 전 중단하고, 실행 중 실패는 완료와 미시도 항목을 구분해 기록합니다."
         },
         {
           "title": "결과와 원복 안내",
@@ -243,7 +243,7 @@
     "runtimeRequired": false,
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "21bdf0caf1d1c8f06213ddddd8f66ecf7ab837ab454ce6d26c3fe28a69bbac5b"
+      "reviewedPluginDigest": "4b1a6a6917dd9263bdb17d64eed3d15642a13a82ba38ad043d876dec7db8ce6a"
     },
     "distribution": "portable"
   },
@@ -276,7 +276,7 @@
         },
         {
           "title": "실제 결과 검증",
-          "description": "변경에 맞는 실행, 시험으로 결과를 확인하고 검증한 범위와 남은 한계를 보고합니다. 진단만 요청한 경우에는 수정하지 않습니다."
+          "description": "관련 실행으로 결과와 예상 오류 원인을 확인합니다. 수정 범위와 검증 한계를 구분하며 진단만 요청하면 변경하지 않습니다."
         }
       ]
     },
@@ -284,7 +284,7 @@
     "runtimeRequired": false,
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "7b67033585ad8865b433fc513045a137629bdbd53eda7b27e856dd88321a1a62"
+      "reviewedPluginDigest": "2e3ad125e4c9c4b81afef2b7f3d75b40ee2f013f2bb1159f6e736f24999f5fc3"
     },
     "distribution": "portable"
   },
@@ -351,7 +351,7 @@
         },
         {
           "title": "필요한 실행 코드 구현",
-          "description": "필요한 경우 Python 코드 또는 표준 tools.py와 로컬 MCP 서버를 만듭니다."
+          "description": "필요할 때 Python 코드 또는 tools.py MCP를 만듭니다. 생성 코드는 업무 폴더와 임시 위치를 명시하고 재생성 실패에도 정상 결과를 보존합니다."
         },
         {
           "title": "합성 입력으로 검증",
@@ -362,7 +362,7 @@
     "sourceDir": "standalone-skills/asset-factory",
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "a5012cb79c86272862c978cdddcf00a61813b6d1f8aeefffea87cf2487c263e4"
+      "reviewedPluginDigest": "ad76bc1fd4f44fbb7efcc2c264d2eaad2eaba03a7accd4fee6ce61bc1f24890f"
     },
     "runtimeRequired": false,
     "distribution": "portable"
@@ -398,7 +398,7 @@
         },
         {
           "title": "결과와 남은 사항 전달",
-          "description": "사용자가 필요한 결과와 실제 제한을 한국어로 안내하고 검증하지 않은 동작을 완료로 표시하지 않습니다."
+          "description": "필요한 결과와 실제 제한을 한국어로 안내합니다. 사용성 점검을 요청한 경우에만 기존 기록을 로컬 집계한 보고서를 제공하며 일반 업무에 추가 진단을 붙이지 않습니다."
         }
       ]
     },
@@ -433,23 +433,23 @@
     "workflow": {
       "steps": [
         {
-          "title": "관련 메일 목록 찾기",
-          "description": "기간, 발신자, 주제로 메타데이터를 최대 20건부터 검색합니다."
+          "title": "목록에서 범위 좁히기",
+          "description": "기존 메일 조건으로 메타데이터부터 확인합니다. 정확한 메일 ID가 있으면 재검색을 생략합니다."
         },
         {
           "title": "필요한 본문만 읽기",
-          "description": "관련 메일 기본 5건 이내, 건당 4,000자, 합계 12,000자 한도로 시작합니다."
+          "description": "연결된 도구의 한도를 사용하고 선택한 EML은 동봉 MIME 읽기 도우미로 처리합니다. 같은 원문을 다시 해독하지 않습니다."
         },
         {
-          "title": "요약, 초안 작성",
-          "description": "출처와 조회 범위, 잘림을 표시합니다. 로컬 도우미로 메일을 발송하거나 변경하지 않습니다."
+          "title": "요약과 초안 전달",
+          "description": "출처와 생략 범위를 표시합니다. 발송과 이동은 실제 연결 도구의 기존 확인 절차를 따르며 로컬 도우미는 읽기만 합니다."
         }
       ]
     },
     "sourceDir": "standalone-skills/outlook-assistant",
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "6a7bc68f484f06f389410e4ea27040291a4c998f1f61dd0ad06707b6c6e4a2de"
+      "reviewedPluginDigest": "0c15c2f6ad8be85073aec1bb5ee1d28a19f38b1e03255ff01688d62e8f9a127b"
     },
     "runtimeRequired": false,
     "distribution": "portable"
@@ -479,14 +479,14 @@
         },
         {
           "title": "Markdown으로 저장, 조회",
-          "description": "추린 사실, 출처, 적용 범위를 기록하고 파일 위치를 안내합니다. 자동 주입이나 상시 수집은 하지 않습니다."
+          "description": "출처와 적용 범위의 명시된 사실을 보존하고 실제 빠진 근거만 확인 필요로 구분합니다. 저장 위치를 안내하며 자동 주입은 없습니다."
         }
       ]
     },
     "sourceDir": "standalone-skills/personal-knowledge",
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "fe1c5906b46487836471df8f4cd4497595c25139955bed41cdb5a84ef31c1895"
+      "reviewedPluginDigest": "571ba400402dddf039cc329ab7466864d10b822346bc8a47a56fd50b9863dcd6"
     },
     "runtimeRequired": false,
     "distribution": "portable"
@@ -516,14 +516,14 @@
         },
         {
           "title": "Markdown으로 저장, 조회",
-          "description": "추린 사실, 출처, 적용 범위를 기록하고 파일 위치를 안내합니다. 자동 주입이나 상시 수집은 하지 않습니다."
+          "description": "추린 사실과 범위를 저장하고 사용자가 정한 답변 길이 안에서 안내합니다. 일회성 응답 길이는 기억으로 저장하지 않으며 자동 주입은 없습니다."
         }
       ]
     },
     "sourceDir": "standalone-skills/personal-memory",
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "c6664c251e4b8d6ae13d45e93f97aa9f96214c817ce3de679cd86ff16604508a"
+      "reviewedPluginDigest": "6722c34b7eef0b8ad4015a075bb5436d8b8a96022a4da2c6e15022ef44e9f605"
     },
     "runtimeRequired": false,
     "distribution": "portable"
@@ -683,7 +683,7 @@
         },
         {
           "title": "화면 구현",
-          "description": "기존 프로젝트 파일에서 카드, 버튼, 배치, 상태를 개선합니다."
+          "description": "기존 디자인에서 화면을 개선합니다. 데이터 표의 ID와 날짜 가독성, 내부 스크롤, 전체와 필터 KPI의 범위를 유지합니다."
         },
         {
           "title": "화면과 동작 확인",
@@ -695,7 +695,177 @@
     "runtimeRequired": false,
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "5b728a8a08f38881d920a0249df93bfcef206fd788fd4b7096d00747abbe669b"
+      "reviewedPluginDigest": "45afcff85496e223d60cf87e4c73e712d82b20e86a9d3813b8c4ebd9ba5d91fd"
+    },
+    "distribution": "portable"
+  },
+  "oracle-query": {
+    "displayName": "Oracle 데이터 조회",
+    "desc": "DB 연결을 이름으로 등록하고 SQL을 저장해 조건만 바꾸어 조회합니다. 큰 조회는 범위 확인과 사용자 허락 뒤 실행하며 결과는 로컬 파일로 전달합니다.",
+    "workTags": [
+      "Oracle 조회",
+      "저장 쿼리",
+      "DB 연결",
+      "생산실적"
+    ],
+    "requirements": [
+      "Python 3.11 이상과 sqlglot==28.5.0, oracledb==3.3.0이 필요합니다.",
+      "로컬 설정창에는 tkinter가 필요하며 실제 조회에는 본인 계정, DSN, 조회 권한과 사내망 접근이 필요합니다.",
+      "비밀번호는 설치 폴더 밖 개인 설정 파일에 저장합니다. 저장 파일의 암호화를 보장하지 않으며 Git, ZIP과 대화에 넣지 않습니다."
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "title": "연결 준비",
+          "description": "처음에만 로컬 설정창에서 연결을 등록하고 DB 이름으로 선택합니다."
+        },
+        {
+          "title": "쿼리 이름과 조건 등록",
+          "description": "SQL을 업무 이름으로 저장하고 바꿀 조건과 고정값을 구분합니다. 등록 자체로 조회하지 않습니다."
+        },
+        {
+          "title": "조회 범위 확인",
+          "description": "DB 이름과 적용 조건, 예상 규모와 한도를 확인합니다. 큰 조회는 사용자가 허락한 범위로 실행합니다."
+        },
+        {
+          "title": "결과 파일로 활용",
+          "description": "결과를 로컬 JSONL로 저장하고 CSV는 필요할 때 내보냅니다. 원본 행을 대화에 넣지 않고 Python으로 필요한 계산만 수행합니다."
+        }
+      ]
+    },
+    "sourceDir": "standalone-skills/oracle-query",
+    "runtimeRequired": false,
+    "standaloneOnly": true,
+    "packaging": {
+      "includeAdditionalPaths": []
+    },
+    "distribution": "portable"
+  },
+  "datalake-query": {
+    "displayName": "Datalake 데이터 조회",
+    "desc": "LakeHouse 데이터를 이름으로 저장한 SQL과 조건으로 조회합니다. 넓은 범위는 허락을 확인하고 결과 파일을 Python 분석에 재사용할 수 있습니다.",
+    "workTags": [
+      "Datalake 조회",
+      "LakeHouse 조회",
+      "저장 쿼리",
+      "데이터 추출"
+    ],
+    "requirements": [
+      "Python 3.11 이상과 sqlglot==28.5.0, requests==2.32.5, mysql-connector-python>=9.6,<10이 필요합니다.",
+      "설정창에는 tkinter가 필요하며 본인 사번, 토큰, 승인된 API 주소와 DB 조회 권한이 필요합니다. 준비 API는 클러스터를 기동할 수 있습니다.",
+      "실제 사내 접속, 서버 응답 형식과 S3 키 없는 조회 성공은 운영 환경에서 확인해야 합니다.",
+      "토큰은 개인 설정 파일에 저장합니다. 저장 파일의 암호화를 보장하지 않으며 Git, ZIP과 대화에 넣지 않습니다."
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "title": "연결 준비",
+          "description": "처음에만 로컬 설정창에서 연결을 등록하고 DB 이름으로 선택합니다."
+        },
+        {
+          "title": "쿼리 이름과 조건 등록",
+          "description": "SQL을 업무 이름으로 저장하고 바꿀 조건과 고정값을 구분합니다. 등록 자체로 조회하지 않습니다."
+        },
+        {
+          "title": "조회 범위 확인",
+          "description": "DB 이름과 적용 조건, 예상 규모와 한도를 확인합니다. 큰 조회는 사용자가 허락한 범위로 실행합니다."
+        },
+        {
+          "title": "결과 파일로 활용",
+          "description": "결과를 로컬 JSONL로 저장하고 CSV는 필요할 때 내보냅니다. 원본 행을 대화에 넣지 않고 Python으로 필요한 계산만 수행합니다."
+        }
+      ]
+    },
+    "sourceDir": "standalone-skills/datalake-query",
+    "runtimeRequired": false,
+    "standaloneOnly": true,
+    "packaging": {
+      "includeAdditionalPaths": []
+    },
+    "distribution": "portable"
+  },
+  "ehub-query": {
+    "displayName": "E-HUB 데이터 조회",
+    "desc": "LakeHouse에 제공된 E-HUB 데이터를 이름으로 저장한 SQL과 조건으로 조회합니다. 별도 E-HUB 웹서비스 API가 아닌 LakeHouse 경유 방식입니다.",
+    "workTags": [
+      "E-HUB 조회",
+      "업무 데이터",
+      "저장 쿼리",
+      "LakeHouse 조회"
+    ],
+    "requirements": [
+      "Python 3.11 이상과 sqlglot==28.5.0, requests==2.32.5, mysql-connector-python>=9.6,<10이 필요합니다.",
+      "설정창에는 tkinter가 필요하며 LakeHouse 연결과 해당 E-HUB 테이블에 대한 조회 권한이 필요합니다. 준비 API는 클러스터를 기동할 수 있습니다.",
+      "E-HUB 웹서비스의 별도 직접 인증/API는 포함하지 않습니다. 사내 접속과 테이블 제공 범위는 운영 환경에서 확인해야 합니다.",
+      "토큰은 개인 설정 파일에 저장합니다. 저장 파일의 암호화를 보장하지 않으며 Git, ZIP과 대화에 넣지 않습니다."
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "title": "연결 준비",
+          "description": "처음에만 로컬 설정창에서 연결을 등록하고 DB 이름으로 선택합니다."
+        },
+        {
+          "title": "쿼리 이름과 조건 등록",
+          "description": "SQL을 업무 이름으로 저장하고 바꿀 조건과 고정값을 구분합니다. 등록 자체로 조회하지 않습니다."
+        },
+        {
+          "title": "조회 범위 확인",
+          "description": "DB 이름과 적용 조건, 예상 규모와 한도를 확인합니다. 큰 조회는 사용자가 허락한 범위로 실행합니다."
+        },
+        {
+          "title": "결과 파일로 활용",
+          "description": "결과를 로컬 JSONL로 저장하고 CSV는 필요할 때 내보냅니다. 원본 행을 대화에 넣지 않고 Python으로 필요한 계산만 수행합니다."
+        }
+      ]
+    },
+    "sourceDir": "standalone-skills/ehub-query",
+    "runtimeRequired": false,
+    "standaloneOnly": true,
+    "packaging": {
+      "includeAdditionalPaths": []
+    },
+    "distribution": "portable"
+  },
+  "data-query-demo": {
+    "displayName": "데이터 조회 연습",
+    "desc": "계정 없이 가상 데이터로 쿼리 저장, 조건 변경과 큰 조회 확인을 연습합니다. Oracle, Datalake와 E-HUB의 같은 처리 흐름을 연결 없이 시험합니다.",
+    "workTags": [
+      "데이터 조회 실습",
+      "더미 데이터",
+      "저장 쿼리",
+      "조건 변경"
+    ],
+    "requirements": [
+      "Python 3.11 이상과 sqlglot==28.5.0이 필요합니다.",
+      "실제 DB 계정이나 사내 접속은 필요하지 않습니다. 이 실행기는 더미 모드로 고정됩니다.",
+      "가상 결과이며 실제 DB 연결, 운영 SQL 호환성과 사내 모델의 자동 실행 성공을 보증하지 않습니다."
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "title": "가상 업무 준비",
+          "description": "실제 계정 없이 가상 DB와 예제 쿼리를 준비합니다."
+        },
+        {
+          "title": "쿼리 이름과 조건 등록",
+          "description": "SQL을 업무 이름으로 저장하고 바꿀 조건과 고정값을 구분합니다. 등록 자체로 조회하지 않습니다."
+        },
+        {
+          "title": "조회 범위 확인",
+          "description": "DB 이름과 적용 조건, 예상 규모와 한도를 확인합니다. 큰 조회는 사용자가 허락한 범위로 실행합니다."
+        },
+        {
+          "title": "결과 파일로 활용",
+          "description": "결과를 로컬 JSONL로 저장하고 CSV는 필요할 때 내보냅니다. 원본 행을 대화에 넣지 않고 Python으로 필요한 계산만 수행합니다."
+        }
+      ]
+    },
+    "sourceDir": "standalone-skills/data-query-demo",
+    "runtimeRequired": false,
+    "standaloneOnly": true,
+    "packaging": {
+      "includeAdditionalPaths": []
     },
     "distribution": "portable"
   }

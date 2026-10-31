@@ -11,7 +11,7 @@ from pathlib import Path
 import re
 import stat
 import sys
-from work_report import render_report, render_markdown
+from work_report import render_report, render_markdown, normalized_topics
 from work_process import MAX_REQUESTS, request_steps, sanitize_request, summarize_work
 from work_execution import ExecutionTrace, MAX_EXECUTIONS, merge_executions, sanitize_execution
 
@@ -665,7 +665,7 @@ class Collector:
                 skipped['greeting_or_thanks_only' if flags['greeting'] else 'context_only' if flags['context'] else 'empty'] += 1
                 local_skipped_files += len([o for o in record['origins'] if not o['root'].startswith('import-')])
                 continue
-            sessions.append(record)
+            sessions.append(dict(record, topics=normalized_topics(record.get('topics'))))
             local_kept += len([o for o in record['origins'] if not o['root'].startswith('import-')])
         tools = Counter()
         for session in sessions:
@@ -712,12 +712,13 @@ def extract_user_text(content):
 
 
 def pure_greeting(text):
-    # Exact phrases only: a short approval, question, failed task or greeting
-    # followed by real work is retained, never judged by topic-keyword presence.
+    # Only complete combinations of known phrases are excluded. Any remaining
+    # work, question or ambiguous approval keeps the entire request.
     normalized = re.sub(r'[\s!.,?~。！…]+', '', text.casefold())
-    return normalized in {'안녕', '안녕하세요', '안녕하십니까', '반갑습니다', '고마워', '고마워요',
+    phrases = {'안녕', '안녕하세요', '안녕하십니까', '반갑습니다', '고마워', '고마워요',
         '고맙습니다', '감사합니다', '감사해요', '수고했어요', '수고하셨습니다', 'hello', 'hi',
         'hey', 'thanks', 'thankyou', 'thankyouverymuch'}
+    return bool(re.fullmatch('(?:' + '|'.join(sorted(phrases, key=len, reverse=True)) + ')+', normalized))
 
 
 def remove_context_blocks(text):

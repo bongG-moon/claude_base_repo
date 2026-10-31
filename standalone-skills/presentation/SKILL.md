@@ -8,6 +8,8 @@ description: 보고, 실적 발표, 제안 PPT를 만들거나 수정합니다. 
 이 배포본은 Company Harness·세션 ID·전용 작업자 없이 동작합니다. Python 3.11 이상과
 `requirements.txt`의 python-pptx가 필요합니다. 설치·모델 전환·MCP 등록은 하지 않습니다.
 명령의 `스킬폴더`는 **이 SKILL.md가 있는 폴더**입니다.
+실행에는 배포 ZIP 전체를 설치한 폴더를 사용합니다. 저장소의 원본 폴더는 공통 렌더링 코드를
+패키징할 때 포함하는 개발용이며, 원본 SKILL.md나 scripts만 복사한 상태는 실행용 배포본이 아닙니다.
 
 ## 내용과 참고 자료
 
@@ -41,6 +43,7 @@ PPTX·HTML·이미지 모두 참고할 수 있습니다. 참고 자료가 있을
 ## 필요할 때만
 
 - 자유 배치·둥근 카드·그룹·이미지 크기: `references/schema.md`의 `elements`.
+- PPT 배치를 보정했거나 반복 제작을 요청받은 경우: `references/rebuild-check.md`. 보정을 job 또는 재생성 코드에 남기고 전달본과 재빌드의 내용 및 배치를 비교합니다. 일반 생성에 매번 재빌드를 추가하지 않습니다.
 - 기존 HTML 직접 변환: 같은 문서의 `htmlSource`. 선언형 HTML/CSS만 지원하며 승인된 Chrome/Edge가 필요합니다.
 - 대표 양식 저장 요청: 확인한 명세로 `template --spec "job.json" --output "대표양식.html"`. 가상 내용으로
   저장하며 저장 위치를 사용자에게 확인합니다. 사업 내용이나 원본 이미지를 기억 저장소에 자동 보관하지 않습니다.

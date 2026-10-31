@@ -25,7 +25,13 @@ def call(tool="Read", inputs=None, **extra):
 
 class VisionRoutingTests(unittest.TestCase):
     def setUp(self):
-        env = patch.dict(os.environ, {"ANTHROPIC_CUSTOM_MODEL_OPTION": vision.VISION_MODEL})
+        temporary = tempfile.TemporaryDirectory(prefix='vision-routing-')
+        self.addCleanup(temporary.cleanup)
+        self.test_root = Path(temporary.name)
+        self.profile = self.test_root / 'profile'
+        env = patch.dict(os.environ, {"ANTHROPIC_CUSTOM_MODEL_OPTION": vision.VISION_MODEL,
+                                     "COMPANY_AGENT_USER_STATE": str(self.test_root / 'state'),
+                                     "CLAUDE_CONFIG_DIR": str(self.profile)})
         env.start()
         self.addCleanup(env.stop)
 
@@ -38,7 +44,7 @@ class VisionRoutingTests(unittest.TestCase):
 
     def test_absent_model_keeps_existing_reads_and_mcp(self):
         with patch.dict(os.environ, {"ANTHROPIC_CUSTOM_MODEL_OPTION": ""}):
-            self.assertEqual({}, vision.context())
+            self.assertEqual('user', vision.context()['selection'])
             self.assertEqual({}, vision.preflight(call()))
             self.assertIsNone(vision.preflight(call("mcp__playwright__browser_take_screenshot")))
             result = vision.preflight(call("Agent", {"subagent_type": vision.VISION_AGENT, "prompt": "inspect"}))
@@ -135,7 +141,7 @@ class VisionRoutingTests(unittest.TestCase):
             request = call('Agent', {'description': '이미지 전사', 'run_in_background': False,
                 'prompt': f'Read "{file}". If blocked hand off to {vision.VISION_AGENT}.'}, **identity)
             routed = self.run_entry(request)['hookSpecificOutput']
-            self.assertEqual(vision.VISION_AGENT, routed['updatedInput']['subagent_type'])
+            self.assertTrue(routed['updatedInput']['subagent_type'].startswith('company-harness-vision-'))
             self.assertNotIn('permissionDecision', routed)
             self.assertNotIn('model', routed['updatedInput'])
             self.assertEqual({}, self.run_entry(call(inputs={'file_path': file},
@@ -161,7 +167,7 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertEqual({}, self.run_entry(call('SendMessage', {'to': 'main'}, agent_id='worker1'), scope_check=False))
         self.assertEqual({}, self.run_entry(call('SendMessage', {'to': 'worker2'}), scope_check=False))
         with patch.dict(os.environ, {'ANTHROPIC_CUSTOM_MODEL_OPTION': ''}):
-            self.assertEqual({}, self.run_entry(own, scope_check=False))
+            self.assertEqual('deny', self.run_entry(own)['hookSpecificOutput']['permissionDecision'])
 
     def test_vision_cannot_message_or_search_for_ocr_with_shell(self):
         for tool in ('SendMessage', 'ListAgents', 'Bash', 'PowerShell'):
@@ -251,6 +257,13 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertIsNone(vision.result_context("PostToolUseFailure", call("Bash")))
 
     def run_entry(self, payload, event="PreToolUse", *, active=True, scope_check=True):
+        from company_agent.vision_settings import configure
+        from company_agent.vision_dispatch import session_start
+        from company_agent.paths import user_state_root
+        payload = {'session_id': 'routing-fixture', 'cwd': str(self.test_root), **payload}
+        if active:
+            configure(user_state_root(), vision.VISION_MODEL, config_root=self.profile)
+            session_start(user_state_root(), {**payload, 'source': 'startup'})
         output = io.StringIO()
         with patch.object(sys, "argv", ["native_entry.py", "--event", event]), \
              patch.object(sys, "stdin", io.StringIO(json.dumps(payload))), \
@@ -358,7 +371,7 @@ class VisionRoutingTests(unittest.TestCase):
         self.assertEqual(0, result.returncode, result.stderr)
         output = json.loads(result.stdout)["hookSpecificOutput"]
         self.assertEqual("deny", output["permissionDecision"])
-        self.assertIn("[비전 인계]", output["permissionDecisionReason"])
+        self.assertIn("[이미지 모델 선택]", output["permissionDecisionReason"])
 
 
 if __name__ == "__main__":

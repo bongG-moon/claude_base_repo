@@ -265,6 +265,85 @@ def skill_help_command(command: str) -> bool:
     return bool(args and _skill_help_arguments(args))
 
 
+def usability_report_command(command: str, root: Path, project: str | None = None) -> bool:
+    """Exact requested diagnostic; no Skill preparation loop or permission grant.
+
+    The report writer exclusively creates one HTML and never changes sources.
+    This is bookkeeping classification, not permission to open arbitrary logs.
+    """
+    # Avoid parsing unrelated ordinary commands for this optional feature.
+    if 'usability-report' not in command:
+        return False
+    args = _trusted_arguments(command)
+    if not args or args[0] != 'usability-report':
+        return False
+    if args[1:] == ['--help']:
+        return True
+    allowed = {'--state-root', '--project-root', '--claude-root', '--days', '--output', '--compare-to', '--usage-log'}
+    fields, logs = {}, []
+    rest = args[1:]
+    if len(rest) % 2:
+        return False
+    for key, value in zip(rest[::2], rest[1::2]):
+        if key not in allowed or not value or value.startswith('-'):
+            return False
+        if key == '--usage-log':
+            if not _absolute(value) or Path(value).suffix.lower() != '.jsonl':
+                return False
+            logs.append(value)
+        elif key in fields:
+            return False
+        else:
+            fields[key] = value
+    if len(logs) > 100 or not {'--state-root', '--project-root'}.issubset(fields):
+        return False
+    if not _same(fields['--state-root'], root) or not _absolute(fields['--project-root']):
+        return False
+    if project and not _same(fields['--project-root'], Path(project)):
+        return False
+    for key in ('--claude-root', '--output', '--compare-to'):
+        if key in fields and not _absolute(fields[key]):
+            return False
+    if any(key in fields and Path(fields[key]).suffix.lower() != '.html' for key in ('--output', '--compare-to')):
+        return False
+    return '--days' not in fields or bool(re.fullmatch(r'[1-9]|[12][0-9]|30', fields['--days']))
+
+
+def vision_configuration_command(command: str, root: Path) -> bool:
+    """Preparation/completion exemption, NOT native execution permission."""
+    args = _trusted_arguments(command)
+    literal_model = None
+    if args is None and isinstance(command, str):
+        # Some native model IDs use [1m]. Keep the general shell/parser deny
+        # rules intact: accept brackets only inside this quoted literal value,
+        # then classify the otherwise unchanged trusted invocation. Unquoted
+        # shell globs, expansion, chains and arbitrary --model commands stay out.
+        match = re.search(r'''(?<!\S)--model\s+(["'])([A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]{0,159})\1(?=\s|$)''', command)
+        if match:
+            literal_model = match[2]
+            masked = command[:match.start(2)] + 'vision-literal-model' + command[match.end(2):]
+            args = _trusted_arguments(masked)
+    if not args or args[:2] not in (["vision", "status"], ["vision", "configure"]):
+        return False
+    if args[2:] == ['--help']:
+        return True
+    allowed = {'--state-root'} | ({'--model'} if args[1] == 'configure' else set())
+    fields = _fields(args[2:], allowed, {'--model'} if args[1] == 'configure' else set())
+    if fields is None or '--state-root' in fields and not _same(fields['--state-root'], root):
+        return False
+    if '--model' in fields:
+        if literal_model is not None:
+            if fields['--model'] != 'vision-literal-model':
+                return False
+            fields['--model'] = literal_model
+        from .vision_settings import validate_model
+        try:
+            validate_model(fields['--model'])
+        except ValueError:
+            return False
+    return True
+
+
 def classify_command(command: str, *, tool: str = 'Bash') -> str:
     """Return read_only/internal/mutation/unknown for exact known invocations.
 
@@ -282,6 +361,10 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     if head == ('business', 'excel-analyze'):
         from .excel_pipeline_command import read_only_arguments
         return 'read_only' if read_only_arguments(args) else 'unknown'
+    if head == ('vision', 'status'):
+        return 'read_only' if args[2:] == ['--help'] or _fields(args[2:], {'--state-root'}) is not None else 'unknown'
+    if head == ('vision', 'configure') and args[2:] == ['--help']:
+        return 'read_only'
     if head == ("handoff", "read"):
         fields = _fields(args[2:], {"--id", "--project", "--state-root"}, {"--id", "--project"})
         return "read_only" if fields is not None and re.fullmatch(r"[a-f0-9]{32}", fields["--id"]) else "unknown"

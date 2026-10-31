@@ -13,6 +13,12 @@ class FactError(ValueError):
     pass
 
 
+# Optional meaning supplied by the author, never inferred or fetched. Keeping
+# it in the existing fact lets table notes and cross-format handoffs reuse it.
+CONTEXT_FIELDS = {"period": 100, "scope": 500, "exclusions": 500,
+                  "denominator": 300, "source": 500}
+
+
 def number(value: Any) -> Decimal:
     if isinstance(value, bool) or not isinstance(value, (str, int, float, Decimal)):
         raise FactError("계산에는 숫자만 사용해 주세요.")
@@ -90,12 +96,14 @@ def resolve(spec: dict, sections: list[dict]) -> tuple[dict, dict]:
         if not isinstance(label, str) or len(label) > 200 or not isinstance(unit, str) or len(unit) > 30:
             raise FactError("지표 이름과 단위를 짧은 글자로 지정해 주세요.")
         facts[key] = {"number": calculated, "display": f"{rounded:,.{digits}f}", "label": label, "unit": unit}
-        if "period" in row:
-            period = row["period"]
-            if (not isinstance(period, str) or not period.strip() or len(period) > 100
-                    or any(ord(c) < 32 for c in period)):
-                raise FactError("지표의 기준 기간을 비어 있지 않은 짧은 글자로 지정해 주세요.")
-            facts[key]["period"] = period
+        for field, limit in CONTEXT_FIELDS.items():
+            if field not in row:
+                continue
+            value = row[field]
+            if (not isinstance(value, str) or not value.strip() or len(value) > limit
+                    or any(ord(c) < 32 or ord(c) == 127 for c in value)):
+                raise FactError(f"지표의 {field}는 비어 있지 않은 {limit}자 이하 글자로 지정해 주세요.")
+            facts[key][field] = value
     checks = spec.get("checks", [])
     if not isinstance(checks, list) or len(checks) > 128:
         raise FactError("수치 대조 항목은 128개 이하로 지정해 주세요.")
@@ -125,11 +133,11 @@ def bind(text: str, facts: dict) -> str:
             return fact["display"]
         if field == "valueWithUnit":
             return fact["display"] + fact["unit"]
-        if field in ("label", "unit", "period"):
+        if field in ("label", "unit") or field in CONTEXT_FIELDS:
             if field not in fact:
-                raise FactError("기간을 참조한 공통 수치에 period를 먼저 지정해 주세요.")
+                raise FactError(f"참조한 공통 수치에 {field}를 먼저 지정해 주세요.")
             return fact[field]
-        raise FactError("수치 참조 필드는 label, unit, valueWithUnit, period만 지원합니다.")
+        raise FactError("수치 참조 필드는 label, unit, valueWithUnit, period, scope, exclusions, denominator, source만 지원합니다.")
     result = re.sub(r"\{\{fact:([a-zA-Z][a-zA-Z0-9_-]{0,63})(?:\.([a-zA-Z]+))?\}\}", replace, text)
     if "{{fact:" in result:
         raise FactError("본문 수치 참조 형식을 확인해 주세요.")

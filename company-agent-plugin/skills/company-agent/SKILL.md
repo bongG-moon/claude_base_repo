@@ -17,6 +17,7 @@ description: company_agent_route가 있는 업무의 스킬 선택, 작업자 �
 - 고유 호출명은 Skill, 정확한 파일 선택은 후보의 Read 경로를 사용하되 native 전용 실행 조건과 `explicitOnly`를 유지합니다. 현재 문맥에 있는 동일 본문은 재사용합니다. 목록의 이름만으로 본문을 읽었다고 간주하지 않습니다. 실제 권한 거절을 Read로 우회하지 않습니다.
 - 관련 스킬이 없으면 일반 실행합니다. `skill route`는 시작 필수 명령이 아닙니다. 선택 누락이나 오래된 로드 근거만 `references/skill-selection.md`로 해결합니다. `/company-agent:skills`는 목록이나 우선 설정을 요청했을 때 사용합니다.
 - `metadataCommand`는 명시된 doctor, mail-capabilities, 세션 없는 eml-read에만 사용하며 다른 실행 권한을 부여하지 않습니다.
+- 사용자가 하네스의 사용성 개선 보고서를 요청할 때만 `/company-agent:usability-report`의 절차를 사용합니다. 기존 기록을 로컬 집계하고 짧은 결과만 설명하며, 일반 업무에 진단이나 자동 압축을 붙이지 않습니다.
 
 ## 2. 범위와 자료 보호
 
@@ -29,7 +30,7 @@ description: company_agent_route가 있는 업무의 스킬 선택, 작업자 �
 ## 3. 실행과 위임
 
 - `route.execution=coordinator`인 짧은 조회, 요약과 선택은 직접 처리합니다. 도구 사용 자체는 작업자, 계획 파일, 완료 표식이나 학습 사유가 아닙니다.
-- 실질 작업에는 `route.agent`와 SMALL/MEDIUM/LARGE 하한을 따릅니다. small/medium/large-worker의 haiku/sonnet/opus 별칭을 유지합니다. 선택을 먼저 해결한 뒤 정확한 스킬 경로, 런타임, 허용 범위와 현재 파일을 전달합니다. 각 작업자는 자기 문맥에서 본문을 로드하며 작업자의 읽기는 부모의 학습 근거가 아닙니다.
+- 실질 작업에는 `route.agent`와 SMALL/MEDIUM/LARGE 하한을 따릅니다. small/medium/large-worker의 haiku/sonnet/opus 별칭을 유지합니다. 선택 후 정확한 스킬 load, 런타임과 범위를 전달합니다. 작업자는 해당 load를 자기 문맥에서 사용하며 부모의 로드 기록을 상속하지 않습니다. `nativeRequired` 스킬은 조율 대화에서 정확한 Skill로 실행하고 결과를 사용합니다. fork 실행을 일반 작업자에게 다시 맡기거나 Read로 흉내 내지 않습니다.
 - 프로젝트 오케스트레이터는 메인에 두고 단계별 에이전트를 직접 호출합니다. 일반 작업자는 재위임하지 않습니다. ESCALATE_MEDIUM/LARGE는 한 번만 올리며 같은 상향을 반복하지 않습니다. 위임 불가 시 가능한 업무는 직접 진행하고 해당 한계만 알립니다. 메인 모델이나 모델 설정을 바꾸지 않습니다.
 - 코드와 실행형 스킬 작업에는 선택된 개발 지침 또는 `../karpathy-guidelines/SKILL.md`를 보조 적용합니다. 별도 인터뷰나 검토 단계를 만들지 않으며 일반 업무 문서에는 불필요합니다.
 - 파일 조회는 Read/Glob/Grep, 필요한 스크립트는 검증한 UTF-8 파일과 Python `-X utf8` 또는 PowerShell `-File`을 사용합니다. Windows PowerShell 5.1의 한국어 스크립트는 UTF-8 BOM을 사용하고 중첩 셸/긴 인라인 코드를 피합니다. 실패 시 실제 대상, 마지막 오류와 이미 발생한 효과를 확인합니다. 화면 글자 깨짐만으로 메일 발송이나 파일 이동을 재실행하지 않습니다.

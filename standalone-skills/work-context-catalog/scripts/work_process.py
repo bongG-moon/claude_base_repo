@@ -46,6 +46,15 @@ FILLER = {'줘', '주세요', '해줘', '해', '해주고', '해준', '하고', 
 SMALL_TALK = re.compile(r'날씨|농담|재미있는\s*이야기|심심|오늘\s*(?:기분|운세)|너는?\s*누구|점심\s*추천|저녁\s*추천')
 WORK_CUES = re.compile(r'보고서|데이터|신청|매출|재고|계약|고객|프로젝트|업무|직원|교육|생산|품질|분석|자동화|개발|코드|도구|메일|회의|엑셀|csv|html|ppt|sql', re.I)
 FAILURE = re.compile(r'실패|오류|안\s*(?:돼|되|열)|못\s*(?:열|했|하)|거절|차단')
+ASSET_REFERENCE = re.compile(
+    r'^\s*(?:(?:좋아|응)[,.]?\s*)?(?:이|위|방금|앞선)'
+    r'(?:\s+|(?=작업|업무|과정|방식|내용|결과|기준))'
+    r'(?P<target>[^.!?;\n]{0,80}?)(?:작업|업무|과정|방식|내용|결과|기준)'
+    r'(?:을|를|은|는)?(?=\s|$)')
+# Shared process words or reporting periods alone do not identify a work target.
+REFERENCE_GENERIC = GENERIC | {'스킬', '기억', '지식', '기준', '과정', '방식', '집계', '계산',
+    '분석', '정리', '중복', '제거', '저장', '생성', 'skill', 'memory', 'knowledge',
+    '월간', '월별', '주간', '주별', '일간', '일별', '분기', '연간'}
 
 
 class _VisibleRequest(HTMLParser):
@@ -104,6 +113,21 @@ def subject_key(target):
     return ' '.join(words[:4])[:60]
 
 
+def _followup_basis(request, current):
+    """Link only to the preceding episode with an explicit reference and order."""
+    if (not current or request.get('explicit_switch')
+            or request['ordinal'] <= current['last_ordinal']):
+        return 'unconfirmed'
+    if not request.get('asset_followup_named'):
+        return 'prior_request_reference'
+    def words(value):
+        return {word for word in re.findall(r'[가-힣A-Za-z0-9_-]+', value.casefold())
+                if len(word) > 1 and word not in REFERENCE_GENERIC}
+    reference = words(request.get('asset_followup_subject', ''))
+    target = words(current['subject'])
+    return 'subject_overlap' if reference & target else 'unconfirmed'
+
+
 def request_steps(text, clean):
     """Normalize explicit actions in source order; no implicit pipeline stages."""
     # Code, attached context and long values are not natural-language tasks.
@@ -150,13 +174,18 @@ def request_steps(text, clean):
         end = match.end()
     if not steps:
         return {'kind': 'insufficient', 'subject': '', 'steps': [], 'failure': bool(FAILURE.search(text))}
+    reference = ASSET_REFERENCE.match(text)
+    asset_followup = bool(reference
+        and all(step['action'] in ('write', 'publish') for step in steps)
+        and re.search(r'스킬|기억|지식|skill|memory|knowledge', text, re.I)
+        and re.search(r'만들|생성|저장|남겨|기억해|기억하|create|save', text, re.I))
     return {'kind': 'work', 'subject': subject, 'steps': steps,
             'failure': bool(FAILURE.search(text)), 'partial': len(actions) > MAX_STEPS,
             'continuation': bool(re.match(r'\s*(?:그다음|그 다음|이어서|위 (?:자료|내용|결과)|그 (?:자료|내용|결과)|다음으로)', text)),
             'explicit_switch': bool(re.search(r'별개로|다른 업무|다른 작업|새 업무|새 작업', text[:160])),
-            'asset_followup': bool(re.search(r'^(?:\s*(?:좋아|응)[,.]?\s*)?(?:이|위|방금|앞선)\s*(?:작업|업무|과정|방식|내용|결과)', text)
-                and re.search(r'스킬|기억|지식|skill|memory|knowledge', text, re.I)
-                and re.search(r'만들|생성|저장|남겨|기억해|기억하|create|save', text, re.I))}
+            'asset_followup': asset_followup,
+            'asset_followup_named': bool(asset_followup and reference.group('target').strip()),
+            'asset_followup_subject': phrase(reference.group('target'), clean) if asset_followup else ''}
 
 
 def sanitize_request(record, clean):
@@ -184,7 +213,9 @@ def sanitize_request(record, clean):
             'failure': bool(record.get('failure')), 'partial': bool(record.get('partial')),
             'continuation': bool(record.get('continuation')),
             'explicit_switch': bool(record.get('explicit_switch')),
-            'asset_followup': bool(record.get('asset_followup'))}
+            'asset_followup': bool(record.get('asset_followup')),
+            'asset_followup_named': bool(record.get('asset_followup_named') or record.get('asset_followup_subject')),
+            'asset_followup_subject': clean(record.get('asset_followup_subject', ''), 64)}
 
 
 def _asset_changes(events):
@@ -279,21 +310,27 @@ def summarize_work(sessions, assets=None):
             subject = subject_key(request['subject'])
             shared_target = bool(current) and bool((set(subject.split()) & set(current['subject'].split())) - GENERIC)
             continuing = request.get('continuation') and shared_target and request['steps'][0]['action'] not in ('read', 'analyze')
-            if (not subject or continuing or request.get('asset_followup')) and current and not request.get('explicit_switch'):
+            followup = _followup_basis(request, current) if request.get('asset_followup') else ''
+            inherit = (followup != 'unconfirmed') if followup else (not subject or continuing)
+            if inherit and current and not request.get('explicit_switch'):
                 subject = current['subject']
             if not subject:
                 exclude('unspecified_target', session['id'])
                 continue
             # Subsequent requests may name an output but should only inherit an
             # existing task when their target is generic, never via shared tools.
-            if current is None or subject.replace(' ', '') != current['subject'].replace(' ', '') or request.get('explicit_switch'):
+            if (current is None or subject.replace(' ', '') != current['subject'].replace(' ', '')
+                    or request.get('explicit_switch') or followup == 'unconfirmed'):
                 current = {'subject': subject, 'requests': [], 'steps': [], 'failure': False, 'partial': False}
                 episodes.append(current)
             current['requests'].append(request['id'])
+            current['last_ordinal'] = request['ordinal']
             current['failure'] |= request.get('failure', False)
             current['partial'] |= request.get('partial', False)
-            for step in request['steps']:
+            for index, step in enumerate(request['steps']):
                 item = dict(step, request_id=request['id'], request_ordinal=request['ordinal'])
+                if followup and index == 0:
+                    item['followup_link'] = followup
                 if not current['steps'] or (item['action'], item['target']) != (current['steps'][-1]['action'], current['steps'][-1]['target']):
                     current['steps'].append(item)
         for episode in episodes:

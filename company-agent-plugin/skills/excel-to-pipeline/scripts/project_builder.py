@@ -88,6 +88,9 @@ def run(data):
 def value_kind(cell):
     value = cell.get("value")
     if cell.get("type") == "d":
+        from openpyxl.styles.numbers import is_timedelta_format
+        if is_timedelta_format(cell.get("number_format", "")):
+            return "duration"
         return "date"
     if value is None:
         return "any"

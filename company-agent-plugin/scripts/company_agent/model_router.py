@@ -126,8 +126,9 @@ _SMALL_PATTERNS: Final = (
 _WRITE_PATTERNS: Final = (
     r"\b(create|write|edit|update|modify|delete|rename|move|refactor|implement|fix|patch)\b.{0,60}\b(file|code|script|module|document|config|test|project|repo)\b",
     r"\b(apply|make|commit)\b.{0,30}\b(change|changes|patch|edit|commit)\b",
-    r"(파일|코드|스크립트|모듈|문서|설정|테스트|프로젝트|레포|저장소).{0,80}(생성|작성|편집|수정|삭제|이름\s*변경|이동|리팩터링|구현|패치)",
-    r"(변경|수정|구현|패치)\s*(해줘|해주세요|진행|적용)",
+    r"(파일|코드|스크립트|모듈|문서|설정|테스트|프로젝트|레포|저장소).{0,80}(생성|작성|편집|수정|변경|삭제|추가|이동|리팩터링|구현|패치)",
+    r"(생성|작성|편집|변경|수정|삭제|추가|이동|저장|구현|패치)\s*(해\s*(줘|주세요)|진행|적용)",
+    r"(바꿔|지워|만들어)\s*(줘|주세요)",
 )
 
 _EXPLICIT_LARGE: Final = (
@@ -162,10 +163,40 @@ _BOUNDED_READ_PATTERNS: Final = (
 
 _DELEGATION_WORK_PATTERNS: Final = (
     r"\b(create|write|edit|update|modify|delete|rename|move|refactor|implement|fix|patch|save|send|install|uninstall|deploy|commit|push|execute|run)\b",
-    r"(생성|작성|편집|수정|삭제|이름\s*변경|이동|리팩터링|구현|패치|저장|발송|설치|배포|커밋|푸시|실행|만들)",
+    r"(생성|작성|편집|수정|변경|삭제|추가|이동|리팩터링|구현|패치|저장|발송|설치|배포|커밋|푸시|실행|만들|바꾸|바꿔|지우|지워)",
     r"\b(debug|diagnose|analy[sz]e|investigate|audit|compare|worker|subagent|delegate|parallel)\b",
     r"(디버그|진단|분석|조사|감사|비교|작업자|서브\s*에이전트|위임|병렬)",
 )
+
+
+# Negation belongs to the action immediately before it, not the whole request.
+# Remove only explicit negative action phrases for execution/write routing;
+# complexity and risk tier selection still sees the original bounded prompt.
+# This is a cheap intent hint, not authorization or proof that no write occurred.
+_KOREAN_ACTION: Final = (
+    r"(?:생성|작성|편집|수정|변경|삭제|추가|이동|리팩터링|구현|패치|저장|"
+    r"발송|설치|배포|커밋|푸시|실행|만들|바꾸|지우)"
+)
+_NEGATED_KOREAN_ACTION: Final = re.compile(
+    rf"(?:{_KOREAN_ACTION}\s*(?:하거나|하고|및|,|와|과)\s*){{0,5}}"
+    rf"{_KOREAN_ACTION}\s*(?:[은는을를]\s*)?"
+    r"(?:"
+    r"(?:하)?지(?:는|도)?\s*(?:말(?:고|아(?:\s*(?:줘|주세요))?|아야)|마(?:세요|십시오|라|요)?(?=\s|$|[,.!?])|않(?:고|으며|도록|아(?:\s*(?:줘|주세요))?))"
+    r"|(?:안|못)\s*하(?:고|며|도록)"
+    r"|없이|금지"
+    r")"
+)
+_PREFIX_NEGATED_KOREAN_ACTION: Final = re.compile(
+    rf"(?<![가-힣a-z0-9_])(?:안|못)\s*{_KOREAN_ACTION}"
+)
+
+
+def _actionable_text(text: str) -> str:
+    """Keep positive clauses when a request mixes reads, writes and prohibitions."""
+    if not any(marker in text for marker in ("지", "없이", "안", "못")):
+        return text
+    text = _NEGATED_KOREAN_ACTION.sub(" ", text)
+    return _PREFIX_NEGATED_KOREAN_ACTION.sub(" ", text)
 
 
 def _matches_any(text: str, patterns: Iterable[str]) -> bool:
@@ -242,7 +273,8 @@ def classify_prompt(prompt: str) -> RouteDecision:
         tier = MEDIUM
         reason_codes.append("CONSERVATIVE_DEFAULT")
 
-    verification_required = _matches_any(text, _WRITE_PATTERNS)
+    action_text = _actionable_text(text)
+    verification_required = _matches_any(action_text, _WRITE_PATTERNS)
     if verification_required:
         reason_codes.append("FILE_WRITE_INTENT")
 
@@ -250,7 +282,7 @@ def classify_prompt(prompt: str) -> RouteDecision:
     if (len(text) < 1_500 and tier != LARGE and not verification_required
             and not (explicit_large or explicit_medium or explicit_small)
             and _matches_any(text, _BOUNDED_READ_PATTERNS)
-            and not _matches_any(text, _DELEGATION_WORK_PATTERNS)):
+            and not _matches_any(action_text, _DELEGATION_WORK_PATTERNS)):
         execution = "coordinator"
         reason_codes.append("BOUNDED_READ_IN_COORDINATOR")
 

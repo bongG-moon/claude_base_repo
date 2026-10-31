@@ -8,6 +8,7 @@ syntax so an interpreter replaced in place can reach the normal recovery path.
 """
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -47,7 +48,19 @@ def main():
     try:
         # Also works with an embeddable interpreter's isolated ._pth.
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from company_agent.vision_routing import preflight
+        from company_agent.vision_routing import preflight, _image_read
+        # First-use selection and saved custom models are resolved only in the
+        # installed runtime. Ordinary text reads still have no state lookup.
+        if _image_read(value):
+            agent_type = value.get('agent_type', '')
+            if value.get('agent_id') and isinstance(agent_type, str) and (
+                    agent_type == 'company-agent:vision-worker'
+                    or re.fullmatch(r'company-harness-vision-[a-f0-9]{8}', agent_type)):
+                # The isolated reader is already selected. An empty response
+                # leaves native Read permissions unchanged, without a shell.
+                print('{}')
+                return 0
+            return fallback(payload)
         result = preflight(value)
     except Exception:
         return fallback(payload)

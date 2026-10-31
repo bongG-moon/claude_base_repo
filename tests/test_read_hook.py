@@ -49,10 +49,15 @@ class ReadHookTests(unittest.TestCase):
             self.assertEqual((78, ''), (code, output))
             fallback.assert_called_once_with(json.dumps(value, ensure_ascii=False))
 
-    def test_vision_child_and_disabled_images_do_not_start_shell(self):
-        for value, model in ((payload('x.PNG'), ''), (payload('x.PDF'), 'HCP Vision'),
-                             (payload('x.PDF', agent_type=vision.VISION_AGENT, agent_id='child'), vision.VISION_MODEL)):
+    def test_images_resolve_user_choice_independent_of_legacy_env(self):
+        for value, model in ((payload('x.PNG'), ''), (payload('x.PDF'), 'HCP Vision')):
             code, output, fallback = self.run_hook(value, model=model)
+            self.assertEqual((0, ''), (code, output))
+            fallback.assert_called_once()
+
+    def test_selected_reader_keeps_read_fast_path_and_native_permissions(self):
+        for name in (vision.VISION_AGENT, 'company-harness-vision-1234abcd'):
+            code, output, fallback = self.run_hook(payload('x.PDF', agent_type=name, agent_id='child'), model='')
             self.assertEqual((0, '{}\n'), (code, output))
             fallback.assert_not_called()
 
@@ -103,7 +108,9 @@ class ReadHookIntegrationTests(fixtures.NativeRuntimeTestBase):
         super().setUp()
         self.plugin = self.root / 'plugin 한글'
         shutil.copytree(fixtures.PLUGIN, self.plugin, ignore=shutil.ignore_patterns('__pycache__', 'runtime'))
-        self.register('project', 'Project', self.project)
+        self.profile = self.root / 'isolated-profile'
+        self.record = self.register('project', 'Project', self.project,
+                                    claudeConfigRoot=str(self.profile), claudeConfigOverride=True)
         fixtures.atomic_write_json(self.plugin / 'company-agent-install.json', {
             'registrationsRoot': str(self.registrations), 'knowledgeBaseRoot': str(self.base),
             'pythonCommand': sys.executable,
@@ -125,7 +132,7 @@ class ReadHookIntegrationTests(fixtures.NativeRuntimeTestBase):
             actual = json.loads(result.stdout)
             if active:
                 self.assertEqual('deny', actual['hookSpecificOutput']['permissionDecision'])
-                self.assertIn(vision.VISION_AGENT, actual['hookSpecificOutput']['permissionDecisionReason'])
+                self.assertIn('[이미지 모델 선택]', actual['hookSpecificOutput']['permissionDecisionReason'])
             else:
                 self.assertEqual({}, actual)
 
@@ -137,6 +144,11 @@ class ReadHookIntegrationTests(fixtures.NativeRuntimeTestBase):
 
     def test_real_entry_repairs_handoff_and_new_user_turn_retires_it(self):
         identity = {'session_id': 'vision-entry-test', 'cwd': str(self.project)}
+        from company_agent.vision_settings import configure
+        from company_agent.vision_dispatch import session_start
+        state = Path(self.record['userStateRoot'])
+        configured = configure(state, vision.VISION_MODEL, config_root=self.profile)
+        session_start(state, {**identity, 'source': 'startup'})
         image = 'C:/synthetic/한글 자료.jpg'
         result = self.run_entry(payload(image, **identity))
         self.assertEqual(0, result.returncode, result.stderr)
@@ -157,7 +169,7 @@ class ReadHookIntegrationTests(fixtures.NativeRuntimeTestBase):
             'description': '이미지 확인', 'run_in_background': False,
             'prompt': f'Use {vision.VISION_AGENT} to read "{image}".'}}
         fixed = event('PreToolUse', wrong_agent)['hookSpecificOutput']
-        self.assertEqual(vision.VISION_AGENT, fixed['updatedInput']['subagent_type'])
+        self.assertEqual(configured['agent'], fixed['updatedInput']['subagent_type'])
         self.assertNotIn('permissionDecision', fixed)
         # Native permissions and actual model invocation are NOT exercised here.
         self.assertEqual({}, event('PreToolUse', payload(image,

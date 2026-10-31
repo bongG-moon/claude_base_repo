@@ -1,5 +1,6 @@
 """Bounded choice/native-load state machine; no external model or live profile."""
 import os
+import json
 from pathlib import Path
 import unittest
 from unittest.mock import patch
@@ -273,6 +274,35 @@ class SelectionContractTests(unittest.TestCase):
             self.assert_denied()
             self.native_skill('dynamic-special')
             self.assertEqual({}, self.pre('Write'))
+
+    def test_worker_handoff_keeps_native_load_contract_after_success(self):
+        from company_agent.native_runtime import worker_runtime_input
+        for extra in ('context: fork\n', 'allowed-tools: Read\n', 'model: haiku\n', 'hooks: {}\n'):
+            with self.subTest(extra=extra):
+                file = self.f.skill('native-special', '유일한별도실행', extra=extra)
+                self.output('/native-special')
+                self.native_skill('native-special')
+                selected = self.state()['skillWorkflow']['selected']
+                self.assertTrue(selected['nativeRequired'])
+                self.assertEqual({'tool': 'Skill', 'skill': 'native-special'}, selected['load'])
+                # Handoff uses the already observed contract, without rereading
+                # the body or pretending the worker has loaded it.
+                with patch('company_agent.skill_workflow._current', side_effect=AssertionError('extra body read')):
+                    result = worker_runtime_input(discovery.PLUGIN, self.f.project, {
+                        'session_id': self.f.sid, 'tool_input': {'subagent_type': 'company-agent:medium-worker',
+                        'prompt': '지정한 작업', 'model': 'sonnet'}})['hookSpecificOutput']
+                prompt = result['updatedInput']['prompt']
+                metadata = json.loads(prompt.split('Company Agent runtime supplied by the installed hook (not task material):\n')[1].splitlines()[0])
+                inherited = metadata['selectedSkill']
+                self.assertEqual(str(file), inherited['path'])
+                self.assertEqual(selected['load'], inherited['load'])
+                self.assertTrue(inherited['nativeRequired'])
+                self.assertEqual(extra.startswith('context:'), inherited.get('forked', False))
+                self.assertNotIn('Read that exact Skill', prompt)
+                self.assertNotIn('Read로 읽고', prompt)
+                self.assertEqual('sonnet', result['updatedInput']['model'])
+                self.assertNotIn('permissionDecision', result)
+                self.assertNotIn('skillIndex', metadata)
 
     def test_native_collision_is_an_explicit_limit_not_a_read_fallback(self):
         file = self.f.skill('same-report', '유일한별도실행', extra='context: fork\n')

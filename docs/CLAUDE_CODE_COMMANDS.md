@@ -53,7 +53,9 @@
 
 **입력 위치를 구분하세요.** `/help`는 Claude 대화 입력칸, `claude --continue`는 운영체제 터미널에 입력합니다. 설치 명령이나 터미널 명령을 자연어 질문처럼 보내지 마세요. 사용량 값이 없거나 사내 가격과 연결되지 않으면 실제 청구액을 추측하지 않습니다.
 
-Company Agent가 제공하는 명령은 `/company-agent:skills`, `/company-agent:learning`, `/company-agent:business-check`입니다. 각각 스킬 선택, 자동 학습 관리, 업무 준비 확인 용도입니다. 진단 성공은 실제 Office·메일·DB 작업의 성공이 아닙니다. `/revise-claude-md`는 이 하네스에 포함되지 않습니다.
+Company Agent가 제공하는 명령은 `/company-agent:skills`, `/company-agent:learning`, `/company-agent:business-check`, `/company-agent:vision-model`, `/company-agent:usability-report`입니다. 각각 스킬 선택, 자동 학습 관리, 업무 준비 확인, 이미지 전용 모델 선택 및 변경, 요청형 사용성 보고서 용도입니다. 이미지 모델을 저장하거나 변경한 뒤에는 Claude 새 연결에서 사용합니다. 진단 성공은 실제 Office, 메일과 DB 작업의 성공이 아닙니다. `/revise-claude-md`는 이 하네스에 포함되지 않습니다.
+
+사용 중 느림이나 반복 질문을 점검하려면 `/company-agent:usability-report`를 입력합니다. 현재 폴더의 최근 7일 기록에서 주요 후보 최대 3개를 HTML로 정리하며, 기록이 부족한 부분도 알려줍니다. 요청할 때만 실행하며 자동 압축이나 설정 변경은 하지 않습니다.
 
 ## 3. 작업 중 다음 질문과 제안 문장
 

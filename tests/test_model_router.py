@@ -64,6 +64,56 @@ class ModelRouterTests(unittest.TestCase):
             with self.subTest(prompt=prompt):
                 self.assertEqual("worker", classify_prompt(prompt).execution)
 
+    def test_mixed_korean_read_and_mutation_keeps_write_intent(self) -> None:
+        for prompt in (
+            "파일 내용을 읽고 원본의 5행을 변경해 줘",
+            "파일을 읽은 다음 원본의 5행을 변경해주세요",
+            "내용을 읽고 값을 바꿔 줘",
+            "내용을 확인하고 빈 행을 지워주세요",
+            "문서를 읽고 필요한 항목을 추가해 줘",
+            "원본은 삭제하지 말고 사본 파일을 수정해줘",
+            "파일 수정하지 말고 새 문서를 작성해줘",
+            "내용을 읽고 삭제하지 말고 이름을 변경해 줘",
+            "수정하지 말고 삭제해줘",
+            "파일을 변경하지 않으면 안 돼. 내용을 읽고 변경해줘",
+        ):
+            with self.subTest(prompt=prompt):
+                decision = classify_prompt(prompt)
+                self.assertEqual("worker", decision.execution)
+                self.assertTrue(decision.verification_required)
+                self.assertIn("FILE_WRITE_INTENT", decision.reason_codes)
+
+    def test_negated_korean_mutation_does_not_force_a_worker(self) -> None:
+        for prompt in (
+            "삭제하지 말고 내용만 알려줘",
+            "파일 삭제하지 말고 내용만 알려줘",
+            "파일을 변경하지 말고 내용만 보여줘",
+            "원본을 수정하지는 말고 읽어줘",
+            "파일을 수정하거나 삭제하지 말고 내용만 알려줘",
+            "파일 수정 및 삭제하지 말고 내용만 읽어줘",
+            "파일을 수정하지 않고 내용을 설명해줘",
+            "파일 변경 없이 내용만 알려줘",
+            "원본은 안 바꾸고 내용만 알려줘",
+            "파일 삭제는 안 하고 내용만 보여줘",
+            "파일을 지우지 말고 읽어줘",
+            "내용만 읽고 원본을 수정하지 마",
+            "원본은 안바꾸고 내용만 알려줘",
+        ):
+            with self.subTest(prompt=prompt):
+                decision = classify_prompt(prompt)
+                self.assertEqual("coordinator", decision.execution)
+                self.assertFalse(decision.verification_required)
+
+    def test_negative_action_does_not_lower_explicit_tier_or_risk(self) -> None:
+        decision = classify_prompt("LARGE 모델로 파일은 변경하지 말고 내용만 알려줘")
+        self.assertEqual(LARGE, decision.tier)
+        self.assertEqual("worker", decision.execution)
+        self.assertFalse(decision.verification_required)
+        decision = classify_prompt("전사 보안 아키텍처를 변경하지 말고 설명해줘")
+        self.assertEqual(LARGE, decision.tier)
+        self.assertEqual("worker", decision.execution)
+        self.assertFalse(decision.verification_required)
+
     def test_explicit_tier_and_worker_requests_do_not_skip_delegation(self) -> None:
         for prompt in (
             "SMALL 모델로 간단히 요약해줘",

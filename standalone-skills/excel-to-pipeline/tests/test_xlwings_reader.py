@@ -338,6 +338,44 @@ class VbaTests(unittest.TestCase):
 
 
 class NormalizationTests(unittest.TestCase):
+    def test_elapsed_time_uses_value2_and_matches_direct_reader_contract(self):
+        from excel_pipeline import safe_value
+        from project_builder import value_kind
+        from project_runtime import _decode
+        styles = '<Style ss:ID="duration"><NumberFormat ss:Format="[h]:mm:ss"/></Style>'
+        for xml_type, text in (("Number", "1.0833333333333333"), ("DateTime", "1899-12-31T02:00:00.000")):
+            for observed in (26 / 24, dt.timedelta(hours=26)):
+                with self.subTest(xml_type=xml_type, observed=observed):
+                    document = xml(f'<Row><Cell ss:StyleID="duration"><Data ss:Type="{xml_type}">{text}</Data></Cell></Row>', styles)
+                    cells, merges = reader.parse_range_xml(document, observed, (1, 1), (1, 1), values=observed)
+                    snapshot = {"date1904": False, "sheets": [{"name": "S", "state": "visible", "tables": [], "merges": merges, "cells": cells}],
+                                "names": [], "features": [], "extraction": {"status": "no_vba"}, "evidence": {}}
+                    # Child/parent JSON transport must retain the serial, not a Python object.
+                    wb, cached, *_ = reader.snapshot_to_workbooks(json.loads(json.dumps(snapshot)))
+                    cell = wb["S"]["A1"]
+                    self.assertEqual(dt.timedelta(hours=26), cell.value)
+                    self.assertEqual(cell.value, cached["S"]["A1"].value)
+                    value = safe_value(cell.value)
+                    kind = value_kind({"value": value, "type": cell.data_type, "number_format": cell.number_format})
+                    self.assertEqual(("26:00:00", "duration"), (value, kind))
+                    self.assertEqual(cell.value, _decode(value, {"kind": kind}))
+                    wb.close()
+                    cached.close()
+
+    def test_elapsed_datetime_without_serial_does_not_guess_lost_days(self):
+        document = xml('<Row><Cell ss:StyleID="duration"><Data ss:Type="DateTime">1899-12-31T02:00:00.000</Data></Cell></Row>',
+                       '<Style ss:ID="duration"><NumberFormat ss:Format="[h]:mm:ss"/></Style>')
+        for observed in (None, dt.time(2), dt.datetime(1899, 12, 31, 2)):
+            with self.subTest(observed=observed), self.assertRaises(reader.NativeReadError) as failure:
+                reader.parse_range_xml(document, None, (1, 1), (1, 1), values=observed)
+            self.assertEqual("native_duration_unavailable", failure.exception.code)
+
+    def test_elapsed_numeric_xml_can_use_its_own_serial_without_value2(self):
+        document = xml('<Row><Cell ss:StyleID="duration"><Data ss:Type="Number">-2.125</Data></Cell></Row>',
+                       '<Style ss:ID="duration"><NumberFormat ss:Format="[h]:mm:ss"/></Style>')
+        cells, _ = reader.parse_range_xml(document, None, (1, 1), (1, 1))
+        self.assertEqual((-2.125, "n"), tuple(cells[0][2:4]))
+
     def test_literal_equals_dates_errors_epoch_in_memory_only(self):
         snapshot = {"date1904": True, "sheets": [{"name": "S", "state": "visible", "tables": [], "merges": [],
                       "cells": [[1, 1, "=literal", "s", None, "General"],

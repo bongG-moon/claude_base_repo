@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "source": "scripts/query_skills/query_core",
+  "files": {
+    "__init__.py": "c7e5fd713c5f613722c589048f1b6ca5ef19fc02f0e04ab8612a75702bd12bf8",
+    "adapters.py": "59da5b8b05af43b16ea4e80391f3feea6cf44b9fea5f98ecb1f56f5aca8f8671",
+    "cli.py": "f9bb81d5a6c494a5e122485eb1c8e617047cfe7bcfb0d723abc559d484ca0cdf",
+    "core.py": "ecf23b3b92c8f2faac616646176eb3cfda35cab21b4efb239adf59223d78f99c",
+    "setup_ui.py": "2a9b0a764d6179852af5772f343e7c0f2620cbcbe995166a45c9bd111551cfd6",
+    "sql.py": "2098dfbedc9bf099a2379afa6bef32329ff04605c6d2b3638255a008faac27ee",
+    "store.py": "936842915d7730434ba7d80de305679104d009593aed1ea67bdfff89b128cf77"
+  }
+}

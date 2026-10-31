@@ -48,6 +48,18 @@ def _preview_step(result, spec, message):
     return step
 
 
+def _valid_design_review(review):
+    return (isinstance(review, dict)
+            and set(review) == {'specSha256', 'previewPath', 'previewSha256', 'confirmed'}
+            and type(review.get('confirmed')) is bool
+            and all(isinstance(review.get(k), str) and re.fullmatch('[a-f0-9]{64}', review[k])
+                    for k in ('specSha256', 'previewSha256'))
+            and isinstance(review.get('previewPath'), str)
+            and len(review['previewPath']) <= 2048
+            and Path(review['previewPath']).is_absolute()
+            and Path(review['previewPath']).suffix.lower() == '.html')
+
+
 def choices(spec, template=None, *, for_preview=False):
     from .business_artifacts import _failure
     try:
@@ -112,11 +124,7 @@ def choices(spec, template=None, *, for_preview=False):
             return _preview_step(result, spec, '전체 슬라이드의 HTML 초안을 준비해 보여주고 승인을 기다리세요. 최종 PPT는 아직 만들지 않습니다.')
         if isinstance(review,dict) and str(review.get('previewPath','')).lower().endswith('.pptx'):
             return _preview_step(result, spec, '이전 PPT 미리보기 대신 HTML 초안을 생성해 확인해 주세요.')
-        if (not isinstance(review,dict) or set(review) != {'specSha256','previewPath','previewSha256','confirmed'}
-                or type(review.get('confirmed')) is not bool
-                or any(not isinstance(review.get(k),str) or not re.fullmatch('[a-f0-9]{64}',review[k]) for k in ('specSha256','previewSha256'))
-                or not isinstance(review.get('previewPath'),str) or not Path(review['previewPath']).is_absolute()
-                or len(review['previewPath'])>2048 or Path(review['previewPath']).suffix.lower()!='.html'):
+        if not _valid_design_review(review):
             return _choice_error('designReview', 'HTML 초안 확인 정보는 초안 생성 결과에서 가져와 주세요.',
                                  next_action='regenerate_html_preview')
         if not review['confirmed']:
@@ -154,9 +162,20 @@ def design_digest(spec, template=None):
 
 
 def verify_design_review(spec, template=None):
+    """Validate the same approval contract for harness and standalone exports.
+
+    The host records the user's answer. This checks that record and its exact
+    draft/content binding; a JSON flag alone cannot prove who supplied it.
+    """
     import hashlib
     from .business_artifacts import ArtifactError, _source
-    review=spec['designReview']
+    review = spec.get('designReview') if isinstance(spec, dict) else None
+    if review is None:
+        raise ArtifactError('design_approval_required', 'HTML 초안을 보여주고 받은 승인 기록이 없습니다. 실제 승인 답변을 확인한 뒤 제작해 주세요.')
+    if not _valid_design_review(review):
+        raise ArtifactError('invalid_design_review', 'HTML 초안의 확인 정보를 그대로 사용해 주세요. confirmed에는 실제 승인 뒤에만 true를 기록합니다.')
+    if review['confirmed'] is not True:
+        raise ArtifactError('design_approval_required', 'HTML 초안이 아직 승인되지 않았습니다. 실제 승인 답변을 확인한 뒤 제작해 주세요.')
     if review['specSha256']!=design_digest(spec,template):
         raise ArtifactError('design_review_changed','구성·내용·디자인 또는 참고 자료가 달라졌습니다. HTML 초안을 다시 보여주고 확인해 주세요.')
     preview=_source(Path(review['previewPath']),('.html',))

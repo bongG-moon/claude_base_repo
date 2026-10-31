@@ -17,6 +17,10 @@ CATEGORIES = {
 MAX_SIZE = 256 * 1024 * 1024
 
 
+class DestinationParentConflict(ValueError):
+    pass
+
+
 def checked(path: Path, *, directory=False) -> Path:
     if not path.is_absolute() or str(path).startswith(("\\\\", "//")) or ".." in path.parts:
         raise ValueError("실제 로컬 절대경로를 지정하세요.")
@@ -26,6 +30,15 @@ def checked(path: Path, *, directory=False) -> Path:
     if directory and not path.is_dir():
         raise ValueError("대상 폴더가 없습니다.")
     return path
+
+
+def check_destination(target: Path) -> None:
+    checked(target.parent)
+    if os.path.lexists(target.parent) and not target.parent.is_dir():
+        raise DestinationParentConflict(f"목적지 부모 경로가 폴더가 아닙니다: {target.parent.name}")
+    checked(target)
+    if os.path.lexists(target):
+        raise ValueError("목적지에 같은 이름이 있습니다.")
 
 
 def fingerprint(path: Path) -> dict:
@@ -66,7 +79,7 @@ def plan(folder: Path) -> dict:
         entries.append(child)
         if len(entries) > 500:
             raise ValueError("폴더 항목이 500개를 초과합니다. 범위를 나누어 지정하세요.")
-    moves, skipped = [], []
+    moves, skipped, blocked = [], [], []
     for path in sorted(entries, key=lambda p: p.name.casefold()):
         category = next((name for name, exts in CATEGORIES.items() if path.suffix.lower() in exts), None)
         try:
@@ -74,13 +87,16 @@ def plan(folder: Path) -> dict:
             if not path.is_file() or not category:
                 skipped.append({"name": path.name, "reason": "하위 폴더 또는 분류 대상 아님"})
                 continue
-            target = checked(folder / category / path.name)
-            if os.path.lexists(target):
-                raise ValueError("목적지에 같은 이름이 있습니다.")
+            target = folder / category / path.name
+            check_destination(target)
             moves.append({"name": path.name, "category": category, **fingerprint(path)})
         except (OSError, ValueError) as exc:
-            skipped.append({"name": path.name, "reason": str(exc)})
-    return {"version": 1, "kind": "plan", "folder": str(folder), "moves": moves, "skipped": skipped}
+            issue = {"name": path.name, "reason": str(exc)}
+            skipped.append(issue)
+            if isinstance(exc, DestinationParentConflict):
+                blocked.append(issue)
+    return {"version": 1, "kind": "plan", "folder": str(folder), "moves": moves,
+            "skipped": skipped, "blocked": blocked}
 
 
 def validate_moves(data: dict) -> tuple[Path, list]:
@@ -103,7 +119,7 @@ def validate_moves(data: dict) -> tuple[Path, list]:
 
 def move_one(source: Path, target: Path, expected: dict) -> None:
     checked(source)
-    checked(target)
+    check_destination(target)
     if fingerprint(source) != {"size": expected["size"], "sha256": expected["sha256"]}:
         raise ValueError("계획 후 파일이 변경되었습니다.")
     target.parent.mkdir(exist_ok=True)
@@ -127,17 +143,35 @@ def execute(data: dict, output: Path, *, undo=False) -> dict:
     folder, moves = validate_moves(data)
     if undo:
         moves = list(reversed(moves))
+    blocked = [] if undo else data.get("blocked", [])
+    if not isinstance(blocked, list) or any(not isinstance(row, dict) for row in blocked):
+        raise ValueError("계획의 차단 항목이 올바르지 않습니다.")
     # 이동보다 먼저 독점적으로 기록 파일을 확보합니다. 기존 기록은 덮어쓰지 않습니다.
-    result = {"version": 1, "kind": "undo" if undo else "receipt", "folder": str(folder), "moves": [], "failures": []}
+    result = {"version": 1, "kind": "undo" if undo else "receipt", "folder": str(folder),
+              "moves": [], "failures": [], "phase": "preflight", "plannedCount": len(moves) + len(blocked)}
     checked(output)
     with output.open("x", encoding="utf-8", newline="\n") as log:
         def flush():
+            recorded = {row.get("name") for row in result["moves"] + result["failures"]}
+            result["notAttemptedCount"] = result["plannedCount"] - len(recorded)
             log.seek(0)
             json.dump(result, log, ensure_ascii=False, indent=2)
             log.truncate()
             log.flush()
             os.fsync(log.fileno())
         flush()
+        # 차단 항목을 조용히 제외한 부분 실행은 하지 않습니다. 수정한 새 계획이 필요합니다.
+        result["failures"].extend(blocked)
+        for row in moves:
+            target = folder / row["name"] if undo else folder / row["category"] / row["name"]
+            try:
+                check_destination(target)
+            except (OSError, ValueError) as exc:
+                result["failures"].append({"name": row["name"], "reason": str(exc)})
+        if result["failures"]:
+            flush()
+            return result
+        result["phase"] = "execution"
         for row in moves:
             source, target = folder / row["name"], folder / row["category"] / row["name"]
             if undo:
@@ -150,6 +184,7 @@ def execute(data: dict, output: Path, *, undo=False) -> dict:
                 result["failures"].append({"name": row["name"], "reason": str(exc)})
                 flush()
                 break
+        flush()
     return result
 
 

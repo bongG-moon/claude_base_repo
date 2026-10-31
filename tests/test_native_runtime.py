@@ -339,7 +339,46 @@ class NativeRuntimeTests(NativeRuntimeTestBase):
             atomic_write_json(inventory, {"plugins": {plugin_id: [user_entry, project_entry]}})
             self.assertEqual(project, resolve_registration(self.registrations, self.project))
             atomic_write_json(self.project / ".claude" / "settings.local.json", {"enabledPlugins": {plugin_id: False}})
-            self.assertEqual(user, resolve_registration(self.registrations, self.project))
+            self.assertIsNone(resolve_registration(self.registrations, self.project))
+            # Local disable is not a missing project install: never reactivate
+            # it by falling back to the still-installed user plugin.
+            self.assertEqual(user, resolve_registration(self.registrations, self.root / "outside"))
+
+    def test_native_plugin_settings_precedence_and_live_edits(self) -> None:
+        profile = self.root / "profile"
+        plugin_id = "company-agent@company-agent-local"
+        user = self.register("user", "User", nativeClaudeScope="user", claudeConfigRoot=str(profile),
+                             claudeConfigDirOverride=True, pluginId=plugin_id)
+        atomic_write_json(profile / "plugins/installed_plugins.json", {"plugins": {plugin_id: [{"scope": "user"}]}})
+        paths = [profile / "settings.json", self.project / ".claude/settings.json",
+                 self.project / ".claude/settings.local.json"]
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(profile)}):
+            for flags, active in (((True, None, None), True), ((True, False, None), False),
+                                  ((True, True, False), False), ((False, True, None), True),
+                                  ((True, False, True), True), ((True, None, "false"), False)):
+                with self.subTest(flags=flags):
+                    for file, flag in zip(paths, flags):
+                        atomic_write_json(file, {"enabledPlugins": {plugin_id: flag} if flag is not None else {},
+                                                 "env": {"ANTHROPIC_AUTH_TOKEN": "SENTINEL-DO-NOT-CHANGE"}})
+                    before = [file.read_bytes() for file in paths]
+                    result = resolve_registration(self.registrations, self.project)
+                    self.assertEqual(user if active else None, result)
+                    self.assertEqual(before, [file.read_bytes() for file in paths])
+            atomic_write_text(paths[-1], "{broken")
+            self.assertIsNone(resolve_registration(self.registrations, self.project))
+
+    def test_native_project_scope_reads_shared_settings_not_only_local(self) -> None:
+        profile = self.root / "profile"
+        plugin_id = "company-agent@company-agent-local"
+        project = self.register("project", "Project", self.project, nativeClaudeScope="project",
+                                claudeConfigRoot=str(profile), claudeConfigDirOverride=True, pluginId=plugin_id)
+        atomic_write_json(profile / "plugins/installed_plugins.json",
+                          {"plugins": {plugin_id: [{"scope": "project", "projectPath": str(self.project)}]}})
+        atomic_write_json(self.project / ".claude/settings.json", {"enabledPlugins": {plugin_id: True}})
+        with patch.dict(os.environ, {"CLAUDE_CONFIG_DIR": str(profile)}):
+            self.assertEqual(project, resolve_registration(self.registrations, self.project))
+            atomic_write_json(self.project / ".claude/settings.local.json", {"enabledPlugins": {plugin_id: False}})
+            self.assertIsNone(resolve_registration(self.registrations, self.project))
 
     def test_profile_mismatch_does_not_switch_profile_or_personal_state(self) -> None:
         plugin = self.root / "plugin"

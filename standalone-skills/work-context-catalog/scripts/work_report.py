@@ -42,6 +42,18 @@ TOOL_EXPLANATIONS = {
 }
 GENERIC_WORDS = {'업무', '자료', '데이터', '결과', '보고서', '파일', '정리', '분석', '만들기',
                  'html', 'csv', 'excel', 'python', 'skill', 'data', 'report', 'workflow'}
+FOLLOWUP_LINKS = {
+    'prior_request_reference': '앞선 작업을 가리킨 저장 요청으로 연결했습니다.',
+    'subject_overlap': '앞선 업무의 대상어와 요청 순서가 일치해 저장 요청을 연결했습니다.',
+    'unconfirmed': '앞선 업무와의 연결 근거가 부족하거나 업무 전환이 있어 연결하지 않았습니다.',
+}
+
+
+def normalized_topics(value):
+    """One retained-session topic policy for JSON, HTML and Markdown."""
+    labels = value if isinstance(value, (list, tuple)) else []
+    return list(dict.fromkeys(label.strip() for label in labels
+                              if isinstance(label, str) and label.strip())) or ['미분류']
 
 
 def _text(value):
@@ -187,7 +199,7 @@ def _topic_summary(report):
                 for sid in f.get('session_ids', [])}
     buckets = {}
     for session in report.get('sessions', []):
-        for topic in dict.fromkeys(session.get('topics') or ['미분류']):
+        for topic in normalized_topics(session.get('topics')):
             row = buckets.setdefault(topic, {'total': 0, 'selected': 0})
             row['total'] += 1
             row['selected'] += session.get('id') in selected
@@ -231,6 +243,8 @@ def _workflow_markdown(flow, assets, sessions, definitions_index=None, actor='Cl
     for i, step in enumerate(_steps(flow), 1):
         lines.append(str(i) + '. ' + md(step.get('target')) + ' — ' + md(step.get('operation'))
                      + ' (요청 근거 ' + md(_text(step.get('request_id'))[:12]) + ')')
+        if step.get('followup_link') in FOLLOWUP_LINKS:
+            lines.append('   ' + FOLLOWUP_LINKS[step['followup_link']])
     lines += ['', '요청의 순서를 정리했습니다. 실제 실행 순서나 계산 의존성이 검증됐다는 뜻은 아닙니다.', '',
               '### ' + actor + '가 실제 호출한 동작', '',
               '응답 관찰은 도구 응답이 돌아왔다는 뜻입니다. 업무 성공을 의미하지 않습니다. '
@@ -326,7 +340,7 @@ def render_markdown(report):
     lines += ['', '## 세션별 분류 근거', '', '| 세션 ID | 업무 유형 후보 | 정리 범위 | 출처 |',
               '| --- | --- | --- | --- |']
     for session in sessions:
-        lines.append('| ' + md(session.get('id')) + ' | ' + md(', '.join(session.get('topics') or ['미분류']))
+        lines.append('| ' + md(session.get('id')) + ' | ' + md(', '.join(normalized_topics(session.get('topics'))))
                      + ' | ' + ('상세 FLOW 연결' if session.get('id') in selected else '유형만 분류')
                      + ' | ' + md(' / '.join(_origins(session))) + ' |')
     lines.append('')
@@ -448,7 +462,9 @@ def _flow_html(flow, assets, index=None, actor='Claude Code·Codex'):
         badges += '<span class="badge caution">일부 기록</span>'
     sequence = ''.join('<li class="workflow-step"><span class="step-number">' + str(i + 1)
         + '</span><h4>' + esc(s.get('target')) + '</h4><p>' + esc(s.get('operation'))
-        + '</p><small>요청 ' + str(s.get('request_ordinal', 0) // 100) + '에서 확인</small></li>' for i, s in enumerate(steps))
+        + '</p><small>요청 ' + str(s.get('request_ordinal', 0) // 100) + '에서 확인</small>'
+        + ('<small>' + esc(FOLLOWUP_LINKS[s['followup_link']]) + '</small>'
+           if s.get('followup_link') in FOLLOWUP_LINKS else '') + '</li>' for i, s in enumerate(steps))
     variants = ''
     if flow.get('sequence_variants', 0) > 1:
         variants = '<details class="variants"><summary>관찰된 진행 방식 ' + str(flow['sequence_variants']) + '종 비교</summary><ul>'
@@ -573,7 +589,7 @@ def render_report(report):
     rows = ''.join('<tr class="asset-row" id="' + anchor('asset', a.get('id')) + '"><td><strong>' + esc(a.get('title')) + '</strong><small>' + esc(a.get('description')) + '</small></td><td>' + esc(KINDS.get(a.get('kind'), '참고 문서')) + '</td><td>' + esc(', '.join(a.get('topics', []))) + '</td><td>' + '<br>'.join('<code>' + esc(o) + '</code>' for o in _origins(a)) + '</td></tr>' for a in assets)
     topics, selected = _topic_summary(report)
     topic_rows = ''.join('<tr><td>' + esc(t) + '</td><td>' + str(c['total']) + '</td><td>' + str(c['selected']) + '</td><td>' + str(c['total'] - c['selected']) + '</td></tr>' for t, c in topics)
-    session_rows = ''.join('<tr id="' + anchor('session', s.get('id')) + '"><td>' + esc(_text(s.get('id'))[:12]) + '</td><td>' + esc(', '.join(s.get('topics') or ['미분류'])) + '</td><td>' + ('상세 FLOW 연결' if s.get('id') in selected else '유형만 분류') + '</td><td>' + '<br>'.join(esc(o) for o in _origins(s)) + '</td></tr>' for s in sessions)
+    session_rows = ''.join('<tr id="' + anchor('session', s.get('id')) + '"><td>' + esc(_text(s.get('id'))[:12]) + '</td><td>' + esc(', '.join(normalized_topics(s.get('topics')))) + '</td><td>' + ('상세 FLOW 연결' if s.get('id') in selected else '유형만 분류') + '</td><td>' + '<br>'.join(esc(o) for o in _origins(s)) + '</td></tr>' for s in sessions)
     roots = ''.join('<div class="root"><b>' + esc(r.get('id')) + '</b><span>' + esc({'project': '프로젝트', 'profile': '개인 AI 설정', 'state': '관리형 상태 저장소', 'import': '검토한 내보내기'}.get(r.get('scope'), r.get('scope'))) + '</span><span>' + esc(r.get('environment')) + '</span></div>' for r in report.get('roots', []))
     warnings = ''.join('<li>' + esc(k) + ' · ' + str(v) + '건</li>' for k, v in coverage.get('warnings', {}).items()) or '<li>명시한 한도 안에서 별도 읽기 경고 없음</li>'
     scan = coverage.get('session_scan', {})

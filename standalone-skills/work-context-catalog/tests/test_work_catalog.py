@@ -13,7 +13,7 @@ import stat
 
 SCRIPTS = Path(__file__).resolve().parents[1] / 'scripts'
 sys.path.insert(0, str(SCRIPTS))
-from work_catalog import Collector, clean, main, render, md_header, discover_session_roots
+from work_catalog import Collector, clean, main, render, md_header, discover_session_roots, pure_greeting
 
 
 def write(path, value):
@@ -40,6 +40,36 @@ class CatalogTests(unittest.TestCase):
         self.root = Path(self.tmp.name)
     def tearDown(self):
         self.tmp.cleanup()
+
+    def test_combined_greetings_exclude_only_complete_greeting_sequences(self):
+        greetings = ['안녕', '고마워', '안녕! 고마워', '안녕하세요. 감사합니다.', 'Hi! Thank you.']
+        retained = ['안녕! 보고서를 작성해줘', '응', '왜?', '안녕! 파일을 못 열었어', 'thanks giving']
+        for index, text in enumerate(greetings + retained):
+            with self.subTest(text=text):
+                self.assertEqual(text in greetings, pure_greeting(text))
+            jsonl(self.root / (str(index) + '.jsonl'), [
+                {'type': 'user', 'uuid': str(index), 'sessionId': str(index), 'message': {'content': text}}])
+        collector = Collector(); collector.add_root(self.root, 'profile')
+        report = collector.result()
+        self.assertEqual(len(retained), report['summary']['observed_sessions'])
+        self.assertEqual({'greeting_or_thanks_only': len(greetings)}, report['coverage']['session_filter_reasons'])
+
+    def test_empty_topics_have_one_policy_in_json_html_and_markdown(self):
+        from work_report import _topic_summary, render_markdown
+        jsonl(self.root / 'broken.jsonl', [{'type': 'unknown', 'sessionId': 'broken'}])
+        collector = Collector(); collector.add_root(self.root, 'profile')
+        report = collector.result()
+        self.assertEqual(1, report['summary']['observed_sessions'])
+        self.assertEqual(1, report['coverage']['session_scan']['uncertain_records'])
+        self.assertEqual(['미분류'], report['sessions'][0]['topics'])
+        self.assertEqual({'미분류': 1}, report['summary']['topic_sessions'])
+        self.assertEqual([('미분류', {'total': 1, 'selected': 0})], _topic_summary(report)[0])
+        self.assertIn('<td>미분류</td><td>1</td>', render(report))
+        self.assertIn('| 미분류 | 1 |', render_markdown(report))
+        export = self.root / 'catalog.json'
+        write(export, json.dumps(report, ensure_ascii=False))
+        merged = Collector(); merged.add_catalog(export); merged.add_catalog(export)
+        self.assertEqual(report['summary']['topic_sessions'], merged.result()['summary']['topic_sessions'])
 
     def test_default_discovers_assets_no_sessions_or_settings_body(self):
         write(self.root / '.claude/skills/report/SKILL.md', '---\nname: 보고서 만들기\ndescription: 엑셀 분석 보고서 작성\n---\n본문')

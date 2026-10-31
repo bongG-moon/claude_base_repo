@@ -432,6 +432,16 @@ class FormulaEngine:
             raise FormulaFailure("#NUM!", "error")
         return value
 
+    def _sum_numbers(self, values):
+        # SUM 계열은 같은 누적 방식을 사용합니다. +=의 이진 오차 때문에
+        # 조건 없는 합과 조건부 합의 ROUND 결과가 달라지지 않게 합니다.
+        # 정수만 있으면 정수 정밀도를 유지하고, 소수는 보상 합산합니다.
+        try:
+            total = sum(values) if all(isinstance(v, int) for v in values) else math.fsum(values)
+        except (ValueError, OverflowError):
+            raise FormulaFailure("#NUM!", "error")
+        return self._finite(total)
+
     def _text(self, value):
         if value is None:
             return ""
@@ -584,11 +594,11 @@ class FormulaEngine:
         if function == "COUNT":
             return len(numbers)
         if function == "SUM":
-            return self._finite(sum(numbers))
+            return self._sum_numbers(numbers)
         if function == "AVERAGE":
             if not numbers:
                 raise FormulaFailure("#DIV/0!", "error")
-            return self._finite(sum(numbers) / len(numbers))
+            return self._finite(self._sum_numbers(numbers) / len(numbers))
         if function == "MIN":
             return min(numbers) if numbers else 0
         return max(numbers) if numbers else 0
@@ -651,7 +661,7 @@ class FormulaEngine:
         shape = conditions[0][0].shape
         if any(region.shape != shape for region, _ in conditions) or (target and target.shape != shape):
             raise FormulaFailure("criteria_range_shape_mismatch")
-        total = 0
+        total, numbers = 0, []
         for row in range(shape[0]):
             for col in range(shape[1]):
                 context.tick()
@@ -661,10 +671,10 @@ class FormulaEngine:
                     else:
                         value = target.at(row, col)
                         if isinstance(value, (int, float)) and not isinstance(value, bool):
-                            total += value
+                            numbers.append(value)
                         elif isinstance(value, (dt.date, dt.datetime, dt.time, dt.timedelta)):
-                            total += self._number(value)
-        return self._finite(total)
+                            numbers.append(self._number(value))
+        return total if target is None else self._sum_numbers(numbers)
 
     def _call(self, function, args, sheet, context):
         if function not in FUNCTIONS:

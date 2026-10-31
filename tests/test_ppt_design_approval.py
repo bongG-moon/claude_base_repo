@@ -61,6 +61,25 @@ class PptDesignApprovalTests(unittest.TestCase):
         (self.root/'representative.html').write_bytes(b'changed')
         self.assertEqual('design_preview_changed',artifacts.create_ppt(self.job,self.root/'bad.pptx',require_choices=True)['code'])
 
+    def test_export_verifier_checks_approval_without_choice_helper(self):
+        # Standalone build calls this verifier directly, without choices().
+        review = self.preview()['designReview']
+        cases = [(None, 'design_approval_required'),
+                 (review, 'design_approval_required'),
+                 ({**review, 'confirmed': 'true'}, 'invalid_design_review'),
+                 ({**review, 'confirmed': 1}, 'invalid_design_review'),
+                 ({key: value for key, value in review.items() if key != 'confirmed'},
+                  'invalid_design_review')]
+        for value, code in cases:
+            with self.subTest(review=value):
+                spec = {**self.job, 'designReview': value}
+                with self.assertRaises(artifacts.ArtifactError) as caught:
+                    flow.verify_design_review(spec)
+                self.assertEqual(code, caught.exception.code)
+        approved = {**self.job, 'designReview': {**review, 'confirmed': True}}
+        flow.verify_design_review(approved)
+        flow.verify_design_review(approved)  # Existing unchanged approval is reusable.
+
     def test_metadata_write_is_not_a_business_change_but_job_is(self):
         state=self.root/'state';ensure_user_layout(state)
         begin_turn('ppt-choice','MEDIUM',True,(),state)

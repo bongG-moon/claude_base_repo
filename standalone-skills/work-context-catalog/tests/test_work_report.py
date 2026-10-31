@@ -8,7 +8,7 @@ import sys
 import unittest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / 'scripts'))
-from work_report import render_report, render_markdown, related_definitions
+from work_report import render_report, render_markdown, related_definitions, FOLLOWUP_LINKS
 
 
 class Page(HTMLParser):
@@ -69,6 +69,14 @@ def example():
 
 
 class ReportTests(unittest.TestCase):
+    def test_followup_basis_or_uncertainty_is_visible_in_both_reports(self):
+        for basis, message in FOLLOWUP_LINKS.items():
+            with self.subTest(basis=basis):
+                report = example()
+                report['work_analysis']['workflows'][0]['steps'][-1]['followup_link'] = basis
+                self.assertIn(message, render_report(report))
+                self.assertIn(message, render_markdown(report))
+
     def test_asset_name_heads_flow_without_inventing_business_meaning(self):
         report = example()
         flow = report['work_analysis']['workflows'][0]

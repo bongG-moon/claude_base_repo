@@ -26,10 +26,9 @@ if ($Mode -eq 'Hook') {
         try {
             $readInput = $payload | ConvertFrom-Json
             if ($readInput.tool_name -ceq 'Read') {
-                $visionEnabled = ([string]$env:ANTHROPIC_CUSTOM_MODEL_OPTION).Trim() -ceq 'HCP-Vision-Latest'
                 $readExtension = [IO.Path]::GetExtension([string]$readInput.tool_input.file_path).ToLowerInvariant()
                 $isImageRead = $readExtension -in @('.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf')
-                if (-not $visionEnabled -or -not $isImageRead) {
+                if (-not $isImageRead) {
                     [Console]::Out.WriteLine('{}')
                     exit 0
                 }

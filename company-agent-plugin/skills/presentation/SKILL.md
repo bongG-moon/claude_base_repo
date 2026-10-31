@@ -33,6 +33,7 @@ description: 보고, 실적 발표, 제안 PPT를 만들거나 수정합니다. 
 
 - 기존 HTML 직접 변환, 자유 배치, 카드, 그림자, 그룹: `references/native-layout.md`. htmlSource가 바뀌면 다시 측정하며 검토용 HTML만 편집해도 네이티브 명세가 바뀌지는 않습니다.
 - 초안 승인이나 해시 불일치, preserve 미리보기 한계: `references/design-review.md`.
+- PPT 배치를 보정했거나 반복 제작을 요청받은 경우: `references/rebuild-check.md`. 보정을 job 또는 명시된 재생성 경로에 남기고 전달본과 재빌드의 내용 및 배치를 출하된 비교기로 확인합니다. 일반 생성에 매번 재빌드를 추가하지 않습니다.
 - 대표 양식 저장 요청: `references/html-template.md`. 이미 정한 저장 위치는 재사용하고 없는 경우 개인/프로젝트 위치를 확인합니다. 승인된 추상 디자인을 가상 내용의 HTML로 저장하며 원본 PPTX와 업무 내용을 자동 저장하거나 대체하지 않습니다.
 - 작업 경로, 재시도, 정리가 불명확: `../company-agent/references/output-delivery.md`. 같은 작업을 재사용하고 draft2/v3를 만들지 않습니다. publish는 등록된 미변경 중간 파일만 정리합니다.
 - 실제 처리 제한: `../company-agent/references/business-protection.md`. 파일 오류나 DRM 표시만으로 캡처 불가를 단정하지 않으며 실제 거부는 다른 도구나 작업자로 우회하지 않습니다.

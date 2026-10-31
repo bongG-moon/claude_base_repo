@@ -38,6 +38,16 @@ class InputError(ValueError):
 
 
 def safe_value(value):
+    if isinstance(value, dt.timedelta):
+        # 누적 시간은 날짜가 아닙니다. 26시간을 02:00으로 잘라내지 않고
+        # 시간 수가 24를 넘는 H:MM:SS 문자열로 보존합니다.
+        micros = (value.days * 86400 + value.seconds) * 1_000_000 + value.microseconds
+        sign = "-" if micros < 0 else ""
+        seconds, fraction = divmod(abs(micros), 1_000_000)
+        hours, seconds = divmod(seconds, 3600)
+        minutes, seconds = divmod(seconds, 60)
+        suffix = (f".{fraction:06d}".rstrip("0")) if fraction else ""
+        return f"{sign}{hours}:{minutes:02d}:{seconds:02d}{suffix}"
     if isinstance(value, (dt.datetime, dt.date, dt.time)):
         return value.isoformat()
     if isinstance(value, float) and not math.isfinite(value):

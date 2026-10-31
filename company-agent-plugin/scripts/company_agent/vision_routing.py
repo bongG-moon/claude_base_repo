@@ -27,6 +27,7 @@ OBSERVATION_TOOLS = CAPTURE_TOOLS | {
     "mcp__local-computer-use__list_windows", "mcp__playwright__browser_snapshot",
 }
 VISION_RULE = (
+    '이미지 작업이 실제 필요하고 visionRouting.setupRequired이면 먼저 /company-agent:vision-model 절차로 사용자에게 모델을 한 번 선택받습니다. '
     '이미지는 Agent(subagent_type="company-agent:vision-worker",prompt="정확한 대상과 질문")로 새로 관찰한 뒤 텍스트로 계속합니다. '
     'model/resume을 넣거나 일반 작업자·SendMessage로 대신하지 마세요. 작업자는 NEEDS_VISION을 최종 답변으로 부모에게 반환합니다. '
     '단순 이미지 읽기는 workFile이 필요 없습니다. 비전 실패 후 사본·base64·설정 탐색을 하지 마세요.'
@@ -40,8 +41,17 @@ def enabled(env: Mapping[str, str] | None = None) -> bool:
     return values.get("ANTHROPIC_CUSTOM_MODEL_OPTION", "").strip() == VISION_MODEL
 
 
-def context() -> dict[str, Any]:
-    return {"enabled": True, "agent": VISION_AGENT, "model": VISION_MODEL} if enabled() else {}
+def context(root: Path | None = None) -> dict[str, Any]:
+    result = {"enabled": True, "agent": VISION_AGENT, "selection": "user", "backupModel": VISION_MODEL}
+    if root is not None:
+        # Prompt-time metadata only, not the agent body, a model probe or an
+        # ordinary Read check. Existing context revision reuse still applies.
+        from .vision_settings import read_settings
+        try:
+            result['setupRequired'] = not bool(read_settings(root))
+        except (OSError, ValueError):
+            result['setupRequired'] = True
+    return result
 
 
 def _inputs(payload: dict[str, Any]) -> dict[str, Any]:
@@ -71,7 +81,7 @@ def recovery_candidate(payload: dict[str, Any]) -> bool:
     """Cheap predicate; unrelated agents must not acquire runtime/state scans."""
     inputs = _inputs(payload)
     prompt = inputs.get("prompt")
-    return (enabled() and not payload.get("agent_id")
+    return (not payload.get("agent_id")
             and payload.get("tool_name") in {"Agent", "Task"}
             and inputs.get("subagent_type") in (None, "", "general-purpose")
             and isinstance(prompt, str)
@@ -96,9 +106,10 @@ def handoff_reason(payload: dict[str, Any], marker: str = "") -> str:
             "메인 모델·승인 설정은 바꾸지 마세요.")
 
 
-def preflight(payload: dict[str, Any], *, recovery_root: Path | None = None) -> dict[str, Any] | None:
+def preflight(payload: dict[str, Any], *, recovery_root: Path | None = None, active: bool | None = None) -> dict[str, Any] | None:
     """None continues existing policy; {} finishes with NO permission override."""
     name = str(payload.get("tool_name") or "")
+    is_active = enabled() if active is None else active
     if recovery_root is not None and recovery_candidate(payload):
         from .vision_handoff import recover, HandoffAlreadyUsed
         try:
@@ -111,7 +122,7 @@ def preflight(payload: dict[str, Any], *, recovery_root: Path | None = None) -> 
     if _vision_call(payload):
         if payload.get("agent_id"):
             return _deny("[비전 인계] 재귀 위임하지 말고 NEEDS_VISION과 확인 대상·질문을 부모에게 반환하세요.")
-        if not enabled():
+        if not is_active:
             return _deny("[비전 미설정] 이 환경에는 운영 비전 모델 설정이 없습니다. HCP 호출을 시도하지 말고 이미지 확인은 미검증으로 남기세요.")
         inputs = _inputs(payload)
         if not isinstance(inputs.get("prompt"), str) or not inputs["prompt"].strip():
@@ -138,13 +149,13 @@ def preflight(payload: dict[str, Any], *, recovery_root: Path | None = None) -> 
         if name in {"Read", "Glob", "Grep", "ToolSearch"} or name in OBSERVATION_TOOLS:
             return {}
         return _deny("[비전 읽기 전용] 이 작업자는 지정한 자료 관찰만 합니다. 실행·입력·저장·설정 변경은 부모에게 반환하세요.")
-    if enabled() and (_image_read(payload) or name in CAPTURE_TOOLS):
+    if is_active and (_image_read(payload) or name in CAPTURE_TOOLS):
         return _deny(handoff_reason(payload))
     if name == "SendMessage":
         inputs = _inputs(payload)
         own_id = payload.get("agent_id")
         recipients = [inputs.get(key) for key in ("to", "recipient", "recipient_id")]
-        if enabled() and own_id and own_id in recipients:
+        if own_id and own_id in recipients:
             return _deny("[작업자 반환] 자기 자신에게 메시지를 보내도 비전 작업자가 실행되지 않습니다. "
                          "추가 호출·대기 없이 현재 결과 또는 NEEDS_VISION과 확인 대상을 최종 답변으로 부모에게 반환하세요.")
         return {}  # Message-only fast path, no skill/session/mutation workflow.
@@ -153,11 +164,18 @@ def preflight(payload: dict[str, Any], *, recovery_root: Path | None = None) -> 
     return {} if name == "Read" else None
 
 
-def result_context(event: str, payload: dict[str, Any]) -> dict[str, Any] | None:
+def result_context(event: str, payload: dict[str, Any], *, active: bool | None = None) -> dict[str, Any] | None:
     """Read-only review failures must not create mutation/Stop retry loops."""
     if event not in {"PostToolUse", "PostToolUseFailure"}:
         return None
     if _vision_child(payload):
+        if (event == "PostToolUse" and (enabled() if active is None else active) and _image_read(payload)
+                and PureWindowsPath(_inputs(payload)["file_path"]).suffix.lower() in {".png", ".jpg", ".jpeg"}):
+            # Read has already run under native permissions. Adapt only its
+            # returned bytes; never open a source before permission or change
+            # MCP coordinates. Ordinary reads do not import this codec module.
+            from .vision_image import preprocess_read_result
+            return preprocess_read_result(payload.get("tool_response"))
         return {}  # Do not persist source images or treat observation as edits.
     if not _vision_call(payload):
         return None

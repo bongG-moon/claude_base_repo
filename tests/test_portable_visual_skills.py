@@ -144,6 +144,22 @@ class PortableVisualTests(unittest.TestCase):
         self.assertFalse(result["ok"])
         self.assertFalse((self.root / "no.pptx").exists())
 
+    def test_draft_review_requires_boolean_confirmation_before_export(self):
+        job = self.write_spec(self.spec)
+        draft = self.run_cli("presentation", "draft", "--spec", job, "--output", self.root / "draft.html")
+        self.assertTrue(draft["ok"], draft)
+        self.assertIs(draft["designReview"]["confirmed"], False)
+        for value in (False, "true", 1, None):
+            with self.subTest(confirmed=value):
+                review = {**draft["designReview"], "confirmed": value}
+                if value is None:
+                    del review["confirmed"]
+                self.spec["designReview"] = review
+                result = self.run_cli("presentation", "build", "--spec", self.write_spec(self.spec),
+                                      "--output", self.root / "unapproved.pptx", expected=1)
+                self.assertEqual(result["code"], "design_approval_required" if value is False else "invalid_design_review")
+                self.assertFalse((self.root / "unapproved.pptx").exists())
+
     def test_changed_html_is_not_approved(self):
         job = self.approved_spec()
         (self.root / "draft.html").write_text("changed", encoding="utf-8")

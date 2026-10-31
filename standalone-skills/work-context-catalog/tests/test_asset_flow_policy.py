@@ -132,6 +132,75 @@ class AssetFlowPolicyTests(unittest.TestCase):
         self.assertEqual(1, report['workflows'][0]['request_count'])
         self.assertEqual(1, len(report['deferred_work']))
 
+    def test_named_asset_followups_keep_observed_steps_and_request_order(self):
+        examples = [
+            ('월간 매출 원장을 읽고 중복을 제거한 뒤 월별 매출을 집계해줘',
+             '이 월간 매출 마감 작업을 스킬로 저장해줘'),
+            ('재고 원장을 읽고 중복을 제거한 뒤 재고를 집계해줘',
+             '이 재고 집계 기준을 지식으로 저장해줘'),
+        ]
+        for initial_text, followup_text in examples:
+            with self.subTest(followup=followup_text):
+                initial, followup = request(initial_text), request(followup_text, 2)
+                self.assertTrue(followup['asset_followup'])
+                # Export/import must preserve the reduced reference, not raw text.
+                followup = sanitize_request(followup, clean)
+                result = summarize_work([session('named', [followup, initial], [event(followup)])])
+                flow = result['workflows'][0]
+                self.assertEqual(['read', 'dedupe', 'aggregate', 'publish'],
+                                 [step['action'] for step in flow['steps']])
+                self.assertEqual(2, flow['request_count'])
+                self.assertEqual('subject_overlap', flow['steps'][-1]['followup_link'])
+                self.assertEqual([], result['deferred_work'])
+
+    def test_named_followup_needs_target_evidence_and_an_earlier_request(self):
+        initial = request('월간 매출 원장을 읽고 중복을 제거한 뒤 매출을 집계해줘')
+        cases = [
+            ('이 월간 재고 마감 작업을 스킬로 저장해줘', 2),
+            ('이 집계 기준을 지식으로 저장해줘', 2),
+            ('이 매출 작업을 스킬로 저장해줘. 다른 업무로 전환해줘', 2),
+            ('이 매출 작업을 스킬로 저장해줘', 1),
+        ]
+        for text, ordinal in cases:
+            with self.subTest(text=text, ordinal=ordinal):
+                followup = request(text, ordinal)
+                result = summarize_work([session('unlinked', [initial, followup], [event(followup)])])
+                flow = result['workflows'][0]
+                self.assertEqual(1, flow['request_count'])
+                self.assertEqual('unconfirmed', flow['steps'][0]['followup_link'])
+                self.assertEqual(1, len(result['deferred_work']))
+
+    def test_named_followup_does_not_reach_across_a_new_work_episode(self):
+        sales = request('매출 원장을 읽고 매출을 집계해줘')
+        inventory = request('별개로 재고 원장을 읽고 재고를 집계해줘', 2)
+        followup = request('이 매출 마감 작업을 스킬로 저장해줘', 3)
+        result = summarize_work([session('switch-back', [sales, inventory, followup], [event(followup)])])
+        self.assertEqual(1, result['workflows'][0]['request_count'])
+        self.assertEqual('unconfirmed', result['workflows'][0]['steps'][0]['followup_link'])
+        self.assertEqual(2, len(result['deferred_work']))
+
+    def test_save_reference_requires_a_whole_reference_word_and_save_actions(self):
+        for text in ['이번 매출 작업을 스킬로 저장해줘',
+                     '이달 매출 작업을 스킬로 저장해줘',
+                     '이 매출 자료를 읽고 재고 기준을 지식으로 저장해줘']:
+            with self.subTest(text=text):
+                self.assertFalse(request(text)['asset_followup'])
+
+    def test_named_followup_preserves_failed_unconfirmed_and_duplicate_evidence(self):
+        initial = request('재고 원장을 읽고 재고를 집계해줘')
+        followup = request('이 재고 집계 기준을 지식으로 저장해줘', 2)
+        for status, reason in [('error', 'save_failed'), ('unconfirmed', 'save_unconfirmed')]:
+            with self.subTest(status=status):
+                result = summarize_work([session(status, [initial, followup], [event(followup, status=status)])])
+                self.assertEqual([], result['workflows'])
+                self.assertEqual(reason, result['deferred_work'][0]['selection_reason'])
+        saved = session('saved', [initial, followup], [event(followup)])
+        result = summarize_work([saved, copy.deepcopy(saved)])
+        self.assertEqual(1, len(result['workflows']))
+        self.assertEqual(1, result['workflows'][0]['occurrences'])
+        self.assertEqual(2, result['workflows'][0]['request_count'])
+        self.assertEqual(1, result['asset_activity']['observed_changes'])
+
     def test_conflicting_change_evidence_is_not_used(self):
         req = request('교육 지식을 저장해줘')
         observed = event(req)
