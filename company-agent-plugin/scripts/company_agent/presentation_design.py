@@ -397,7 +397,8 @@ def render_python(data, draft, template):
     from io import BytesIO
     from pptx import Presentation
     from pptx.chart.data import CategoryChartData
-    from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION, XL_LABEL_POSITION
+    from pptx.enum.chart import (XL_CHART_TYPE, XL_LEGEND_POSITION, XL_LABEL_POSITION,
+                                XL_TICK_LABEL_POSITION, XL_MARKER_STYLE)
     from pptx.enum.text import MSO_ANCHOR, MSO_AUTO_SIZE, PP_ALIGN
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
@@ -518,11 +519,29 @@ def render_python(data, draft, template):
                     s.format.fill.solid()
                     s.format.fill.fore_color.rgb = color(series_colors[i])
                     s.format.line.color.rgb = color(series_colors[i])
+                    if content['type'] in ('bar', 'column'):
+                        # Office otherwise renders negative solid bars white.
+                        s.invert_if_negative = False
+                    elif content['type'] == 'line':
+                        s.marker.style = XL_MARKER_STYLE.CIRCLE
+                        s.marker.size = 5
+                        s.marker.format.fill.solid()
+                        s.marker.format.fill.fore_color.rgb = color(series_colors[i])
+                        s.marker.format.line.color.rgb = color(series_colors[i])
                 if content['type'] != 'pie':
                     typeface(chart.category_axis.tick_labels.font)
                     typeface(chart.value_axis.tick_labels.font)
                     chart.category_axis.tick_labels.font.size = Pt(13)
                     chart.value_axis.tick_labels.font.size = Pt(12)
+                    # Mixed-sign bars cross zero inside the plot. Keep category
+                    # text at the outside edge and explicitly retain every item.
+                    chart.category_axis.tick_label_position = XL_TICK_LABEL_POSITION.LOW
+                    axis = chart.category_axis._element
+                    for old in axis.xpath('./c:tickLblSkip'):
+                        axis.remove(old)
+                    skip = OxmlElement('c:tickLblSkip')
+                    skip.set('val', '1')
+                    axis.insert_element_before(skip, 'c:tickMarkSkip', 'c:noMultiLvlLbl', 'c:extLst')
                     if content['type'] in ('bar', 'column'):
                         values = [v for s in content['series'] for v in s['values']]
                         if min(values) >= 0:
@@ -537,6 +556,14 @@ def render_python(data, draft, template):
                     plot.data_labels.font.color.rgb = color('text')
                     if content['type'] in ('bar', 'column'):
                         plot.data_labels.position = XL_LABEL_POSITION.OUTSIDE_END
+                    elif content['type'] == 'line':
+                        plot.data_labels.position = XL_LABEL_POSITION.ABOVE
+                        # Keep labels off the marker/line. A second series gets
+                        # the other side; dense/crossing lines still need review.
+                        for i, series in enumerate(chart.series):
+                            position = XL_LABEL_POSITION.BELOW if i % 2 else XL_LABEL_POSITION.ABOVE
+                            for point in series.points:
+                                point.data_label.position = position
                 native['charts'] += 1
             elif kind == 'image':
                 from .ppt_scene import fit_picture

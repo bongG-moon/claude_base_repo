@@ -44,10 +44,9 @@ class ExecutionContractTests(unittest.TestCase):
 
     def test_known_read_only_cli_contracts(self) -> None:
         for arguments in (
-            "business doctor", "business mail-capabilities", "business html-designs", "learning status",
+            "business doctor", "business html-designs", "learning status",
             "session status --session abc-123", "skill inventory", "skill list",
             "skill conflicts", "context audit",
-            f'business mail-search --spec "{self.root / "request.json"}"',
             f'business html-choices --spec "{self.root / "request.json"}"',
         ):
             with self.subTest(arguments=arguments):
@@ -264,7 +263,7 @@ class ExecutionContractTests(unittest.TestCase):
         self.assertEqual('block', stop_decision({'session_id': 'artifact-cleanup'}, self.root)['decision'])
 
     def test_permission_only_exact_metadata_and_current_root(self) -> None:
-        for operation in ("doctor", "mail-capabilities"):
+        for operation in ("doctor",):
             command = f"{self.cli} business {operation}"
             self.assertEqual({"behavior": "allow"}, self.permission(command))
             self.assertEqual({"behavior": "allow"}, self.permission(f'{command} --state-root "{self.root}"'))
@@ -323,7 +322,6 @@ class ExecutionContractTests(unittest.TestCase):
 
     def test_model_generated_specs_and_sensitive_operations_never_auto_allowed(self) -> None:
         for command in (
-            f'business mail-search --spec "{self.root / "request.json"}"',
             f'business mail-read --spec "{self.root / "request.json"}"',
             "learning status", "session status --session abc", "context audit",
             "skill inventory", "memory compact", "learning pause", "learning resume",
@@ -359,7 +357,6 @@ class ExecutionContractTests(unittest.TestCase):
             f'business doctor --state-root "{self.root}" --state-root "{self.root}"',
             "business doctor extra", "business doctor --output file", "business doctor --state-root",
             "business mail-search", "business mail-search --spec relative.json",
-            f'business mail-search --spec "{self.root / "secrets.env"}"',
             "session status --session ../other", "learning list", "session show --session abc",
         ):
             with self.subTest(args=args):

@@ -102,6 +102,46 @@ class ProcessTests(unittest.TestCase):
         self.session('a', [EDUCATION, '다음으로 재고 CSV를 계산해서 발주표를 작성해줘'])
         self.assertEqual({'교육 신청', '재고'}, {w['title'] for w in self.collect()['work_analysis']['workflows']})
 
+    def test_review_then_save_retains_full_request_flow_after_export_import(self):
+        messages = ['월간 매출 데이터를 읽어 중복을 제거하고 부서별 합계를 계산해줘',
+                    '위 결과를 회계와 대사하고 차이를 검토해줘',
+                    '이 월간 매출 마감 작업을 스킬로 저장해줘']
+        path = self.session('review-save', messages, tools=(), save_asset=False)
+        rows = [
+            {'type': 'assistant', 'uuid': 'save-call', 'sessionId': 'review-save',
+             'message': {'content': [{'type': 'tool_use', 'id': 'save', 'name': 'Write',
+                 'input': {'file_path': '.claude/skills/monthly-sales/SKILL.md',
+                           'content': 'PRIVATE_ASSET_BODY'}}]}},
+            {'type': 'user', 'uuid': 'save-result', 'sessionId': 'review-save',
+             'message': {'content': [{'type': 'tool_result', 'tool_use_id': 'save',
+                                     'is_error': False, 'content': 'PRIVATE_RESULT_BODY'}]}},
+        ]
+        with path.open('a', encoding='utf-8') as handle:
+            handle.write('\n' + '\n'.join(json.dumps(row, ensure_ascii=False) for row in rows))
+        report = self.collect()
+        exported = self.root / 'export.json'
+        exported.write_text(json.dumps(report, ensure_ascii=False), encoding='utf-8')
+        merged = Collector(); merged.add_catalog(exported)
+        for result in (report, merged.result()):
+            with self.subTest(source='collected' if result is report else 'imported'):
+                analysis = result['work_analysis']
+                self.assertEqual(1, len(analysis['workflows']))
+                self.assertEqual([], analysis['deferred_work'])
+                flow = analysis['workflows'][0]
+                self.assertEqual('월간 매출', flow['title'])
+                self.assertEqual(['read', 'dedupe', 'aggregate', 'analyze', 'publish'],
+                                 [step['action'] for step in flow['steps']])
+                self.assertEqual([100, 100, 100, 200, 300],
+                                 [step['request_ordinal'] for step in flow['steps']])
+                self.assertEqual(3, flow['request_count'])
+                self.assertEqual(1, flow['execution_count'])
+                self.assertEqual('not_inferred', analysis['completion'])
+                self.assertEqual('prior_result', result['sessions'][0]['work_requests'][1]['result_reference'])
+                self.assertIn('앞선 결과를 명시한 후속 요청', render(result))
+                serialized = json.dumps(result, ensure_ascii=False)
+                for raw_text in messages + ['PRIVATE_ASSET_BODY', 'PRIVATE_RESULT_BODY']:
+                    self.assertNotIn(raw_text, serialized)
+
     def test_one_step_repeated_is_featured_and_oneoff_or_failed_retained(self):
         self.session('one', ['계약서를 검토해줘'])
         self.session('two', ['계약서를 검토해줘'])

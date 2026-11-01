@@ -16,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PLUGIN = ROOT / "company-agent-plugin"
 sys.path.insert(0, str(PLUGIN / "scripts"))
 
-from company_agent import business_artifacts, business_files, business_mail, business_safety
+from company_agent import business_artifacts, business_files, business_safety
 from company_agent.cli import build_parser
 from company_agent.skill_registry import inventory_skills
 from company_agent.state import load_session
@@ -42,11 +42,10 @@ class OfficeRemovalTests(unittest.TestCase):
             with self.subTest(path=relative):
                 self.assertFalse((PLUGIN / "scripts" / relative).exists())
 
-    def test_shared_mail_file_and_presentation_entrypoints_survive(self):
+    def test_shared_file_and_presentation_entrypoints_survive(self):
         parser = build_parser()
         for action, options, implementation in (
             ("files-plan", ["--folder", "example"], business_files.create_plan),
-            ("mail-read", ["--spec", "mail.json"], business_mail.read_mail),
             ("ppt", ["--spec", "slides.json", "--output", "slides.html"], business_artifacts.create_ppt),
         ):
             with self.subTest(action=action):

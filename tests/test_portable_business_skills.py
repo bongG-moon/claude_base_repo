@@ -1,8 +1,6 @@
 """개별 ZIP의 원본을 하네스가 없는 임시 폴더에서 실행하는 회귀 시험."""
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from email.message import EmailMessage
 import importlib.util
 import hashlib
 import json
@@ -12,7 +10,6 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from types import SimpleNamespace
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -140,54 +137,11 @@ class PortableBusinessTests(unittest.TestCase):
         self.assertTrue(result["failures"]); self.assertFalse(source.exists())
         self.assertEqual((folder / "문서/a.txt").read_text(), "edited moved file")
 
-    def test_eml_metadata_then_bounded_body_without_connector(self):
-        skill = self.copy_skill("outlook-assistant"); script = skill / "scripts/mail_read.py"
-        msg = EmailMessage(); msg["Subject"] = "실습 신청"; msg["From"] = "sample@example.invalid"
-        msg.set_content("가나다라마바사" * 100)
-        msg.add_attachment(b"not read", maintype="application", subtype="octet-stream", filename="sample.bin")
-        eml = self.work / "sample.eml"; eml.write_bytes(msg.as_bytes())
-        result = self.run_script(script, "eml", "--file", eml)
-        self.assertEqual(result["bodyReadCount"], 0); self.assertNotIn("body", result)
-        self.assertEqual(result["attachments"], ["sample.bin"])
-        result = self.run_script(script, "eml", "--file", eml, "--body", "--body-chars", "24")
-        self.assertEqual(len(result["body"]), 24); self.assertTrue(result["truncated"])
 
-    def test_outlook_search_never_reads_body_and_read_budget_stops_access(self):
-        skill = self.copy_skill("outlook-assistant"); mod = module(skill / "scripts/mail_read.py")
-        reads = []
-        class Mail:
-            Class = 43; Subject = "교육 신청"; SenderName = "가상 발신자"
-            ReceivedTime = datetime(2026, 10, 1, tzinfo=timezone.utc)
-            Attachments = SimpleNamespace(Count=0)
-            def __init__(self, name): self.EntryID = name
-            @property
-            def Body(self): reads.append(self.EntryID); return "본문" * 100
-        mails = {str(i): Mail(str(i)) for i in range(10)}
-        class Items:
-            Count = 10
-            def Sort(self, *args): pass
-            def Item(self, index): return mails[str(index - 1)]
-        namespace = SimpleNamespace(GetFolderFromID=lambda *args: SimpleNamespace(Items=Items()), GetItemFromID=lambda key, store: mails[key])
-        result = mod.search(namespace, "s", "f", "교육", limit=2)
-        self.assertEqual(len(result["messages"]), 2); self.assertEqual(reads, []); self.assertTrue(result["partial"])
-        result = mod.read(namespace, "s", ["0", "1", "2"], body_chars=20, total_chars=25)
-        self.assertEqual(reads, ["0", "1"]); self.assertEqual(result["bodyCharacters"], 25); self.assertEqual(result["omitted"], 1)
-        with self.assertRaises(ValueError): mod.search(namespace, "s", "f", after="2026-10-01")
 
-    def test_mail_total_json_budget_keeps_identifiers_whole(self):
-        skill = self.copy_skill("outlook-assistant"); mod = module(skill / "scripts/mail_read.py")
-        ids = [str(i) + "x" * 4096 for i in range(20)]
-        result = mod.bounded_result({"messages": [{"id": i, "subject": "가" * 500, "body": "\\\n" * 500} for i in ids],
-                                     "bodyReadCount": 20, "bodyCharacters": 20000, "omitted": 0})
-        self.assertLessEqual(len(json.dumps(result, ensure_ascii=False)), 32000)
-        self.assertTrue(result["outputTruncated"])
-        self.assertGreater(result["omitted"], 0)
-        self.assertEqual(result["bodyReadCount"], 20)
-        self.assertEqual(result["bodyCharacters"], sum(len(row["body"]) for row in result["messages"]))
-        self.assertTrue(all(row["id"] in ids for row in result["messages"]))
 
     def test_portable_entries_do_not_call_company_runtime(self):
-        for name in ("asset-factory", "file-organizer", "outlook-assistant"):
+        for name in ("asset-factory", "file-organizer"):
             for path in (ROOT / "standalone-skills" / name).rglob("*"):
                 if path.suffix not in (".py", ".md"): continue
                 text = path.read_text(encoding="utf-8-sig")

@@ -184,19 +184,22 @@ function Assert-EmployeeBundle {
         'payload\core\plugin\scripts\company_agent\business.py',
         'payload\core\plugin\scripts\company_agent\business_safety.py',
         'payload\core\plugin\scripts\company_agent\business_files.py',
-        'payload\core\plugin\scripts\company_agent\business_mail.py',
         'payload\core\plugin\scripts\company_agent\business_artifacts.py',
         'payload\core\plugin\scripts\Confirm-BusinessAction.ps1',
-        'payload\core\plugin\scripts\Invoke-BusinessOutlook.ps1',
         'payload\core\plugin\scripts\Invoke-BusinessPowerPoint.ps1',
         'payload\core\plugin\skills\file-organizer\SKILL.md',
-        'payload\core\plugin\skills\outlook-assistant\SKILL.md',
         'payload\core\plugin\skills\html-report\SKILL.md',
         'payload\core\plugin\skills\presentation\SKILL.md',
         'payload\core\plugin\skills\company-agent\references\business-protection.md',
         'payload\core\plugin\templates\business\report.spec.json',
         'payload\core\plugin\skills\self-learning\SKILL.md')) {
         Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
+    }
+    foreach ($removed in @('payload\core\plugin\skills\outlook-assistant',
+        'payload\core\plugin\scripts\Invoke-BusinessOutlook.ps1',
+        'payload\core\plugin\scripts\company_agent\business_mail.py',
+        'payload\core\plugin\scripts\company_agent\business_eml.py')) {
+        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath $removed))) "Retired built-in mail component is still shipped: $removed"
     }
     $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter '*.html' -File)
     Assert-OfflineBundle ($htmlGuides.Count -eq 1 -and $htmlGuides[0].Name -ceq 'Company-Agent-사용자-안내서.html') 'Expected exactly one unified HTML user guide.'

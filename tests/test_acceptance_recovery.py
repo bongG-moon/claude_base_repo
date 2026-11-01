@@ -1,8 +1,6 @@
 """Regression cases from independent real-CLI acceptance reviews."""
-import argparse
 import json
 import os
-from email.message import EmailMessage
 from pathlib import Path
 import sys
 import tempfile
@@ -12,7 +10,6 @@ from unittest.mock import patch
 SCRIPTS = Path(__file__).resolve().parents[1] / "company-agent-plugin" / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 from company_agent.state import begin_turn, record_activity, stop_decision, load_session, mark_verified
-from company_agent.business import register, dispatch
 from company_agent.execution_contract import classify_command, safe_permission
 
 
@@ -62,20 +59,6 @@ class AcceptanceRecoveryTests(unittest.TestCase):
         self.assertEqual("unavailable", load_session("test", self.root)["verification"]["status"])
         self.assertEqual(1, load_session("test", self.root)["mutationCount"])
 
-    def test_eml_public_cli_readonly_but_not_auto_permission(self):
-        message = EmailMessage()
-        message.set_content("synthetic meeting 14:00")
-        source = self.root / "mail.eml"
-        source.write_bytes(message.as_bytes())
-        parser = argparse.ArgumentParser()
-        register(parser.add_subparsers())
-        result = dispatch(parser.parse_args(["business", "eml-read", "--file", str(source), "--state-root", str(self.root)]))
-        self.assertTrue(result["ok"])
-        self.assertIn("14:00", result["body"])
-        command = f'"{sys.executable}" -B "{SCRIPTS / "harness_cli.py"}" business eml-read --file "{source}"'
-        self.assertEqual("read_only", classify_command(command))
-        self.assertIsNone(safe_permission({"hook_event_name": "PermissionRequest", "tool_name": "Bash",
-                                         "tool_input": {"command": command}}, self.root))
 
     def test_readonly_memory_and_help_do_not_trigger_verification(self):
         for suffix in ('memory search "synthetic" --limit 3', 'memory upsert --help'):
@@ -117,7 +100,7 @@ class AcceptanceRecoveryTests(unittest.TestCase):
         self.assertLessEqual(len(value), MAX_RUNTIME_CONTEXT_CHARS)
         runtime = json.loads(value)["company_agent_runtime"]
         self.assertNotIn("contextStatus", runtime)
-        self.assertEqual(4, len(runtime["taskReminders"]))
+        self.assertEqual(3, len(runtime["taskReminders"]))
         self.assertNotIn("PRIVATE-MARKER", value)
 
     def test_new_verification_evidence_retains_second_correction(self):

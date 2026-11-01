@@ -23,7 +23,7 @@ from company_agent.skill_lifecycle import inspect_skill
 
 class DataSkillContracts(unittest.TestCase):
     def test_conditional_references_resolve_in_each_distribution(self):
-        names = ("excel-to-pipeline", "work-context-catalog", "outlook-assistant",
+        names = ("excel-to-pipeline", "work-context-catalog",
                  "file-organizer", "asset-factory", "platform-mcp-builder")
         checked = 0
         for distribution in ("company-agent-plugin/skills", "standalone-skills"):

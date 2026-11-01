@@ -27,6 +27,7 @@ JSON은 내부 명세이며 사용자에게 작성시키지 않습니다. 실행
 - `takeaway`는 제목 근처 핵심 문장, `source`는 출처·집계 범위·단위·기간입니다. 차트 다음 해석은 takeaway 대신 body와 contentOrder로 배치합니다.
 - `kpis`는 계산된 facts를 참조하는 `[{"fact":"total","note":"집계 조건"}]` 형식입니다. 별도 임의 value를 넣지 않습니다.
 - 표 `headers`와 각 `rows`의 열수를 맞춥니다. chart는 `type:column|bar|line|pie`, categories, series를 사용합니다.
+  짧은 ID와 날짜, 기간은 의미 단위를 한 줄로 표시합니다. 필요한 열은 `table.columnTypes`에 headers 순서대로 auto / text / id / date / period를 지정합니다. 생략하면 명확한 제목만 자동 구분하며 자세한 예제는 [데이터 표](data-tables.md)를 봅니다.
   예: `{"type":"column","categories":["1월","2월"],"series":[{"name":"신청","values":[12,20]}]}`.
 - `contentOrder`는 각 section의 body/bullets/table/chart/image 중 존재하는 항목을 정확히 한 번씩 적습니다. 제목·출처는 제외합니다.
   지정하면 세로 배치가 우선합니다. `contentLayout`은 `vertical`만 지원하며 생략할 수 있습니다. 좌우 비교는 contentOrder 없이 layout:split을 사용합니다.

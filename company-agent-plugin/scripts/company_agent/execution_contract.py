@@ -237,8 +237,8 @@ def _help_arguments(args: list[str]) -> bool:
     return args == ['--help'] or (len(args) == 3 and args[-1] == '--help' and tuple(args[:2]) in {
         ('memory', 'search'), ('memory', 'upsert'), ('memory', 'history'), ('memory', 'restore'), ('session', 'verify'),
         ('work', 'checkpoint'), ('learning', 'stage'), ('learning', 'review'), ('learning', 'submit'),
-        ('business', 'doctor'), ('business', 'mail-capabilities'), ('business', 'html-designs'),
-        ('business', 'eml-read'), ('business', 'files-plan'),
+        ('business', 'doctor'), ('business', 'html-designs'),
+        ('business', 'files-plan'),
         ('business', 'ppt-choices'), ('business', 'html-choices'),
         ('business', 'ppt'), ('business', 'ppt-design-preview'),
         ('business', 'ppt-template'), ('business', 'html'),
@@ -418,9 +418,9 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         # Viewing the fixed shipped picker is not a business artifact change.
         # This classification does not grant native execution permission.
         args = [value for value in args if value != '--open']
-    if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities"), ("business", "ppt-capabilities"), ("business", "html-designs")}:
+    if head in {("business", "doctor"), ("business", "runtime-check"), ("business", "ppt-capabilities"), ("business", "html-designs")}:
         allowed = {"--state-root"}
-    elif head in {("business", "mail-search"), ("business", "ppt-reference")}:
+    elif head == ("business", "ppt-reference"):
         allowed, required = {"--state-root", "--spec"}, {"--spec"}
     elif head == ('business', 'html-choices'):
         allowed = {'--state-root', '--spec'}
@@ -428,8 +428,6 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         allowed = {'--state-root','--spec','--template'}
     elif head in {('business','ppt-analyze'),('business','ppt-inspect'),('business','html-template')}:
         allowed, required = {'--state-root','--template'}, {'--template'}
-    elif head == ("business", "eml-read"):
-        allowed, required = {"--state-root", "--file"}, {"--file"}
     elif head == ("session", "status"):
         allowed, required = {"--state-root", "--session"}, {"--session"}
     elif head == ("learning", "status"):
@@ -497,7 +495,7 @@ def safe_permission(payload: dict[str, Any], root: Path) -> dict[str, str] | Non
     args = _trusted_arguments(command)
     if args and _help_arguments(args):
         return {"behavior": "allow"}
-    if not args or tuple(args[:2]) not in {("business", "doctor"), ("business", "mail-capabilities")}:
+    if not args or tuple(args[:2]) not in {("business", "doctor")}:
         return None
     fields = _fields(args[2:], {"--state-root"})
     if fields is None or ("--state-root" in fields and not _same(fields["--state-root"], root)):

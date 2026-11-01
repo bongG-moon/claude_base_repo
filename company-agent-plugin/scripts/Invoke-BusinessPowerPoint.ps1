@@ -172,16 +172,37 @@ try {
                             $serie.Format.Fill.Solid()
                             $serie.Format.Fill.ForeColor.RGB = Get-ReportColor $colors[$s-1]
                             $serie.Format.Line.ForeColor.RGB = Get-ReportColor $colors[$s-1]
+                            if ($row.chart.type -in @('bar','column')) { $serie.InvertIfNegative = $false }
+                            elseif ($row.chart.type -eq 'line') {
+                                $serie.MarkerStyle = 8 # xlMarkerStyleCircle
+                                $serie.MarkerSize = 5
+                                $serie.MarkerForegroundColor = Get-ReportColor $colors[$s-1]
+                                $serie.MarkerBackgroundColor = Get-ReportColor $colors[$s-1]
+                            }
                         }
                         if ($row.chart.type -ne 'pie') {
                             $chart.Axes(1).TickLabels.Font.Size = 13
                             $chart.Axes(2).TickLabels.Font.Size = 12
+                            $chart.Axes(1).TickLabelPosition = -4134 # xlTickLabelPositionLow
+                            $chart.Axes(1).TickLabelSpacing = 1
                             if ($row.chart.type -in @('bar','column')) {
                                 $values = @($row.chart.series | ForEach-Object { $_.values })
                                 if (@($values | Where-Object { $_ -lt 0 }).Count -eq 0) { $chart.Axes(2).MinimumScale = 0 }
                             }
                         }
-                        if (@($row.chart.categories).Count -le 6) { $chart.ApplyDataLabels() }
+                        if (@($row.chart.categories).Count -le 6) {
+                            $chart.ApplyDataLabels()
+                            for ($s = 1; $s -le $chart.SeriesCollection().Count; $s++) {
+                                $labels = $chart.SeriesCollection($s).DataLabels()
+                                $labels.Font.Name = [string]$design.font
+                                $labels.Font.Size = 12
+                                if ($row.chart.type -in @('bar','column')) { $labels.Position = 2 } # xlLabelPositionOutsideEnd
+                                elseif ($row.chart.type -eq 'line') {
+                                    $labels.Position = 0 # xlLabelPositionAbove
+                                    if ($s % 2 -eq 0) { $labels.Position = 1 } # xlLabelPositionBelow
+                                }
+                            }
+                        }
                     }
                     elseif ($name -eq 'image') {
                         # The request carries already inspected image bytes. Do

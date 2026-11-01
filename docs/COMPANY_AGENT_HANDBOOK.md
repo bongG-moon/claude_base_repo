@@ -93,7 +93,6 @@ User 설치와 Project 설치는 적용 범위·개인 저장소가 다를 수 �
 | `company-agent:presentation` | HTML 초안 확인 후 편집 가능한 PPT 만들기 | 양식이 없으면 업무 보고형의 정적 HTML 초안으로 시작하고 목적·독자·장수 중 빠진 것만 질문. 참고 캡처·기존 PPTX·저장한 HTML도 사용 가능. 실제 초안 승인 후 PPT 제작. 기존 그림 크기만 수정하는 작업은 별도 제작 질문 없이 처리 |
 | `company-agent:excel-to-pipeline` | XLSX·XLSM의 표·수식·접근 가능한 VBA 분석, Python 전처리 초안 | 일반 파일은 직접 읽고 필요한 파일만 Excel·xlwings 사용. 대소문자 임의 변환·매크로 실행 없음. VBA 거절 시 가능한 분석만 계속하며 사내 DRM·전체 변환 성공은 별도 확인 |
 | `company-agent:file-organizer` | 폴더 정리안 작성, 승인 후 이동 | 삭제·덮어쓰기 없는 계획. 되돌리기는 기록과 이후 파일 상태가 맞는 이동만 대상 |
-| `company-agent:outlook-assistant` | 메일 찾기·요약·답장 초안·보관 계획 | 승인된 회사 연결 우선. 선택적 로컬 Outlook 조회는 읽기 전용; 새 발송/이동 연결을 자동 설치하지 않음 |
 | `company-agent:personal-memory` | 개인 선호·지속적인 업무 맥락 저장/조회 | 이번 수정과 장기 저장을 구분. Company Agent 저장소와 Claude 자체 기억을 자동 합치지 않음 |
 | `company-agent:personal-knowledge` | 용어·지표 정의·업무 지식 정리 | 회사 원본 보존, 출처·개인 적용 상태 구분 |
 | `company-agent:work-context-catalog` | 반복 업무·비정형 절차·도메인 지식 후보를 HTML·Markdown 자산으로 정리 | 요청 흐름과 실제 도구 동작·응답/오류·출처를 구분. HTML에서 Markdown 다운로드, 검토한 catalog 재집계 지원. 비업무·근거 부족은 제외 후보이며 실행할 때만 확인 |
@@ -146,7 +145,7 @@ HTML/PPT는 한 요청에 최종 파일 한 개가 기본입니다. 초안·수�
 | `SessionStart` | 시작·재개 시 현재 설치와 실행 경로·스킬 목록·업무 맥락 준비 | 준비 출력은 모델 적용·업무 성공 증거가 아님 |
 | `UserPromptSubmit` | 요청별 관련 기억·업무 후보·작업자 등급·회사 기준·현재 작업 상태 안내 | 전체 스킬 본문을 매번 넣거나 별도 분류 모델을 호출하지 않음 |
 | `PreToolUse` | 위험 명령 확인, 이번 업무의 스킬 준비와 대상 회사 MCP 정책 확인, 회사 작업자에 실행 정보 전달 | 명확히 겹치는 같은 역할의 후보는 선택 후 본문 준비. 이전 목록·다른 스킬·재시도만으로 생략하지 않음. 후보가 없거나 불명확한 업무는 안내만 전달 |
-| `PermissionRequest` | 정확히 확인된 읽기 전용 내부 준비 명령의 제한된 승인 처리 | 현재 범위는 신뢰된 Python 진입점의 doctor/mail-capabilities 등 정해진 형태. 임의 명령·Office 열기·파일 쓰기 자동 승인이 아님 |
+| `PermissionRequest` | 정확히 확인된 읽기 전용 내부 준비 명령의 제한된 승인 처리 | 현재 범위는 신뢰된 Python 진입점의 doctor 등 정해진 형태. 임의 명령·Office 열기·파일 쓰기 자동 승인이 아님 |
 | `PostToolUse` | 도구 결과·스킬 본문 로드·변경 및 실행 관찰 기록 | 도구 호출/본문 로드와 업무 내용의 정확성은 별개 |
 | `PostToolUseFailure` | 실행 실패 관찰, 보완에 필요한 상태 유지 | 출력을 못 봤다고 성공 기록을 만들지 않음 |
 | `Stop` | 변경 작업의 완료 확인 | 질문·승인·작업자 대기는 완료가 아님. 진전이 없으면 반복을 멈추고 미확인 범위를 유지. 학습만을 위해 응답을 다시 이어가지 않음 |

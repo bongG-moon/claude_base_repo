@@ -11,7 +11,7 @@ python -X utf8 -B scripts/build-skill-packages.py
 python -X utf8 -B scripts/build-skill-packages.py --check
 ```
 
-첫 명령은 현재 작업 파일(미커밋 수정 포함)을 패키징합니다. 두 번째는 ZIP을 다시 계산해 최신 여부만 확인합니다. 변경이 없으면 ZIP을 다시 쓰지 않습니다. ZIP 파일명은 `<스킬명>.zip`, 원본 `packageId`와 설치 이름은 `<스킬명>`입니다. 예를 들어 `html-report.zip`의 ID와 폴더 이름은 `html-report`, 호출은 `/html-report`입니다. Company 접두어를 붙이지 않습니다. 각 ZIP은 필요한 작업 지침, 코드와 참고 자료를 포함하며 별도 하네스 설치 없이 사용합니다. Python 패키지, Office나 메일 연결 등 해당 기능의 사용 환경은 설치 안내에 명시합니다. 출처 추적용 소스 버전과 실제 플랫폼 게시 버전은 다릅니다.
+첫 명령은 현재 작업 파일(미커밋 수정 포함)을 패키징합니다. 두 번째는 ZIP을 다시 계산해 최신 여부만 확인합니다. 변경이 없으면 ZIP을 다시 쓰지 않습니다. ZIP 파일명은 `<스킬명>.zip`, 원본 `packageId`와 설치 이름은 `<스킬명>`입니다. 예를 들어 `html-report.zip`의 ID와 폴더 이름은 `html-report`, 호출은 `/html-report`입니다. Company 접두어를 붙이지 않습니다. 각 ZIP은 필요한 작업 지침, 코드와 참고 자료를 포함하며 별도 하네스 설치 없이 사용합니다. Python 패키지, Office나 데이터 연결 등 해당 기능의 사용 환경은 설치 안내에 명시합니다. 출처 추적용 소스 버전과 실제 플랫폼 게시 버전은 다릅니다.
 
 플랫폼에서 기존 도구의 새 버전으로 등록할 때는 다른 packageId의 ZIP도 선택할 수 있습니다. 예전 `company.skills.<스킬명>` 도구를 업데이트하면 플랫폼의 숫자 도구 ID와 최초 정상 packageId는 유지되고, 새 ZIP의 원본 식별자는 `<스킬명>`으로 보관됩니다. 신규 등록은 처음부터 새 ID를 사용합니다. 기존 설치 폴더 이름은 이미 `<스킬명>`이므로 ID 변경만으로 새 사본을 만들거나 개인 수정분을 덮어쓰지 않습니다. 이전 `square-company-*` 이름도 같은 스킬로 확인합니다. MCP 및 배포 Skill로 게시할 때는 사용자가 지정한 기존 도구 ID와 내용, 공개 범위를 확인합니다. 최신 MCP는 명확한 게시 요청을 채팅에서 완료하며, 독립 CLI는 웹 검토 방식을 사용합니다. 이름이 비슷하거나 새 ZIP의 식별자가 다른 도구와 같다는 이유로 자동 덮어쓰지 않습니다.
 
@@ -58,7 +58,7 @@ python -X utf8 -B scripts/build-skill-packages.py --distribution-skill "최신 p
 
 ## 다른 프로젝트의 MCP 함께 배포하기
 
-`skills_zip`에는 개별 스킬 12개와 별도 도구인 **제조 메타데이터 Oracle MCP**가 있습니다. HTML의 **별도 MCP**에서 선택합니다. MCP는 하네스에 내장되거나 Skill로 자동 등록되지 않습니다. ZIP 전체를 풀고 README.md의 설치 범위·MongoDB/Oracle 접속 설정 안내를 따릅니다. asset-factory는 MCP 제작 스킬이며 자체 MCP 서버가 아닙니다. Outlook 스킬도 메일 MCP 서버를 배포하지 않습니다.
+`skills_zip`에는 개별 스킬 15개와 별도 도구인 **제조 메타데이터 Oracle MCP**가 있습니다. HTML의 **별도 MCP**에서 선택합니다. MCP는 하네스에 내장되거나 Skill로 자동 등록되지 않습니다. ZIP 전체를 풀고 README.md의 설치 범위·MongoDB/Oracle 접속 설정 안내를 따릅니다. asset-factory는 MCP 제작 스킬이며 자체 MCP 서버가 아닙니다.
 
 이 MCP의 정본은 `metadata_driven_v5` 프로젝트이며, 여기서는 검토된 ZIP을 바이트 그대로 보관합니다. `scripts/platform_skills/external-packages.json`에 원본 프로젝트·산출물·대화·packageId·SHA-256을 기록했습니다. 생성기는 등록된 ZIP의 해시와 최신 플랫폼 규격을 검사하고 목록·설치 안내·체크섬에 포함합니다. 원본 프로젝트를 자동 탐색하거나 수정하지 않습니다.
 
@@ -71,7 +71,7 @@ python -X utf8 -B -m unittest discover -s tests -p "test_platform_skill_*.py" -v
 python -X utf8 -B -m unittest discover -s tests -p "test_portable_*skills.py" -v
 ```
 
-패키지 규격·정규화 원본 바이트·참조·해시·최신 여부, 격리 프로젝트 설치, 합성 엑셀 처리와 업무 맥락 보고서를 확인합니다. 실제 회사 Outlook/MCP·보호 파일·모델 호출은 별도 운영 검증 대상입니다. 새 스킬의 업무 의미·업무 흐름이 정확한지는 소스 변경자도 함께 검토해야 합니다.
+패키지 규격·정규화 원본 바이트·참조·해시·최신 여부, 격리 프로젝트 설치, 합성 엑셀 처리와 업무 맥락 보고서를 확인합니다. 실제 회사 MCP·보호 파일·모델 호출은 별도 운영 검증 대상입니다. 새 스킬의 업무 의미·업무 흐름이 정확한지는 소스 변경자도 함께 검토해야 합니다.
 
 2026-10-25 독립판 분리 검증: 패키지 34개, 설치기 28개, 외부 MCP 5개, 독립 업무·HTML/PPT 23개로 총 90개 테스트가 통과했습니다. 빈 사용자 프로필과 저장소 밖 임시 복사본에서 생성·읽기·파일 이동/복구를 실행했습니다. PPT는 네이티브 글자 서식·표·차트·그룹 및 그룹 해제 후 좌표를 XML로 확인했으며 실제 Office 화면을 검증한 것은 아닙니다. HTML/PPT 시험은 선언된 python-pptx가 격리 Python에서 보이는 환경으로 실행해야 합니다. 의존성이 없는 환경의 건너뛴 검사를 통과로 세지 않습니다. 외부 MCP는 더미 설정의 로컬 통신만 시험했고 원본 ZIP 해시는 유지했습니다.
 

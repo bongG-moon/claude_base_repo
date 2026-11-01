@@ -16,7 +16,7 @@ description: company_agent_route가 있는 업무의 스킬 선택, 작업자 �
 - 실제 AskUserQuestion 답변은 후크가 자동 기록합니다. 답변 후 선택한 후보의 정확한 `load`를 바로 실행합니다. 자동 연결이 누락됐다는 근거가 있을 때만 현재 `skillWorkflow`의 정확한 ID로 `skill choose`를 사용하고 반환된 load를 따릅니다. 정상 선택마다 기록 명령을 반복하지 않습니다.
 - 고유 호출명은 Skill, 정확한 파일 선택은 후보의 Read 경로를 사용하되 native 전용 실행 조건과 `explicitOnly`를 유지합니다. 현재 문맥에 있는 동일 본문은 재사용합니다. 목록의 이름만으로 본문을 읽었다고 간주하지 않습니다. 실제 권한 거절을 Read로 우회하지 않습니다.
 - 관련 스킬이 없으면 일반 실행합니다. `skill route`는 시작 필수 명령이 아닙니다. 선택 누락이나 오래된 로드 근거만 `references/skill-selection.md`로 해결합니다. `/company-agent:skills`는 목록이나 우선 설정을 요청했을 때 사용합니다.
-- `metadataCommand`는 명시된 doctor, mail-capabilities, 세션 없는 eml-read에만 사용하며 다른 실행 권한을 부여하지 않습니다.
+- `metadataCommand`는 명시된 doctor에만 사용하며 다른 실행 권한을 부여하지 않습니다.
 - 사용자가 하네스의 사용성 개선 보고서를 요청할 때만 `/company-agent:usability-report`의 절차를 사용합니다. 기존 기록을 로컬 집계하고 짧은 결과만 설명하며, 일반 업무에 진단이나 자동 압축을 붙이지 않습니다.
 
 ## 2. 범위와 자료 보호

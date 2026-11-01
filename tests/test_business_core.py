@@ -148,28 +148,8 @@ class BusinessCoreTests(unittest.TestCase):
         self.assertEqual("permission_denied", result["code"])
         self.assertNotIn("PRIVATE", json.dumps(result))
 
-    def test_mail_body_json_flag_cannot_skip_actual_user_confirmation(self):
-        spec = self.root / "mail.json"
-        atomic_write_json(spec, {"include_body": True, "body_access_approved": True, "account_smtp": "person@example.test"})
-        with patch.object(business, "confirm_action", return_value=False), patch("company_agent.business_mail.read_mail") as read:
-            result = business.dispatch(self.args("mail-read", spec=str(spec)))
-            read.assert_not_called()
-        self.assertEqual("cancelled", result["status"])
 
-    def test_mail_body_approval_inserted_only_after_user_confirmation(self):
-        spec = self.root / "mail.json"
-        atomic_write_json(spec, {"include_body": True, "account_smtp": "person@example.test"})
-        with patch.object(business, "confirm_action", return_value=True), patch("company_agent.business_mail.read_mail", return_value={"ok": True}) as read:
-            business.dispatch(self.args("mail-read", spec=str(spec)))
-        self.assertIs(True, read.call_args.args[0]["body_access_approved"])
 
-    def test_known_protected_source_is_stopped_before_adapter(self):
-        spec = self.root / "mail.json"
-        atomic_write_json(spec, {"include_body": True, "protection": "protected"})
-        with patch("company_agent.business_mail.read_mail") as read:
-            result = business.dispatch(self.args("mail-read", spec=str(spec)))
-            read.assert_not_called()
-        self.assertEqual("protection_blocked", result["code"])
 
     def test_protection_turn_cannot_write_free_text_learning(self):
         session = begin_turn("business-test", "MEDIUM", False, [], self.state)

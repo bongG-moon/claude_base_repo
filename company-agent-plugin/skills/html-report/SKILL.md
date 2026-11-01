@@ -44,7 +44,7 @@ description: 자료를 HTML 보고서로 만들거나 수정합니다. 디자인
 아래 명령은 현재 후크의 `company_agent_runtime.cliCommand` 뒤에 붙이고 전달된 `stateRoot`를 그대로 사용합니다. 메타데이터 이름을 명령으로 실행하거나 설치 경로를 추측하지 않습니다. 작업자 사용은 현재 런타임 라우팅을 따르며 선택과 이미 읽은 참조, 같은 workFile을 전달합니다.
 
 1. **작업 공간:** 기존 workFile이 없을 때만 `business artifact-start --output "<final.html>" --state-root "<stateRoot>"`. 반환한 workFile, jobPath, workingDirectory를 첨부 양식 확인부터 수정과 완료까지 재사용합니다.
-2. **내용:** jobPath에 선택값과 title, sections를 실제 스키마로 작성합니다. 원자료의 수치, 조건, 인용은 보존하고 계산한 총계와 분모는 `facts`와 `{{fact:id}}`로 재사용합니다. `contentOrder/contentLayout`은 블록 순서를 명시해야 할 때만 지정합니다. 특히 contentOrder는 세로 배치를 우선하므로 좌우 배치가 필요한 레퍼런스와 무조건 함께 넣지 않습니다.
+2. **내용:** jobPath에 선택값과 title, sections를 실제 스키마로 작성합니다. 원자료의 수치, 조건, 인용은 보존하고 계산한 총계와 분모는 `facts`와 `{{fact:id}}`로 재사용합니다. 숫자를 설명할 때는 `{{fact:id.statement}}`와 기존 분모, 범위, 출처를 함께 유지합니다. `contentOrder/contentLayout`은 블록 순서를 명시해야 할 때만 지정합니다. 특히 contentOrder는 세로 배치를 우선하므로 좌우 배치가 필요한 레퍼런스와 무조건 함께 넣지 않습니다.
 3. **생성:** `business html --spec "<jobPath>" --work "<workFile>" --state-root "<stateRoot>"`. 경고와 저장된 결과를 읽고 원자료 총계, 결론, 제외 범위를 확인합니다. 정적 산술 검사는 원자료 정확도나 화면 검토를 대신하지 않습니다.
 4. **화면:** 넓은 화면의 빈 열과 좁은 화면의 표 넘침, 한글 줄바꿈, 실제 표 기능을 확인합니다. 처음에는 전체, 수정 뒤에는 변경과 영향 범위만 봅니다. 이미지 관찰이 필요할 때만 `../presentation/references/image-review.md`를 읽고 현재 허용된 경로를 사용합니다. 보지 못한 화면은 미확인으로 알립니다.
 5. **전달:** `business artifact-publish --work "<workFile>" --state-root "<stateRoot>"` 후 최종 파일과 필요한 제한만 전달합니다. job, 초안, 검토 파일을 별도 최종본처럼 나열하거나 draft2/v3를 만들지 않습니다.
@@ -53,4 +53,4 @@ description: 자료를 HTML 보고서로 만들거나 수정합니다. 디자인
 
 작업 경로, 재시도, 정리가 불명확할 때만 `../company-agent/references/output-delivery.md`를 읽습니다. publish는 등록된 미변경 중간 파일만 정리하며 실패를 이유로 광범위한 삭제나 재생성을 하지 않습니다.
 
-입력을 바꾸어 반복 실행할 별도 코드를 만드는 경우에만 `references/regeneration.md`의 실행 예제를 사용합니다. 이전 정상본을 먼저 지우지 않고 job, HTML과 근거를 같은 실행의 묶음으로 완성한 뒤 전환합니다. 기존 workFile의 일반 생성과 publish에는 이 별도 실행을 추가하지 않습니다.
+입력을 바꾸어 반복 실행할 별도 코드를 만드는 경우에만 `references/regeneration.md`의 완성 예제를 사용합니다. job, HTML과 근거를 같은 실행 묶음으로 완성한 뒤 고정 entryPath 하나를 전달합니다. 게시 후 삭제와 복사 래퍼를 덧붙이지 않으며 실패하면 이전 정상본을 유지합니다. 기존 workFile의 일반 생성과 publish에는 이 별도 실행을 추가하지 않습니다.

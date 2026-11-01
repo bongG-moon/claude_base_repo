@@ -15,8 +15,8 @@ from .skill_decision import NEXT_ACTIONS
 # Observe known business invocations, not metadata/help/choice preparation.
 # This is NOT a skill-name -> command dispatcher and never invokes anything.
 OPERATIONS = frozenset({'html', 'ppt', 'ppt-preview', 'ppt-design-preview', 'ppt-template', 'ppt-fit-images',
-                       'ppt-inspect', 'ppt-analyze', 'html-template', 'eml-read', 'artifact-publish',
-                       'mail-read', 'mail-search', 'files-execute', 'files-undo'})
+                       'ppt-inspect', 'ppt-analyze', 'html-template', 'artifact-publish',
+                       'files-execute', 'files-undo'})
 MAX_RESULT_CHARS = 65_536
 BODY_LABELS = {'loaded': '본문 로드 관찰', 'reused': '이 대화에서 읽은 동일 본문 재사용',
                'host-loaded': '호스트 스킬 로드 관찰(로컬 목록 밖)',

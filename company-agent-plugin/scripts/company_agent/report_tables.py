@@ -2,6 +2,19 @@
 from __future__ import annotations
 
 import html
+import re
+
+
+def _column_type(header):
+    """Conservative layout hints only; never coerce values, sorting or CSV data."""
+    key = re.sub(r"\s+", "", str(header)).lower()
+    if key in ("id", "식별자", "코드", "품목코드", "사번", "관리번호") or re.search(r"[ _]id$", str(header), re.I):
+        return "id"
+    if key in ("월", "연월", "기준월", "기간", "집계기간", "조회기간", "period", "month"):
+        return "period"
+    if key in ("날짜", "일자", "기준일", "date"):
+        return "date"
+    return "text"
 
 
 def render(headers, rows, caption="", *, options=None):
@@ -10,6 +23,9 @@ def render(headers, rows, caption="", *, options=None):
     interactive = options.get("interactive", True)
     kind_rows = options.get("cellKinds", [])
     numeric_rows = options.get("cellNumbers", [])
+    configured = options.get("columnTypes", [])
+    column_types = [configured[i] if i < len(configured) and configured[i] != "auto" else _column_type(header)
+                    for i, header in enumerate(headers)]
     body = []
     for i, row in enumerate(rows):
         kinds = kind_rows[i] if i < len(kind_rows) else []
@@ -19,6 +35,8 @@ def render(headers, rows, caption="", *, options=None):
             number = (kinds[j] == "number" if j < len(kinds) else
                       isinstance(value, (int, float)) and not isinstance(value, bool))
             attr = ' data-kind="number" class="numeric"' if number else ''
+            if column_types[j] in ("id", "date", "period") and len(str(value)) <= 80 and not re.search(r"[\r\n]", str(value)):
+                attr += f' data-column-kind="{column_types[j]}"'
             if number and j < len(numeric_values) and numeric_values[j] is not None:
                 attr += f' data-number="{esc(numeric_values[j])}"'
             cells.append(f'<td{attr}>{esc(value)}</td>')
@@ -26,7 +44,7 @@ def render(headers, rows, caption="", *, options=None):
     return ('<div class="report-data-table" data-report-table="' + ('interactive' if interactive else 'static') + '">'
             '<div class="table-wrap" tabindex="0" role="region" aria-label="' + esc(caption or '보고서 데이터') + ' 표, 가로와 세로 스크롤">'
             f'<table style="--columns:{len(headers)}">' + (f'<caption>{esc(caption)}</caption>' if caption else '') +
-            '<thead><tr>' + ''.join(f'<th scope="col">{esc(v)}</th>' for v in headers) + '</tr></thead><tbody>' +
+            '<thead><tr>' + ''.join(f'<th scope="col" data-column-kind="{esc(column_types[i])}">{esc(v)}</th>' for i, v in enumerate(headers)) + '</tr></thead><tbody>' +
             ''.join(body) + '</tbody></table></div>' +
             ('<p class="table-empty-source">데이터가 없습니다. 원자료의 조회 범위를 확인해 주세요.</p>' if not rows else '') + '</div>')
 
@@ -38,6 +56,7 @@ CSS = r"""
 .report-data-table table{border-collapse:separate;border-spacing:0;margin:0}
 .report-data-table thead th{position:sticky;top:0;z-index:1;background:var(--paper);box-shadow:0 1px var(--line);color:var(--ink)}
 .report-data-table :is(td,th){min-width:7rem;max-width:28rem;padding:12px 16px;word-break:keep-all;overflow-wrap:anywhere;white-space:pre-line;line-height:1.6}
+@media screen{.report-data-table td:is([data-column-kind="id"],[data-column-kind="date"],[data-column-kind="period"]){white-space:nowrap;word-break:normal;overflow-wrap:normal;min-width:9ch}}
 .report-data-table tbody tr:hover{background:var(--bg)}
 .report-data-table caption{text-align:left;font-weight:650;padding:12px 16px;color:var(--ink)}
 .table-tools,.table-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 16px;background:var(--paper)}

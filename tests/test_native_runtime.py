@@ -509,7 +509,7 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         runtime = json.loads(json.loads(started.stdout)["hookSpecificOutput"]["additionalContext"])["company_agent_runtime"]
         self.assertEqual(self.record["userStateRoot"], runtime["stateRoot"])
         base_command = runtime["metadataCommand"]
-        for operation in ("doctor", "mail-capabilities"):
+        for operation in ("doctor",):
             command = f'{base_command} business {operation} --state-root "{runtime["stateRoot"]}"'
             result = self.run_wrapper(["-Mode", "Hook", "-Event", "PermissionRequest"], {
                 **payload, "tool_name": "Bash", "tool_input": {"command": command,
@@ -531,7 +531,7 @@ class NativePowerShellTests(NativeRuntimeTestBase):
         self.assertEqual(b"", completed.stderr)
         doctor = json.loads(completed.stdout)
         self.assertEqual("diagnostic_only", doctor["status"])
-        self.assertEqual("connection_not_tested", doctor["outlook"]["status"])
+        self.assertNotIn("outlook", doctor)
         self.assertFalse((self.root / "wrong-state").exists())
 
     def test_removed_reader_is_not_registered_in_native_cli(self):

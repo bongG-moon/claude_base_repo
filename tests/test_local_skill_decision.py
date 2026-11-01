@@ -81,9 +81,9 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
     output = execution.SkillExecutionTests.output
     state = execution.SkillExecutionTests.state
 
-    def command(self, operation='eml-read'):
+    def command(self, operation='ppt-inspect'):
         cli = discovery.PLUGIN / 'scripts/harness_cli.py'
-        return f'"{sys.executable}" -B "{cli}" business {operation} --file "{self.f.project / "PRIVATE.eml"}"'
+        return f'"{sys.executable}" -B "{cli}" business {operation} --template "{self.f.project / "PRIVATE.pptx"}"'
 
     def activity(self, result=None, **changes):
         payload = {'session_id': self.f.sid, 'hook_event_name': 'PostToolUse', 'tool_name': 'Bash',
@@ -134,7 +134,7 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
         state = self.activity({'ok': True, 'status': 'read', 'items': [{'text': 'PRIVATE-DOCUMENT'}]})
         progress = workflow_progress(state)
         self.assertEqual('reported-success', progress['execution'])
-        self.assertEqual('eml-read', progress['operation'])
+        self.assertEqual('ppt-inspect', progress['operation'])
         self.assertEqual('loaded', progress['bodyAtResponse'])
         self.assertEqual('not-verified', progress['resultQuality'])
         self.assertEqual(before['verification'], state['verification'])
@@ -184,7 +184,7 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
         self.output()
         commands = [self.command() + ' --help', self.command() + ' | more',
                     'python -c "print(1)"', self.command('doctor'),
-                    f'"{self.f.project / "harness_cli.py"}" business eml-read --file x.eml']
+                    f'"{self.f.project / "harness_cli.py"}" business ppt-inspect --template x.pptx']
         for cmd in commands:
             state = self.activity(tool_input={'command': cmd})
             self.assertEqual('not-observed', workflow_progress(state)['execution'])
@@ -226,7 +226,7 @@ class LocalDecisionIntegrationTests(unittest.TestCase):
         state = {'turnId': 'now', 'skillWorkflow': {'turn': 'now', 'executionPlan': {'mode': ['PRIVATE']},
                  'businessObservation': {'turn': 'now', 'operation': 'PRIVATE', 'status': ['PRIVATE'], 'bodyAtResponse': 'PRIVATE'}}}
         self.assertNotIn('PRIVATE', json.dumps(workflow_progress(state)))
-        state['skillWorkflow']['businessObservation']['operation'] = 'eml-read'
+        state['skillWorkflow']['businessObservation']['operation'] = 'ppt-inspect'
         self.assertEqual('not-observed', workflow_progress(state)['execution'])
 
 
@@ -240,7 +240,7 @@ class LocalDecisionDiagnosticTests(unittest.TestCase):
             'turn': 'one', 'executionPlan': {'mode': 'load'},
             'selected': {'id': 'reader', 'sha256': sha}, 'readSkills': {'reader': sha},
             'lastBodyLoad': {'turn': 'one', 'id': 'reader', 'sha256': sha},
-            'businessObservation': {'turn': 'one', 'operation': 'eml-read',
+            'businessObservation': {'turn': 'one', 'operation': 'ppt-inspect',
                                     'status': 'partial', 'bodyAtResponse': 'loaded', 'raw': 'PRIVATE'}}})
         before = self.snapshot()
         report = routing.inspect(self.claude, self.local, self.project)
@@ -256,7 +256,7 @@ class LocalDecisionDiagnosticTests(unittest.TestCase):
 
     def test_old_or_stale_observations_do_not_become_current_results(self):
         for state in ({}, {'turnId': 'two', 'skillWorkflow': {'turn': 'one', 'executionPlan': {'mode': 'load'},
-                      'businessObservation': {'turn': 'one', 'operation': 'eml-read', 'status': 'reported-success'}}}):
+                      'businessObservation': {'turn': 'one', 'operation': 'ppt-inspect', 'status': 'reported-success'}}}):
             atomic_write_json(self.state / 'sessions/example.json', state)
             progress = routing.inspect(self.claude, self.local, self.project)['sessions'][0]['workflowProgress']
             self.assertEqual('unknown', progress['decision'])

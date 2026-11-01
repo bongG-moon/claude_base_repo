@@ -19,7 +19,7 @@ class LeanSkillContractTests(unittest.TestCase):
         self.assertEqual(len(names), len(set(names)))
         self.assertEqual(set(names), {
             "company-agent", "asset-factory", "file-organizer", "html-report",
-            "karpathy-guidelines", "outlook-assistant", "personal-knowledge",
+            "karpathy-guidelines", "personal-knowledge",
             "personal-memory", "presentation", "project-harness", "self-learning",
             "platform-mcp-builder",
             "excel-to-pipeline", "web-interface", "website-rebuild", "work-context-catalog",

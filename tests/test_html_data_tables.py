@@ -167,8 +167,41 @@ console.log(JSON.stringify({order:found.map(r=>r.numbers[0]),csv:reportTableCsv(
         self.assertIn('data-report-table="static"', self.output.read_text(encoding='utf-8'))
         for table in ({'headers': ['a'], 'rows': [[1]] * 5001},
                       {'headers': ['a'], 'rows': [[float('inf')]]},
-                      {'headers': ['a'], 'rows': [[1]], 'interactive': 'yes'}):
+                      {'headers': ['a'], 'rows': [[1]], 'interactive': 'yes'},
+                      {'headers': ['a'], 'rows': [[1]], 'columnTypes': ['id', 'text']},
+                      {'headers': ['a'], 'rows': [[1]], 'columnTypes': ['unknown']}):
             self.assertFalse(create_html({'sections': [{'table': table}]}, self.output.with_name('bad.html'))['ok'])
+
+    def test_semantic_id_date_period_layout_survives_inserted_columns_and_reordering(self):
+        columns = [('ID', 'A-2026-001', 'id'), ('월', '2026-10', 'period'),
+                   ('날짜', '2026-10-31', 'date'), ('설명', '검토할 긴 설명 ' * 25, 'text')]
+        for iteration, selected in enumerate((columns, [columns[3], ('메모', '새 열', 'text'), *columns[:3]])):
+            with self.subTest(iteration=iteration):
+                result = create_html({'sections': [{'table': {'headers': [c[0] for c in selected],
+                                      'rows': [[c[1] for c in selected]]}}]}, self.output.with_name(f'table-{iteration}.html'))
+                self.assertTrue(result['ok'], result)
+                source = self.output.with_name(f'table-{iteration}.html').read_text(encoding='utf-8')
+                table = ET.fromstring(re.search(r'<table\b.*?</table>', source, re.S).group())
+                cells = table.findall('./tbody/tr/td')
+                for column, cell in zip(selected, cells):
+                    self.assertEqual(column[1], cell.text)
+                    self.assertEqual(column[2] if column[2] != 'text' else None, cell.get('data-column-kind'))
+                self.assertIn('white-space:nowrap;word-break:normal;overflow-wrap:normal', source)
+
+    def test_explicit_column_types_are_layout_only_and_allow_prose_override(self):
+        spec = {'sections': [{'table': {'headers': ['값', '기간', '금액'], 'rows': [['000007', '기간을 설명하는 글', 123.5]],
+                                       'columnTypes': ['id', 'text', 'auto']}}]}
+        self.assertTrue(create_html(spec, self.output)['ok'])
+        table = ET.fromstring(re.search(r'<table\b.*?</table>', self.output.read_text(encoding='utf-8'), re.S).group())
+        cells = table.findall('./tbody/tr/td')
+        self.assertEqual('000007', cells[0].text)
+        self.assertEqual('id', cells[0].get('data-column-kind'))
+        self.assertIsNone(cells[0].get('data-kind'))
+        self.assertIsNone(cells[1].get('data-column-kind'))
+        self.assertEqual('number', cells[2].get('data-kind'))
+        # A very long or multi-line value remains readable rather than making an enormous row.
+        rendered = ET.fromstring(render(['ID', '월'], [['x' * 81, '2026-10\n2026-11']]))
+        self.assertTrue(all(cell.get('data-column-kind') is None for cell in rendered.findall('.//tbody/tr/td')))
 
 
 if __name__ == '__main__':

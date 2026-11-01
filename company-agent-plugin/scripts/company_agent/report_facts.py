@@ -5,6 +5,7 @@ are deliberately not marked verified by this module.
 """
 from __future__ import annotations
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+import json
 import re
 from typing import Any
 
@@ -17,6 +18,8 @@ class FactError(ValueError):
 # it in the existing fact lets table notes and cross-format handoffs reuse it.
 CONTEXT_FIELDS = {"period": 100, "scope": 500, "exclusions": 500,
                   "denominator": 300, "source": 500}
+HANDOFF_MAX_ITEMS = 12
+HANDOFF_MAX_CHARS = 4000
 
 
 def number(value: Any) -> Decimal:
@@ -112,9 +115,43 @@ def resolve(spec: dict, sections: list[dict]) -> tuple[dict, dict]:
             raise FactError("대조할 공통 수치를 찾을 수 없습니다.")
         if facts[check["left"]]["number"] != facts[check["right"]]["number"]:
             raise FactError("표·차트·총계의 수치가 일치하지 않습니다. 결과물을 만들기 전에 수정해 주세요.")
-    return facts, {"arithmetic": "checked" if facts else "not_provided", "facts": len(facts), "crossChecks": len(checks),
-                   "sourceAccuracy": "not_verified", "freeTextClaims": "not_verified", "visual": "not_verified",
-                   "metricMeaning": "not_verified"}
+    validation = {"arithmetic": "checked" if facts else "not_provided", "facts": len(facts), "crossChecks": len(checks),
+                  "sourceAccuracy": "not_verified", "freeTextClaims": "not_verified", "visual": "not_verified",
+                  "metricMeaning": "not_verified"}
+    if facts:
+        handoff = compact_handoff(facts, max_items=HANDOFF_MAX_ITEMS, max_chars=HANDOFF_MAX_CHARS)
+        validation["factHandoff"] = handoff
+        validation["factHandoffOmitted"] = len(facts) - len(handoff)
+    return facts, validation
+
+
+def statement(fact: dict) -> str:
+    """Join the author's metric name with its computed value, without inference."""
+    return f"{fact['label']} {fact['display']}{fact['unit']}"
+
+
+def compact_handoff(facts: dict, *, max_items: int | None = None,
+                    max_chars: int | None = None) -> list[dict]:
+    """Reuse resolved metric wording and declared context in an existing handoff.
+
+    No model calls, source reads, new checks or separate handoff file are needed.
+    The resolved Decimal is intentionally omitted to keep the result JSON-safe.
+    Optional context stays separate so slide titles need not contain long notes.
+    Automatic responses pass small limits. Keep complete rows in source order;
+    the character budget measures compact JSON with Unicode preserved.
+    """
+    result = []
+    used = 2  # JSON list brackets
+    for key, fact in facts.items():
+        row = dict(id=key, statement=statement(fact),
+                   **{field: fact[field] for field in CONTEXT_FIELDS if field in fact})
+        size = len(json.dumps(row, ensure_ascii=False, separators=(',', ':'))) + bool(result)
+        if ((max_items is not None and len(result) >= max_items)
+                or (max_chars is not None and used + size > max_chars)):
+            break
+        result.append(row)
+        used += size
+    return result
 
 
 def bind(text: str, facts: dict) -> str:
@@ -133,11 +170,13 @@ def bind(text: str, facts: dict) -> str:
             return fact["display"]
         if field == "valueWithUnit":
             return fact["display"] + fact["unit"]
+        if field == "statement":
+            return statement(fact)
         if field in ("label", "unit") or field in CONTEXT_FIELDS:
             if field not in fact:
                 raise FactError(f"참조한 공통 수치에 {field}를 먼저 지정해 주세요.")
             return fact[field]
-        raise FactError("수치 참조 필드는 label, unit, valueWithUnit, period, scope, exclusions, denominator, source만 지원합니다.")
+        raise FactError("수치 참조 필드는 label, unit, valueWithUnit, statement, period, scope, exclusions, denominator, source만 지원합니다.")
     result = re.sub(r"\{\{fact:([a-zA-Z][a-zA-Z0-9_-]{0,63})(?:\.([a-zA-Z]+))?\}\}", replace, text)
     if "{{fact:" in result:
         raise FactError("본문 수치 참조 형식을 확인해 주세요.")

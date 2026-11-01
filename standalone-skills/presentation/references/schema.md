@@ -25,6 +25,8 @@ JSON은 작업자가 만드는 내부 파일입니다. 사용자는 목적·자�
 chart는 type(column/bar/line/pie), categories, series(name/values)입니다. `contentOrder`는 해당 장에 존재하는
 body/bullets/table/chart/image를 한 번씩 적습니다. 자동 배치가 공간을 초과하면 내용·장수 조정으로 해결하며 몰래 축소하지 않습니다.
 
+일반 차트는 12항목, 4계열 이하를 지원합니다. 막대의 음수 값도 계열 색을 유지하고 항목명은 0축 바깥에 모든 항목을 표시합니다. 값 라벨은 6항목 이하에서 표시하며 선 차트는 점 위아래에 둡니다. 자동 라벨 생략을 끄는 설정이 긴 항목명이나 교차하는 선의 겹침까지 해결하지는 않으므로 기존 화면 검토에서 확인합니다. 긴 이름이나 밀집한 자료는 이름을 짧게 쓰거나 장을 나눕니다.
+
 ## 자유 배치, 카드와 그룹
 
 한 장의 `elements`는 자동 body/bullets/table/chart 배치와 섞지 않습니다. 좌표·크기는 pt입니다.
@@ -55,6 +57,11 @@ image는 `image:{"path":"그림.png","alt":"설명"}`와 x/y/w/h, fit(contain/co
 
 facts는 value/sum/ratio/difference/percent_change, table/chart 좌표는 0부터 시작합니다.
 `{{fact:id}}`로 제목과 본문에 같은 계산값을 넣고 원자료의 단위·기간과 대조합니다.
+`{{fact:id.statement}}`는 명시한 label과 계산값, unit을 함께 표시합니다. 기존 숫자만의 바인딩은 그대로 지원합니다. 예산 10,000, 실적 7,186이면 차이 2,814를 예산으로 나눈 값의 label은 `예산 대비 미달률`, 실적으로 나눈 값의 label은 `실적 대비 예산 초과율`로 구분합니다. 각각 `예산 대비 미달률 28.14%`와 `실적 대비 예산 초과율 39.16%`가 됩니다. 실행기가 입력의 의미나 label을 자동 추측하지 않습니다.
+
+필요할 때만 fact에 `period`(100자), `scope`, `exclusions`, `source`(각 500자), `denominator`(300자)를 넣습니다. 각각 기간, 포함 범위, 제외 조건, 출처, 분모입니다. `{{fact:id.denominator}}`처럼 주석에 그대로 재사용하며 모르는 필드는 생략합니다. facts가 있으면 기존 응답의 arithmetic 안에 `factHandoff`가 `{id, statement, 선언한 문맥 필드}` 목록으로 함께 반환됩니다. draft에서는 `validation.arithmetic.factHandoff`, build에서는 `arithmetic.factHandoff`를 기존 설명이나 작업자 인계에 재사용합니다. 별도 인계 파일, 모델 호출이나 확인 단계를 추가하지 않습니다. 이름과 계산값의 연결을 유지하는 기능이며 자유문장, 분모 설명의 사실 여부를 자동 검증하는 기능은 아닙니다.
+자동 응답 목록은 최대 12개, 압축 JSON 기준 4,000자 안에서 완전한 행만 포함하며 `factHandoffOmitted`가 생략 개수를 알려줍니다. 전체 facts와 본문 바인딩은 그대로 유지합니다.
+
 draft 결과의 `designReview`는 경로·명세 해시·초안 해시를 포함합니다. 실제 승인 후에만 그대로 복사하고
 `confirmed:true`로 바꿉니다. 원본이나 초안을 바꾸면 build가 거절하므로 갱신된 초안을 먼저 확인합니다.
 해시를 임의로 재계산해 이전 승인을 새 내용에 적용하지 않습니다.

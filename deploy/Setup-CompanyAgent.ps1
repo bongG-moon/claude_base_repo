@@ -1491,7 +1491,6 @@ try {
         Write-Host '[4/4] Installation completed.'
         Write-Host 'Open Company Agent from the Start menu as your normal Windows user.'
         Write-Host 'Personal folders initialize automatically without questions on first launch.'
-        Write-Host 'Outlook identity is configured separately only when the Outlook MCP is first used.'
         Write-Host ("Safety backup: $completedBackupPath")
         return $elevatedResult
     }
@@ -1544,7 +1543,6 @@ try {
     Write-Host 'No existing Claude user Skill or setting was overwritten.'
     Write-Host 'Open Company Agent from the Start menu as your normal Windows user.'
     Write-Host 'Personal folders initialize automatically without questions on first launch.'
-    Write-Host 'Outlook identity is configured separately only when the Outlook MCP is first used.'
     Write-Host ("Safety backup: $completedBackupPath")
 
     if ($isHandoff) {

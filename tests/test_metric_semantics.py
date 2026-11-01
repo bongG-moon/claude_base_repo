@@ -56,8 +56,8 @@ class MetricSemanticsTests(unittest.TestCase):
     def test_correction_reuses_label_period_unit_in_title_headers_chart_and_kpi(self):
         text, result = self.generate(self.spec())
         self.assertIn('9월 순매출 262.0백만원, 달성률 93.6%', text)
-        self.assertIn('<th scope="col">순매출(백만원)</th>', text)
-        self.assertIn('<th scope="col">달성률(%)</th>', text)
+        self.assertRegex(text, r'<th\b[^>]*\bscope="col"[^>]*>순매출\(백만원\)</th>')
+        self.assertRegex(text, r'<th\b[^>]*\bscope="col"[^>]*>달성률\(%\)</th>')
         self.assertIn('9월 순매출(백만원)', text)
         self.assertNotIn('{{fact:', text)
         self.assertEqual(result['validation']['arithmetic'], 'checked')

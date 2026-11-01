@@ -211,6 +211,12 @@ def _normalize(spec: dict[str, Any], *, html_tables: bool = False) -> dict[str, 
             section["table"] = {"headers": headers, "rows": [[_text(v, 2000) for v in r] for r in cells],
                                 "interactive": table.get("interactive", True),
                                 "cellKinds": [["number" if isinstance(v, (int, float)) and not isinstance(v, bool) else "text" for v in r] for r in cells]}
+            if html_tables and "columnTypes" in table:
+                column_types = table["columnTypes"]
+                if (not isinstance(column_types, list) or len(column_types) != len(headers)
+                        or any(kind not in ("auto", "text", "id", "date", "period") for kind in column_types)):
+                    raise ArtifactError("invalid_table", "columnTypes는 열 수에 맞는 auto, text, id, date, period 목록입니다.")
+                section["table"]["columnTypes"] = column_types
         if "chart" in row:
             chart = row["chart"]
             if not isinstance(chart, dict) or chart.get("type", "column") not in ("column", "bar", "line", "pie"):

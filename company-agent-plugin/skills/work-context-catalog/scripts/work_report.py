@@ -44,6 +44,7 @@ GENERIC_WORDS = {'업무', '자료', '데이터', '결과', '보고서', '파일
                  'html', 'csv', 'excel', 'python', 'skill', 'data', 'report', 'workflow'}
 FOLLOWUP_LINKS = {
     'prior_request_reference': '앞선 작업을 가리킨 저장 요청으로 연결했습니다.',
+    'prior_result_reference': '앞선 결과를 명시한 후속 요청으로 같은 업무에 연결했습니다.',
     'subject_overlap': '앞선 업무의 대상어와 요청 순서가 일치해 저장 요청을 연결했습니다.',
     'unconfirmed': '앞선 업무와의 연결 근거가 부족하거나 업무 전환이 있어 연결하지 않았습니다.',
 }

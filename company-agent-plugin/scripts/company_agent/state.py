@@ -710,28 +710,6 @@ def _is_learning_spec_write(tool_name: str, tool_input: dict[str, Any], state: d
     return path == _learning_spec_path(root, turn_id) and _safe_local_path(path, root, allow_missing_leaf=True)
 
 
-def _is_mail_search_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
-    """A typed disposable search request is not a business artifact change.
-
-    Classification only, NOT file write permission. No arbitrary tmp exception.
-    """
-    import json
-    if tool_name.casefold() != "write":
-        return False
-    value, content = tool_input.get("file_path"), tool_input.get("content")
-    if not isinstance(value, str) or not isinstance(content, str) or len(content.encode("utf-8")) > 32768:
-        return False
-    path = Path(value)
-    if (path.parent != root.absolute() / "tmp" or
-            not re.fullmatch(r"mail-search-[a-zA-Z0-9_-]{1,80}\.json", path.name) or
-            not _safe_local_path(path, root, allow_missing_leaf=True)):
-        return False
-    try:
-        from .business_mail import _normalize_spec
-        _normalize_spec("search", json.loads(content))
-        return True
-    except (ValueError, TypeError, OSError, OverflowError):
-        return False
 
 
 def _is_ppt_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
@@ -1098,7 +1076,6 @@ def record_activity(
         learning_spec = _is_learning_spec_write(tool_name, tool_input, state, root or user_state_root())
         learning_progress = learning_progress or (learning_spec and not failed and not not_performed)
         bookkeeping = bookkeeping or learning_spec
-        bookkeeping = bookkeeping or _is_mail_search_spec_write(tool_name, tool_input, root or user_state_root())
         bookkeeping = bookkeeping or (not failed and _is_html_choices_spec_write(tool_name, tool_input, root or user_state_root()))
         bookkeeping = bookkeeping or (not failed and _is_ppt_choices_spec_write(tool_name, tool_input, root or user_state_root()))
         # The memory writer checks its exact persisted item. Observe that

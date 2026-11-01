@@ -940,7 +940,7 @@ def _preparation_advice(root: Path, project: Path, payload: dict) -> dict:
         words = _words(command)
         if words in (["pwd"], ["git", "status"], ["git", "status", "--short"]):
             return {}
-        if (args and tuple(args[:2]) in {("business", "doctor"), ("business", "runtime-check"), ("business", "mail-capabilities")}
+        if (args and tuple(args[:2]) in {("business", "doctor"), ("business", "runtime-check")}
                 and classify_command(command) == "read_only"):
             return {}
         if (skill_help_command(command) or internal_command(command, session_id, state, root)

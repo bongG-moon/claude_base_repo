@@ -75,12 +75,14 @@ try {
     [IO.File]::WriteAllText(('\\?\' + $longSkillPath), 'Preserve long-path schema fixture.', (New-Object Text.UTF8Encoding($false)))
     $instruction = Join-Path $config 'CLAUDE.md'
     Write-CompanyAgentUtf8File -Path $instruction -Content 'Preserve personal instructions added after installation.'
+    $personalMailSkill = Join-Path $config 'skills\outlook-assistant\SKILL.md'
+    Write-CompanyAgentUtf8File -Path $personalMailSkill -Content "---`nname: outlook-assistant`ndescription: Personal mail fixture`n---`nPreserve this separately installed skill."
     foreach ($relative in @('memory\notes\release.md', 'knowledge\personal-release.md', 'skills\personal-release\SKILL.md')) {
         Write-CompanyAgentUtf8File -Path (Join-Path $state $relative) -Content ('Preserve release sentinel: ' + $relative)
     }
     $stateBefore = Get-ReleaseTreeSnapshot $state
     $personalHashes = @{}
-    foreach ($path in @($personalSkill, $instruction, $mcp)) { $personalHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+    foreach ($path in @($personalSkill, $personalMailSkill, $instruction, $mcp)) { $personalHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
     $updated = & (Join-Path $update 'deploy\Setup-CompanyAgent.ps1') @common -BundleRoot $update -ExistingHarnessAction Update
     Assert-ReleaseUpgrade ($updated.status -eq 'updated' -and $updated.previousCoreVersion -eq $oldVersion) 'Update did not report the real old version'
     $longSkillBackup = Join-Path $updated.safetyBackup (Join-Path 'claude-config' $longSkillRelative)
@@ -147,12 +149,15 @@ try {
         'licenses\frontend-design-Apache-2.0.txt', 'THIRD_PARTY_NOTICES.md',
         'scripts\company_agent\user_language.py', 'scripts\company_agent\native_runtime.py',
         'skills\html-report\references\design-and-numbers.md',
-        'skills\presentation\references\design-and-quality.md',
-        'skills\outlook-assistant\SKILL.md'
+        'skills\presentation\references\design-and-quality.md'
     )) {
         $cachedModule = Join-Path $current[0].installPath $relative
         $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
         Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedModule -Algorithm SHA256).Hash) "Updated file was not installed intact: $relative"
+    }
+    foreach ($removed in @('skills\outlook-assistant', 'scripts\Invoke-BusinessOutlook.ps1',
+        'scripts\company_agent\business_mail.py', 'scripts\company_agent\business_eml.py')) {
+        Assert-ReleaseUpgrade (-not (Test-Path -LiteralPath (Join-Path $current[0].installPath $removed))) "Retired built-in mail component survived in the new core: $removed"
     }
     # A scoped installation changes exactly the Read launcher command/args.
     # Compare the entire expected document, not a blanket exclusion or the

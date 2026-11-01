@@ -72,7 +72,7 @@
         },
         {
           "title": "업무를 나누고 처리 순서 정리",
-          "description": "인사만인 기록은 제외합니다. 업무명과 순서 근거로 후속 저장을 연결하고, 실패나 연결 근거 부족은 확인된 FLOW와 구분합니다."
+          "description": "인사만인 기록은 제외합니다. 명시적인 결과 참조와 후속 저장을 같은 업무에 연결하고, 업무 전환과 모호한 참조는 분리합니다. 요청 순서와 실제 실행 근거를 구분합니다."
         },
         {
           "title": "보고서에서 다시 쓸 자료 찾기",
@@ -119,7 +119,7 @@
         },
         {
           "title": "구조와 확인 범위 검증",
-          "description": "개체와 배치를 확인합니다. 직접 보정한 내용은 재생성 원본에 반영하고 보정 시 같은 원본 재빌드의 의미와 배치를 비교합니다. 구조 비교와 실제 렌더 검증은 구분합니다."
+          "description": "편집 개체와 배치를 확인합니다. 음수 막대와 항목명, 선 차트 값 표시를 적용하고 수치의 기준과 범위를 재사용합니다. 보정 시 재생성 원본과 비교하며 화면 검증은 구분합니다."
         }
       ]
     },
@@ -146,7 +146,7 @@
         "report_typography.py",
         "ppt_dom_capture.js"
       ],
-      "reviewedPluginDigest": "d69398fcd06d301e2fefdb7922085a0ab0b17535f905e623c15fdc1d9f8e06b2"
+      "reviewedPluginDigest": "b8e45363c888b5ed2b7555ec30183157fd2d618f70d234e1b8d88ae0c2790d4d"
     },
     "distribution": "portable"
   },
@@ -174,11 +174,11 @@
         },
         {
           "title": "자료와 HTML 구성",
-          "description": "선택한 스타일로 근거와 해석을 배치합니다. 표와 주석은 같은 수치, 기간과 집계 범위를 재사용하고 표 검색, 정렬과 CSV를 제공합니다."
+          "description": "선택한 스타일로 근거와 해석을 배치합니다. 수치의 기준과 범위를 재사용하고 표 검색, 정렬과 CSV를 제공합니다. ID, 날짜와 기간은 의미에 맞게 표시합니다."
         },
         {
           "title": "실제 내용과 화면 확인",
-          "description": "내용, 표 동작과 화면을 확인합니다. 반복 생성기를 만들 때만 실패 시 정상 결과 묶음을 보존하는 동봉 예제를 사용합니다. 미확인 화면은 구분합니다."
+          "description": "내용, 표 동작과 화면을 확인합니다. 반복 생성은 공식 도우미가 단일 진입점까지 게시하며 실패 시 이전 정상본을 보존합니다. 미확인 화면은 구분합니다."
         }
       ]
     },
@@ -205,7 +205,7 @@
         "report_typography.py",
         "ppt_dom_capture.js"
       ],
-      "reviewedPluginDigest": "40d3a99dc157eb6138d7ce6f2ea05c127b9f822f70bbf6071d8c8e8466b809ed"
+      "reviewedPluginDigest": "dd78d62cd8d58534cd4bb611876588d99c331b3e39d79d855b194491abfd06ed"
     },
     "distribution": "portable"
   },
@@ -362,7 +362,7 @@
     "sourceDir": "standalone-skills/asset-factory",
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "ad76bc1fd4f44fbb7efcc2c264d2eaad2eaba03a7accd4fee6ce61bc1f24890f"
+      "reviewedPluginDigest": "8b486ec08467feb4f8da9b13a8ca1c69c6dceaafacfd474c27b59c109c493b81"
     },
     "runtimeRequired": false,
     "distribution": "portable"
@@ -414,45 +414,6 @@
     "runtimeRequired": true,
     "distribution": "harness-only",
     "distributionReason": "회사 정책·모델 경로·작업자·후크를 연결하는 하네스 본체입니다."
-  },
-  "outlook-assistant": {
-    "displayName": "Outlook 메일 업무 도우미",
-    "desc": "메일 목록을 먼저 좁힌 뒤 필요한 본문만 읽어 요약, 답장 초안을 만듭니다. 기존 메일 연결, Classic Outlook 또는 선택한 EML을 사용합니다.",
-    "workTags": [
-      "메일 검색",
-      "메일 요약",
-      "답장 초안",
-      "메일 정리"
-    ],
-    "requirements": [
-      "현재 호스트에 실제 제공되는 메일 연결 또는 실행 중인 Windows Classic Outlook이 필요합니다.",
-      "로컬 Classic Outlook 도우미는 Python 3.11 이상과 pywin32가 필요합니다. 새 Outlook/Web Outlook은 COM 대상이 아닙니다.",
-      "EML 파일 읽기는 Python 표준 라이브러리만 필요합니다. 이 ZIP은 MCP 서버나 계정 연결을 설치하지 않습니다.",
-      "검색 목록, 읽을 본문, 총 글자수를 제한합니다. 로컬 도우미는 읽기 전용이며 발송, 이동, 삭제를 제공하지 않습니다."
-    ],
-    "workflow": {
-      "steps": [
-        {
-          "title": "목록에서 범위 좁히기",
-          "description": "기존 메일 조건으로 메타데이터부터 확인합니다. 정확한 메일 ID가 있으면 재검색을 생략합니다."
-        },
-        {
-          "title": "필요한 본문만 읽기",
-          "description": "연결된 도구의 한도를 사용하고 선택한 EML은 동봉 MIME 읽기 도우미로 처리합니다. 같은 원문을 다시 해독하지 않습니다."
-        },
-        {
-          "title": "요약과 초안 전달",
-          "description": "출처와 생략 범위를 표시합니다. 발송과 이동은 실제 연결 도구의 기존 확인 절차를 따르며 로컬 도우미는 읽기만 합니다."
-        }
-      ]
-    },
-    "sourceDir": "standalone-skills/outlook-assistant",
-    "packaging": {
-      "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "0c15c2f6ad8be85073aec1bb5ee1d28a19f38b1e03255ff01688d62e8f9a127b"
-    },
-    "runtimeRequired": false,
-    "distribution": "portable"
   },
   "personal-knowledge": {
     "displayName": "개인 업무 지식 관리",
@@ -516,14 +477,14 @@
         },
         {
           "title": "Markdown으로 저장, 조회",
-          "description": "추린 사실과 범위를 저장하고 사용자가 정한 답변 길이 안에서 안내합니다. 일회성 응답 길이는 기억으로 저장하지 않으며 자동 주입은 없습니다."
+          "description": "추린 사실과 범위를 저장하고 요청한 길이에 맞춰 짧게 안내합니다. 일회성 응답 길이는 기억으로 저장하지 않으며 독립판은 자동 주입하지 않습니다."
         }
       ]
     },
     "sourceDir": "standalone-skills/personal-memory",
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "6722c34b7eef0b8ad4015a075bb5436d8b8a96022a4da2c6e15022ef44e9f605"
+      "reviewedPluginDigest": "59a56c4ab62162766a1d131bd1cc8bee4f0187246d8c3b42f4f89ceab55da132"
     },
     "runtimeRequired": false,
     "distribution": "portable"
@@ -695,7 +656,7 @@
     "runtimeRequired": false,
     "packaging": {
       "includeAdditionalPaths": [],
-      "reviewedPluginDigest": "45afcff85496e223d60cf87e4c73e712d82b20e86a9d3813b8c4ebd9ba5d91fd"
+      "reviewedPluginDigest": "e0eee4e2a3477a9c87a29286f79ae3c4de05cfcb9cfbdcec5a7653b815ae7d6b"
     },
     "distribution": "portable"
   },

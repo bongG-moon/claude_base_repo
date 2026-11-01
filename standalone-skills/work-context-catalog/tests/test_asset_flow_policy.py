@@ -170,6 +170,86 @@ class AssetFlowPolicyTests(unittest.TestCase):
                 self.assertEqual('unconfirmed', flow['steps'][0]['followup_link'])
                 self.assertEqual(1, len(result['deferred_work']))
 
+    def test_result_review_preserves_subject_until_named_asset_save(self):
+        initial = request('월간 매출 데이터를 읽어 중복을 제거하고 부서별 합계를 계산해줘')
+        review = request('위 결과를 회계와 대사하고 차이를 검토해줘', 2)
+        save = request('이 월간 매출 마감 작업을 스킬로 저장해줘', 3)
+        review = sanitize_request(review, clean)
+        self.assertEqual('prior_result', review['result_reference'])
+        observed = event(save)
+        result = summarize_work([session('review', [save, initial, review], [observed])])
+        flow = result['workflows'][0]
+        self.assertEqual('월간 매출', flow['title'])
+        self.assertEqual(['read', 'dedupe', 'aggregate', 'analyze', 'publish'],
+                         [step['action'] for step in flow['steps']])
+        self.assertEqual([1, 1, 1, 2, 3], [step['request_ordinal'] for step in flow['steps']])
+        self.assertEqual('prior_result_reference', flow['steps'][3]['followup_link'])
+        self.assertEqual('subject_overlap', flow['steps'][4]['followup_link'])
+        self.assertTrue(all(step['evidence'] == 'user_request' for step in flow['steps']))
+        # The earlier steps were requested, not proven by the final save call.
+        self.assertEqual([observed], flow['episodes'][0]['execution_events'])
+        self.assertEqual(1, flow['execution_count'])
+        self.assertEqual('not_inferred', result['completion'])
+        self.assertEqual([], result['deferred_work'])
+
+    def test_result_reference_does_not_merge_negation_switch_or_ambiguity(self):
+        initial = request('월간 매출 데이터를 읽어 중복을 제거하고 부서별 합계를 계산해줘')
+        cases = [
+            ('위 결과를 무시하고 재고 차이를 검토해줘', 2),
+            ('위 결과를 버리고 재고 차이를 검토해줘', 2),
+            ('위 결과를 빼고 재고 차이를 검토해줘', 2),
+            ('위 결과가 아니라 재고 차이를 검토해줘', 2),
+            ('위 결과를 회계와 비교하지 말고 재고 차이를 검토해줘', 2),
+            ('위 결과를 사용하지 말고 월간 매출 요약을 저장해줘', 2),
+            ('위 결과를 제외하고 월간 매출 요약을 저장해줘', 2),
+            ('위 결과를 회계와 대사하고 차이를 검토해줘. 별개로 재고 업무를 시작해줘', 2),
+            ('위 결과는 재고 결과인지 회계 결과인지 확인해줘', 2),
+            ('그다음 회계와 대사하고 차이를 검토해줘', 2),
+            ('위 결과를 회계와 대사하고 차이를 검토해줘', 1),
+        ]
+        for text, ordinal in cases:
+            with self.subTest(text=text, ordinal=ordinal):
+                review = sanitize_request(request(text, ordinal), clean)
+                result = summarize_work([session('separate', [initial, review], [event(review)])])
+                self.assertEqual(1, result['workflows'][0]['request_count'])
+                self.assertEqual(1, len(result['deferred_work']))
+
+    def test_chained_comparisons_and_negated_switch_keep_the_original_subject(self):
+        initial = request('월간 매출 데이터를 읽어 중복을 제거하고 부서별 합계를 계산해줘')
+        comparisons = [
+            request('위 결과를 회계와 비교해줘', 2),
+            request('위 결과를 오류가 아닌 항목과 비교해줘', 3),
+            request('위 결과를 검토하되 다른 업무로 전환하지 마', 4),
+            request('위 결과를 확인해줘. 다른 업무가 아니야', 5),
+        ]
+        save = request('이 월간 매출 마감 작업을 스킬로 저장해줘', 6)
+        requests = [sanitize_request(req, clean) for req in [initial, *comparisons, save]]
+        result = summarize_work([session('chain', requests, [event(save)])])
+        self.assertEqual([], result['deferred_work'])
+        flow = result['workflows'][0]
+        self.assertEqual('월간 매출', flow['title'])
+        self.assertEqual(6, flow['request_count'])
+        self.assertEqual(['read', 'dedupe', 'aggregate', 'verify', 'verify', 'analyze', 'verify', 'publish'],
+                         [step['action'] for step in flow['steps']])
+
+    def test_result_reference_targets_only_the_immediately_preceding_work(self):
+        sales = request('매출 원장을 읽고 매출을 집계해줘')
+        inventory = request('별개로 재고 원장을 읽고 재고를 집계해줘', 2)
+        review = request('위 결과를 회계와 대사하고 차이를 검토해줘', 3)
+        save = request('이 매출 마감 작업을 스킬로 저장해줘', 4)
+        result = summarize_work([session('switched', [sales, inventory, review, save], [event(save)])])
+        self.assertEqual(1, result['workflows'][0]['request_count'])
+        self.assertEqual({'매출 원장', '재고 원장'}, {flow['title'] for flow in result['deferred_work']})
+        self.assertEqual(2, next(flow for flow in result['deferred_work'] if flow['title'] == '재고 원장')['request_count'])
+
+    def test_result_reference_metadata_is_bounded_and_legacy_optional(self):
+        review = request('위 결과를 검토해줘')
+        review.pop('result_reference')
+        self.assertEqual('', sanitize_request(review, clean)['result_reference'])
+        review['result_reference'] = 'raw text must not be retained'
+        with self.assertRaisesRegex(ValueError, 'result reference'):
+            sanitize_request(review, clean)
+
     def test_named_followup_does_not_reach_across_a_new_work_episode(self):
         sales = request('매출 원장을 읽고 매출을 집계해줘')
         inventory = request('별개로 재고 원장을 읽고 재고를 집계해줘', 2)

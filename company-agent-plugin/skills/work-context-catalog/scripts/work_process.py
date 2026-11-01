@@ -51,6 +51,14 @@ ASSET_REFERENCE = re.compile(
     r'(?:\s+|(?=작업|업무|과정|방식|내용|결과|기준))'
     r'(?P<target>[^.!?;\n]{0,80}?)(?:작업|업무|과정|방식|내용|결과|기준)'
     r'(?:을|를|은|는)?(?=\s|$)')
+RESULT_REFERENCE = re.compile(
+    r'^\s*(?:(?:좋아|응)[,.]?\s*)?(?:위|그|앞선|방금)\s+(?:결과|자료|내용)'
+    r'(?P<object>을|를)?(?=\s|$|가|이|은|는|의)')
+REFERENCE_REJECTION = re.compile(
+    r'^\s*(?:아니|아닌|말고|무시|대신|제외|버리|버려|빼고|빼서|제쳐|잊고|'
+    r'(?:사용|참고|활용)하지|쓰지)')
+ACTION_NEGATION = re.compile(
+    r'(?:을|를)?\s*(?:(?:하지|지)\s*(?:마|말)|(?:하지는|지는)\s*마|(?:하지|지)\s*않|안\s*하)')
 # Shared process words or reporting periods alone do not identify a work target.
 REFERENCE_GENERIC = GENERIC | {'스킬', '기억', '지식', '기준', '과정', '방식', '집계', '계산',
     '분석', '정리', '중복', '제거', '저장', '생성', 'skill', 'memory', 'knowledge',
@@ -128,6 +136,39 @@ def _followup_basis(request, current):
     return 'subject_overlap' if reference & target else 'unconfirmed'
 
 
+def _reference_rejected(text, reference):
+    tail = text[reference.end():]
+    first_action = ACTION.search(tail)
+    return bool(REFERENCE_REJECTION.match(tail)
+        or (first_action and ACTION_NEGATION.match(tail[first_action.end():])))
+
+
+def _explicit_switch(text):
+    for marker in re.finditer(r'별개로|다른 업무|다른 작업|새 업무|새 작업', text[:160]):
+        tail = text[marker.end():marker.end()+60]
+        # "다른 업무로 전환하지 마" retains the current work. A negated
+        # transition is not evidence for a new episode.
+        transition = re.match(r'(?:로|으로)?\s*(?:전환|변경|이동|시작|바꾸|넘어가)', tail)
+        if transition and ACTION_NEGATION.match(tail[transition.end():]):
+            continue
+        if re.match(r'(?:은|는|이|가)?\s*아니', tail):
+            continue
+        return True
+    return False
+
+
+def _result_reference(text):
+    """Retain a bounded reference marker, never the original request clause."""
+    reference = RESULT_REFERENCE.match(text)
+    if not reference:
+        return ''
+    # A direct object identifies the preceding result. Subject/topic particles,
+    # alternatives and negated references do not establish that relationship.
+    if not reference.group('object') or _reference_rejected(text, reference):
+        return 'unconfirmed'
+    return 'prior_result'
+
+
 def request_steps(text, clean):
     """Normalize explicit actions in source order; no implicit pipeline stages."""
     # Code, attached context and long values are not natural-language tasks.
@@ -146,7 +187,7 @@ def request_steps(text, clean):
         # Keep the noun phrase as the next action's target.
         if match.lastgroup != 'read' and re.match(r'\s*(?:오류|결과|방법|기능|과정|도구|규칙|원인|기준|여부|항목|보고서|자료|내용)(?=을|를|의|\s|$)', text[match.end():match.end()+30]):
             continue
-        if re.match(r'(?:을|를)?\s*(?:(?:하지|지)\s*(?:마|말)|(?:하지는|지는)\s*마|(?:하지|지)\s*않|안\s*하)', text[match.end():match.end()+30]):
+        if ACTION_NEGATION.match(text[match.end():match.end()+30]):
             end = match.end()
             continue
         if english and re.search(r"\b(?:do not|don't|never)\s*$", text[max(0, match.start()-20):match.start()], re.I):
@@ -176,13 +217,15 @@ def request_steps(text, clean):
         return {'kind': 'insufficient', 'subject': '', 'steps': [], 'failure': bool(FAILURE.search(text))}
     reference = ASSET_REFERENCE.match(text)
     asset_followup = bool(reference
+        and not _reference_rejected(text, reference)
         and all(step['action'] in ('write', 'publish') for step in steps)
         and re.search(r'스킬|기억|지식|skill|memory|knowledge', text, re.I)
         and re.search(r'만들|생성|저장|남겨|기억해|기억하|create|save', text, re.I))
     return {'kind': 'work', 'subject': subject, 'steps': steps,
             'failure': bool(FAILURE.search(text)), 'partial': len(actions) > MAX_STEPS,
             'continuation': bool(re.match(r'\s*(?:그다음|그 다음|이어서|위 (?:자료|내용|결과)|그 (?:자료|내용|결과)|다음으로)', text)),
-            'explicit_switch': bool(re.search(r'별개로|다른 업무|다른 작업|새 업무|새 작업', text[:160])),
+            'explicit_switch': _explicit_switch(text),
+            'result_reference': _result_reference(text),
             'asset_followup': asset_followup,
             'asset_followup_named': bool(asset_followup and reference.group('target').strip()),
             'asset_followup_subject': phrase(reference.group('target'), clean) if asset_followup else ''}
@@ -208,11 +251,15 @@ def sanitize_request(record, clean):
     ordinal = record.get('ordinal', 0)
     if not isinstance(ordinal, int) or isinstance(ordinal, bool) or ordinal < 0:
         raise ValueError('invalid workflow order')
+    result_reference = record.get('result_reference', '')
+    if result_reference not in ('', 'prior_result', 'unconfirmed'):
+        raise ValueError('invalid workflow result reference')
     return {'id': record['id'], 'ordinal': ordinal, 'kind': record['kind'],
             'subject': clean(record.get('subject', ''), 60), 'steps': output,
             'failure': bool(record.get('failure')), 'partial': bool(record.get('partial')),
             'continuation': bool(record.get('continuation')),
             'explicit_switch': bool(record.get('explicit_switch')),
+            'result_reference': result_reference,
             'asset_followup': bool(record.get('asset_followup')),
             'asset_followup_named': bool(record.get('asset_followup_named') or record.get('asset_followup_subject')),
             'asset_followup_subject': clean(record.get('asset_followup_subject', ''), 64)}
@@ -311,6 +358,14 @@ def summarize_work(sessions, assets=None):
             shared_target = bool(current) and bool((set(subject.split()) & set(current['subject'].split())) - GENERIC)
             continuing = request.get('continuation') and shared_target and request['steps'][0]['action'] not in ('read', 'analyze')
             followup = _followup_basis(request, current) if request.get('asset_followup') else ''
+            result_reference = request.get('result_reference', '')
+            if result_reference:
+                result_linked = (result_reference == 'prior_result' and current is not None
+                    and not request.get('explicit_switch')
+                    and request['ordinal'] > current['last_ordinal'])
+                # An explicit but unresolved reference must not fall back to
+                # broad subject overlap or the generic-target inheritance rule.
+                followup = 'prior_result_reference' if result_linked else 'unconfirmed'
             inherit = (followup != 'unconfirmed') if followup else (not subject or continuing)
             if inherit and current and not request.get('explicit_switch'):
                 subject = current['subject']

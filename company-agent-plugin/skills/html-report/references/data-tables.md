@@ -32,6 +32,29 @@ CSV는 현재 페이지가 아닌 **필터에 맞는 전체 행** 또는 **보�
 
 ## 같은 검토에서 확인할 것
 
+제작기는 `ID`, `날짜`, `월`, `연월`, `기간`처럼 명확한 열 제목의 짧은 값을 한 줄로 표시합니다. 뜻을 추측하기 어려운 제목은 `table.columnTypes:["id","text","period","text"]`처럼 headers와 같은 순서로 지정합니다. 값은 auto / text / id / date / period이며 생략하면 auto입니다. 이는 화면 배치 힌트로서 숫자 정렬이나 CSV 원자료를 바꾸지 않습니다. 80자가 넘거나 여러 줄인 값은 줄바꿈을 유지합니다.
+
+직접 HTML을 작성할 때는 열 번호 `nth-child(3)` 대신 의미 표식을 붙입니다. 열을 추가하거나 순서를 바꿔도 ID와 기간이 깨지지 않게 하기 위함입니다.
+
+```html
+<div class="table-scroll" tabindex="0" role="region" aria-label="조회 결과, 가로 스크롤">
+  <table><thead><tr><th>ID</th><th>설명</th><th>기준월</th></tr></thead>
+    <tbody><tr><td data-column-kind="id">A-2026-001</td>
+      <td>담당자가 검토할 긴 설명은 자연스럽게 줄바꿈합니다.</td>
+      <td data-column-kind="period">2026-10</td></tr></tbody></table>
+</div>
+<style>
+.table-scroll{max-width:100%;min-width:0;overflow:auto}
+.table-scroll table{width:100%;min-width:36rem;border-collapse:collapse}
+.table-scroll :is(td,th){padding:12px;word-break:keep-all;overflow-wrap:anywhere}
+.table-scroll td:is([data-column-kind="id"],[data-column-kind="date"],[data-column-kind="period"]){
+  min-width:9ch;white-space:nowrap;word-break:normal;overflow-wrap:normal
+}
+</style>
+```
+
+390px 화면에서 ID와 `2026-10`이 한 줄이고 긴 설명은 읽을 수 있게 줄바꿈하는지, 표만 가로 스크롤하는지 확인합니다. 메모 열 추가와 열 순서 변경 뒤에도 같은 조건을 확인합니다.
+
 실제 0건, 긴 한글, 큰 수, 검색 뒤 페이지 범위 초기화, 숫자 정렬, 필터 결과와 CSV 행 수를 확인합니다. 좁은 화면, 키보드 포커스, 스크롤 후 열 제목과 인쇄도 확인합니다. 검증을 위해 별도 모델이나 상시 후크를 실행하지 않습니다. 브라우저 확인을 못 하면 기능과 화면을 확인했다고 단정하지 않습니다.
 
 ## 데이터 분석 보고서일 때 선택적으로 적용

@@ -315,13 +315,13 @@ class WorkMilestoneTests(unittest.TestCase):
             self.assertEqual(4, replace.call_count)
         self.assertEqual("before", path.read_text())
 
-    def test_search_spec_write_is_internal_but_arbitrary_tmp_write_is_not(self):
+    def test_retired_mail_search_spec_is_not_internal_bookkeeping(self):
         self.begin()
         content = json.dumps({"account_smtp": "test@example.com", "store_ids": ["AABBCCDD"], "query": "ax", "limit": 20})
         self.activity("Write", file_path=str(self.root / "tmp" / "mail-search-fixture.json"), content=content)
-        self.assertEqual(0, load_session(self.session, self.root)["mutationCount"])
-        self.activity("Write", file_path=str(self.root / "tmp" / "other.json"), content=content)
         self.assertEqual(1, load_session(self.session, self.root)["mutationCount"])
+        self.activity("Write", file_path=str(self.root / "tmp" / "other.json"), content=content)
+        self.assertEqual(2, load_session(self.session, self.root)["mutationCount"])
 
     def test_worker_evidence_never_claims_actual_model_from_alias(self):
         self.begin()

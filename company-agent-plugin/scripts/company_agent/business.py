@@ -8,7 +8,7 @@ from pathlib import Path
 import platform
 from typing import Any
 
-from .business_safety import blocked_input, cancelled, confirm_action, failure_result, safe_path
+from .business_safety import blocked_input, failure_result, safe_path
 from .paths import user_state_root
 
 
@@ -19,11 +19,9 @@ def doctor() -> dict[str, Any]:
             "environment": inspect_environment(),
             "windows": os.name == "nt", "artifacts": capabilities(),
             "fileOrganizer": {"available": os.name == "nt", "previewRequired": True, "permanentDelete": False},
-            "outlook": {"status": "connection_not_tested", "readOnlyPilot": True,
-                        "next": "business mail-capabilities", "existingMcpPreserved": True},
             "imageGeneration": {"status": "use_existing_approved_mcp_if_available", "newEndpointConfigured": False},
             "drm": {"status": "unknown", "universalDetection": False, "bypassSupported": False},
-            "message": "기본 실행 조건만 확인했습니다. 메일 본문 조회·파일 이동·DRM 설정 변경은 하지 않았습니다. 운영 자료의 허용 여부는 별도 확인이 필요합니다."}
+            "message": "기본 실행 조건만 확인했습니다. 파일 이동과 DRM 설정 변경은 하지 않았습니다. 운영 자료의 허용 여부는 별도 확인이 필요합니다."}
 
 
 def _spec(path: str) -> dict[str, Any]:
@@ -99,12 +97,6 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
     if action in {"files-execute", "files-undo"}:
         from .business_files import run_plan
         return run_plan(state, args.plan, undo=action == "files-undo")
-    if action == "mail-capabilities":
-        from .business_mail import capabilities
-        return capabilities()
-    if action == "eml-read":
-        from .business_eml import read_eml
-        return read_eml(Path(args.file))
     if action == "ppt-inspect":
         from .business_artifacts import inspect_template
         return inspect_template(safe_path(args.template, exists=True))
@@ -149,23 +141,6 @@ def dispatch(args: argparse.Namespace) -> dict[str, Any]:
             from .ppt_html import save_template
             return save_template(spec, output, template)
         return create_ppt(spec, output, template, require_choices=True, preview_only=action=='ppt-design-preview')
-    if action == "mail-search":
-        from .business_mail import search_mail
-        return search_mail(spec)
-    if action == "mail-read":
-        from .business_mail import read_mail
-        # A model-provided JSON approval cannot authorize a body extraction.
-        spec.pop("body_access_approved", None)
-        if spec.get("include_body") is True:
-            details = ("회사에서 AI 처리가 허용된 메일만 선택했는지 확인하세요.\n"
-                       "아래 메일 본문을 읽어 현재 Claude 대화에 전달합니다. Claude 자체 대화 기록에 남을 수 있습니다.\n"
-                       "하네스는 본문을 별도 Memory/Knowledge에 저장하지 않습니다. 첨부는 추출하지 않습니다.\n"
-                       "IRM 제한이 확인되면 승인해도 읽지 않습니다. 이 확인은 사내 DRM 허가를 대신하지 않습니다.\n\n"
-                       + json.dumps({k: spec.get(k) for k in ("account_smtp", "store_ids", "message_refs")}, ensure_ascii=False, indent=2))
-            if not confirm_action("메일 본문의 AI 처리 확인", details):
-                return cancelled()
-            spec["body_access_approved"] = True
-        return read_mail(spec)
     raise ValueError("Unknown business operation.")
 
 
@@ -184,7 +159,7 @@ def register(subparsers: Any) -> None:
     parser = subparsers.add_parser("business", help="Local business pilot workflows with partial-result reporting.")
     actions = parser.add_subparsers(dest="business_action", required=True)
     for action in ("doctor", "runtime-check", "files-plan", "files-execute", "files-undo", "html", "html-designs", "html-template", "html-choices", "ppt", "ppt-inspect", "ppt-choices", "ppt-analyze", "ppt-preview", "ppt-reference", "ppt-design-preview", "ppt-template",
-                   "mail-capabilities", "mail-search", "mail-read", "eml-read", "artifact-start", "artifact-publish", "artifact-cleanup", "ppt-fit-images", "ppt-capabilities", "excel-analyze"):
+                   "artifact-start", "artifact-publish", "artifact-cleanup", "ppt-fit-images", "ppt-capabilities", "excel-analyze"):
         command = actions.add_parser(action)
         command.add_argument("--state-root")
         if action == 'excel-analyze':
@@ -206,13 +181,11 @@ def register(subparsers: Any) -> None:
             command.add_argument('--open', action='store_true', dest='open_preview')
         if action == 'html-template':
             command.add_argument('--template', required=True)
-        if action == "eml-read":
-            command.add_argument("--file", required=True)
         if action == "files-plan":
             command.add_argument("--folder", required=True)
         if action in {"files-execute", "files-undo"}:
             command.add_argument("--plan", required=True)
-        if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-reference", "ppt-design-preview", "ppt-template", "ppt-fit-images", "mail-search", "mail-read"}:
+        if action in {"html", "html-choices", "ppt-choices", "ppt", "ppt-reference", "ppt-design-preview", "ppt-template", "ppt-fit-images"}:
             command.add_argument("--spec", required=action not in {'ppt-choices', 'html-choices'},
                                  help='UTF-8 JSON 파일. ppt-choices/html-choices는 생략하면 첫 질문만 반환합니다.')
         if action in {"html", "ppt", "ppt-design-preview", "ppt-template", "ppt-fit-images"}:
