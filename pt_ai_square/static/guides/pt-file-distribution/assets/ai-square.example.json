@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "packageId": "weekly-report",
+  "name": "업무 메모로 주간 보고서 작성",
+  "desc": "이번 주에 한 일을 적은 메모를 팀 보고서 양식에 맞춰 정리합니다. 주간 보고서 초안을 만들 때 사용합니다.",
+  "platform": "Claude",
+  "type": "Skill",
+  "workTags": ["주간 보고", "업무 메모", "보고서 작성"],
+  "environment": "Claude Code · Python 3.11",
+  "changes": "첫 공유",
+  "entryPoint": "SKILL.md",
+  "guideFile": "INSTALL_GUIDE.md",
+  "requiredFiles": ["scripts/report.py"],
+  "requirements": ["Python 3.11", "필요한 라이브러리는 설치 안내 참조"],
+  "workflow": {
+    "steps": [
+      {"title": "업무 메모 넣기", "description": "이번 주에 한 일을 적은 메모를 넣습니다."},
+      {"title": "업무별로 나누기", "description": "메모를 업무 항목별로 나눠 보고서 초안을 만듭니다."},
+      {"title": "보고서 확인하기", "description": "빠지거나 잘못 정리된 내용이 없는지 살펴봅니다."}
+    ]
+  }
+}

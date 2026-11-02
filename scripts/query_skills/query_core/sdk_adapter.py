@@ -12,6 +12,7 @@ import re
 import threading
 
 from .adapters import AdapterError, _limit, _query_seconds
+from .errors import detailed_message, error_details
 from .sql import bounded_sql, compile_for_sdk, sdk_metadata_sql
 
 TOKEN_PAGE = 'https://lake.skhynix.com/myprofile/mykey'
@@ -53,29 +54,36 @@ def _quiet_sdk():
             logging.disable(previous)
 
 
-def _failure_details(exc, default='db_query'):
+def _failure_details(exc, default='db_query', *, secrets=None, params=None):
+    stage = {'sdk_import': 'import', 'db_connect': 'connect', 'db_fetch': 'fetch'}.get(default, 'query')
+    details = error_details(exc, stage=stage, secrets=secrets, params=params, engine='datalake')
     statuses = [getattr(exc, name, None) for name in ('status_code', 'status', 'code')]
     response = getattr(exc, 'response', None)
     if response is not None:
         statuses.append(getattr(response, 'status_code', None))
     for status in (401, 403):
         if status in statuses or str(status) in statuses:
-            return AdapterError(f'api_{status}', f'LakeHouse 인증 또는 조회 권한을 확인해 주세요. 토큰 재발급: {TOKEN_PAGE}')
+            details.update(errorCode='HTTP-' + str(status), category='authentication',
+                           sanitizedReason='인증 또는 조회 권한이 거절되었습니다. My Key 발급 상태와 사용 권한을 확인해 주세요.')
+            return AdapterError(f'api_{status}', f'LakeHouse 인증 또는 조회 권한을 확인해 주세요. 토큰 재발급: {TOKEN_PAGE}', details)
     # 일부 SDK 버전은 상태를 예외 텍스트로만 준다. 원문은 절대 반환하지 않는다.
     try:
         status = re.search(r'(?<!\d)(401|403)(?!\d)', str(exc)[:2048])
     except Exception:
         status = None
     if status:
-        return AdapterError(f'api_{status.group(1)}', f'LakeHouse 인증 또는 조회 권한을 확인해 주세요. 토큰 재발급: {TOKEN_PAGE}')
-    return AdapterError(default, 'LakeHouse SDK 조회를 마치지 못했습니다. 접속 정보, 네트워크와 조회 권한을 확인해 주세요.')
+        details.update(errorCode='HTTP-' + status.group(1), category='authentication',
+                       sanitizedReason='인증 또는 조회 권한이 거절되었습니다. My Key 발급 상태와 사용 권한을 확인해 주세요.')
+        return AdapterError(f'api_{status.group(1)}', f'LakeHouse 인증 또는 조회 권한을 확인해 주세요. 토큰 재발급: {TOKEN_PAGE}', details)
+    message = 'LakeHouse SDK 조회를 마치지 못했습니다. 접속 정보, 네트워크와 조회 권한을 확인해 주세요.'
+    return AdapterError(default, detailed_message(message, details), details)
 
 
-def _failure(exc, default='db_query'):
+def _failure(exc, default='db_query', *, secrets=None, params=None):
     # 예외 객체의 사용자 정의 속성/문자열 변환이 진단을 출력해도 버린다.
     with _quiet_sdk():
         try:
-            return _failure_details(exc, default)
+            return _failure_details(exc, default, secrets=secrets, params=params)
         except Exception:
             return AdapterError(default, 'LakeHouse SDK 요청을 마치지 못했습니다. 접속 설정과 조회 권한을 확인해 주세요.')
 
@@ -94,7 +102,7 @@ class LakeHouseSDKBackend:
     def _configuration(self):
         required = ('user_id', 'token', 's3_access_key', 's3_secret_key')
         if not all(isinstance(self.secrets.get(key), str) and self.secrets[key].strip() for key in required):
-            raise AdapterError('auth_config', 'Datalake SDK의 LAKEHOUSE_USER_ID, LAKEHOUSE_TOKEN, LAKEHOUSE_S3_ACCESS_KEY와 LAKEHOUSE_S3_SECRET_KEY를 설정해 주세요. 토큰 재발급: ' + TOKEN_PAGE)
+            raise AdapterError('auth_config', 'Datalake SDK의 LAKEHOUSE_USER_ID, LAKEHOUSE_TOKEN, LAKEHOUSE_S3_ACCESS_KEY와 LAKEHOUSE_S3_SECRET_KEY가 필요합니다. 채팅에 보내지 말고 auth setup으로 로컬 입력창을 열어 저장해 주세요. 키 발급: ' + TOKEN_PAGE)
         environment = self.profile.get('lake_type', 'prod')
         if environment not in ('prod', 'dev'):
             raise AdapterError('lakehouse_type', 'LAKEHOUSE_TYPE은 prod 또는 dev로 지정해 주세요.')
@@ -112,13 +120,13 @@ class LakeHouseSDKBackend:
         except ImportError:
             raise _dependency_error() from None
         except Exception as exc:
-            raise _failure(exc, 'sdk_import') from None
+            raise _failure(exc, 'sdk_import', secrets=self.secrets) from None
         try:
             with _quiet_sdk():
                 self.client = driver.LakeHouse(**{key: self.secrets[key] for key in required},
                                               type=environment, spark=False)
         except Exception as exc:
-            raise _failure(exc, 'db_connect') from None
+            raise _failure(exc, 'db_connect', secrets=self.secrets) from None
         return self.client
 
     def inspect(self, sql, params):
@@ -128,7 +136,7 @@ class LakeHouseSDKBackend:
                 'notes': ['SDK 사전 건수는 미확인입니다. COUNT와 결과 조회를 사전에 실행하지 않습니다.',
                           'SDK는 서버 행 제한을 적용한 결과 전체를 DataFrame으로 메모리에 받습니다. 파일 용량 제한은 SDK 수신 메모리를 제한하지 않습니다.']}
 
-    def _frame(self, statement):
+    def _frame(self, statement, params=None):
         client = self._connect()
         try:
             with _quiet_sdk():
@@ -145,7 +153,7 @@ class LakeHouseSDKBackend:
         except ImportError:
             raise _dependency_error() from None
         except Exception as exc:
-            raise _failure(exc) from None
+            raise _failure(exc, secrets=self.secrets, params=params) from None
         return frame, pandas, columns, iterator
 
     @contextmanager
@@ -156,8 +164,8 @@ class LakeHouseSDKBackend:
             raise AdapterError('sdk_timeout_unsupported', '이 SDK에는 조회 시간 제한과 취소 API가 확인되지 않았습니다. 시간 지정을 생략하거나 해당 기능을 지원하는 조회 방법을 사용해 주세요.')
         # SDK의 임의 write 허용 환경변수와 관계없이 SELECT 검사를 먼저 수행한다.
         statement = compile_for_sdk(bounded_sql(sql, 'datalake', count), params)
-        frame, pandas, columns, iterator = self._frame(statement)
-        rows = self._rows(iterator, pandas, count)
+        frame, pandas, columns, iterator = self._frame(statement, params)
+        rows = self._rows(iterator, pandas, count, params=params)
         try:
             yield columns, rows
         finally:
@@ -214,19 +222,18 @@ class LakeHouseSDKBackend:
             return value
         raise AdapterError('sdk_format', '자동 저장하지 않는 SDK 결과 자료형이 있습니다. 일반 컬럼만 선택해 주세요.')
 
-    @classmethod
-    def _rows(cls, iterator, pandas, count):
+    def _rows(self, iterator, pandas, count, params=None):
         for _ in range(count):
             try:
                 with _quiet_sdk():
                     row = next(iterator)
-                    values = tuple(cls._value(value, pandas) for value in row)
+                    values = tuple(self._value(value, pandas) for value in row)
             except StopIteration:
                 return
             except AdapterError:
                 raise
             except Exception as exc:
-                raise _failure(exc, 'db_fetch') from None
+                raise _failure(exc, 'db_fetch', secrets=self.secrets, params=params) from None
             yield values
 
     def close(self):

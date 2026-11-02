@@ -199,6 +199,8 @@ namespace CompanyAgent.Setup {
         private readonly Button browse = new Button { Text = "폴더 선택", AutoSize = true, Enabled = false };
         private readonly Button install = new Button { Text = "설치하기", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(120, 38), Padding = new Padding(14, 6, 14, 6), FlatStyle = FlatStyle.Flat };
         private readonly Button close = new Button { Text = "닫기", AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, MinimumSize = new Size(85, 38), Padding = new Padding(12, 6, 12, 6) };
+        private readonly CheckBox cleanupOldVersions = new CheckBox { Text = "사용하지 않는 이전 설치 파일 삭제 (백업 없음)", Checked = false, AutoSize = true, Dock = DockStyle.Top };
+        private readonly Label cleanupHelp = new Label { Text = "개인 기억, 지식, 학습 기록과 스킬은 유지합니다.\n원본과 사용 여부가 확인되는 이전 버전만 지웁니다. 삭제한 설치 파일은 복구할 수 없습니다.", AutoSize = true, Dock = DockStyle.Top, ForeColor = Color.FromArgb(80, 94, 109) };
         private readonly Label status = new Label { Text = "사용할 범위를 고르고 설치하기를 눌러 주세요.", AutoSize = true, MaximumSize = new Size(600, 0) };
         private readonly ProgressBar progress = new ProgressBar { Dock = DockStyle.Fill, Style = ProgressBarStyle.Marquee, Visible = false };
         private readonly LinkLabel details = new LinkLabel { Text = "자세히 보기", AutoSize = true, Visible = false };
@@ -210,7 +212,7 @@ namespace CompanyAgent.Setup {
         private readonly TableLayoutPanel content = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1 };
         private readonly Panel body = new Panel { Dock = DockStyle.Fill, AutoScroll = true, Margin = Padding.Empty };
         private readonly Label heading = new Label { Text = "Company Harness", AutoSize = true, Dock = DockStyle.Top, ForeColor = Color.FromArgb(29, 56, 82) };
-        private readonly Label introduction = new Label { Text = "기존 Claude Code에 회사 업무 기능을 추가합니다.\n로그인·모델 설정과 개인 자료는 이어서 사용합니다.", AutoSize = true, Dock = DockStyle.Top };
+        private readonly Label introduction = new Label { Text = "기존 Claude Code에 개인 기억과 업무 학습 기능을 추가합니다.\n로그인, 모델 설정과 개인 자료는 이어서 사용합니다.", AutoSize = true, Dock = DockStyle.Top };
         private bool updatingWidths;
 
         internal SetupForm() : this(null) { }
@@ -219,7 +221,7 @@ namespace CompanyAgent.Setup {
             SuspendLayout();
             AutoScaleDimensions = new SizeF(96F, 96F);
             AutoScaleMode = AutoScaleMode.Dpi;
-            Text = "Company Harness 설치"; ClientSize = new Size(660, 415);
+            Text = "Company Harness 설치"; ClientSize = new Size(660, 510);
             MinimumSize = new Size(560, 360); StartPosition = FormStartPosition.CenterScreen;
             Font = new Font("맑은 고딕", 10F); BackColor = Color.FromArgb(247, 249, 252);
             var layout = new TableLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(26), ColumnCount = 1, RowCount = 2 };
@@ -236,11 +238,13 @@ namespace CompanyAgent.Setup {
             folder.Anchor = AnchorStyles.Left | AnchorStyles.Right;
             browse.Padding = new Padding(10, 4, 10, 4); browse.AutoSizeMode = AutoSizeMode.GrowAndShrink;
             folders.Controls.Add(folder, 0, 0); folders.Controls.Add(browse, 1, 0);
+            cleanupOldVersions.Margin = new Padding(0, 4, 0, 5);
+            cleanupHelp.Margin = new Padding(22, 0, 0, 10);
             status.Dock = DockStyle.Top; status.Margin = new Padding(0, 6, 0, 12);
             var links = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, Margin = Padding.Empty };
             links.Controls.Add(details); links.Controls.Add(guide);
             diagnostic.MinimumSize = new Size(0, 130);
-            foreach (Control control in new Control[] { heading, introduction, user, project, folders, status, progress, links, diagnostic }) {
+            foreach (Control control in new Control[] { heading, introduction, user, project, folders, cleanupOldVersions, cleanupHelp, status, progress, links, diagnostic }) {
                 int row = content.RowCount++; content.RowStyles.Add(new RowStyle(SizeType.AutoSize));
                 content.Controls.Add(control, 0, row);
             }
@@ -274,6 +278,8 @@ namespace CompanyAgent.Setup {
                 content.MinimumSize = new Size(available, 0);
                 int width = Math.Max(120, available - content.Padding.Horizontal - 4);
                 foreach (Label label in new Label[] { heading, introduction, status }) label.MaximumSize = new Size(width, 0);
+                cleanupOldVersions.MaximumSize = new Size(width, 0);
+                cleanupHelp.MaximumSize = new Size(Math.Max(120, width - cleanupHelp.Margin.Left), 0);
             } finally { updatingWidths = false; }
         }
         private void FitToScreen() {
@@ -286,6 +292,7 @@ namespace CompanyAgent.Setup {
         private void Busy(bool value) {
             if (value) busy = true;
             user.Enabled = !value; project.Enabled = !value;
+            cleanupOldVersions.Enabled = !value;
             install.Enabled = !value; close.Enabled = !value; browse.Enabled = !value && project.Checked;
             progress.Visible = value;
             if (!value) busy = false;
@@ -313,7 +320,7 @@ namespace CompanyAgent.Setup {
             if (project.Checked && !Directory.Exists(folder.Text)) { status.Text = "사용할 업무 폴더를 먼저 선택해 주세요."; return; }
             Busy(true); diagnostic.Visible = false; details.Visible = false; guide.Visible = false;
             status.Text = "설치 파일을 준비하고 기존 환경을 확인합니다…";
-            var request = new Dictionary<string, object> { { "Scope", project.Checked ? "Project" : "User" }, { "SkillConflictAction", "KeepCurrent" } };
+            var request = new Dictionary<string, object> { { "Scope", project.Checked ? "Project" : "User" }, { "SkillConflictAction", "KeepCurrent" }, { "OldVersionAction", cleanupOldVersions.Checked ? "DeleteUnused" : "Keep" } };
             if (project.Checked) request["ProjectRoot"] = folder.Text;
             try {
                 payloadRoot = await Task.Run(() => Payload.Prepare(cacheRoot));
@@ -325,6 +332,16 @@ namespace CompanyAgent.Setup {
                         guide.Visible = true; install.Visible = false;
                         string backup = Payload.Get(result, "safetyBackup");
                         diagnostic.Text = "적용 버전: " + Payload.Get(result, "coreVersion") + "\r\n백업 위치: " + backup;
+                        object cleanupValue;
+                        if (result.TryGetValue("cleanup", out cleanupValue)) {
+                            var cleanup = cleanupValue as Dictionary<string, object>;
+                            if (cleanup != null && Payload.Get(cleanup, "status") != "kept") {
+                                string cleanupMessage = Payload.Get(cleanup, "message");
+                                if (String.IsNullOrEmpty(cleanupMessage)) cleanupMessage = "이전 파일 정리 결과를 자세히 보기에서 확인해 주세요.";
+                                status.Text += "\n" + cleanupMessage;
+                                diagnostic.Text += "\r\n이전 설치 파일 정리: " + cleanupMessage;
+                            }
+                        }
                         details.Visible = true; return;
                     }
                     if (state == "kept" || state == "cancelled") { status.Text = "기존 구성을 유지했습니다. 설치 내용은 바꾸지 않았습니다."; return; }

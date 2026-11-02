@@ -96,8 +96,15 @@ def frame_size(value=None):
 def prepare(spec, template=None):
     """Shared normalization and composition for HTML and editable PPT export."""
     from .report_facts import FactError
+    from .ppt_layouts import LayoutError as PptLayoutError
     if not isinstance(spec, dict):
         raise artifacts.ArtifactError('invalid_spec', '작업 내용은 JSON 객체로 전달해 주세요.')
+    if 'referenceStyle' in spec:
+        from . import reference_style
+        try:
+            spec = reference_style.apply(spec, 'ppt')
+        except ValueError as exc:
+            raise artifacts.ArtifactError('invalid_reference_style', str(exc)) from None
     # Import/preserve routes must not bypass the shared per-page contract.
     # Reject before reading a source or taking the HTML import fast path.
     if 'contentOrder' in spec or 'contentLayout' in spec:
@@ -124,12 +131,26 @@ def prepare(spec, template=None):
             effective=apply_layouts(effective,defaults['layouts'])
         native_template = None
     if spec.get('referenceImages'):
-        if template or spec.get('referenceMode') == 'preserve':
+        if spec.get('referenceMode') == 'preserve':
             raise artifacts.ArtifactError('invalid_choice','캡처와 원본 양식 유지 조건을 함께 적용하지 않습니다. 디자인 기준을 확인해 주세요.')
+        if (not isinstance(spec['referenceImages'], list) or len(spec['referenceImages']) > 60
+                or any(not isinstance(path, str) or not Path(path).is_absolute() for path in spec['referenceImages'])):
+            raise artifacts.ArtifactError('invalid_choice','참고 이미지는 실제 로컬 절대경로 목록으로 최대 60개 지정해 주세요.')
         for path in spec['referenceImages']:
-            artifacts._image({'path':path})
-        if not spec.get('presentationTheme'):
-            raise artifacts.ArtifactError('reference_design_needed', '첨부 캡처를 먼저 보고 색감·글꼴·구성을 해석해 presentationTheme에 반영해 주세요. 캡처를 슬라이드 배경으로 붙이지 않습니다.')
+            ppt_workflow.reference_image_digest(path)
+        profile = spec.get('referenceStyle', {})
+        # A visual observation can be a font or layout rule even when the
+        # source colors could not be determined. Evidence alone does not carry
+        # design information and must not bypass this checkpoint.
+        observed = any(
+            isinstance(value, (int, float, bool)) or
+            isinstance(value, str) and bool(value.strip()) or
+            isinstance(value, list) and bool(value)
+            for section in ('colors', 'typography', 'spacing', 'table', 'chart', 'patterns')
+            for value in profile.get(section, {}).values()
+        ) if isinstance(profile, dict) else False
+        if not spec.get('presentationTheme') and not observed:
+            raise artifacts.ArtifactError('reference_design_needed', '첨부 캡처를 먼저 보고 확인할 수 있는 색감·글꼴·구성을 referenceStyle 또는 presentationTheme에 반영해 주세요. 캡처를 슬라이드 배경으로 붙이지 않습니다.')
     data = artifacts._normalize(effective)
     if 'slideCount' in spec and spec['slideCount'] != len(data['sections']):
         raise artifacts.ArtifactError('slide_count_mismatch', '생성할 장수가 선택한 장수와 다릅니다. 몰래 늘리거나 줄이지 않았습니다.')
@@ -145,7 +166,7 @@ def prepare(spec, template=None):
         arithmetic = presentation_design.prepare(effective, data)
         artifacts._fit_preflight(data)
         data['presentationPlan'] = presentation_design.plan(data, **frame) if not preserve else {}
-    except (presentation_design.DesignError, FactError) as exc:
+    except (presentation_design.DesignError, PptLayoutError, FactError) as exc:
         raise artifacts.ArtifactError('ppt_design_invalid', str(exc)) from None
     return data, arithmetic, inspected, native_template, preserve
 
@@ -215,7 +236,7 @@ CSS = """
 header,footer{max-width:1160px;margin:auto;padding:24px}header h1{margin:0 0 10px;font-size:24px}header p,footer{font-size:14px;line-height:1.7}
 .ppt-main{max-width:1160px;margin:auto;padding:0 24px 24px}.ppt-page{container-type:inline-size;margin:0 0 24px;overflow:auto;border:1px solid #d7dfe8;box-shadow:0 6px 25px #17324d12}
 .ppt-slide{position:relative;aspect-ratio:var(--pw)/var(--ph);background:var(--paper);color:var(--ink);font-family:var(--font);overflow:hidden}
-.ppt-element{position:absolute;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.15;padding:2px 0}
+.ppt-element{position:absolute;white-space:pre-wrap;overflow-wrap:anywhere;word-break:keep-all;line-height:1.15;padding:2px 0}
 .ppt-element[data-kind="table"]{padding:0}
 .ppt-table{width:100%;border-collapse:collapse;table-layout:fixed;white-space:normal}.ppt-table th,.ppt-table td{padding:4px 6px;vertical-align:middle;border-bottom:1px solid var(--line);line-height:1.15}
 .ppt-table th{background:var(--title);color:var(--paper);font-weight:700}.ppt-table tr:nth-child(2n){background:var(--line)}
@@ -227,7 +248,7 @@ header,footer{max-width:1160px;margin:auto;padding:24px}header h1{margin:0 0 10p
 """
 
 
-def render(data, *, metadata=None, preserve=False):
+def render(data, *, metadata=None, preserve=False, fragment=False, id_prefix=''):
     from .report_design import svg_chart
     plan = data['presentationPlan']
     palette = plan['theme']
@@ -249,12 +270,22 @@ def render(data, *, metadata=None, preserve=False):
             if kind == 'text':
                 position += f";font-size:{e['size']}px;font-size:{e['size']/plan['width']*100:.6f}cqw;color:{color(e['color'])};font-weight:{700 if e['bold'] else 400}"
                 inner = esc(e['text'])
+                if e.get('runs'):
+                    from .ppt_text import html_runs
+                    inner = html_runs(e,plan['width'])
                 if 'wrap' in e:
                     position+=f';padding:0;line-height:{e.get("lineSpacing",1.15)};text-align:{e.get("align","left")};white-space:{"pre-wrap" if e["wrap"] else "pre"}'
                     face=''.join(c for c in e.get('font','') if c.isalnum() or c in ' -_')
                     if face: position+=f";font-family:'{face}',sans-serif"
                     if e.get('italic'): position+=';font-style:italic'
                     if e.get('underline'): position+=';text-decoration:underline'
+                if e.get('verticalAlign') in ('middle','bottom'):
+                    position+=';display:flex;flex-direction:column;justify-content:'+('center' if e['verticalAlign']=='middle' else 'flex-end')
+                    inner='<div>'+inner+'</div>'
+            elif kind in ('line','path') or (kind == 'shape' and e.get('shape') not in ('rect','roundRect','ellipse')):
+                from .ppt_primitives import render_primitive_html
+                position+=';padding:0;overflow:visible'
+                inner=render_primitive_html(e,plan)
             elif kind == 'shape':
                 from .ppt_scene import ink
                 fill=ink(e.get('fill'),palette,transparent=True)
@@ -271,16 +302,23 @@ def render(data, *, metadata=None, preserve=False):
                     position+=';box-shadow:'+ ' '.join(f'{s[k]/plan["width"]*100}cqw' for k in ('x','y','blur'))+f' rgba({r},{g},{b},{s["opacity"]})'
                 inner=''
             elif kind == 'table':
+                from .ppt_component_styles import table_style, table_cell_css
                 table = e.get('table',row.get('table'))
+                style = table_style(e, palette) if 'tableStyle' in e else None
                 columns = ''.join(f'<col style="width:{w/e["w"]*100:.6f}%">' for w in e['columnWidths'])
                 rows = []
                 for ri,cells in enumerate([table['headers'],*table['rows']]):
                     tag = 'th' if ri == 0 else 'td'
-                    rows.append(f'<tr style="height:{e["rowHeights"][ri]/plan["width"]*100:.6f}cqw">'+''.join(f'<{tag}>{esc(v)}</{tag}>' for v in cells)+'</tr>')
+                    cell_css = f' style="{table_cell_css(style,ri,plan["width"])}"' if style else ''
+                    rows.append(f'<tr style="height:{e["rowHeights"][ri]/plan["width"]*100:.6f}cqw">'+''.join(f'<{tag}{cell_css}>{esc(v)}</{tag}>' for v in cells)+'</tr>')
                 inner = '<table class="ppt-table"><colgroup>'+columns+'</colgroup>'+''.join(rows)+'</table>'
                 position += f';font-size:{e.get("size",16)/plan["width"]*100:.6f}cqw'
             elif kind == 'chart':
-                inner = svg_chart(e.get('chart',row.get('chart')), index)
+                if 'chartStyle' in e:
+                    from .ppt_component_styles import styled_chart_html
+                    inner = styled_chart_html(e.get('chart',row.get('chart')), f'{id_prefix}{index}', e, palette, plan['width'], font)
+                else:
+                    inner = svg_chart(e.get('chart',row.get('chart')), f'{id_prefix}{index}')
             elif kind == 'image':
                 im = e.get('image',row.get('image'))
                 fit={'contain':'contain','cover':'cover','stretch':'fill'}[e.get('fit','contain')]
@@ -294,12 +332,25 @@ def render(data, *, metadata=None, preserve=False):
             chart = row['chart']
             rows = [[c]+[s['values'][i] for s in chart['series']] for i,c in enumerate(chart['categories'])]
             notes = '<details class="data-notes"><summary>차트 수치 확인</summary>'+artifacts._html_table(['항목']+[s['name'] for s in chart['series']],rows)+'</details>'
-        pages.append(f'<section class="ppt-page" id="slide-{index}" aria-label="{index}장 {esc(row["title"])}"><div class="ppt-slide" style="background:{color(page.get("background","background"))}">'+''.join(content)+'</div>'+notes+'</section>')
+        pages.append(f'<section class="ppt-page" id="{esc(id_prefix)}slide-{index}" aria-label="{index}장 {esc(row["title"])}"><div class="ppt-slide" style="background:{color(page.get("background","background"))}">'+''.join(content)+'</div>'+notes+'</section>')
+    if fragment:
+        return f'<div style="{esc(variables)}">'+''.join(pages)+'</div>'
+    coverage = plan.get('coverage',[])
+    coverage_html = ''
+    if coverage:
+        details=[]
+        for row in coverage:
+            unsupported=row.get('unsupported',[])
+            approximations=row.get('approximations',[])
+            details.append(f'<li>{row["slide"]}장: 원본 개체 {row.get("totalObjects",0)}개 중 {row.get("projectedObjects",0)}개를 투영했습니다.'+
+                           (' 미지원: '+', '.join(esc(item.get('reason',item.get('kind','미확인'))) for item in unsupported[:8]) if unsupported else '')+
+                           (' 근사 표현: '+', '.join(esc(item.get('reason',item.get('kind','미확인'))) for item in approximations[:8]) if approximations else '')+'</li>')
+        coverage_html='<details class="data-notes"><summary>참고 양식의 미리보기 확인 범위</summary><ul>'+''.join(details)+'</ul><p>개체 투영 검사이며 실제 PowerPoint와의 화면 일치를 검증한 결과는 아닙니다.</p></details>'
     notice = ('재사용 대표 양식 · 아래는 가상 예시입니다. 원래 업무 내용·캡처·경로는 저장하지 않았습니다.' if metadata else
               'HTML 초안 · 전체 슬라이드를 확인한 뒤 대화에서 제작을 승인해 주세요. HTML을 직접 수정하지 말고 수정 내용을 알려 주세요.')
     notice += ' PPT의 글꼴 줄바꿈·차트 세부 모양은 최종 렌더링에서 다시 확인합니다.'
     if preserve:
-        notice += ' 기존 양식의 교체 대상 위치·내용만 표시합니다. 고정 개체·배경·마스터의 실제 모양은 이 초안에서 재현하지 않습니다.'
+        notice += ' 기존 양식의 고정 개체와 교체 내용을 함께 표시합니다. 지원하지 않는 효과나 상속 서식은 아래 확인 범위를 참고하고 원본 및 최종 PPT와 비교하세요.'
     meta = ''
     if metadata:
         payload = json.dumps(metadata,ensure_ascii=True,separators=(',',':')).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
@@ -311,7 +362,7 @@ def render(data, *, metadata=None, preserve=False):
     return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
             f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title><style>{CSS}</style>{meta}</head>'
             f'<body data-ppt-draft="1" style="{esc(variables)}"><header><h1>{esc(data["title"])}</h1><p>{esc(notice)}</p></header>'
-            '<main class="ppt-main">'+''.join(pages)+'</main><footer>텍스트·표·차트는 최종 PPT에서 네이티브 개체로 제작합니다. 사진·그림 자체는 이미지입니다.</footer></body></html>')
+            '<main class="ppt-main">'+coverage_html+''.join(pages)+'</main><footer>텍스트·표·차트는 최종 PPT에서 네이티브 개체로 제작합니다. 사진·그림 자체는 이미지입니다.</footer></body></html>')
 
 
 def _write(document, output):
@@ -321,6 +372,43 @@ def _write(document, output):
         draft.write_text(document, encoding='utf-8')
         artifacts._publish(draft, output)
     return output
+
+
+def create_design_gallery(output):
+    """Optional offline samples. No user files, Office, model or approval record."""
+    try:
+        from .ppt_layouts import examples
+        samples = examples()
+        panels = []
+        for key, (name, description, _) in ppt_workflow.DESIGNS.items():
+            data, *_ = prepare({'title':name, 'designPreset':key,
+                                'compositionMode':'content-led', 'slides':samples})
+            panel = render(data, fragment=True, id_prefix=key+'-')
+            panels.append(f'<article id="{key}" class="gallery-style"><h2>{esc(name)}</h2>'
+                          f'<p>{esc(description)}</p><p class="choose">'+
+                          f'대화에서 “{esc(name)}으로 해줘”라고 알려 주세요.</p>'+panel+'</article>')
+        csp = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
+        navigation = ''.join(f'<a href="#{key}">{esc(row[0])}</a>' for key,row in ppt_workflow.DESIGNS.items())
+        css = (CSS + '\n.gallery-main{max-width:1120px;margin:auto;padding:0 24px 48px}'
+               '.gallery-style{padding-top:24px;scroll-margin-top:16px}.gallery-style h2{margin:0 0 8px;font-size:25px}'
+               '.gallery-style>p{line-height:1.6}.choose{color:#52667c;font-size:14px}'
+               '.gallery-nav{display:flex;gap:10px;flex-wrap:wrap}.gallery-nav a{padding:10px 14px;border:1px solid #cad5df;'
+               'border-radius:10px;color:#17324d;text-decoration:none;background:#fff}.gallery-nav a:focus-visible{outline:3px solid #087f8c}'
+               '.gallery-style .ppt-page{margin-top:18px}.gallery-style .data-notes{display:none}'
+               '@media print{.gallery-main{padding:0}.gallery-style>h2,.gallery-style>p{display:none}}')
+        document = ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+                    f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>PPT 양식 비교</title><style>{css}</style></head>'
+                    '<body><header><h1>PPT 양식을 골라 보세요</h1><p>표지, 핵심 메시지, 비교, 업무 흐름, 일정, 상세 표와 결론의 서로 다른 일곱 배치를 가상 자료로 비교합니다. '
+                    '색감과 장별 배치를 함께 비교하세요. 실제 초안이나 제작 승인이 아닙니다.</p>'
+                    f'<nav class="gallery-nav" aria-label="양식 바로가기">{navigation}</nav>'
+                    '<p>기존 PPT나 이미지를 참고하거나, 내용에 맞게 추천받거나, 원하는 느낌을 직접 알려 주셔도 됩니다.</p></header>'
+                    '<main class="gallery-main">'+''.join(panels)+'</main></body></html>')
+        target = _write(document, output)
+        return {'ok':True,'status':'created','outputPath':str(target), 'sampleOnly':True,
+                'designs':list(ppt_workflow.DESIGNS), 'sampleSlidesPerDesign':len(samples),
+                'offline':True, 'officeStarted':False, 'approvalGranted':False}
+    except Exception as exc:
+        return artifacts._failure(exc)
 
 
 def create_draft(spec, output, template=None, *, require_choices=True):
@@ -340,6 +428,8 @@ def create_draft(spec, output, template=None, *, require_choices=True):
                 raise artifacts.ArtifactError('template_engine_unavailable','기존 양식의 개체 배치를 확인할 라이브러리가 없습니다. 자동 설치하지 않습니다.')
             data['presentationPlan'] = ppt_workflow.fill_template(data, None, native_template, spec.get('templateSlides'), html_only=True)
         document = render(data, preserve=preserve)
+        from .ppt_preflight import inspect_plan, template_summary
+        preflight = inspect_plan(data['presentationPlan'])
         from .content_layout import check_plan, LayoutError
         try:
             layout_check = check_plan(data) if not preserve else {'status':'not-requested'}
@@ -352,11 +442,13 @@ def create_draft(spec, output, template=None, *, require_choices=True):
                 'slides':len(data['sections']),'outline':[row['title'] for row in data['sections']],
                 'engine':'offline-html','offline':True,'officeStarted':False,
                 'contentLayoutValidation':layout_check,
+                'scenePreflight':preflight,
+                **({'templatePreview':template_summary(data['presentationPlan']['coverage'])} if preserve else {}),
                 'designReview':{'specSha256':digest,'previewPath':str(output.resolve()),
                                 'previewSha256':hashlib.sha256(output.read_bytes()).hexdigest(),'confirmed':False},
                 'validation':{'arithmetic':arithmetic,'visualReview':'required','nativePptValidation':'after-approval'},
                 'warnings':data['presentationPlan'].get('warnings',[])+['HTML과 PPT는 같은 배치·수치를 사용하지만 브라우저와 PowerPoint의 렌더링은 다를 수 있습니다.']+
-                           (['기존 양식의 고정 개체·배경·마스터는 HTML에서 생략됩니다. 원본 양식과 최종 PPT에서 별도로 확인하세요.'] if preserve else [])}
+                           (['기존 양식은 판독 가능한 고정 개체를 함께 표시했습니다. 미지원 요소와 근사 범위는 templatePreview 및 원본 양식에서 확인하세요.'] if preserve else [])}
     except Exception as exc:
         return artifacts._failure(exc)
 
@@ -377,7 +469,7 @@ def save_template(spec, output, template=None):
         plan = data['presentationPlan']
         metadata = {'schema':SCHEMA,'layoutVersion':1,'presentationTheme':plan['theme'],
                     'presentationFont':plan['font'],'presentationFrame':{'width':plan['width'],'height':plan['height']}}
-        scene_layout=bool(spec.get('htmlSource') or any('elements' in r or 'contentOrder' in r
+        scene_layout=bool(spec.get('htmlSource') or any('elements' in r or 'contentOrder' in r or r.get('pageRole')
                           or r.get('layout', 'auto') != 'auto' for r in data['sections']))
         # Deliberately never retain original values, captions, references or images.
         sample = {**metadata,'title':'PPT 대표 양식', 'slides':[

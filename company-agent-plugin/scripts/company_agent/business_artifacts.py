@@ -146,6 +146,12 @@ def _normalize(spec: dict[str, Any], *, html_tables: bool = False) -> dict[str, 
     if 'contentOrder' in spec or 'contentLayout' in spec:
         raise ArtifactError('invalid_content_layout', 'contentOrder와 contentLayout은 전체 문서가 아닌 각 sections/slides 항목 안에 지정하세요.')
     _check_content_scope(spec)
+    if html_tables and ('referenceStyle' in spec or 'themeOverrides' in spec):
+        from .reference_style import apply as apply_reference_style
+        try:
+            spec = apply_reference_style(spec, target='html')
+        except ValueError as exc:
+            raise ArtifactError('invalid_reference_style', str(exc)) from None
     from .report_styles import reference_choices
     try:
         spec = reference_choices(spec)
@@ -178,6 +184,10 @@ def _normalize(spec: dict[str, Any], *, html_tables: bool = False) -> dict[str, 
               "style": style, "mode": mode, "length": length, "motion": motion, "sections": []}
     if 'referencePreset' in spec:
         result['referencePreset'] = spec['referencePreset']
+    if html_tables:
+        for key in ('referenceStyle', 'themeOverrides'):
+            if key in spec:
+                result[key] = spec[key]
     if "fontSource" in spec and spec["fontSource"] not in ("system", "google"):
         raise ArtifactError("invalid_font_source", "글꼴은 system 또는 google 중에서 선택해 주세요.")
     from . import report_typography
@@ -297,15 +307,16 @@ def html_choice_selection(spec: dict[str, Any], *, metadata_only: bool = False) 
     if not isinstance(spec, dict) or spec.get('designMenu') not in (None, 'initial', 'additional', 'template'):
         raise ArtifactError('invalid_choice', '디자인 선택 단계의 형식을 확인해 주세요.')
     from .report_typography import FIELDS
-    if metadata_only and set(spec) - {'style', 'referencePreset', 'length', 'mode', 'designMenu', 'htmlTemplate', 'templateReview', *FIELDS}:
+    if metadata_only and set(spec) - {'style', 'referencePreset', 'referenceStyle', 'themeOverrides', 'length', 'mode', 'designMenu', 'htmlTemplate', 'templateReview', *FIELDS}:
         raise ArtifactError('invalid_choice', '선택 파일에는 디자인·분량·보기 선택만 넣어 주세요.')
-    fields = {key: spec[key] for key in ('style','referencePreset','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus', *FIELDS) if key in spec}
+    fields = {key: spec[key] for key in ('style','referencePreset','referenceStyle','themeOverrides','length','mode','designMenu','protected','drmRestricted','permissionGranted','accessStatus', *FIELDS) if key in spec}
     # Also used by the report generator: aliases and numbered styles stay identical.
-    normalized = _normalize({**fields, 'sections': [{}]})
+    normalized = _normalize({**fields, 'sections': [{}]}, html_tables=True)
     selection = {key: normalized[key] for key in ('style','length','mode')}
     selection.update({key: normalized[key] for key in FIELDS if key in normalized})
     if 'referencePreset' in normalized:
         selection['referencePreset'] = normalized['referencePreset']
+    selection.update({key: normalized[key] for key in ('referenceStyle', 'themeOverrides') if key in normalized})
     if 'htmlTemplate' in spec:
         template = spec['htmlTemplate']
         if (not isinstance(template, dict) or set(template) != {'path', 'sha256'}
@@ -376,6 +387,14 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
             from .report_styles import choices
             pending = choices(spec)
             if pending:
+                return pending
+        elif not template_preview and ('htmlTemplate' in spec or spec.get('designMenu') == 'template'):
+            # The independent builder skips optional design questions, but a
+            # selected reference still needs its own preview and confirmation.
+            # Do not ask unrelated length/font questions on this direct path.
+            from .report_styles import choices
+            pending = choices(spec)
+            if pending and pending.get('stage') in ('template_attach', 'template_preview', 'template_confirm'):
                 return pending
         reference = None
         if spec.get('htmlTemplate') is not None:
@@ -465,6 +484,7 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
                 "sections": len(data["sections"]), "offline": data.get("fontSource") != "google", "validation": validation,
                 "contentLayoutValidation": layout_check,
                 "referencePreset": data.get('referencePreset'),
+                "referenceStyle": data.get('referenceStyle'),
                 "templateReference": reference,
                 "typography": typography,
                 "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."] + (reference['warnings'] if reference else [])
@@ -672,9 +692,12 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
             ppt_workflow.verify_design_review(spec, template)
         data, arithmetic, inspected, native_template, preserve = ppt_html.prepare(spec, template)
         python_available = importlib.util.find_spec("pptx") is not None
-        extended=bool(spec.get('htmlSource') or any('elements' in r or r.get('imageFit','contain')!='contain' for r in data['sections']))
-        if (preserve or extended) and not python_available:
-            raise ArtifactError('template_engine_unavailable','자유 배치/HTML 변환/양식 유지 제작에는 python-pptx가 필요합니다. 자동 설치하거나 표 중심/이미지형으로 바꾸지 않았습니다.')
+        extended=bool(spec.get('htmlSource') or data.get('tableStyle') or data.get('chartStyle')
+                      or any('elements' in r or r.get('imageFit','contain')!='contain' or r.get('tableStyle') or r.get('chartStyle')
+                             or r.get('table',{}).get('style') or r.get('chart',{}).get('style')
+                             for r in data['sections']))
+        if (preserve or extended or data.get('presentationProfileSpecified')) and not python_available:
+            raise ArtifactError('template_engine_unavailable','참고 서식/자유 배치/HTML 변환/양식 유지 제작에는 python-pptx가 필요합니다. 자동 설치하거나 서식을 생략하지 않았습니다.')
         # Office can retain a handle after a timeout. Do not kill its process or
         # mask a saved output with cleanup errors when a temporary file is locked.
         with tempfile.TemporaryDirectory(prefix="company-presentation-", ignore_cleanup_errors=True) as temp:

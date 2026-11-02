@@ -3,15 +3,21 @@
   "source": "scripts/query_skills/query_core",
   "files": {
     "__init__.py": "c7e5fd713c5f613722c589048f1b6ca5ef19fc02f0e04ab8612a75702bd12bf8",
-    "adapters.py": "eb2deaceb28f05e77b9e936ff42c842aaf87b5b0d588a5fd7e8a05acda97c131",
-    "cli.py": "b13aa08562a853c829d351fd98cc65b4a0dd926f12a89a53f05babc1181af6fc",
-    "core.py": "43310857346085f2ada1ca0c17a5b5187a248dac15e1805c295c19253b1d4ef1",
+    "adapters.py": "2c83c74a2182e0589e3e692c8dba045f2e6c1350a80b4a3feca24754eeb41f44",
+    "cli.py": "91ecba24fe3dd8e2f79a74d5ae634dfa6ebc8c7cff9ee94439519c095092ede8",
+    "core.py": "c3a76fdd6487ddb21ab80315f4ed36809491a2eb6a4d4a908b7215901992d0bc",
+    "credentials.py": "cf2694b0346eb83297a16c8af4bbafda32510175fc218f6d46d9c58641429305",
     "discovery.py": "a031b693f2f050f2c74a9ace1ea621e7bbbc8bf1951dacd095a034d2bb18366f",
-    "manager_ui.py": "a9c43485ea6f74efe78ccf8d6dfbe9e1566b02230d7ac5fe0e7cbd87fa6a4f0e",
+    "errors.py": "d0ef49c2cb00113afacd1c7c72f0270014e1bc0be8ff9e7f3a48f3bc654a39d7",
+    "inputs.py": "28ef43e93d16a9640760e20343b82e33af840ca9033c056ce0d3dd507debe5a9",
+    "manager_ui.py": "253148624e20db9d13e7d1772177a2e5c71450885c4235b2880610ae48ada47a",
+    "preview.py": "1dbedc0a31c77bae536481af4a2b9d4a7b2220e6f02de59126f686090e2cc139",
+    "registration.py": "3aa81004da9fa229c8854038d4b7c48c75ee10ad7bd0a202b2649683993d9d07",
     "results.py": "2c5ef53fee13cbb2adc82a01871e091e4ba1cc64688745856c93fa515199cc0a",
-    "sdk_adapter.py": "8a80dee8f3faa855ec3c19e0133a06778a797e23bc9afd8980ccdceafe22237a",
-    "setup_ui.py": "ebfe591bd443698e9459dee36c0b09910d6e83ed906724e2edce194b4bad2a98",
+    "sdk_adapter.py": "a418f2a7d20e8b8c7db97e77e70ea8e17afd80c57596a0a53d9db0ddcb627c14",
+    "setup_ui.py": "9e5f330f2d73ffc487f6290db1f25cda197dbfe790ce04208d437e68c8a334ae",
     "sql.py": "5aff05cdf0338e31784f1991c78939c941291e9a6847a4b02ff5529d6e34bac0",
-    "store.py": "144ff630026f9c844d8cf5155e70a7ae8f0e65f325ee536e0f077c838a59607f"
+    "store.py": "8464bdf56fc3d25e71021247b24d8bf6689411fd7896774888e5ef678c356dde",
+    "workflow.py": "58054104dde1a84951a65cf13640e3d9422a6409549f0b025f01d43b03bdb8fc"
   }
 }

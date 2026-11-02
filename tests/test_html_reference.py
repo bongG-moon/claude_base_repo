@@ -77,6 +77,22 @@ class HtmlReferenceTests(unittest.TestCase):
         self.assertEqual(before, self.template.read_bytes())
         self.assertIn("default-src &#x27;none&#x27;", text)
 
+    def test_reference_structure_hints_are_bounded_and_do_not_expose_source_content(self):
+        self.template.write_text('''<html><body><header class="hero">비공개 제목</header>
+            <nav class="guide-nav">비공개 목차</nav><section class="report-section card">
+            <div class="domain-grid"><article class="workflow-card">
+            <ol class="workflow-steps"><li><span class="step-number">비공개 단계</span></li></ol>
+            <details><summary>비공개 내용</summary>비공개 본문</details></article></div></section>
+            <script>secret_script()</script></body></html>''', encoding='utf-8')
+        result = reference.inspect_template(self.template)
+        self.assertTrue(result['ok'], result)
+        hints = result['reference']['layoutHints']
+        self.assertEqual({'navigation': 1, 'cards': 2, 'grids': 1, 'stepLists': 1,
+                          'numberOrBadgeMarkers': 1, 'collapsibleSections': 1}, hints)
+        self.assertNotIn('비공개', json.dumps(result, ensure_ascii=False))
+        self.assertNotIn('secret_script', json.dumps(result, ensure_ascii=False))
+        self.assertIn('시각적 유사성을 증명하지 않습니다', ' '.join(result['reference']['warnings']))
+
     def test_css_injection_and_external_assets_are_not_transferred(self):
         self.template.write_text('<html><style>:root{--accent:url(https://bad.invalid);font-family:x;}</style><body style="background:expression(alert(1))">x</body></html>',encoding='utf-8')
         ref = reference.analyze(self.template)
@@ -127,15 +143,40 @@ class HtmlReferenceTests(unittest.TestCase):
         self.assertIn('전체 CSS 계산이 아닙니다', ''.join(result['warnings']))
 
     def test_changed_template_stops_publication_and_existing_output_is_preserved(self):
-        selected = reference.inspect_template(self.template)['htmlTemplate']
+        preview = reference.inspect_template(self.template, self.root/'original-preview.html')
+        selected = preview['htmlTemplate']
+        review = {**preview['templateReview'], 'confirmed': True}
         self.template.write_text('<html><body>changed</body></html>',encoding='utf-8')
-        result = artifacts.create_html({'htmlTemplate':selected, 'sections':[{}]}, self.root/'out.html')
+        result = artifacts.create_html({'htmlTemplate':selected, 'templateReview':review, 'sections':[{}]}, self.root/'out.html')
         self.assertEqual('template_changed', result['code'])
         self.assertFalse((self.root/'out.html').exists())
         target = self.root/'preview.html'
         target.write_text('keep', encoding='utf-8')
         self.assertEqual('output_exists', reference.inspect_template(self.template, target)['code'])
         self.assertEqual('keep', target.read_text())
+
+    def test_direct_build_requires_matching_confirmed_preview_without_extra_choices(self):
+        preview = reference.inspect_template(self.template, self.root/'approval-preview.html')
+        spec = {'htmlTemplate': preview['htmlTemplate'], 'sections': [{'title':'검토', 'body':'가상 내용'}]}
+        output = self.root/'direct.html'
+        pending = artifacts.create_html(spec, output)
+        self.assertEqual('template_preview', pending['stage'])
+        self.assertFalse(output.exists())
+        spec['templateReview'] = preview['templateReview']
+        pending = artifacts.create_html(spec, output)
+        self.assertEqual('template_confirm', pending['stage'])
+        self.assertFalse(output.exists())
+        spec['templateReview']['confirmed'] = True
+        self.assertTrue(artifacts.create_html(spec, output)['ok'])
+        self.assertTrue(output.exists())
+
+    def test_direct_build_refuses_edited_preview_and_preserves_existing_content(self):
+        preview = reference.inspect_template(self.template, self.root/'approval-preview.html')
+        spec = {'htmlTemplate': preview['htmlTemplate'], 'templateReview':{**preview['templateReview'], 'confirmed':True}, 'sections':[{}]}
+        (self.root/'approval-preview.html').write_text('다른 파일', encoding='utf-8')
+        output = self.root/'direct.html'
+        self.assertEqual('template_preview_changed', artifacts.create_html(spec, output)['code'])
+        self.assertFalse(output.exists())
 
     def test_template_branch_cannot_publish_before_attachment(self):
         result = artifacts.create_html({'designMenu':'template','sections':[{}]},self.root/'out.html',require_choices=True)
@@ -145,8 +186,35 @@ class HtmlReferenceTests(unittest.TestCase):
     def test_cp949_and_bounded_read(self):
         self.template.write_bytes('<html><body>한글 양식</body></html>'.encode('cp949'))
         self.assertTrue(reference.inspect_template(self.template)['ok'])
-        self.template.write_bytes(b'<html>'+b'x'*(1024*1024))
+        self.template.write_bytes(b'<html>'+b'x'*(reference.MAX_REFERENCE_BYTES-6))
         self.assertEqual('template_too_large', reference.inspect_template(self.template)['code'])
+
+    def test_reference_just_under_ten_mib_returns_bounded_style_only(self):
+        prefix = b'<html><style>:root{--accent:#156070}</style><body><script>'
+        suffix = b'</script><section>private payload</section></body></html>'
+        data = prefix + b'x'*(reference.MAX_REFERENCE_BYTES-1-len(prefix)-len(suffix)) + suffix
+        self.template.write_bytes(data)
+        result = reference.inspect_template(self.template)
+        self.assertTrue(result['ok'], result)
+        self.assertEqual('#156070', result['reference']['tokens']['accent'])
+        self.assertEqual(hashlib.sha256(data).hexdigest(), result['reference']['sha256'])
+        self.assertLess(len(json.dumps(result, ensure_ascii=False)), 4000)
+        self.assertNotIn('private payload', json.dumps(result, ensure_ascii=False))
+
+    def test_seven_mib_template_preview_and_review_flow(self):
+        # A large embedded script simulates a data-rich offline report. It must
+        # not execute or enter the preview or the small tool result.
+        self.template.write_bytes(b'<html><style>:root{--accent:#246858}</style><body><script>' +
+                                  b'x'*(7*1024*1024) + b'</script><section>secret</section></body></html>')
+        result = reference.inspect_template(self.template, self.root/'large-preview.html')
+        self.assertTrue(result['ok'], result)
+        self.assertLess(len(json.dumps(result, ensure_ascii=False)), 4000)
+        self.assertNotIn('secret', (self.root/'large-preview.html').read_text(encoding='utf-8'))
+        spec = {k:result[k] for k in ('htmlTemplate','templateReview')}
+        spec.update(length='detailed', mode='scroll')
+        self.assertEqual('template_confirm', artifacts.html_choices(spec)['stage'])
+        spec['templateReview']['confirmed'] = True
+        self.assertEqual('ready', artifacts.html_choices(spec)['stage'])
 
     def test_incomplete_css_is_bounded_and_not_executed(self):
         for css in ('x'*200000, '/*'*100000):

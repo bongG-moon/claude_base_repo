@@ -189,6 +189,11 @@ def discovery_command(command: str, *, tool: str = 'Bash') -> bool:
     chains. No filesystem scans/subprocesses. Reused by preparation and result
     accounting so stderr-to-null does not cause a false mutation/Stop failure.
     """
+    from .core_profile import is_core_install
+    if is_core_install():
+        args = _trusted_arguments(command)
+        if args and args[0] == 'doctor':
+            return args[1:] == ['--help'] or _fields(args[1:], {'--state-root'}) is not None
     if not command or len(command) > 4096 or any(c in command for c in '\r\n\0$`(){}'):
         return False
     try:
@@ -234,6 +239,15 @@ def discovery_command(command: str, *, tool: str = 'Bash') -> bool:
 def _help_arguments(args: list[str]) -> bool:
     # Only argparse help with no other values. In particular --help beside a
     # spec/state override or followed by another operation is not this contract.
+    from .core_profile import is_core_install
+    if is_core_install():
+        return args in (['--help'], ['doctor', '--help']) or (
+            len(args) == 3 and args[-1] == '--help' and tuple(args[:2]) in {
+                ('memory', 'search'), ('memory', 'upsert'), ('memory', 'history'), ('memory', 'restore'),
+                ('session', 'verify'), ('work', 'checkpoint'), ('learning', 'stage'), ('learning', 'review'),
+                ('learning', 'submit'), ('asset', 'create'), ('asset', 'inspect'), ('asset', 'update'),
+                ('asset', 'validate'), ('asset', 'check-skill'),
+            })
     return args == ['--help'] or (len(args) == 3 and args[-1] == '--help' and tuple(args[:2]) in {
         ('memory', 'search'), ('memory', 'upsert'), ('memory', 'history'), ('memory', 'restore'), ('session', 'verify'),
         ('work', 'checkpoint'), ('learning', 'stage'), ('learning', 'review'), ('learning', 'submit'),
@@ -311,6 +325,9 @@ def usability_report_command(command: str, root: Path, project: str | None = Non
 
 def vision_configuration_command(command: str, root: Path) -> bool:
     """Preparation/completion exemption, NOT native execution permission."""
+    from .core_profile import is_core_install
+    if is_core_install():
+        return False
     args = _trusted_arguments(command)
     literal_model = None
     if args is None and isinstance(command, str):
@@ -357,6 +374,12 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     args = _trusted_arguments(command)
     if not args:
         return "unknown"
+    from .core_profile import is_core_install
+    if is_core_install():
+        if args[0] in {'business', 'vision'}:
+            return 'unknown'
+        if args[0] == 'doctor':
+            return 'read_only' if _fields(args[1:], {'--state-root'}) is not None else 'unknown'
     head = tuple(args[:2])
     if head == ('business', 'excel-analyze'):
         from .excel_pipeline_command import read_only_arguments
@@ -453,6 +476,9 @@ def internal_plan_command(command: str, root: Path) -> bool:
     This is a bookkeeping classification, NOT an approval or a blanket tmp-write
     exemption. Explicit alternate state roots remain business changes.
     """
+    from .core_profile import is_core_install
+    if is_core_install():
+        return False
     args = _trusted_arguments(command)
     if args and args[:2] == ["business", "artifact-cleanup"]:
         fields = _fields(args[2:], {"--work", "--state-root"}, {"--work"})
@@ -495,9 +521,11 @@ def safe_permission(payload: dict[str, Any], root: Path) -> dict[str, str] | Non
     args = _trusted_arguments(command)
     if args and _help_arguments(args):
         return {"behavior": "allow"}
-    if not args or tuple(args[:2]) not in {("business", "doctor")}:
+    from .core_profile import is_core_install
+    core = is_core_install()
+    if not args or (args[0] != 'doctor' if core else tuple(args[:2]) != ('business', 'doctor')):
         return None
-    fields = _fields(args[2:], {"--state-root"})
+    fields = _fields(args[1:] if core else args[2:], {"--state-root"})
     if fields is None or ("--state-root" in fields and not _same(fields["--state-root"], root)):
         return None
     return {"behavior": "allow"}

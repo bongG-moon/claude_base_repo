@@ -92,6 +92,36 @@ class LearningExplanationTests(unittest.TestCase):
             self.assertIsNone(read_explanation_session(self.root, 'exact'))
         self.assertIsNone(read_explanation_session(self.root, '../exact'))
 
+    def test_candidate_reasons_are_korean_and_legacy_records_remain_explainable(self):
+        cases = (
+            ({'status': 'active', 'reasonCode': 'applied'}, 'applied', '적용한 기록'),
+            ({'status': 'active', 'reasonCode': 'already_active'}, 'already_active', '다시 변경하지'),
+            ({'status': 'active'}, 'active_recorded', '현재 파일을 다시 확인한 결과는 아닙니다'),
+            ({'status': 'observing', 'signal': 'repeated_choice'}, 'independent_work_samples_required', '두 번'),
+            ({'status': 'observing'}, 'evidence_required', '세부 사유가 없습니다'),
+            ({'status': 'rejected'}, 'rejected_reapplication', '재적용을 막는'),
+            ({'status': 'deferred', 'reason': 'independent_work_sample_not_ready'},
+             'independent_work_sample_not_ready', '서로 다른 업무'),
+            ({'status': 'deferred', 'reason': 'PRIVATE_REASON'}, 'target_validation_deferred', '보류했습니다'),
+        )
+        for item, code, phrase in cases:
+            with self.subTest(code=code):
+                result = explain_learning({'recentCandidates': [{'title': '보고 형식', **item}]})
+                candidate = result['recentCandidates'][0]
+                self.assertEqual(code, candidate['reasonCode'])
+                self.assertIn(phrase, candidate['reason'])
+                self.assertNotIn('PRIVATE_REASON', json.dumps(result))
+
+    def test_stale_or_unrecognized_reason_code_cannot_override_recorded_status(self):
+        for code in ('applied', 'PRIVATE_CODE', ['unexpected']):
+            result = explain_learning({'recentCandidates': [
+                {'status': 'rejected', 'reasonCode': code},
+                {'status': 'deferred', 'reasonCode': code},
+            ]})
+            self.assertEqual(['rejected_reapplication', 'target_validation_deferred'],
+                             [item['reasonCode'] for item in result['recentCandidates']])
+            self.assertNotIn('PRIVATE_CODE', json.dumps(result))
+
     def test_explanation_command_is_read_only_and_does_not_create_completion_debt(self):
         command = f'"{sys.executable}" -B "{SCRIPTS / "harness_cli.py"}" learning status --explain --session exact --state-root "{self.root}"'
         self.assertEqual('read_only', classify_command(command))

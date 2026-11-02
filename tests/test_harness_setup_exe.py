@@ -24,18 +24,33 @@ class HarnessSetupExeTests(unittest.TestCase):
         cls.root = Path(cls.temp.name)
         cls.fixture_counter = 0
         cls.setup = '''param([string]$Scope,[string]$BundleRoot,[string]$ProjectRoot,[string]$ClaudeCommand,
-            [string]$PythonCommand,[string]$ExistingHarnessAction='Ask',[string]$SkillConflictAction,[switch]$NonInteractive)
+            [string]$PythonCommand,[string]$ExistingHarnessAction='Ask',[string]$SkillConflictAction,
+            [string]$OldVersionAction='Keep',[switch]$NonInteractive)
             $ErrorActionPreference='Stop'
             if ($env:SETUP_FIXTURE_MODE -eq 'failed') { throw 'fixture failure; do not report success' }
             if ($env:SETUP_FIXTURE_MODE -eq 'update' -and $ExistingHarnessAction -eq 'Ask') {
                 return [pscustomobject]@{status='input-required'; input='ExistingHarnessAction'; choices=@('Update','Keep')}
             }
             $observation = @{scope=$Scope; project=$ProjectRoot; claude=$ClaudeCommand; python=$PythonCommand;
-              existing=$ExistingHarnessAction; skills=$SkillConflictAction; nonInteractive=[bool]$NonInteractive;
+              existing=$ExistingHarnessAction; skills=$SkillConflictAction; oldVersions=$OldVersionAction; nonInteractive=[bool]$NonInteractive;
               config=$env:CLAUDE_CONFIG_DIR; model=$env:ANTHROPIC_MODEL;
               unexpectedBypass=$PSBoundParameters.ContainsKey('SkipBundleVerification')}
             $observation | ConvertTo-Json | Set-Content -LiteralPath $env:SETUP_FIXTURE_RECORD -Encoding UTF8
-            [pscustomobject]@{status=$(if($ExistingHarnessAction -eq 'Update'){'updated'}else{'installed'}); coreVersion='9.9.99'; safetyBackup='fixture backup'}
+            $cleanup = [pscustomobject]@{status='kept'; deleted=@(); retained=@(); bytesFreed=0; message='이전 설치 파일을 유지했습니다.'}
+            if ($OldVersionAction -eq 'DeleteUnused') {
+                $cleanup.status='completed'; $cleanup.bytesFreed=4096; $cleanup.message='사용하지 않는 이전 설치 파일을 삭제했습니다.'
+                $cleanup.deleted=@([pscustomobject]@{path=(Join-Path $BundleRoot 'fixture-old-version'); kind='release'; bytes=[long]4096})
+                if ($env:SETUP_FIXTURE_MODE -eq 'cleanup-deferred') {
+                    $cleanup.status='deferred'; $cleanup.bytesFreed=0; $cleanup.deleted=@()
+                    $cleanup.retained=@([pscustomobject]@{path=(Join-Path $BundleRoot 'fixture-old-version'); kind='release'; reason='running'})
+                    $cleanup.message='사용 중인 이전 설치 파일은 다음에 정리할 수 있습니다.'
+                }
+                if ($env:SETUP_FIXTURE_MODE -eq 'cleanup-partial') {
+                    $cleanup.status='partial'; $cleanup.retained=@([pscustomobject]@{path=(Join-Path $BundleRoot 'fixture-busy-version'); kind='native-cache'; reason='locked'})
+                    $cleanup.message='일부 이전 설치 파일을 삭제했고 사용 중인 파일은 유지했습니다.'
+                }
+            }
+            [pscustomobject]@{status=$(if($ExistingHarnessAction -eq 'Update'){'updated'}else{'installed'}); coreVersion='9.9.99'; safetyBackup='fixture backup'; cleanup=$cleanup}
         '''.encode('utf-8-sig')
         cls.files = {'bundle-manifest.json': b'{"fixture":true}',
                      'deploy/Setup-CompanyAgent.ps1': cls.setup,
@@ -153,7 +168,36 @@ class HarnessSetupExeTests(unittest.TestCase):
         self.assertEqual(self.env['ANTHROPIC_MODEL'], observed['model'])
         self.assertTrue(observed['nonInteractive'])
         self.assertFalse(observed['unexpectedBypass'])
+        self.assertEqual('Keep', observed['oldVersions'])
+        self.assertEqual('kept', result['cleanup']['status'])
+        self.assertEqual([], result['cleanup']['deleted'])
+        self.assertEqual(0, result['cleanup']['bytesFreed'])
         self.assertFalse(list(self.cache.glob('*/requests/*/request.json')))
+
+    def test_bridge_rejects_invalid_old_version_choice_before_installer_runs(self):
+        request = self.case / 'invalid-cleanup.json'
+        request.write_text(json.dumps({'Scope': 'User', 'OldVersionAction': 'DeleteAll'}), encoding='utf-8')
+        result = self.probe_run('run', request)
+        self.assertEqual('failed', result['status'], result)
+        self.assertFalse(self.record.exists())
+        self.assertFalse(list(self.cache.glob('*/requests/*/request.json')))
+
+    def test_bridge_preserves_completed_cleanup_arrays_and_bytes(self):
+        request = self.case / 'cleanup.json'
+        request.write_text(json.dumps({'Scope': 'User', 'OldVersionAction': 'DeleteUnused'}), encoding='utf-8')
+        result = self.probe_run('run', request)
+        self.assertEqual('installed', result['status'], result)
+        self.assertEqual('DeleteUnused', json.loads(self.record.read_text(encoding='utf-8-sig'))['oldVersions'])
+        cleanup = result['cleanup']
+        self.assertEqual('completed', cleanup['status'])
+        self.assertEqual(1, len(cleanup['deleted']))
+        self.assertEqual('release', cleanup['deleted'][0]['kind'])
+        self.assertEqual(4096, cleanup['deleted'][0]['bytes'])
+        self.assertTrue(Path(cleanup['deleted'][0]['path']).is_absolute())
+        self.assertEqual('fixture-old-version', Path(cleanup['deleted'][0]['path']).name)
+        self.assertEqual([], cleanup['retained'])
+        self.assertEqual(4096, cleanup['bytesFreed'])
+        self.assertEqual('사용하지 않는 이전 설치 파일을 삭제했습니다.', cleanup['message'])
 
     def test_native_install_button_finishes_without_console_or_extra_questions(self):
         ui = self.probe_run('gui')
@@ -162,20 +206,51 @@ class HarnessSetupExeTests(unittest.TestCase):
         self.assertTrue(ui['closeEnabled'])
         self.assertTrue(ui['busyAtStart'])
         self.assertTrue(ui['closeDisabledDuringWork'])
+        self.assertFalse(ui['cleanupDefaultChecked'])
+        self.assertFalse(ui['cleanupChecked'])
+        self.assertEqual('사용하지 않는 이전 설치 파일 삭제 (백업 없음)', ui['cleanupText'])
+        self.assertTrue(ui['cleanupDisabledDuringWork'])
         observed = json.loads(self.record.read_text(encoding='utf-8-sig'))
         self.assertEqual('User', observed['scope'])
         self.assertEqual('KeepCurrent', observed['skills'])
+        self.assertEqual('Keep', observed['oldVersions'])
+
+    def test_native_checked_cleanup_is_sent_to_installer(self):
+        ui = self.probe_run('gui-cleanup')
+        self.assertFalse(ui['cleanupDefaultChecked'])
+        self.assertTrue(ui['cleanupChecked'])
+        self.assertTrue(ui['cleanupDisabledDuringWork'])
+        self.assertIn('설치가 완료되었습니다', ui['message'], ui)
+        self.assertFalse(ui['installVisible'])
+        observed = json.loads(self.record.read_text(encoding='utf-8-sig'))
+        self.assertEqual('DeleteUnused', observed['oldVersions'])
+        self.assertIn('사용하지 않는 이전 설치 파일을 삭제했습니다.', ui['message'] + ui['details'])
+
+    def test_deferred_and_partial_cleanup_keep_install_success_and_explain_remaining_files(self):
+        cases = [('deferred', '사용 중인 이전 설치 파일은 다음에 정리할 수 있습니다.'),
+                 ('partial', '일부 이전 설치 파일을 삭제했고 사용 중인 파일은 유지했습니다.')]
+        for status, message in cases:
+            with self.subTest(cleanup=status):
+                self.env['SETUP_FIXTURE_MODE'] = 'cleanup-' + status
+                ui = self.probe_run('gui-cleanup')
+                self.assertIn('설치가 완료되었습니다', ui['message'], ui)
+                self.assertFalse(ui['installVisible'])
+                self.assertTrue(ui['closeEnabled'])
+                self.assertIn(message, ui['message'] + ui['details'], ui)
+                observed = json.loads(self.record.read_text(encoding='utf-8-sig'))
+                self.assertEqual('DeleteUnused', observed['oldVersions'])
 
     def test_native_project_selection_and_existing_update_are_honored(self):
         self.env['SETUP_FIXTURE_MODE'] = 'update'
         project = self.case / '내 업무 폴더'
         project.mkdir()
-        ui = self.probe_run('gui', project)
+        ui = self.probe_run('gui-cleanup', project)
         self.assertIn('설치가 완료되었습니다', ui['message'], ui)
         observed = json.loads(self.record.read_text(encoding='utf-8-sig'))
         self.assertEqual('Update', observed['existing'])
         self.assertEqual('Project', observed['scope'])
         self.assertEqual(str(project), observed['project'])
+        self.assertEqual('DeleteUnused', observed['oldVersions'])
 
     def test_failed_installer_is_not_reported_as_completed(self):
         self.env['SETUP_FIXTURE_MODE'] = 'failed'
@@ -192,13 +267,14 @@ class HarnessSetupExeTests(unittest.TestCase):
                 ui = self.probe_run('layout', factor)
                 self.assertEqual('Company Harness 설치', ui['title'])
                 self.assertEqual('Company Harness', ui['headingText'])
-                for name in ('heading', 'introduction', 'user', 'project', 'status', 'browse', 'install', 'close'):
+                for name in ('heading', 'introduction', 'user', 'project', 'cleanupOldVersions', 'status', 'browse', 'install', 'close'):
                     box = ui[name]
                     self.assertGreaterEqual(box['height'], box['preferredHeight'], (name, box, ui))
-                for previous, following in (('heading','introduction'), ('introduction','user'), ('user','project'), ('project','folder')):
+                for previous, following in (('heading','introduction'), ('introduction','user'), ('user','project'),
+                                            ('project','folder'), ('folder','cleanupOldVersions'), ('cleanupOldVersions','status')):
                     a, b = ui[previous], ui[following]
                     self.assertLessEqual(a['y'] + a['height'], b['y'], (previous, following, ui))
-                for name in ('browse','install','close'):
+                for name in ('cleanupOldVersions','browse','install','close'):
                     box = ui[name]
                     self.assertGreaterEqual(box['x'], 0, (name, ui))
                     self.assertLessEqual(box['x'] + box['width'], ui['width'], (name, ui))
@@ -209,8 +285,9 @@ class HarnessSetupExeTests(unittest.TestCase):
     def test_small_window_scrolls_content_while_install_buttons_remain_visible(self):
         ui = self.probe_run('layout', '2', 'compact')
         self.assertTrue(ui['scrollable'], ui)
-        for name in ('heading','introduction','status'):
+        for name in ('heading','introduction','cleanupOldVersions','status'):
             self.assertGreaterEqual(ui[name]['height'], ui[name]['preferredHeight'], (name, ui))
+        self.assertLessEqual(ui['cleanupOldVersions']['x'] + ui['cleanupOldVersions']['width'], ui['width'], ui)
         for name in ('install','close'):
             box = ui[name]
             self.assertLessEqual(box['x'] + box['width'], ui['width'], (name, ui))

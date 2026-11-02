@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string] $BundleRoot,
     [string] $BundleZip,
@@ -16,6 +16,32 @@ Set-StrictMode -Version 2.0
 function Assert-ScopedSmoke {
     param([bool] $Condition, [string] $Message)
     if (-not $Condition) { throw "Scoped install smoke failed: $Message" }
+}
+function Get-ScopedHookFixtureRuntime {
+    param([string] $PluginRoot, [string] $WorkingDirectory, [string] $Interpreter)
+    # Claude debug logs can redact additionalContext. Exercise the installed
+    # entry separately with a synthetic payload to inspect scope selection;
+    # --init-only independently verifies actual host/launcher dispatch once.
+    # Build cwd from the OS inside Python, avoiding legacy PowerShell stdin
+    # code-page conversion of Unicode and supplementary characters.
+    $probe = Join-Path $testRoot 'native-scope-fixture.py'
+    Write-CompanyAgentUtf8File -Path $probe -Content @'
+import io
+import json
+from pathlib import Path
+import runpy
+import sys
+import uuid
+entry = sys.argv[1]
+sys.argv = [entry, '--event', 'SessionStart']
+sys.stdin = io.StringIO(json.dumps({'cwd': str(Path.cwd()), 'session_id': 'scope-check-' + uuid.uuid4().hex, 'source': 'startup'}))
+runpy.run_path(entry, run_name='__main__')
+'@
+    $result = Invoke-CompanyAgentPythonProcess -Executable $Interpreter -Arguments @('-B', '-X', 'utf8', $probe, (Join-Path $PluginRoot 'scripts\native_entry.py')) -WorkingDirectory $WorkingDirectory
+    Assert-ScopedSmoke ($result.ExitCode -eq 0) ('Installed hook fixture could not execute: ' + $result.StdErr)
+    $response = $result.StdOut | ConvertFrom-Json
+    Assert-ScopedSmoke ($null -ne $response.PSObject.Properties['hookSpecificOutput']) 'Installed hook did not resolve this registered fixture scope'
+    return ($response.hookSpecificOutput.additionalContext | ConvertFrom-Json).company_agent_runtime
 }
 $testRoot = Join-Path ([IO.Path]::GetTempPath()) ('CompanyAgent-ScopedSmoke-' + [guid]::NewGuid().ToString('N').Substring(0, 12))
 $originalConfig = $env:CLAUDE_CONFIG_DIR
@@ -282,9 +308,9 @@ try {
     $skillInventoryRaw = & $PythonCommand -B $skillCli skill inventory @skillArgs
     Assert-ScopedSmoke ($LASTEXITCODE -eq 0) 'Packaged Skill inventory failed'
     $skillInventory = ($skillInventoryRaw -join [Environment]::NewLine) | ConvertFrom-Json
-    $preferredSkill = @($skillInventory.skills | Where-Object { $_.source -eq 'company' -and $_.name -eq 'karpathy-guidelines' })
+    $preferredSkill = @($skillInventory.skills | Where-Object { $_.source -eq 'company' -and $_.name -eq 'personal-memory' })
     Assert-ScopedSmoke ($skillInventory.complete -and $preferredSkill.Count -eq 1) 'Packaged Company Skill was not discovered unambiguously'
-    $null = & $PythonCommand -B $skillCli skill prefer --name karpathy-guidelines --candidate $preferredSkill[0].id --scope project @skillArgs
+    $null = & $PythonCommand -B $skillCli skill prefer --name personal-memory --candidate $preferredSkill[0].id --scope project @skillArgs
     Assert-ScopedSmoke ($LASTEXITCODE -eq 0) 'Project Skill preference could not be saved'
     Write-CompanyAgentUtf8File -Path $latestMemoryPath -Content 'Latest saved preference, amended after installation.'
     $customStateBefore = @(Get-CompanyAgentTreeRecords -Root $customStateRoot | ConvertTo-Json -Depth 10 -Compress) -join ''
@@ -429,11 +455,12 @@ try {
         }
         finally { Pop-Location }
         $debugText = Get-Content -LiteralPath $debugFile -Raw -Encoding UTF8
-        Assert-ScopedSmoke ($debugText -match 'Registered [0-9]+ hooks from 1 plugins') 'Native User plus Project loaded duplicate plugin hook chains'
+        # New Claude versions also load built-in plugins. Count this harness's
+        # own hook chain, not unrelated native plugin registrations.
+        Assert-ScopedSmoke ([regex]::Matches($debugText, '(?m)Loading hooks from plugin: company-agent\r?$').Count -eq 1) 'Native User plus Project loaded duplicate Company Agent hook chains'
         Assert-ScopedSmoke ([regex]::Matches($debugText, 'Hook SessionStart:startup \(SessionStart\) success').Count -eq 1) 'Expected exactly one successful SessionStart hook'
-        $responseLines = @(Get-Content -LiteralPath $debugFile -Encoding UTF8 | Where-Object { $_ -like '*Hooks: Parsed initial response:*' })
-        $response = ($responseLines[0] -replace '^.*Hooks: Parsed initial response: ', '') | ConvertFrom-Json
-        $runtime = ($response.hookSpecificOutput.additionalContext | ConvertFrom-Json).company_agent_runtime
+        $installedPluginRoot = Join-Path (Split-Path -Parent $userRecord.knowledgeBaseRoot) 'plugin'
+        $runtime = Get-ScopedHookFixtureRuntime -PluginRoot $installedPluginRoot -WorkingDirectory $initialization.cwd -Interpreter $userRecord.pythonCommand
         Assert-ScopedSmoke ($runtime.scope -eq $initialization.scope -and $runtime.stateRoot -eq $initialization.state) 'Native SessionStart selected the wrong personal scope'
         Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $initialization.state 'config\user.json')) 'Native SessionStart did not initialize personal state'
     }
@@ -445,7 +472,9 @@ try {
         if ($LASTEXITCODE -ne 0) { throw ('Outside-project initialization failed: ' + ($outsideOutput -join [Environment]::NewLine)) }
     }
     finally { Pop-Location }
-    Assert-ScopedSmoke ((Get-Content -LiteralPath $outsideDebug -Raw -Encoding UTF8) -notmatch 'company_agent_runtime') 'Project-only installation activated outside its projects'
+    $outsideDebugText = Get-Content -LiteralPath $outsideDebug -Raw -Encoding UTF8
+    Assert-ScopedSmoke ($outsideDebugText -notmatch 'company_agent_runtime' -and
+        $outsideDebugText -notmatch '(?m)Loading hooks from plugin: company-agent\r?$') 'Project-only installation activated outside its projects'
     $null = & $setup @common -Scope User
 
     # Build a distinct-version fixture entirely within the test directory.
@@ -506,7 +535,7 @@ try {
     Assert-ScopedSmoke ((@(Get-CompanyAgentTreeRecords -Root $customStateRoot | ConvertTo-Json -Depth 10 -Compress) -join '') -ceq $stateBeforeVersionUpdate) 'Distinct-version update changed latest memory, personal knowledge, or Skill files'
     $updatedSkillRoot = [string]$updatedProjectEntries[0].installPath
     $updatedSkillCli = Join-Path $updatedSkillRoot 'scripts\harness_cli.py'
-    $resolvedSkillRaw = & $PythonCommand -B $updatedSkillCli skill resolve karpathy-guidelines --state-root $customStateRoot --project-root $otherProject --claude-root $configRoot --plugin-root $updatedSkillRoot --base (Join-Path $updateBundleRoot 'payload\knowledge')
+    $resolvedSkillRaw = & $PythonCommand -B $updatedSkillCli skill resolve personal-memory --state-root $customStateRoot --project-root $otherProject --claude-root $configRoot --plugin-root $updatedSkillRoot --base (Join-Path $updateBundleRoot 'payload\knowledge')
     Assert-ScopedSmoke ($LASTEXITCODE -eq 0) 'Updated cached CLI could not resolve the preserved Skill preference'
     $resolvedSkill = ($resolvedSkillRaw -join [Environment]::NewLine) | ConvertFrom-Json
     Assert-ScopedSmoke ($resolvedSkill.complete -and $resolvedSkill.resolution.status -eq 'selected' -and $resolvedSkill.resolution.selectedId -ceq $preferredSkill[0].id) 'Skill preference ID or resolution changed after a version update'
@@ -523,9 +552,7 @@ try {
     finally { Pop-Location }
     $updatedDebugText = Get-Content -LiteralPath $updatedDebug -Raw -Encoding UTF8
     Assert-ScopedSmoke ([regex]::Matches($updatedDebugText, 'Hook SessionStart:startup \(SessionStart\) success').Count -eq 1) 'Updated plugin did not run exactly one successful SessionStart'
-    $updatedResponseLines = @(Get-Content -LiteralPath $updatedDebug -Encoding UTF8 | Where-Object { $_ -like '*Hooks: Parsed initial response:*' })
-    $updatedResponse = ($updatedResponseLines[0] -replace '^.*Hooks: Parsed initial response: ', '') | ConvertFrom-Json
-    $updatedRuntime = ($updatedResponse.hookSpecificOutput.additionalContext | ConvertFrom-Json).company_agent_runtime
+    $updatedRuntime = Get-ScopedHookFixtureRuntime -PluginRoot $updatedSkillRoot -WorkingDirectory $otherProject -Interpreter $updatedRegistration.pythonCommand
     Assert-ScopedSmoke ($updatedRuntime.scope -eq 'Project' -and $updatedRuntime.stateRoot -eq $customStateRoot) 'Updated native hook selected the wrong scope/state'
     if ([version]$updateVersion -ge [version]'1.4.11') {
         Assert-ScopedSmoke (Test-Path -LiteralPath (Join-Path $customStateRoot 'cache\skill-metadata-v1.json')) 'Updated runtime did not prepare metadata cache'

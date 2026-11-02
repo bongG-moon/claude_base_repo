@@ -42,16 +42,18 @@ class PptReferenceTests(unittest.TestCase):
         with patch("company_agent.ppt_workflow.installed_fonts", return_value=set()):
             return ppt_reference.prepare_reference(spec)
 
-    def test_direct_pptx_uses_first_three_without_office_or_source_changes(self):
+    def test_direct_pptx_inventories_all_slides_without_office_or_source_changes(self):
         file = self.deck()
         before = file.read_bytes()
         with patch("company_agent.business_artifacts._office") as office:
             result = self.prepare({"file": str(file)})
         self.assertTrue(result["ok"], result)
-        self.assertEqual([1, 2, 3], result["selectedSlides"])
-        self.assertEqual([[1, 2, 3]], result["batches"])
+        self.assertEqual([1, 2, 3, 4, 5], result["selectedSlides"])
+        self.assertEqual([[1, 2, 3], [4, 5]], result["batches"])
         self.assertEqual(5, result["slideCount"])
-        self.assertEqual(3, len(result["analysis"]["slides"]))
+        self.assertEqual(5, len(result["analysis"]["slides"]))
+        self.assertEqual([], result["coverage"]["visuallyReviewedSlides"])
+        self.assertEqual(result["selectedSlides"], result["coverage"]["missingSlides"])
         self.assertEqual("not_performed", result["visualReview"])
         office.assert_not_called()
         self.assertEqual(before, file.read_bytes())
@@ -156,13 +158,27 @@ class PptReferenceTests(unittest.TestCase):
             self.assertFalse(result["retryAllowed"])
             paths.assert_not_called()
 
-    def test_screen_defaults_representative_but_explicit_content_keeps_scope(self):
+    def test_screen_default_needs_actual_scope_without_a_representative_only_cap(self):
         file = self.root / "selected.pptx"
         file.write_bytes(b"synthetic")
-        for purpose, selection in (("style", "representative"), ("content", "requested_content")):
+        for purpose in ("style", "content"):
             result = self.prepare({"file": str(file), "inputMode": "powerpoint-screen", "purpose": purpose})
-            self.assertEqual(selection, result["selection"]["mode"])
+            self.assertEqual("requested_scope", result["selection"]["mode"])
             self.assertEqual(3, result["batchSize"])
+            self.assertEqual(60, result["selection"]["maximumSlides"])
+            self.assertEqual("not_checked_by_helper", result["toolAvailability"])
+            self.assertIsNone(result["coverage"]["expectedSlides"])
+
+    def test_four_and_twelve_requested_slides_keep_order_and_small_batches(self):
+        file = self.deck(12)
+        for count in (4, 12):
+            selected = list(range(count, 0, -1))
+            result = self.prepare({"file": str(file), "slides": selected})
+            self.assertTrue(result["ok"], result)
+            self.assertEqual(selected, result["selectedSlides"])
+            self.assertEqual(selected, [n for batch in result["batches"] for n in batch])
+            self.assertTrue(all(len(batch) <= 3 for batch in result["batches"]))
+            self.assertEqual([n - 1 for n in selected], [page["sourceSlide"] for page in result["analysis"]["slides"]])
 
     def test_html_and_image_reference_keep_existing_workflows(self):
         for suffix, action in ((".html", "use_existing_html_workflow"), (".png", "review_selected_reference_image")):

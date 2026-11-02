@@ -48,6 +48,12 @@ def main():
     try:
         # Also works with an embeddable interpreter's isolated ._pth.
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        from company_agent.core_profile import is_core_install
+        if is_core_install():
+            # Core has no image routing policy. Native Read permissions remain
+            # authoritative for both text and images.
+            print('{}')
+            return 0
         from company_agent.vision_routing import preflight, _image_read
         # First-use selection and saved custom models are resolved only in the
         # installed runtime. Ordinary text reads still have no state lookup.

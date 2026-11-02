@@ -109,8 +109,11 @@ def _approval_recovery(payload, hint, root=None):
 
 
 def inspect_runtime():
-    from .business_artifacts import _windows_powershell
-    shell=_windows_powershell()
+    from .business_safety import windows_powershell
+    try:
+        shell = windows_powershell()
+    except (OSError, ValueError):
+        shell = None
     if not shell:
         return {'ok':False,'status':'unavailable','message':'Windows PowerShell 진단을 실행할 수 없습니다.'}
     script=Path(__file__).resolve().parents[1]/'Inspect-ClaudeRuntime.ps1'

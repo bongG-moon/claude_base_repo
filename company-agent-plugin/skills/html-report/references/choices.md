@@ -25,7 +25,7 @@ CLI와 Workspace 모두 아래 목록을 채팅에 한 번에 보여주고 답�
 
 `business html-template --template "<file>" --output "<workingDirectory>/reference-preview.html" --open`
 
-외부 자원이나 원본 스크립트를 실행하지 않습니다. 결과는 색과 글꼴 등의 정적 특징을 보여주는 가상 내용 미리보기이며 원본 DOM이나 픽셀 복제가 아닙니다. `이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부`를 묻고 실제 확인한 답을 기다립니다. 반환된 htmlTemplate, templateReview와 해시를 그대로 전체 job에 합치며 해당 미리보기 승인 뒤에만 `templateReview.confirmed:true`로 둡니다. 이후 빠진 분량, 방식, 글꼴만 확인하고 같은 workFile로 제작합니다. 해시를 만들거나 원본 HTML을 Memory에 저장하지 않습니다.
+참고 파일은 10MiB 미만(10,485,760바이트 미만)입니다. 도우미의 `layoutHints` 목차·카드·단계 목록 단서도 새 내용에 맞게 검토합니다. 이는 태그와 이름에서 얻은 힌트이며 화면과 같다는 증거는 아닙니다. 원본 HTML 전체를 모델에 읽어 넣지 않고 외부 자원이나 원본 스크립트를 실행하지 않습니다. 결과는 색과 글꼴 등의 정적 특징을 보여주는 가상 내용 미리보기이며 원본 DOM이나 픽셀 복제가 아닙니다. `이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부`를 묻고 실제 확인한 답을 기다립니다. 반환된 htmlTemplate, templateReview와 해시를 그대로 전체 job에 합치며 해당 미리보기 승인 뒤에만 `templateReview.confirmed:true`로 둡니다. 이후 빠진 분량, 방식, 글꼴만 확인하고 같은 workFile로 제작합니다. 해시를 만들거나 원본 HTML을 Memory에 저장하지 않습니다.
 
 ## 선택 도우미가 필요한 경우
 

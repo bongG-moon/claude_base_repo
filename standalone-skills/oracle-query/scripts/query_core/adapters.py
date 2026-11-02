@@ -13,13 +13,21 @@ from datetime import date, datetime
 from decimal import Decimal
 from urllib.parse import urlsplit
 
+from .errors import detailed_message, error_details
+
 
 class AdapterError(Exception):
-    """비밀번호나 서버 원문을 포함하지 않는 사용자용 오류."""
-    def __init__(self, code, message):
+    """인증값을 숨긴 사용자용 오류와 선택적인 짧은 서버 진단."""
+    def __init__(self, code, message, details=None):
         self.code = code
         self.message = message
+        self.details = dict(details or {})
         super().__init__(message)
+
+
+def _error(code, message, exc=None, *, stage='query', secrets=None, params=None, engine=None):
+    details = error_details(exc, stage=stage, secrets=secrets, params=params, engine=engine)
+    return AdapterError(code, detailed_message(message, details), details)
 
 
 def _seconds(value, maximum=3600):
@@ -60,16 +68,17 @@ def _sql(sql, params, engine, count=None):
     return statement, binds
 
 
-def _rows(cursor, count, deadline, expired):
+def _rows(cursor, count, deadline, expired, *, secrets=None, params=None, engine=None):
     read = 0
     while read < count:
         if expired.is_set() or (deadline is not None and time.monotonic() >= deadline):
             raise AdapterError('query_timeout', '조회 제한 시간이 지나 중단했습니다. 기간이나 조건을 줄여 주세요.')
         try:
             batch = cursor.fetchmany(min(500, count - read))
-        except Exception:
+        except Exception as exc:
             code = 'query_timeout' if expired.is_set() or (deadline is not None and time.monotonic() >= deadline) else 'db_fetch'
-            raise AdapterError(code, '결과를 끝까지 받지 못했습니다. 제한 시간, 네트워크와 조회 상태를 확인해 주세요.') from None
+            raise _error(code, '결과를 끝까지 받지 못했습니다. 제한 시간, 네트워크와 조회 상태를 확인해 주세요.', exc,
+                         stage='timeout' if code == 'query_timeout' else 'fetch', secrets=secrets, params=params, engine=engine) from None
         if not batch:
             return
         for row in batch:
@@ -144,8 +153,9 @@ class DemoBackend:
                     cursor.close()
             return {'estimated_rows': None, 'exact_count': value,
                     'notes': ['가상 실습 데이터의 정확한 건수입니다. 운영 DB 성능 측정값이 아닙니다.']}
-        except Exception:
-            raise AdapterError('demo_sql', '실습 SQL을 확인해 주세요. 운영 DB 전용 구문은 실습에서 지원되지 않을 수 있습니다.') from None
+        except Exception as exc:
+            raise _error('demo_sql', '실습 SQL을 확인해 주세요. 운영 DB 전용 구문은 실습에서 지원되지 않을 수 있습니다.', exc,
+                         params=params, engine='sqlite') from None
         finally:
             self.connection.set_progress_handler(None, 0)
 
@@ -163,10 +173,11 @@ class DemoBackend:
                 yield [c[0] for c in cursor.description], _rows(cursor, count, end, expired)
         except AdapterError:
             raise
-        except Exception:
+        except Exception as exc:
             if yielding:
                 raise
-            raise AdapterError('demo_sql', '실습 조회를 마치지 못했습니다. SQL과 제한 시간을 확인해 주세요.') from None
+            raise _error('demo_sql', '실습 조회를 마치지 못했습니다. SQL과 제한 시간을 확인해 주세요.', exc,
+                         params=params, engine='sqlite') from None
         finally:
             self.connection.set_progress_handler(None, 0)
             _close(cursor)
@@ -193,7 +204,7 @@ class OracleBackend:
             return self.connection
         if not all(isinstance(self.secrets.get(k), str) and self.secrets[k].strip()
                    for k in ('user', 'password', 'dsn')):
-            raise AdapterError('auth_config', '등록한 DB의 ID, 비밀번호와 DSN을 설정해 주세요.')
+            raise AdapterError('auth_config', '등록한 DB의 인증정보가 부족합니다. 채팅에 보내지 말고 로컬 입력창에서 ID, 비밀번호와 DSN을 저장해 주세요.')
         try:
             driver = importlib.import_module('oracledb')
         except ImportError:
@@ -211,14 +222,16 @@ class OracleBackend:
                     dsn=self.secrets['dsn'], tcp_connect_timeout=_seconds(self.profile.get('connect_timeout', 10), 120))
             except AdapterError:
                 raise
-            except Exception:
-                raise AdapterError('db_connect', '등록한 DB에 연결하지 못했습니다. HyDAP(Chakra)실행 여부 및 MyAccess권한 확인 부탁드립니다. 접속 정보와 네트워크도 확인해 주세요.') from None
+            except Exception as exc:
+                raise _error('db_connect', '등록한 DB에 연결하지 못했습니다. HyDAP(Chakra)실행 여부 및 MyAccess권한 확인 부탁드립니다. 접속 정보와 네트워크도 확인해 주세요.', exc,
+                             stage='connect', secrets=self.secrets, engine='oracle') from None
             self.connection.autocommit = False
             return self.connection
         except AdapterError:
             raise
-        except Exception:
-            raise AdapterError('db_connect', '등록한 DB에 연결하지 못했습니다. 접속 정보, 네트워크와 조회 권한을 확인해 주세요.') from None
+        except Exception as exc:
+            raise _error('db_connect', '등록한 DB에 연결하지 못했습니다. 접속 정보, 네트워크와 조회 권한을 확인해 주세요.', exc,
+                         stage='connect', secrets=self.secrets, engine='oracle') from None
 
     def inspect(self, sql, params):
         # EXPLAIN PLAN은 PLAN_TABLE 쓰기 권한이 필요하므로 읽기 전용 계정에 강제하지 않는다.
@@ -245,15 +258,17 @@ class OracleBackend:
                 if cursor.description is None:
                     raise AdapterError('readonly_required', '조회 결과가 없는 명령은 실행할 수 없습니다.')
                 yielding = True
-                yield [str(c[0]) for c in cursor.description], _rows(cursor, count, end, expired)
+                yield [str(c[0]) for c in cursor.description], _rows(cursor, count, end, expired, secrets=self.secrets, params=params, engine='oracle')
         except AdapterError:
             raise
-        except Exception:
+        except Exception as exc:
             if yielding:
                 raise
             if expired.is_set():
-                raise AdapterError('query_timeout', '조회 시간이 지나 취소를 요청했습니다. 서버 측 종료 여부는 별도 확인이 필요할 수 있습니다.') from None
-            raise AdapterError('db_query', 'Oracle 조회를 마치지 못했습니다. SQL, 조건과 조회 권한을 확인해 주세요.') from None
+                raise _error('query_timeout', '조회 시간이 지나 취소를 요청했습니다. 서버 측 종료 여부는 별도 확인이 필요할 수 있습니다.', exc,
+                             stage='timeout', secrets=self.secrets, params=params, engine='oracle') from None
+            raise _error('db_query', 'Oracle 조회를 마치지 못했습니다. SQL, 조건과 조회 권한을 확인해 주세요.', exc,
+                         secrets=self.secrets, params=params, engine='oracle') from None
         finally:
             _close(cursor)
             _close(conn, 'rollback')
@@ -308,7 +323,7 @@ class LakeBackend:
         if parsed.scheme == 'http' and self.profile.get('allow_http') is not True:
             raise AdapterError('http_confirmation_required', '이 서버는 HTTP 주소입니다. 회사에서 사용하는 주소인지 확인한 뒤 연결 설정에서 허용해 주세요.')
         if not all(isinstance(self.secrets.get(k), str) and self.secrets[k].strip() for k in ('user_id', 'token')):
-            raise AdapterError('auth_config', 'LakeHouse 사번과 토큰을 설정해 주세요.')
+            raise AdapterError('auth_config', 'LakeHouse 사번과 토큰이 필요합니다. 채팅에 보내지 말고 로컬 입력창에서 저장해 주세요.')
         try:
             requests = importlib.import_module('requests')
         except ImportError:
@@ -370,8 +385,9 @@ class LakeBackend:
                     time.sleep(min(1, max(0, deadline - time.monotonic())))
         except AdapterError:
             raise
-        except Exception:
-            raise AdapterError('api_network', '클러스터에 연결하지 못했습니다. 네트워크, 인증서와 서버 응답을 확인해 주세요.') from None
+        except Exception as exc:
+            raise _error('api_network', '클러스터에 연결하지 못했습니다. 네트워크, 인증서와 서버 응답을 확인해 주세요.', exc,
+                         stage='prepare', secrets=self.secrets, engine='starrocks') from None
         raise AdapterError('cluster_timeout', '클러스터 준비 시간이 지났습니다. 포털에서 상태를 확인해 주세요.')
 
     def _connect(self):
@@ -383,6 +399,7 @@ class LakeBackend:
         except ImportError:
             raise AdapterError('dependency_missing', 'LakeHouse 조회에 필요한 mysql-connector-python을 설치해 주세요.') from None
         endpoints = self._prepare_cluster()
+        last_error = None
         for host, port in endpoints:
             try:
                 options = dict(host=host, port=port, user=self.secrets['user_id'], password=self.secrets['token'],
@@ -400,10 +417,12 @@ class LakeBackend:
                 finally:
                     _close(cursor)
                 return self.connection
-            except Exception:
+            except Exception as exc:
+                last_error = exc
                 _close(self.connection)
                 self.connection = None
-        raise AdapterError('db_connect', 'LakeHouse 조회 연결을 만들지 못했습니다. 네트워크, 인증서와 조회 권한을 확인해 주세요.') from None
+        raise _error('db_connect', 'LakeHouse 조회 연결을 만들지 못했습니다. 네트워크, 인증서와 조회 권한을 확인해 주세요.', last_error,
+                     stage='connect', secrets=self.secrets, engine='starrocks') from None
 
     def inspect(self, sql, params):
         statement, binds = _sql(sql, params, 'starrocks')
@@ -418,7 +437,7 @@ class LakeBackend:
                 cursor.execute('EXPLAIN COSTS ' + statement, binds)
                 highest = None
                 # 실행계획 원문과 필터 상수는 반환하지 않는다.
-                for row in _rows(cursor, 500, end, expired):
+                for row in _rows(cursor, 500, end, expired, secrets=self.secrets, params=params, engine='starrocks'):
                     for value in row:
                         for match in re.finditer(r'cardinality\s*[:=]\s*(\d[\d,]*(?:\.\d+)?(?:e[+-]?\d+)?)', str(value), re.I):
                             parsed = float(match.group(1).replace(',', ''))
@@ -430,9 +449,10 @@ class LakeBackend:
                         'notes': ['실행계획의 최대 단계 추정치는 결과 건수나 정확한 스캔 건수가 아닙니다.']}
         except AdapterError:
             raise
-        except Exception:
+        except Exception as exc:
             # 계획 조회 실패를 본 조회 성공이나 0건으로 바꾸지 않는다.
-            raise AdapterError('plan_unavailable', '사전 실행계획을 확인하지 못했습니다. 운영 버전과 조회 권한을 확인해 주세요.') from None
+            raise _error('plan_unavailable', '사전 실행계획을 확인하지 못했습니다. 운영 버전과 조회 권한을 확인해 주세요.', exc,
+                         secrets=self.secrets, params=params, engine='starrocks') from None
         finally:
             _close(cursor)
 
@@ -456,15 +476,17 @@ class LakeBackend:
                 if cursor.description is None:
                     raise AdapterError('readonly_required', '조회 결과가 없는 명령은 실행할 수 없습니다.')
                 yielding = True
-                yield [str(c[0]) for c in cursor.description], _rows(cursor, count, end, expired)
+                yield [str(c[0]) for c in cursor.description], _rows(cursor, count, end, expired, secrets=self.secrets, params=params, engine='starrocks')
         except AdapterError:
             raise
-        except Exception:
+        except Exception as exc:
             if yielding:
                 raise
             if expired.is_set():
-                raise AdapterError('query_timeout', '조회 시간이 지나 연결 종료를 요청했습니다. 서버 쿼리는 서버 시간 제한까지 남을 수 있습니다.') from None
-            raise AdapterError('db_query', 'LakeHouse 조회를 마치지 못했습니다. SQL, 조건과 조회 권한을 확인해 주세요.') from None
+                raise _error('query_timeout', '조회 시간이 지나 연결 종료를 요청했습니다. 서버 쿼리는 서버 시간 제한까지 남을 수 있습니다.', exc,
+                             stage='timeout', secrets=self.secrets, params=params, engine='starrocks') from None
+            raise _error('db_query', 'LakeHouse 조회를 마치지 못했습니다. SQL, 조건과 조회 권한을 확인해 주세요.', exc,
+                         secrets=self.secrets, params=params, engine='starrocks') from None
         finally:
             _close(cursor)
 
@@ -489,5 +511,10 @@ def open_backend(profile, secrets, *, demo=False, timeout_seconds=60):
         backend = OracleBackend(profile, secrets) if engine == 'oracle' else LakeBackend(profile, secrets)
     try:
         yield backend
+    except AdapterError as error:
+        if demo is not True:
+            from .credentials import annotate_auth_error
+            annotate_auth_error(error, engine, profile.get('id'))
+        raise
     finally:
         backend.close()

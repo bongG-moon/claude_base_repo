@@ -216,7 +216,11 @@ class ActualQueryZipTests(unittest.TestCase):
         self.assertEqual(result['dataRowsReturned'],0)
         self.assertNotIn('LOT006',json.dumps(result))
         self.assertTrue(Path(result['dataFile']).is_file())
-        self.assertEqual(self.command(script,'result','--id',result['resultId']),result)
+        stored = self.command(script,'result','--id',result['resultId'])
+        self.assertFalse(stored.pop('isFreshQuery'))
+        self.assertEqual(stored.pop('retrievalMode'), 'saved_result')
+        self.assertEqual(stored.pop('reusePermission'), 'not_granted')
+        self.assertEqual(stored, result)
         exported = self.command(script,'export-csv','--id',result['resultId'],'--output',str(self.root/'result.csv'))
         self.assertTrue(exported['complete'])
 

@@ -63,7 +63,7 @@ class GuidePresentationTests(unittest.TestCase):
                 self.assertIn('SIL OPEN FONT LICENSE Version 1.1', page)
                 self.assertNotIn('fonts.googleapis.com', page)
                 self.assertNotIn('fonts.gstatic.com', page)
-                # The six-part reader includes 52 chapters and an offline font.
+                # The core reader includes an offline Korean font.
                 # Bound the whole delivery to 512 KiB; the font has its own cap.
                 self.assertLess(len(page.encode('utf-8')), 512 * 1024)
 

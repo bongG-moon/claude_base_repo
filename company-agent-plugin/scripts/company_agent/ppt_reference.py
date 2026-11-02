@@ -14,6 +14,42 @@ _DENIED = {"permission_denied", "capture_denied", "ai_processing_denied", "drm_b
 _AMBIGUOUS_FORMATS = {"protected_or_unsupported", "protected_or_invalid", "invalid_template", "artifact_failed"}
 
 
+def summarize_reference(result: dict[str, Any]) -> dict[str, Any]:
+    """Return compact style evidence without source text or duplicate analysis.
+
+    This never claims a visual inspection. The complete response remains
+    available through the caller's explicit detailed option.
+    """
+    if not result.get('ok') or not isinstance(result.get('analysis'), dict):
+        return result
+    analysis = result['analysis']
+    pages = analysis.get('slides', [])
+    compact = {k: analysis[k] for k in ('sha256', 'sizeEmu', 'themeColors',
+               'declaredColors', 'declaredFonts', 'suggestedPresentationProfile') if k in analysis}
+    compact['slides'] = [{'sourceSlide': p.get('sourceSlide'),
+                          'examinedShapeCount': len(p.get('shapes', [])),
+                          'shapesTruncated': p.get('shapesTruncated', False),
+                          'groupCount': p.get('groupCount', 0)} for p in pages]
+    samples, seen = [], set()
+    for kind in ('declaredTextStyles', 'declaredShapeStyles', 'declaredParagraphStyles'):
+        category_count = 0
+        for page in pages:
+            for sample in page.get(kind, []):
+                cleaned = {k: v for k, v in sample.items() if k != 'shapeId'}
+                key = (kind, repr(cleaned))
+                if key not in seen and category_count < 4:
+                    seen.add(key)
+                    samples.append({'sourceSlide': page.get('sourceSlide'), 'kind': kind, 'style': cleaned})
+                    category_count += 1
+    compact['styleSamples'] = samples
+    result = {key: value for key, value in result.items() if key != 'analysis'}
+    result['analysis'] = compact
+    result['contentCoverage'] = 'source_text_and_per_object_coordinates_omitted'
+    result['message'] = '선택한 장의 구조와 서식 표본만 요약했습니다. 원본 텍스트와 개체별 좌표는 요약에 포함하지 않았으며 실제 화면은 확인하지 않았습니다.'
+    result['detailOmitted'] = '본문과 개체별 좌표는 요약에서 제외했습니다. 필요할 때 상세 분석을 요청하세요.'
+    return result
+
+
 def _error(code: str, message: str, *, status: str = "invalid_request") -> dict[str, Any]:
     return {"ok": False, "status": status, "code": code, "message": message,
             "captured": False, "sourcePreserved": True}
@@ -68,16 +104,21 @@ def prepare_reference(spec: dict[str, Any]) -> dict[str, Any]:
             if path.suffix.lower() not in {".pptx", ".ppt"}:
                 return _error("unsupported_format", "PowerPoint 화면 참고는 선택한 PPT/PPTX 문서를 대상으로 합니다.")
             selection = {"mode": "specified", "slides": selected} if selected else {
-                "mode": "representative" if purpose == "style" else "requested_content",
-                "maximumInitialSlides": BATCH_SIZE if purpose == "style" else None}
+                "mode": "requested_scope", "maximumSlides": MAX_SELECTED_SLIDES,
+                "scopeStatus": "confirm_from_open_document"}
             return {"ok": True, "status": "capture_plan", "inputKind": "powerpoint-screen",
                     "sourcePath": str(path), "purpose": purpose, "selection": selection,
                     "batches": _batches(selected) if selected else [], "batchSize": BATCH_SIZE,
+                    "coverage": {"expectedSlides": selected, "inspectedSlides": [],
+                                 "visuallyReviewedSlides": [], "missingSlides": selected,
+                                 "status": "not_started"},
+                    "toolAvailability": "not_checked_by_helper",
                     "nextAction": "use_connected_approved_screen_tool", "captured": False,
                     "authorizationGranted": False, "sourcePreserved": True, "savedToMemory": False,
                     "requirements": ["정상적으로 열린 정확한 PowerPoint 문서와 요청 장을 확인",
                                      "현재 연결된 실제 화면 도구와 허용된 캡처·AI 처리·저장 범위 확인",
-                                     "허용된 화면만 장별 캡처하고 작은 묶음으로 비전 참고"],
+                                     "허용된 요청 범위의 각 장을 정상 열기 또는 다음 장 이동 후 실제 장 번호와 연결해 캡처",
+                                     "2~3장씩 비전 참고하고 빈 화면, 중복 캡처, 누락 장을 확인한 뒤 공통 스타일만 짧게 합침"],
                     "ifUnavailable": "도구가 없으면 허용 범위의 사용자 캡처를 요청합니다. 실제 캡처/AI 처리 거절이면 중단합니다.",
                     "message": "화면 참고 절차를 준비했습니다. 화면을 캡처하거나 문서를 열지 않았습니다. 파일 Export·복호화·보호 해제는 수행하지 않습니다."}
         if path.suffix.lower() in {".html", ".htm", ".png", ".jpg", ".jpeg", ".webp"}:
@@ -88,8 +129,7 @@ def prepare_reference(spec: dict[str, Any]) -> dict[str, Any]:
                     "captured": False, "sourcePreserved": True, "visualReview": "not_performed"}
         if path.suffix.lower() != ".pptx":
             return _error("unsupported_format", "PPTX, HTML 또는 PNG/JPEG/WebP 참고 자료를 사용해 주세요.")
-        result = analyze(path, selected_slides=selected,
-                         first_slides=BATCH_SIZE if selected is None and purpose == "style" else None)
+        result = analyze(path, selected_slides=selected)
     except PermissionError as exc:
         return {**_failure(exc), "restrictionConfirmed": True, "retryAllowed": False,
                 "nextAction": "report_restricted_scope", "captured": False, "sourcePreserved": True}
@@ -107,14 +147,18 @@ def prepare_reference(spec: dict[str, Any]) -> dict[str, Any]:
     if count < 1:
         return _error("reference_has_no_slides", "참고할 장이 없습니다. 실제 장이 있는 자료를 선택해 주세요.")
     if selected is None:
-        selected = list(range(1, min(count, BATCH_SIZE) + 1 if purpose == "style" else count + 1))
+        selected = list(range(1, count + 1))
     if len(selected) > MAX_SELECTED_SLIDES:
-        return _error("reference_range_required", "내용 참고 범위가 60장을 넘습니다. 필요한 장 범위를 나누어 지정해 주세요.", status="input_required")
+        return _error("reference_range_required", "참고 범위가 60장을 넘습니다. 필요한 장 범위를 나누어 지정해 주세요.", status="input_required")
     pages = {page["sourceSlide"] + 1: page for page in result["slides"] if type(page.get("sourceSlide")) is int}
     if any(number > count or number not in pages for number in selected):
         return _error("invalid_slide_selection", "선택한 장이 없거나 이 분석에서 확인할 수 없는 범위입니다. 원본의 실제 장 번호를 확인해 주세요.")
     return {"ok": True, "status": "reference_ready", "inputKind": "pptx", "sourcePath": str(path),
             "purpose": purpose, "slideCount": count, "selectedSlides": selected, "batches": _batches(selected),
+            "batchSize": BATCH_SIZE,
+            "coverage": {"expectedSlides": selected, "inspectedSlides": selected,
+                         "visuallyReviewedSlides": [], "missingSlides": selected,
+                         "status": "structure_only"},
             "analysis": {**result, "slides": [pages[number] for number in selected]},
             "nextAction": "read_requested_content" if purpose == "content" else "use_selected_reference_structure", "sourcePreserved": True,
             "contentCoverage": "bounded_shape_previews_not_full_content",

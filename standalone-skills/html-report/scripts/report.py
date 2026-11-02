@@ -11,12 +11,17 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def main(argv=None):
+    # Claude Code's Windows shell consumes tool output as UTF-8 even when
+    # Python inherits a legacy console code page. Keep the JSON readable in
+    # both Bash and PowerShell without changing the user's system settings.
+    if sys.platform == 'win32' and hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8')
     parser = argparse.ArgumentParser(description="HTML 보고서 만들기 · Python 표준 라이브러리만 사용")
     sub = parser.add_subparsers(dest="command", required=True)
     build = sub.add_parser("build", help="정리한 내용으로 HTML 생성")
     build.add_argument("--spec", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
-    reference = sub.add_parser("reference", help="HTML 양식의 색상·글꼴·구조 확인")
+    reference = sub.add_parser("reference", help="HTML 양식의 색상 조합, 글꼴, 여백, 표 스타일 확인")
     reference.add_argument("--file", type=Path, required=True)
     reference.add_argument("--preview", type=Path)
     args = parser.parse_args(argv)
@@ -39,7 +44,10 @@ def main(argv=None):
     except (OSError, ValueError) as exc:
         result = {"ok": False, "code": "invalid_input", "message": str(exc)}
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    return 0 if result.get("ok") else 1
+    # Missing template preview/confirmation is a normal conversation pause,
+    # rather than a shell failure. A changed or invalid file remains an error.
+    waiting = result.get("status") == "input_required" and result.get("stage") in {"template_attach", "template_preview", "template_confirm"}
+    return 0 if result.get("ok") or waiting else 1
 
 
 if __name__ == "__main__":

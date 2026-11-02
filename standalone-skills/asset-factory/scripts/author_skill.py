@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
 
 
 def reject_links(path: Path) -> None:
@@ -37,6 +38,9 @@ def create(destination: Path, name: str, description: str, body: Path) -> dict:
 
 
 def main() -> int:
+    # Claude의 Windows 도구 출력은 UTF-8로 읽습니다. 파일과 시스템 설정은 바꾸지 않습니다.
+    if os.name == "nt" and hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--destination", type=Path, required=True)
     parser.add_argument("--name", required=True)

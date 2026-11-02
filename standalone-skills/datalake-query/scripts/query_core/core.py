@@ -167,6 +167,7 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False, _r
     if not confirmed:
         raise ValueError('조회 조건을 사용자에게 먼저 확인해 주세요.')
     proposal = store.get_plan(plan_id)
+    proposal['planId'] = plan_id
     if proposal['engine'] != engine or time.time() - proposal['createdAt'] > 900:
         raise ValueError('조회 준비가 다른 스킬에 속하거나 15분이 지났습니다. 다시 준비해 주세요.')
     query, profile, binds, _ = _prepared(store, engine, proposal['queryId'], proposal['params'])
@@ -233,26 +234,54 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False, _r
                         digest.update(chunk)
                         written += len(chunk)
                         count += 1
-    except Exception:
-        # 생성 중인 원본 값이나 드라이버 예외를 대화로 전달하지 않습니다.
+    except Exception as error:
+        # 원본 행은 남기지 않고 마스킹된 진단과 실패 사실을 보존합니다.
         if data.exists():
             data.unlink()
-        atomic_json(folder / 'metadata.json', dict(identity, status='failed', dataAvailable=False))
+        from .adapters import AdapterError
+        details = dict(error.details) if isinstance(error, AdapterError) else {}
+        message = error.message if isinstance(error, AdapterError) else '조회 결과를 파일로 마무리하지 못했습니다. 결과 형식과 저장 위치를 확인해 주세요.'
+        failed = dict(identity, ok=False, status='failed', outcome='error', complete=False,
+                      dataAvailable=False, emptyResult=None, errorCode=getattr(error, 'code', 'result_processing'),
+                      errorDetails=details, message=message, dataRowsReturned=0)
+        atomic_json(folder / 'metadata.json', failed)
+        error.result_id = result_id
+        _record_links(store, engine, proposal, receipt(failed))
         raise
     metadata = dict(identity, **{'ok':True,
                 'status':status, 'complete':status=='complete', 'reason':reason, 'savedRows':count,
                 'columnCount':len(columns), 'columns':columns, 'limits':selected, 'demo':store.demo,
                 'elapsedMs':round((time.monotonic()-start)*1000), 'dataBytes':written,
                 'dataFile':str(data), 'format':'jsonl-arrays', 'dataSha256':digest.hexdigest(),
-                'message':'조회 결과를 로컬에 저장했습니다.' if status=='complete' else '일부 데이터만 저장했습니다. 전체 결과로 해석하지 말고 범위 또는 한도를 다시 지정해 주세요.',
+                'dataAvailable':True, 'emptyResult':status=='complete' and count==0,
+                'outcome':'empty' if status=='complete' and count==0 else 'rows_returned' if status=='complete' else 'partial',
+                'message':('조회는 오류 없이 끝났지만 지정한 조건의 데이터는 0건입니다.' if count==0 else '조회 결과를 로컬에 저장했습니다.') if status=='complete' else '일부 데이터만 저장했습니다. 전체 결과로 해석하지 말고 범위 또는 한도를 다시 지정해 주세요.',
                 'dataRowsReturned':0})
     atomic_json(folder / 'metadata.json', metadata)
+    _record_links(store, engine, proposal, metadata)
     return receipt(metadata)
+
+
+def _record_links(store, engine, proposal, metadata):
+    """명시적으로 시작한 등록 시험과 연결 조회의 계보만 갱신합니다."""
+    if proposal.get('workflowContext'):
+        try:
+            from .workflow import record_plan_result
+            record_plan_result(store, engine, proposal, receipt(metadata))
+        except Exception:
+            metadata['workflowLinkWarning'] = '조회 결과는 보존했지만 연결 작업의 기록을 갱신하지 못했습니다. 같은 조회를 자동 반복하지 마세요.'
+    if proposal.get('validationContext'):
+        try:
+            from .registration import record_plan_validation
+            record_plan_validation(store, engine, proposal, receipt(metadata))
+        except Exception:
+            metadata['validationLinkWarning'] = '조회 결과는 보존했지만 등록 시험 기록을 갱신하지 못했습니다. 같은 조회를 자동 반복하지 마세요.'
 
 
 def receipt(metadata):
     keys = ('ok','resultId','sourceName','queryName','dbId','queryId','executedAt','label','status','complete','reason','savedRows',
-            'columnCount','demo','elapsedMs','dataBytes','dataFile','format','message','dataRowsReturned')
+            'columnCount','demo','elapsedMs','dataBytes','dataFile','format','message','dataRowsReturned',
+            'outcome','emptyResult','dataAvailable','errorCode','errorDetails','workflowLinkWarning','validationLinkWarning')
     return {k:metadata[k] for k in keys if k in metadata}
 
 

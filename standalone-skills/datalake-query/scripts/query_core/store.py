@@ -160,7 +160,8 @@ class Store:
             return {}
         target = safe_path(self.root / 'connections' / (identifier(profile_id) + '.env'))
         if not target.is_file():
-            raise ValueError('연결 설정이 없습니다. 연결 설정창에서 먼저 저장해 주세요.')
+            from .credentials import CredentialSetupRequired
+            raise CredentialSetupRequired(self.profile(profile_id)['engine'], profile_id)
         if target.stat().st_size > 100_000:
             raise ValueError('연결 설정 파일이 너무 큽니다.')
         result = {}
@@ -246,7 +247,8 @@ class Store:
         if not profiles:
             if allow_missing:
                 return None
-            raise ValueError('Data Lake 인증정보가 없습니다. auth setup으로 사번, JWT와 S3 키를 한 번 설정해 주세요. 테이블별 DB 등록은 필요하지 않습니다.')
+            from .credentials import CredentialSetupRequired
+            raise CredentialSetupRequired('datalake')
         if len(profiles) != 1:
             raise ValueError('기존 Data Lake 인증정보가 여러 개입니다. 관리 화면에서 사용할 인증정보를 고르거나 --profile로 지정해 주세요. 테이블별 DB 등록은 필요하지 않습니다.')
         return self.profile(profiles[0]['id'])

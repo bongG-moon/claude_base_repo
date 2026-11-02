@@ -38,6 +38,8 @@ def missing(spec):
     if spec.get('fontChoice') == 'custom' and not spec.get('fontName'):
         return ['fontName']
     if spec.get('fontChoiceRequired') and 'fontChoice' not in spec:
+        if any(spec.get(key, {}).get('typography', {}).get('bodyFont') for key in ('referenceStyle', 'themeOverrides')):
+            return []
         # Existing explicit Google selection already names its font.
         return [] if spec.get('fontSource') == 'google' else ['fontChoice']
     return []
@@ -50,7 +52,8 @@ def selection(spec):
         family = spec.get('fontName', '').strip()
         if not family:
             raise ValueError('직접 입력할 글꼴 이름을 알려 주세요.')
-    elif choice == 'auto' and source != 'google' and spec.get('referenceCss'):
+    elif choice in (None, 'auto') and source != 'google' and (spec.get('referenceCss') or any(
+            spec.get(key, {}).get('typography', {}).get('bodyFont') for key in ('referenceStyle', 'themeOverrides'))):
         return {'choice': choice, 'family': None, 'source': 'template',
                 'availability': 'not_verified'}
     elif choice == 'auto' and source != 'google':
@@ -67,5 +70,5 @@ def css(spec):
         return ''
     family = json.dumps(chosen['family'], ensure_ascii=False)
     stack = family + ',"Noto Sans KR","Malgun Gothic","Apple SD Gothic Neo",sans-serif'
-    return ('\nbody[data-style]{--heading-font:' + stack + ';font-family:' + stack + '}'
-            '\nbody[data-style] :is(button,input,select,textarea,h1,h2,h3,svg text){font-family:' + stack + '}')
+    return ('\nbody[data-style],body[data-style][data-reference-style]{--heading-font:' + stack + ';--body-font:' + stack + ';font-family:' + stack + '}'
+            '\nbody[data-style] :is(button,input,select,textarea,h1,h2,h3,svg text),body[data-style][data-reference-style] :is(button,input,select,textarea,h1,h2,h3,svg text){font-family:' + stack + '}')

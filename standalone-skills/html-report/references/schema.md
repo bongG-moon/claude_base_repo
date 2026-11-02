@@ -2,6 +2,8 @@
 
 JSON은 내부 명세이며 사용자에게 작성시키지 않습니다. 실행 명령은 SKILL.md의 `report.py build`입니다.
 
+PPT나 이미지 참고가 있을 때만 `referenceImages`와 `referenceStyle`을 추가합니다. 이미지 전체 목록과 여러 장에서 합친 색 조합, 한글 서체, 여백, 표와 차트의 규칙 및 근거는 [reference-style.md](reference-style.md)의 공통 계약을 따릅니다. 기존 style, 글꼴, 분량과 표시 방식의 명시 선택은 유지합니다.
+
 ```json
 {
   "title":"교육 신청 현황", "subtitle":"가상 예시 · 10월",

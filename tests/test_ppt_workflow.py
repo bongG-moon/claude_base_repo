@@ -17,13 +17,14 @@ class PptWorkflowTests(unittest.TestCase):
         return {'creationMode':'new','purpose':'보고','audience':'부서장',
                 'slideCount':2,'designPreset':'business'}
 
-    def test_empty_choices_uses_defaults_and_asks_only_for_missing_brief(self):
+    def test_empty_choices_offers_design_and_groups_missing_brief(self):
         result=flow.choices({})
-        self.assertEqual('brief',result['stage'])
+        self.assertEqual('design_selection',result['stage'])
         self.assertEqual('input_required',result['status'])
-        self.assertEqual(['purpose','audience','slideCount'],result['missing'])
+        self.assertEqual(['purpose','audience','slideCount'],result['briefMissing'])
         self.assertTrue(result['waitForUser'])
-        self.assertEqual({'creationMode':'new','designPreset':'business'},result['preservedChoices'])
+        self.assertEqual({},result['preservedChoices'])
+        self.assertEqual(6,len(result['options']))
 
     def test_missing_method_and_design_advance_without_changing_input(self):
         spec={'purpose':'보고','audience':'부서장','slideCount':1,
@@ -47,7 +48,8 @@ class PptWorkflowTests(unittest.TestCase):
             self.assertEqual('reference_file',result['stage'])
             self.assertEqual(mode,result['preservedChoices']['creationMode'])
         result=flow.choices(brief,'confirmed.pptx')
-        self.assertEqual('reference_scope',result['stage'])
+        self.assertEqual('design_preview',result['stage'])
+        self.assertEqual('style',result['preservedChoices']['referenceMode'])
         self.assertEqual('reference',result['preservedChoices']['creationMode'])
         self.assertNotIn('designPreset',result['preservedChoices'])
         result=flow.choices(brief,'confirmed.html')
@@ -130,13 +132,47 @@ class PptWorkflowTests(unittest.TestCase):
 
     def test_questions_are_sequential_and_keep_known_brief(self):
         spec={'purpose':'보고','audience':'부서장','slideCount':2}
-        self.assertEqual('design_preview',flow.choices(spec)['stage'])
+        self.assertEqual('design_selection',flow.choices(spec)['stage'])
         spec['creationMode']='reference'
         self.assertEqual('reference_file',flow.choices(spec)['stage'])
-        self.assertEqual('reference_scope',flow.choices(spec,'confirmed.pptx')['stage'])
+        self.assertEqual('design_preview',flow.choices(spec,'confirmed.pptx')['stage'])
         spec['referenceMode']='preserve'
         self.assertEqual('design_preview',flow.choices(spec,'confirmed.pptx')['stage'])
         self.assertEqual(2,flow.choices(spec,'confirmed.pptx')['preservedChoices']['slideCount'])
+
+    def test_multiple_reference_images_keep_inventory_and_skip_style_question(self):
+        brief={'purpose':'보고','audience':'부서장','slideCount':2}
+        for count in (4,12,60):
+            images=[str(ROOT/f'reference-{number}.webp') for number in range(count)]
+            result=flow.choices({**brief,'referenceImages':images},ROOT/'reference.pptx')
+            self.assertEqual('design_preview',result['stage'])
+            self.assertFalse(result['waitForUser'])
+            self.assertEqual(images,result['preservedChoices']['referenceImages'])
+            self.assertEqual('style',result['preservedChoices']['referenceMode'])
+            self.assertNotIn('designPreset',result['preservedChoices'])
+        result=flow.choices({**brief,'referenceImages':[str(ROOT/f'{n}.png') for n in range(61)]})
+        self.assertEqual('referenceImages',result['field'])
+
+    def test_explicit_preserve_is_retained_and_cannot_use_only_images(self):
+        brief={'purpose':'보고','audience':'부서장','slideCount':2,'referenceMode':'preserve'}
+        result=flow.choices(brief,ROOT/'reference.pptx')
+        self.assertEqual('design_preview',result['stage'])
+        self.assertEqual('preserve',result['preservedChoices']['referenceMode'])
+        result=flow.choices({**brief,'referenceImages':[str(ROOT/'reference.png')]})
+        self.assertEqual('referenceMode',result['field'])
+
+    def test_observed_reference_style_alone_reuses_direction_without_a_question(self):
+        brief={'purpose':'보고','audience':'부서장','slideCount':2}
+        observed={'colors':{'primary':'234E70','secondary':'F0B34B'},
+                  'evidence':[{'source':'existing observation','scope':'reviewed slides 1-4',
+                               'observed':['shared navy and gold roles'],'uncertain':[]}]}
+        result=flow.choices({**brief,'referenceStyle':observed})
+        self.assertEqual('design_preview',result['stage'])
+        self.assertFalse(result['waitForUser'])
+        self.assertEqual('reference',result['preservedChoices']['creationMode'])
+        self.assertEqual('style',result['preservedChoices']['referenceMode'])
+        self.assertEqual(observed,result['preservedChoices']['referenceStyle'])
+        self.assertNotIn('designPreset',result['preservedChoices'])
 
     def test_new_and_saved_choices(self):
         self.assertEqual(['purpose','audience','slideCount'],flow.choices({'creationMode':'new'})['missing'])

@@ -15,10 +15,9 @@ const output='Company-Agent-사용자-안내서.html';
 const books=[
   {id:'onboarding',label:'01 · 시작하기',source:'ONBOARDING_COURSE.md',legacy:'Company-Agent-Onboarding.html'},
   {id:'basics',label:'02 · Claude Code 기본 사용법',source:'CLAUDE_CODE_BASICS.md'},
-  {id:'usage',label:'03 · 업무별 사용법',source:'USER_GUIDE.md',legacy:'Company-Agent-사용자-안내서.html'},
+  {id:'usage',label:'03 기억과 업무 맥락',source:'USER_GUIDE.md',legacy:'Company-Agent-사용자-안내서.html'},
   {id:'handbook',label:'04 · 기억·스킬·하네스 이해',source:'COMPANY_AGENT_HANDBOOK.md',legacy:'Company-Agent-Handbook.html'},
   {id:'commands',label:'05 · Claude Code 명령어·단축키',source:'CLAUDE_CODE_COMMANDS.md',legacy:'Claude-Code-필수-사용법.html'},
-  {id:'design',label:'06 · 디자인 용어 참고',source:'DESIGN_TERMS.md'},
 ];
 const esc=x=>x.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const fontRoot=path.join(root,'scripts/assets/manual-font');
@@ -102,28 +101,28 @@ for(const book of books){
 }
 const toc=(expanded=false)=>books.map(b=>`<details${expanded&&b.id==='onboarding'?' open':''}><summary>${esc(b.label)}</summary><a href="#${b.id}">이 안내부터 보기</a>${b.headings.map((h,i)=>`<a href="#${b.id}-section-${i+1}">${esc(h)}</a>`).join('')}</details>`).join('');
 const metadata=books.map(b=>`<meta name="source-sha256" data-file="${b.source}" content="${b.sha}">`).join('');
-const html=head('Company Agent 사용자 안내서',metadata)+`<body>
+const html=head('Company Harness 사용자 안내서',metadata)+`<body>
 <a class="skip" href="#content">본문으로 이동</a>
 <div class="layout">
   <aside>
-    <a class="brand" href="#start"><span class="brand-mark" aria-hidden="true">CA</span>Company Agent</a>
-    <p class="brand-note">시작하기부터 업무 활용까지</p>
+    <a class="brand" href="#start"><span class="brand-mark" aria-hidden="true">CA</span>Company Harness</a>
+    <p class="brand-note">내 기억과 업무 맥락 이어가기</p>
     <div class="toc-caption">사용 가이드 · 목차</div>
     <nav class="toc" aria-label="목차">${toc(true)}</nav>
     <p class="reader-tools">페이지 찾기 <b>Ctrl+F</b><br>인쇄·PDF 저장 <b>Ctrl+P</b></p>
   </aside>
   <main id="content">
-    <details class="mobile-nav"><summary>Company Agent · 목차</summary><nav class="toc" aria-label="모바일 목차">${toc()}</nav></details>
+    <details class="mobile-nav"><summary>Company Harness 목차</summary><nav class="toc" aria-label="모바일 목차">${toc()}</nav></details>
     <header class="hero" id="start">
       <span class="eyebrow">처음 사용하는 분을 위한 안내</span>
-      <h1><span>Company Agent</span> 사용자 안내서</h1>
-      <p class="lead">파일이 없어도, 명령어를 몰라도.<br>작은 가상 업무 하나부터 시작해 보세요.</p>
+      <h1><span>Company Harness</span> 사용자 안내서</h1>
+      <p class="lead">내 선호를 기억하고, 업무 경험을 다음 작업에 이어갑니다.<br>필요한 업무 기능은 개별 스킬로 선택하세요.</p>
       <div class="paths">
-        <a href="#onboarding-section-2"><span class="path-label">01 · 첫 연습</span><b>처음이라면</b><span class="path-desc">가상 자료 만들기 → 실제 읽기</span></a>
-        <a href="#usage"><span class="path-label">02 · 업무 활용</span><b>바로 일하려면</b><span class="path-desc">보고서·회의·비교 요청 예문</span></a>
+        <a href="#onboarding-section-2"><span class="path-label">01 · 첫 연습</span><b>처음이라면</b><span class="path-desc">선호 저장 → 새 대화에서 확인</span></a>
+        <a href="#usage"><span class="path-label">02 · 업무 활용</span><b>바로 일하려면</b><span class="path-desc">기억 조회와 반복 절차 저장</span></a>
         <a href="#commands"><span class="path-label">03 · 빠른 참조</span><b>명령어가 궁금하면</b><span class="path-desc">입력·중단·압축·다시 시작</span></a>
       </div>
-      <p class="notice">회사 자료나 참고 PPT는 필요 없습니다.<br>예문을 선택해 Ctrl+C로 복사하고, 결과를 확인하며 따라 해보세요.</p>
+      <p class="notice">회사 자료나 참고 파일 없이 시작할 수 있습니다.<br>예문을 선택해 Ctrl+C로 복사하고, 결과를 확인하며 따라 해보세요.</p>
     </header>
     ${books.map(b=>`<section class="book" aria-labelledby="${b.id}">${b.body}<p class="back"><a href="#start">처음 안내로 돌아가기 ↑</a></p></section>`).join('')}
   </main>

@@ -1,167 +1,84 @@
-# Company Agent Harness
+# Company Harness
 
-처음이라면 **[Company Agent 사용자 안내서](docs/Company-Agent-사용자-안내서.html)** 하나를 여세요. 시작하기, Claude Code 기본 사용법, 업무 예문, 기억·스킬·후크·학습, 명령어·단축키, 디자인 용어를 모두 담았습니다. 회사 자료나 참고 PPT 없이 가상 자료로 연습합니다.
+기존 Claude Code가 사용자의 업무 맥락과 선호를 기억하고, 검증된 업무 절차를 다시 사용하도록 돕는 개인화 하네스입니다. 모델을 재훈련하지 않으며 기존 모델 연결과 개인 자료를 유지합니다.
 
-**[Company Workspace 로컬 업무 화면](docs/LOCAL_WORKSPACE.md)**은 기존 Claude Code 설정을 사용하는 채팅·파일 선택·질문·승인 화면입니다. `Company-Workspace.vbs`를 더블클릭해 시작합니다. 기존 [1.4.32 Release](https://github.com/bongG-moon/claude_base_repo/releases/tag/v1.4.32)의 별도 Workspace 묶음 **0.9**(`company-workspace-preview-0.9-*.zip`)는 그대로 보존합니다. 이번 1.4.50 배포 대상은 Excel 분석 스킬을 포함한 하네스·간편 설치기·사용자 안내서이며, 별도 개발 중인 Workspace 변경은 포함하지 않습니다. 사내 HCP·DRM 문서의 실제 업무 검증은 필요합니다.
+처음이라면 **[사용자 안내서](docs/Company-Agent-사용자-안내서.html)**를 여세요. 설치, 기억과 지식의 차이, 개인 스킬, 학습 내역, Claude Code 명령어와 단축키를 한 파일에서 볼 수 있습니다. 인터넷 없이 읽을 수 있으며 Noto Sans KR을 포함합니다.
 
-Workspace는 **회사 공통 / 개인 전체 / 이 프로젝트**를 먼저 나누고 각 범위에서 **기억·지식 / 업무 구성**을 확인합니다. 새 기억·지식·스킬·도구는 개인 전체 또는 이 프로젝트를 선택한 뒤 저장하며 회사 공통은 읽기 전용입니다. 자동 학습은 기존 설치 범위에서만 작동하고 명시적 저장 선택으로 범위가 바뀌지 않습니다. 5단계 첫 업무 코스와 사용량/대기 시간·결과 확인도 제공합니다. 화면 조회에 추가 모델 호출은 없고 기존 데이터·로그인·모델·MCP 설정은 보존합니다. **Workspace 0.9는 별도 배포본으로 유지**하며 하네스를 업데이트할 때 기존 앱은 먼저 종료하세요. 기본 Office Reader 제거와 가상 보고서 체험은 유지합니다. 기존 설치가 자동 갱신되지는 않습니다.
+현재 소스는 **1.5.1** 구성입니다. 기본 설치와 개별 업무 기능을 분리했습니다. 로컬 빌드와 온라인 게시, 직원 PC 업데이트는 서로 다른 단계입니다. 이전 공개 파일은 [Release 이력](https://github.com/bongG-moon/claude_base_repo/releases)에 보존됩니다.
 
-**Workspace 0.9의 실행 조건:** 시작할 때 로그인한 본인의 SID·세션·프로필을 확인하고, 관리자 권한으로 시작된 경우 같은 사용자의 검증된 일반 권한 UAC 연결 토큰이 있을 때만 한 번 다시 실행합니다. 일반 권한 토큰이 없거나 회사 정책으로 확인·실행이 차단되면 한국어로 확인된 이유를 안내하고 중단합니다. **해당 토큰이 없는 회사 PC의 WS-33 제한은 해결하지 않았습니다.** 관리자 권한으로 AI를 실행하거나 UAC·인증·기존 설정을 변경하지 않습니다. 과거 Release의 Workspace 0.8 파일은 그대로 보존합니다.
+## 기본 하네스와 개별 스킬
 
-**Workspace가 `WS-33`으로 시작되지 않나요?** 이 저장소를 압축 해제한 폴더에서 `Check-Workspace.cmd`를 일반 더블클릭하세요. 같은 폴더에 생성되는 `Workspace-Diagnostic-….json`으로 권한 상태를 확인할 수 있습니다. 설정·권한·로그인은 변경하지 않으며 결과를 자동 전송하지 않습니다. [진단 파일 사용법](docs/WORKSPACE_STARTUP_DIAGNOSTIC.md)을 참고하세요.
+| 기본 설치에 포함 | 필요한 사람이 별도 설치 |
+| --- | --- |
+| 개인 선호와 지속적인 업무 맥락 | HTML 보고서와 웹 화면 제작 |
+| 개인 지식과 출처 관리 | 편집 가능한 PPT 제작 |
+| 회사 공통, 개인 전체, 프로젝트 범위 구분 | Excel 분석과 Python 전처리 |
+| 설치된 스킬 검색, 선택, 재사용 | 파일 정리, DB 조회 |
+| 개인 업무 절차를 스킬로 저장하고 같은 원본 수정 | 도구와 MCP 제작 |
+| 근거가 있는 교정의 학습, 내역 확인과 복구 | 전체 업무 기록 분석과 자산 정리 |
 
-**기억·하네스 관리 → 구성 한눈에**는 선택한 폴더 기준으로 회사 공통·개인 전체·이 프로젝트의 저장 위치와 설정 상태를 비교하고 HTML로 저장합니다. 설정 켜짐과 실제 스킬 본문 로드 기록은 구분하며, 조회에 AI를 호출하거나 설정을 변경하지 않습니다. [구성 지도 구현·검증 결과](docs/VALIDATION_HARNESS_MAP_2026-09-19.md)를 참고하세요.
+개별 기능은 **[개별 스킬 설치 안내](skills_zip/등록_설치_안내.html)**에서 선택합니다. ZIP 하나로 사용할 수 있고 Company Harness 설치가 필요하지 않습니다. 해당 기능이 요구하는 Python 패키지나 업무 시스템 권한은 각 안내에 명시합니다. 설치했다고 실제 업무 연결까지 검증된 것은 아닙니다.
 
-이번 배포 대상 버전은 **1.4.50**입니다. Datalake 개별 스킬을 사내 LakeHouse SDK에 맞추고, SQL의 테이블 경로로 조회하도록 정리했습니다. 인증정보는 재사용하며 DB 등록이나 접속 주소, 포트와 DSN을 따로 요구하지 않습니다. Oracle 실제 연결 실패에는 HyDAP(Chakra)와 MyAccess 점검 안내를 제공합니다. 개별 스킬 ZIP과 배포 묶음을 함께 갱신했으며 [변경 이력](docs/UPDATE_1.4.50.md)과 [검증 기록](docs/VALIDATION_RELEASE_1.4.50.md)을 확인할 수 있습니다. 기존 개인 자료와 별도로 설치한 MCP는 유지합니다.
+기본 하네스에는 `company-agent`, `personal-memory`, `personal-knowledge`, `self-learning`, 개인 절차 저장용 `asset-factory`만 들어갑니다. 기본 `asset-factory`는 기존 업무를 개인 스킬로 저장하고 수정하는 역할입니다. 도구나 MCP를 제작하려면 개별 배포의 `asset-factory`를 사용합니다. 이름이 겹치면 선택한 출처를 유지합니다.
 
-**필요할 때만 하는 비전 입력 비교:** 별도 파일 `VLM-Input-Check-20261013.zip`을 풀고 `시작하기.html`을 여세요. 가상 PNG 2장과 선택 실행 스크립트로 일반 이미지 입력(A)·합성 Read 도구 결과(B)를 비교하고, 실제 Claude Code 읽기(C)는 별도로 확인합니다. B는 실제 CLI가 아닙니다. 기본 실행은 오프라인이며 명시적으로 전송할 때만 A/B 두 번을 호출합니다. 이 키트는 하네스에 자동 설치·등록되지 않습니다. [키트 안내](standalone-guides/vision-input-check/README.md)를 참고하세요.
+VLM 모델 자동 선택과 이미지 인계는 이번 구성에서 제외합니다. 사용자가 이미 설정한 모델이나 별도 MCP를 삭제하거나 변경하지 않습니다. 관련 스킬이 없어도 일반 요청은 기존 도구로 계속할 수 있습니다.
 
-**감사 보완 반영:** [감사 결과와 검증 범위](docs/AUDIT_HARNESS_2026-09-20.md)에 유명 스킬의 선별 반영과 미도입 항목을 정리했습니다. 해당 수정은 1.4.19부터 포함하며 이번 버전에도 유지합니다. 기존 Release ZIP과 이미 설치된 PC는 변경하지 않습니다.
+## 사용 예시
 
-1.4.50 직원 배포 파일은 `Company-Harness-Setup.exe`이며, ZIP 대체 설치용 파일명은 `company-agent-1.4.50-2026.09.03.zip`입니다. 담당자가 공유한 Release 페이지의 첨부 파일을 사용합니다. GitHub가 자동 생성하는 `Source code (zip)`은 직원용 설치 파일이 아닙니다. 이전 Release와 설치 파일은 보존합니다.
+> 앞으로 팀 보고서는 결론부터 쓰고, 확인된 수치와 예상 수치를 구분해줘. 내 업무 방식으로 기억해줘.
 
-사내에서는 같은 직원 설치 ZIP을 GitLab Release에 첨부해 배포할 수 있습니다. 담당자는 `deploy/New-GitLabHarnessDelivery.ps1`로 설치 ZIP·통합 안내서·해시·게시 설명을 준비합니다. 직원은 배포 페이지 주소 하나에서 내려받아 설치합니다. [GitLab 배포 절차](docs/DEPLOYMENT.md#사내-gitlab에서-직원에게-배포하기)를 참고하세요.
+> 이번에 확인한 업무 순서를 내 스킬로 저장해줘. 다음에는 같은 순서로 처리하고 싶어.
 
-**단일 EXE 설치 구현본은 1.4.50입니다.** 직원은 `Company-Harness-Setup.exe`를 두 번 클릭하고 **Company Harness 설치** 화면에서 사용 범위를 고른 뒤 **설치하기**를 누릅니다. 기존 설치·백업·개인 자료 보존 절차를 그대로 사용합니다. 담당자는 `deploy/New-CompanyAgentSetup.ps1`로 검증된 직원 ZIP을 EXE로 만들고 GitLab 배포 준비 도구에 `-SetupExe`를 전달합니다. EXE에는 코드 서명이 없으므로 회사의 승인된 실행 정책을 따릅니다. 실제 GitLab 업로드·게시는 담당자가 수동으로 진행합니다. 공개 Release와 사내 게시는 별도입니다. [변경 내용](docs/UPDATE_1.4.50.md)을 확인하세요.
-[폴더별 자동 스킬 목록](docs/SKILL_CATALOG.md)과 각 PC의 Python 탐색을 유지합니다. Ouroboros 등 다른 플러그인의 연결 교정은 담당자가 별도로 요청한 경우에만 수행합니다.
-기존 코어와 ZIP은 덮어쓰지 않습니다. 1.4.50 설치 파일에서 기존과 같은 범위를 골라 백업 후 업데이트하세요. 개인 Memory·Skill·Knowledge·모델·MCP 설정을 유지합니다. 파일명 뒤 `2026.09.03`은 회사 지식팩 버전이며 설치 프로그램 버전은 `1.4.50`입니다. 업데이트 후 Claude Code를 닫고 다시 실행하세요.
+> 최근에 배운 내용을 보여줘. 실제 적용된 것과 아직 후보인 것, 보류한 이유를 구분해줘.
 
-Windows 폐쇄망에서 이미 설치된 Claude Code와 사내 SMALL/MEDIUM/LARGE 모델을 사용하는 개인화 하네스입니다. 공통 엔진과 개인 Knowledge·Memory·Skill을 분리하고 사용자 또는 프로젝트 범위로 설치합니다.
+자동 학습은 지속적인 명시 교정, 독립된 업무에서 반복된 선택, 실제 사용하고 검증한 개인 절차 개선을 대상으로 합니다. 매 답변에 회고나 질문을 붙이지 않고 학습을 위해 끝난 업무를 다시 실행하지 않습니다. 새 스킬은 저장 요청이나 제안 수락 후 만듭니다. [학습의 동작과 한계](docs/SELF_LEARNING.md)를 참고하세요.
 
-1.2.0에서 시작한 파일 정리, Excel 분석, HTML 보고서와 편집 가능한 PPT 업무팩을 계속 개선했습니다. 실제 회사 Office·DRM 통합 검증은 별도로 필요하므로 시범 운영 범위를 유지합니다. 일부 회사 PC의 관리자 권한 감지 보완, 본인 Claude 실행·설정 위치 확인, 자동 학습과 업데이트 시 개인 자료·규칙·Hook 보존을 포함합니다. 이전 버전은 [Release 이력](https://github.com/bongG-moon/claude_base_repo/releases)에서 확인할 수 있습니다.
+## 설치와 업데이트
 
-업무팩은 새 앱을 따로 여는 대신 Claude에 한국어로 요청하는 방식입니다. 파일은 정리안을 먼저 보여주고 본인의 확인 창 승인 후 이동하며, HTML은 참고 이미지 기반 10가지 디자인과 스크롤/슬라이드 방식을 고릅니다. 추가 디자인에서 번호 하나로 선택할 수 있습니다([사용법](docs/HTML_DESIGN_SELECTION.md)). PPT는 승인된 Python 환경과 설치된 PowerPoint 또는 이미 준비된 제작 도구를 사용합니다. Outlook 스킬과 로컬 메일 조회 도우미는 기본 배포에서 제외합니다. 개인이 연결한 MCP와 기존 설정은 유지합니다. 새 메일 발송·PST 이동 연결이나 외부 이미지 생성 API를 자동 설치하지 않습니다. 실제 회사 Office·메일 환경의 통합 검증은 별도로 필요합니다. [업무팩 시범 사용 안내](docs/BUSINESS_PILOT_GUIDE.md)에서 업무 예시, 보호된 자료 처리, 준비물과 미지원 범위를 확인하세요.
+Claude Code와 회사 승인 Python 3.11 이상이 준비된 Windows PC에서 직원용 `Company-Harness-Setup.exe`를 실행합니다. 사용할 범위를 선택한 뒤 설치하고 Claude Code를 다시 엽니다. ZIP으로 받았다면 **전체 압축을 푼 뒤** `Install-CompanyAgent.cmd`를 실행합니다. GitHub의 자동 `Source code (zip)`은 직원 설치 파일이 아닙니다.
 
-코딩에 익숙하지 않은 직원을 위한 업무 예문도 통합 가이드에 있습니다. 브라우저의 Ctrl+F로 찾고, 예문 상자를 선택해 Ctrl+C로 복사하고, Ctrl+P로 인쇄할 수 있습니다. [시작하기](docs/ONBOARDING_COURSE.md)와 [Claude Code 기본 사용법](docs/CLAUDE_CODE_BASICS.md)을 포함한 Markdown 원본은 [안내서 목차](docs/README.md)에 정리했습니다. 같은 원본에서 HTML과 설치 후 보관할 MD를 생성합니다.
+같은 범위의 기존 설치는 백업 후 업데이트합니다. 개인 기억과 지식, 직접 설치한 스킬, 모델 설정과 MCP 연결은 유지합니다. 기본 설치에서 빠진 기능을 개인 폴더로 자동 복사하지 않습니다. 예전 회사 기능 스킬의 우선 선택이 남아 있으면 다른 후보로 몰래 바꾸지 않고 선택이 오래됐음을 안내합니다.
 
-사용자 안내서 전체를 매 요청의 문맥에 넣지 않습니다. 문서 열기와 실습 요청 전송은 별개입니다. 설명용 HTML은 사용자 안내서 하나이며 Workspace의 예전 주소만 같은 파일로 연결합니다. 담당자용 검증·설치 문서는 별도 소스로 보존합니다.
+이전 설치 파일을 줄이려면 설치 화면의 **사용하지 않는 이전 설치 파일 삭제 (백업 없음)**를 선택합니다. 기본값은 보존입니다. 설치가 성공한 뒤 원본과 사용 여부가 확인된 이전 버전만 삭제하며, 개인 자료와 기존 백업은 유지합니다. Claude가 실행 중이거나 다른 프로젝트에서 쓰는 버전은 남깁니다.
 
-기본 배포 ZIP은 **회사 PC에 이미 설치된 승인 Python 3.11 이상**을 사용합니다. Claude Code 설치와 사내 모델 연결도 미리 준비되어 있어야 합니다. Python 실행 파일과 DLL은 ZIP에 넣지 않습니다.
+개인 전체 스킬은 현재 Claude 설정 폴더의 `skills/<이름>/SKILL.md`, 프로젝트 스킬은 `<프로젝트>/.claude/skills/<이름>/SKILL.md`에 저장합니다. 같은 원본을 수정하며 `/<이름>`으로 사용합니다. 현재 호스트가 아직 목록을 갱신하지 않았다면 지원되는 스킬 새로고침이나 새 연결이 필요할 수 있습니다. 기존 비공개 저장소의 개인 스킬은 이동하거나 복제하지 않습니다.
 
-실제 자료를 준비하지 않고 시험하려면 [로컬 연습실 안내](docs/TEST_LAB.md)를 사용하세요. 바탕화면에 가상 파일·메일 예시·보고서 입력과 질문 복사 화면을 생성하고, 사용자가 실행하면 테스트 프로젝트 설치를 안내합니다. 실제 업무용 개인 기억으로 자동 대체하지 않으며 Outlook·DRM·사내 DB 통합 시험은 별도로 구분합니다.
+설치기는 Python이나 pip를 내려받지 않고 PC의 PATH를 바꾸지 않습니다. 본인의 Windows 계정과 기존 설정 범위를 확인합니다. 다른 하네스를 교체하는 작업은 일반 버전 업데이트와 구분해 안내합니다. [설치와 배포](docs/DEPLOYMENT.md), [Claude에게 설치 맡기기](INSTALL_WITH_CLAUDE.md), [개인 자료 보존](docs/STATE_PRESERVATION.md)을 참고하세요.
 
-## 직원 설치
+별도 앱은 [Workspace 문서](docs/LOCAL_WORKSPACE.md)에서 다룹니다. 하네스 설치가 앱 배포나 업데이트를 대신하지 않습니다.
 
-`Company-Harness-Setup.exe`를 내려받아 두 번 클릭합니다. **Company Harness 설치** 화면에서 사용할 범위를 고른 뒤 **설치하기**를 누릅니다. 기존 설치는 같은 범위로 업데이트하며, 기존 하네스 교체나 실행 파일 위치 확인이 필요한 경우에만 화면의 안내에 답합니다. 완료 후 Claude Code를 다시 엽니다. 아래는 ZIP으로 제공받았을 때의 대체 설치 절차입니다.
+## 설치 파일 만들기
 
-1. 열려 있는 Claude Code를 닫고 배포 ZIP을 모두 압축 해제합니다.
-2. `Install-CompanyAgent.cmd`를 평소처럼 더블클릭합니다. 별도로 ‘관리자 권한으로 실행’을 선택할 필요는 없습니다.
-3. **Claude 전체** 또는 **이 프로젝트만**을 선택합니다. 프로젝트라면 폴더도 지정합니다.
-4. 같은 범위에 Company Agent가 있으면 **기존 버전 → 새 버전**을 확인하고 업데이트를 선택합니다. 같은 버전이면 다시 적용/복구로 안내합니다. 다른 하네스만 있으면 **기존 하네스 유지** 또는 **백업 후 Company Agent 설치**를 선택하며, 아무것도 없으면 다음 단계로 진행합니다.
-5. 설치기가 본인의 Windows 계정, Claude 실행 파일·설정 위치와 Python 3.11 이상을 확인합니다. Claude를 찾지 못하거나 후보가 여러 개면 평소 쓰는 실행 파일을 선택하고, Python을 찾지 못하면 승인된 `python.exe` 경로를 입력합니다. 경로를 모르면 사내 담당자에게 확인합니다.
-6. 들어오는 Skill과 같은 이름이 발견되면 목록을 확인하고 **기존 선택 유지** 또는 **새 Company Agent Skill 우선**을 선택합니다. 겹침이 없으면 추가 질문은 없습니다.
-7. 설치·업데이트·다시 적용이 완료되면 Claude Code를 다시 엽니다. ‘유지’를 선택하면 변경 없이 종료하므로 재시작할 필요가 없습니다.
-
-설치기는 Python이나 pip를 설치·다운로드하지 않고 PC의 PATH 설정을 바꾸지 않습니다. 모델 ID, MCP, Outlook 정보를 입력하지 않으며 평소 `claude` 명령에서도 적용됩니다. 설치 전 기존 설정·Skill·Hook·플러그인 등록과 개인 Memory·Knowledge·Skill을 선택 백업합니다. ‘백업 후 설치’에서는 선택한 범위의 기존 Markdown 지시·규칙과 설정의 Hook을 별도로 암호화 백업한 뒤 비활성화합니다. 모델·MCP·개인 Memory·기존 일반 Skill은 유지합니다. 사용자/프로젝트 설치에는 관리자 권한이 필요하지 않습니다.
-
-Claude에 [INSTALL_WITH_CLAUDE.md](INSTALL_WITH_CLAUDE.md)를 주고 “이 지침대로 설치해줘”라고 해도 됩니다. Markdown 파일과 실제 배포 ZIP의 나머지 파일은 같은 폴더에 있어야 합니다.
-
-1.1.1에서 `Run this installer from your normal Windows account` 오류가 나왔다면 **1.1.2 ZIP 전체를 새 폴더에 풀고** 다시 실행하세요. 기존 설치가 있으면 같은 범위로 업데이트합니다. 다른 계정이나 확인할 수 없는 실행 환경은 새 설치기도 중단하며, Claude 파일 위치만으로 다른 사용자의 설정을 선택하지 않습니다. 회사 보안 설정을 끄거나 기존 설정을 삭제할 필요가 없습니다. [계정·Claude 위치 확인과 문제 해결](docs/DEPLOYMENT.md#계정과-claude-위치를-확인하는-방법)
-
-## 기능
-
-- 엑셀 Python 프로젝트의 표·수식·계산 순서를 한국어 설명이 있는 오프라인 HTML로 함께 제공
-- 요청할 때만 스킬·기억·지식과 현재 사용자의 알려진 Claude·Codex 세션을 집계하는 `work-context-catalog`
-- 난도에 따른 haiku / sonnet / opus worker 배정과 단계적 상향
-- 이미지 모델을 첫 사용 때 선택·변경, 필요한 관찰만 전용 작업자에게 맡기고 호출 장애 시 HCP 백업 1회; 일반 대화 모델 유지 (새 소스, 선택·변경 후 Claude 새 연결 필요)
-- 변경 → 검증 → 제한된 수정 재시도 → 검증 메타데이터 기록
-- 관리자 Markdown 회사 지식과 사용자/프로젝트별 개인 overlay
-- 세션 원문 대신 추출한 개인 Memory 저장과 관련 항목 조회
-- 관련 Skill/Knowledge의 주입량 제한, 비파괴 Memory 중복 정리, native Compact 후 검증 상태 복원
-- 코드·Script·MCP 제작에 Karpathy Guidelines 회사판 기본 제공
-- Claude 기본 위치에 새 개인·프로젝트 Skill 생성, 원본 위치를 유지하는 수정과 검증; Script Tool·MCP 후보 제작
-- “이 프로젝트 하네스 구성해줘” 요청으로 Agent·Skill·QA 규칙 생성
-- 버전별 배포, 기존 파일 충돌 검사, 실패 복구, 개인 상태 보존
-- 기존 Company Agent의 버전별 업데이트/다시 적용 안내와 개인 자료·기존 규칙·Hook 보존
-- 다른 하네스의 유지/교체 선택, 명시적 교체 전 암호화 백업 및 선택 범위의 이전 규칙·Hook 비활성화
-- 현재·신규 Skill 목록과 같은 이름의 겹침 표시, 프로젝트별 후보 선택과 출처 순서 저장
-- 근거가 있을 때 한 번 제출하는 개인 학습, 지속적인 명시적 선호 반영, 실제 읽고 검증한 개인 Skill의 점검 절차 개선, 다음 사용 비교와 선택 복구
-
-모델 라우팅과 절차 수행은 Claude의 도구 사용과 생성 지침을 통해 이뤄집니다. 모델 가중치를 학습시키지 않으며 자체 검증 기록과 실제 테스트 결과는 구별해야 합니다. [구현 대조](docs/IMPLEMENTATION_REVIEW.md)에 근거와 범위를 정리했습니다.
-
-1.0.0에서 제공한 설치 전 Skill 겹침 확인, 프로젝트별 우선 선택, 외부 Python 사용, 기존 하네스 유지/교체 선택, 개인 저장 경로 재사용·형식 보호를 유지합니다. 교체는 선택 범위에만 적용하며 상위 폴더·다른 범위·별도 플러그인의 지침/Hook까지 초기화하지 않습니다. [개인 상태 보존과 복구](docs/STATE_PRESERVATION.md)를 참고하세요.
-
-개인 학습은 **재사용할 교정 접수 → 근거에 따른 적용 또는 후보 보류 → 실제 다음 사용 평가**를 연결합니다. 지속적인 명시적 교정은 업무 중에도 반영할 수 있지만, “이번만”이나 모호한 지시는 장기 저장하지 않습니다. 추론한 선호는 독립된 업무의 반복 근거를 요구하고 같은 업무의 여러 응답을 새 근거로 세지 않습니다. 개인 Skill은 정확한 전체 본문과 현재 검증 성공이 확인된 작은 점검 항목만 개선하며, 공통 Skill·다른 플러그인·실행 코드는 자동 수정하지 않습니다. 새 스킬은 별도 생성 요청이나 제안에 대한 동의 후 만듭니다. 현재 대화에서 필요한 교정을 추리고 제출하므로 토큰과 시간이 들지만 새 LLM 연결이나 학습 전용 작업자는 필요하지 않습니다. 매 답변의 회고·학습만을 위한 응답 재개·Claude 종료 후 백그라운드 학습은 하지 않습니다. `/company-agent:learning`으로 내역 확인·일시 중지·재개·선택 복구를 요청할 수 있습니다. [자동 학습 동작과 한계](docs/SELF_LEARNING.md)를 참고하세요.
-
-## Skill이 겹치면
-
-프로젝트에서 `/company-agent:skills`를 입력하면 Skill 이름과 출처를 보고 사용할 후보를 선택할 수 있습니다. “이 프로젝트만”으로 저장하면 같은 개인 상태의 기본 선택보다 우선합니다. 별도로 Project 설치한 경우에는 그 프로젝트의 상태에 저장되며 다른 설치의 설정과 자동 합쳐지지 않습니다.
-
-이 선택은 Company Agent가 검색·안내하고 읽을 Skill에 적용합니다. Claude의 일반 `/Skill명` 우선순위를 바꾸거나 모든 자동 호출을 강제하는 기능은 아닙니다. 원본 Skill 파일은 함께 보존합니다. 설치 시 “기존 선택 유지”도 기존 후보가 무조건 이긴다는 뜻이 아니라 기존 선호 설정을 유지한다는 뜻입니다. 자세한 흐름과 명령은 [Skill 목록과 프로젝트별 선택](docs/SKILL_PRIORITY.md)에 있습니다.
-
-새 스킬은 개인 전체라면 현재 Claude 설정 폴더의 `skills/<이름>/SKILL.md`, 이 프로젝트라면 `<프로젝트>/.claude/skills/<이름>/SKILL.md`에 저장합니다. `/<이름>`으로 쓰며 현재 CLI가 목록을 아직 갱신하지 않았다면 지원되는 `/reload-skills` 또는 새 대화에서 확인합니다. 파일 저장만으로 현재 호스트의 인식·업무 성공을 보장하지 않습니다. 기존 비공개 저장소의 스킬은 이동·복제하지 않고 원래 이름과 경로로 계속 사용합니다. 프로젝트 스킬은 폴더 공유 시 함께 전달될 수 있지만 프로젝트 기억·도구의 비공개 저장 위치는 바꾸지 않습니다.
-
-## 관리자 ZIP 생성
-
-빌드 PC: Windows PowerShell 5.1+, Python 3.11+, Claude Code CLI 2.1.220+.
-
-다음 명령은 **소스 저장소 루트**에서 실행합니다. 직원 ZIP에는 빌더와 테스트 도구가 들어 있지 않습니다.
+저장소 루트에서 Windows PowerShell 5.1로 실행합니다.
 
 ```powershell
-# PC에 이미 설치된 승인 Python을 사용하는 기본 직원 ZIP 생성
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.4.50 -KnowledgeVersion 2026.09.03
-```
-
-결과는 `dist\company-agent-1.4.50-2026.09.03.zip`입니다. 뒤의 날짜는 회사 지식팩 버전이며 ZIP 생성일이 아닙니다. ZIP 생성은 로컬 산출물을 만드는 단계이며 GitHub 공개나 조직 배포를 수행하지 않습니다. 이미 배포한 내용과 다른 소스를 패키징할 때는 같은 버전을 재사용하지 말고 새 CoreVersion과 일치하는 플러그인 manifest 버전을 사용합니다. 기존 `-WithoutBundledPython` 옵션도 같은 외부 Python 방식으로 사용할 수 있습니다. 관리자가 Python을 함께 배포해야 할 때만 `-IncludeBundledPython`을 명시하며, 준비 방법은 [설치·배포](docs/DEPLOYMENT.md)에 있습니다.
-
-로컬 ZIP은 기본적으로 Git 추적에서 제외합니다. 게시를 요청받으면 소스·안내서를 검증한 뒤 새 버전의 ZIP을 Release에 첨부하고 다운로드 SHA-256을 확인합니다. 과거 Git에 기록했던 1.2.0 파일을 최신 설치본으로 취급하지 마세요.
-
-기본 ZIP에는 `.exe`, `.dll`, `.pyd`가 없지만 설치·실행용 `.cmd`, `.ps1`, `.py` 파일은 포함됩니다. 따라서 Gmail이나 사내 보안 시스템의 첨부 허용을 보장하지 않습니다. 파일 이름·확장자를 숨기거나 바꾸지 않고 사내 승인된 배포 채널로 전달합니다. Python 실행 환경을 분리한 것이며, 하네스 자체는 코드를 실행합니다.
-
-Core/설정/Knowledge 변경 시 새 버전을 부여합니다. 정식 배포에는 회사 서명과 배포 채널을 사용합니다. 기본 ZIP이 자동으로 회사 서명되는 것은 아닙니다. MCP는 별도 개발·배포하며 DB와 Outlook 권한은 해당 서버에서 강제합니다.
-
-[컨텍스트·Compact·실패 복구](docs/CONTEXT_OPTIMIZATION.md)에서 구현 범위와 native Rewind의 차이를 확인할 수 있습니다. 자동 대화 rewind나 임의의 업무 전체를 되돌리는 기능은 구현하지 않으며, 원본 기억을 지우는 압축도 하지 않습니다. 1.2.0의 파일 정리에는 별도의 명시적 되돌리기가 있지만, 해당 정리 기록에 포함되고 이후 변경되지 않은 파일만 대상으로 합니다.
-
-## 개발 검증
-
-아래 도구도 직원 ZIP이 아닌 소스 저장소에서 실행합니다.
-
-```powershell
-python -m unittest discover -s .\tests -v
-claude plugin validate --strict .\company-agent-plugin
-powershell.exe -NoProfile -File .\deploy\Test-DeploymentSmoke.ps1
-powershell.exe -NoProfile -File .\deploy\Test-ScopedInstallSmoke.ps1 -LegacyEncoding
-powershell.exe -NoProfile -File .\deploy\Test-PersonalStateBackup.ps1
-powershell.exe -NoProfile -File .\deploy\Test-ExistingHarness.ps1
-powershell.exe -NoProfile -File .\deploy\Test-HarnessReplacement.ps1
-powershell.exe -NoProfile -File .\deploy\Test-ExternalPython.ps1
-powershell.exe -NoProfile -File .\deploy\Test-RuntimeSelection.ps1
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.5.1 -KnowledgeVersion 2026.09.03
 powershell.exe -NoProfile -File .\deploy\Test-OfflineBundle.ps1
-powershell.exe -NoProfile -File .\deploy\Test-SkillInstallConflicts.ps1
-powershell.exe -NoProfile -File .\deploy\Test-InstallerEncoding.ps1
+powershell.exe -NoProfile -File .\deploy\New-CompanyAgentSetup.ps1 -BundleZip .\dist\company-agent-1.5.1-2026.09.03.zip
 ```
 
-Scoped smoke는 임시 Claude 설정과 프로젝트에서 실제 CLI 등록을 확인하며 개인 Claude 설정을 변경하지 않습니다. 내부 LLM/MCP를 호출하는 업무 검증과는 별개입니다.
+뒤의 날짜는 회사 지식팩 버전입니다. 빌드는 게시나 개인 PC 설치를 실행하지 않습니다. 사내 GitLab 배포 자료는 `deploy/New-GitLabHarnessDelivery.ps1`로 준비합니다. 공개 Release나 GitLab 업로드는 별도로 진행합니다. EXE의 회사 코드 서명은 배포 담당자가 적용합니다.
 
-배포 전 인코딩 검증에는 `Test-InstallerEncoding.ps1`과 `Test-ScopedInstallSmoke.ps1 -LegacyEncoding`을 포함합니다. CP949 부모 콘솔·Python 환경과 한글/특수문자/이모지 경로를 사용하여 실제 프로세스의 출력·JSON 파싱·설치 보존을 확인합니다. 일반 CLI도 ASCII-safe JSON을 사용하므로 JSON 파싱 후 원래 Unicode 값이 유지됩니다. PC의 전역 코드페이지·언어 설정을 변경하지 않습니다.
+소스 폴더 전체를 설치하지 않습니다. `deploy/harness-core-manifest.json`에 지정한 파일만 넣고 `harness-core/`의 짧은 핵심 지침을 적용합니다. `company-agent-plugin/`에 남아 있는 기능 엔진은 개별 ZIP을 만들 때 재사용하는 개발 소스입니다. 이 폴더를 직접 `--plugin-dir`로 로드하는 것은 직원용 기본 구성과 다릅니다. [구조와 검증 기록](docs/HARNESS_CORE_SPLIT.md)
 
-일반 Python 테스트 실행은 실제 Claude CLI를 호출하는 검사 두 개를 기본적으로 생략합니다. Windows에서 명시적 `COMPANY_AGENT_TEST_REAL_CLAUDE=1` 설정으로 실행하는 opt-in 검사이며, 라이브러리 누락이나 알려진 실패 때문에 제외한 것은 아닙니다. 임시 `CLAUDE_CONFIG_DIR`에서 MCP의 User/Project 등록 범위와 가상 도구 제작→시험→등록→스킬 연결 흐름을 확인합니다. 실제 개인 프로필을 수정하거나 사내 MCP 서버에 접속하지 않습니다.
-
-**배포 전 전체 검증**에서는 Claude Code가 설치된 Windows에서 아래와 같이 이 테스트까지 포함합니다. 환경 변수는 현재 PowerShell 프로세스에만 설정하고 완료 후 원래 값으로 복원합니다.
+## 개별 ZIP과 검증
 
 ```powershell
-$previousRealClaudeTestFlag = $env:COMPANY_AGENT_TEST_REAL_CLAUDE
-try {
-    $env:COMPANY_AGENT_TEST_REAL_CLAUDE = '1'
-    python -B -m unittest discover -s .\tests -v
-    if ($LASTEXITCODE -ne 0) { throw 'Python 전체 테스트가 실패했습니다.' }
-}
-finally {
-    $env:COMPANY_AGENT_TEST_REAL_CLAUDE = $previousRealClaudeTestFlag
-}
+python -X utf8 -B scripts/build-skill-packages.py
+python -X utf8 -B scripts/build-skill-packages.py --check
 ```
 
-이 검사는 CLI 등록 계약의 검증입니다. 사내 모델·실제 DB·Outlook 계정의 업무 통합 검증을 대신하지 않습니다.
+플랫폼 정본을 확인하고 원본과 `skills_zip`을 함께 갱신합니다. 현재 파일을 패키징하며 게시하거나 사용자 프로필에 자동 설치하지 않습니다. [패키지 관리](docs/PLATFORM_SKILL_PACKAGES.md)
+
+검증은 격리된 설정과 가상 자료를 사용합니다. 설치 전후 개인 자료 보존, 스킬 생성과 수정, 기억 조회와 학습, 필요한 기능만 포함됐는지를 검사합니다. 로컬 계약 검증은 실제 사내 모델의 판단 품질이나 업무 성공률을 보증하지 않습니다.
 
 ```text
-company-agent-plugin/   공통 플러그인, Python 코드, 프로젝트 Harness Factory
-corporate-knowledge/    관리자 Markdown seed pack
-config/                실행 설정, 별도 MCP 계약 예시
-deploy/                쉬운 설치, scope 등록, 패키징, 기존 machine 배포
-docs/                  직원 설치, 운영, 구현 대조, 프로젝트 하네스 생성
-tests/                 동작·충돌·개인 상태 보존 테스트
+harness-core/           기본 설치의 짧은 지침과 작업자 정의
+company-agent-plugin/   공통 런타임과 개별 패키지에서 재사용하는 개발 소스
+standalone-skills/      독립 배포 스킬의 정본
+skills_zip/             개별 배포 ZIP과 설치 안내
+corporate-knowledge/    회사 공통 지식팩
+deploy/                설치, 보존, 패키징과 배포 검사
+docs/                  사용자 안내서와 운영 문서
+tests/                 기능과 경계 회귀검사
 ```
-
-[설치·배포](docs/DEPLOYMENT.md) · [Skill 우선 선택](docs/SKILL_PRIORITY.md) · [프로젝트 하네스 생성](docs/PROJECT_HARNESS.md) · [구현 대조](docs/IMPLEMENTATION_REVIEW.md) · [회사 지식 작성](docs/ADMIN_KNOWLEDGE_GUIDE.md) · [MCP 계약](docs/MCP_CONTRACTS.md)
-
-프로젝트 Harness Factory는 [revfactory/harness](https://github.com/revfactory/harness)의 도메인 분석·팀 설계·Skill 생성·검증 패턴을 참고한 독립 구현입니다. 직원 PC에서 해당 저장소에 접속하거나 외부 플러그인을 내려받지 않습니다.

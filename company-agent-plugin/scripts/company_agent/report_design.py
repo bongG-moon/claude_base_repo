@@ -5,17 +5,21 @@ import hashlib
 import html
 import math
 
-PALETTE = tuple(f"var(--series-{i},{color})" for i, color in enumerate(("#246858", "#c35b36", "#4664a5", "#92529b", "#977018", "#53656f")))
+_FALLBACK_COLORS = ("#246858", "#c35b36", "#4664a5", "#92529b", "#977018", "#53656f")
+PALETTE = tuple(f"var(--series-{i},{_FALLBACK_COLORS[i % 6]})" for i in range(30))
 esc = lambda text: html.escape(str(text), quote=True)
 
 
-def svg_chart(chart: dict, index: int) -> str:
+def svg_chart(chart: dict, index: int, appearance: dict | None = None) -> str:
+    appearance = appearance or {}
     categories, series = chart["categories"], chart["series"]
     kind = chart["type"]
     parts = []
     width, height = 800, max(340, len(categories) * 38 + 80) if kind == "bar" else 360
+    if kind == 'pie':
+        width = 410
     title = f"chart-title-{index}"
-    parts.append(f'<svg class="report-chart" viewBox="0 0 {width} {height}" role="img" aria-labelledby="{title}" xmlns="http://www.w3.org/2000/svg"><title id="{title}">{esc(chart.get("title") or "지표 비교")} — 수치는 아래 원자료에서 확인</title>')
+    parts.append(f'<svg class="report-chart" data-chart-type="{esc(kind)}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="{title}" xmlns="http://www.w3.org/2000/svg"><title id="{title}">{esc(chart.get("title") or "지표 비교")} — 수치는 아래 원자료에서 확인</title>')
     values = [v for s in series for v in s["values"]]
     low, high = min(0, min(values)), max(0, max(values))
     if high == low:
@@ -38,12 +42,6 @@ def svg_chart(chart: dict, index: int) -> str:
             angle += delta
         parts.append('<circle cx="205" cy="172" r="72" fill="var(--paper)"/>')
         parts.append(f'<text x="205" y="174" text-anchor="middle" class="chart-total">{total:g}</text><text x="205" y="200" text-anchor="middle">합계</text>')
-        # Long category sets remain fully available in the accessible data table.
-        for i, value in enumerate(values[:8]):
-            label = categories[i][:17] + ("…" if len(categories[i]) > 17 else "")
-            parts.append(f'<rect x="420" y="{38+i*33}" width="10" height="10" rx="3" fill="{PALETTE[i % 6]}"/><text x="445" y="{48+i*33}">{esc(label)} · {value / total * 100:.1f}%</text>')
-        if len(values) > 8:
-            parts.append('<text x="445" y="325">전체 항목은 원자료 펼치기</text>')
     elif kind == "bar":
         x = lambda v: 150 + (v - low) / (high - low) * 580
         for tick in range(5):
@@ -75,7 +73,13 @@ def svg_chart(chart: dict, index: int) -> str:
                 label = esc(f'{categories[i]} · {serie["name"]}: {value:g}')
                 if kind == "line":
                     points.append(f"{cx:.3f},{cy:.3f}")
-                    parts.append(f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="4" fill="{PALETTE[j]}"><title>{label}</title></circle>')
+                    marker = appearance.get('marker', 'circle')
+                    if marker == 'square':
+                        parts.append(f'<rect x="{cx-4:.3f}" y="{cy-4:.3f}" width="8" height="8" fill="{PALETTE[j]}"><title>{label}</title></rect>')
+                    elif marker == 'diamond':
+                        parts.append(f'<path d="M{cx:.3f},{cy-5:.3f} l5,5 -5,5 -5,-5 Z" fill="{PALETTE[j]}"><title>{label}</title></path>')
+                    elif marker != 'none':
+                        parts.append(f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="4" fill="{PALETTE[j]}"><title>{label}</title></circle>')
                 else:
                     bar_w = band * .68 / len(series)
                     bx = cx - band * .34 + j * bar_w
@@ -85,14 +89,18 @@ def svg_chart(chart: dict, index: int) -> str:
                     ty = cy - 9 if value >= 0 else cy + 18
                     parts.append(f'<text x="{tx:.3f}" y="{ty:.3f}" text-anchor="middle" class="chart-value">{value:g}</text>')
             if kind == "line":
-                parts.append(f'<polyline points="{" ".join(points)}" fill="none" stroke="{PALETTE[j]}" stroke-width="3"/>')
+                parts.append(f'<polyline points="{" ".join(points)}" fill="none" stroke="{PALETTE[j]}" style="stroke-width:var(--chart-line-width,3)"/>')
     parts.append('</svg>')
-    legend = ''.join(f'<span><i style="background:{PALETTE[j]}"></i>{esc(s["name"])}</span>' for j, s in enumerate(series)) if kind != "pie" else ''
+    if kind == 'pie':
+        legend = ''.join(f'<span><i style="background:{PALETTE[j]}"></i>{esc(categories[j])} · {value / total * 100:.1f}%</span>' for j, value in enumerate(values))
+    else:
+        legend = ''.join(f'<span><i style="background:{PALETTE[j]}"></i>{esc(s["name"])}</span>' for j, s in enumerate(series))
     return '<figure class="chart-frame"><figcaption>'+esc(chart.get('title') or '지표 비교')+'</figcaption>'+''.join(parts)+f'<div class="legend">{legend}</div></figure>'
 
 
 CSS = """
 :root{--ink:#182c32;--accent:#246858;--muted:#617277;--line:#dae2e0;--bg:#ecf0ef;--paper:#fff;--radius:18px}
+.report-chart[data-chart-type=pie]{max-width:410px;margin:auto}
 body{font-size:16px;line-height:1.7}.report-masthead{max-width:1320px;padding:24px 40px 16px;display:flex;justify-content:space-between;align-items:center;gap:20px}.report-name{font-size:14px;letter-spacing:.02em;font-weight:700}.report-masthead .subtitle{font-size:12px;margin:3px 0}.report-masthead nav{margin:0;font-size:12px}.report-masthead button{font-size:12px;padding:8px 12px}.report-main{max-width:1320px;padding:12px 40px}.section{position:relative;padding:48px 52px;border-radius:var(--radius);margin-bottom:24px;box-shadow:0 8px 32px #1c353506}.page-number{font-variant-numeric:tabular-nums;color:var(--accent);font-size:12px;letter-spacing:.13em;margin-bottom:17px}.section h2{font-size:clamp(25px,3.1vw,40px);letter-spacing:-1.3px;max-width:28ch;margin-bottom:16px}.takeaway{font-size:18px;line-height:1.6;border-left:3px solid var(--accent);padding-left:15px;margin:0 0 26px;color:var(--ink)}.section-content{min-width:0}.copy-block{min-width:0}.text{font-size:15px;max-width:76ch}.text li{margin:10px 0}.section-source{font-size:11px;color:var(--muted);border-top:1px solid var(--line);padding-top:12px;margin-top:24px;overflow-wrap:anywhere}.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:14px;margin:25px 0}.kpi{border:1px solid var(--line);padding:20px 22px;border-radius:12px;background:var(--paper);min-width:0}.kpi-label{font-size:12px;color:var(--muted)}.kpi-value{font-size:clamp(27px,3.3vw,43px);font-weight:750;line-height:1.3;letter-spacing:-1.3px;margin:10px 0;color:var(--accent);font-variant-numeric:tabular-nums}.kpi-unit{font-size:13px;font-weight:400;letter-spacing:0;margin-left:5px}.kpi-note{font-size:12px;color:var(--muted)}.layout-cover{min-height:520px;background:linear-gradient(115deg,var(--paper) 65%,#e9f2ee)!important}.layout-cover h2{font-size:clamp(34px,4.9vw,62px);max-width:19ch;margin-top:20px;letter-spacing:-2px}.layout-cover .takeaway{max-width:65ch}.layout-cover .kpis{margin-top:45px}.layout-split .section-content{display:grid;grid-template-columns:minmax(0,.75fr) minmax(0,1.25fr);gap:35px;align-items:center}.layout-summary .copy-block{border-top:3px solid var(--accent);padding-top:14px}.chart-frame{border:1px solid var(--line);border-radius:12px;margin:16px 0;padding:20px;background:var(--paper)}.chart-frame figcaption{font-size:14px;font-weight:700;color:var(--ink);margin-bottom:10px}.report-chart{width:100%;height:auto;display:block;overflow:visible}.report-chart text{font:12px 'Malgun Gothic',sans-serif;fill:var(--muted)}.report-chart .chart-value{font-size:13px;font-weight:700;fill:var(--ink)}.report-chart .chart-total{font-size:28px;font-weight:700;fill:var(--ink)}.gridline{stroke:var(--line);stroke-width:1}.legend{display:flex;justify-content:center;flex-wrap:wrap;gap:20px;font-size:12px;color:var(--muted)}.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px}.chart-values{font-size:12px;margin:12px 0 0}.chart-values summary{cursor:pointer;color:var(--muted)}.chart-values .table-wrap{margin:12px 0}.table-wrap{margin:22px 0}th{background:#edf3f0;font-size:12px;white-space:normal}td{font-size:14px;font-variant-numeric:tabular-nums}th,td{padding:13px 14px}tbody tr:nth-child(even){background:#f7f9f7}td.numeric{text-align:right}body[data-view=slides] main>.section.active{min-height:min(700px,calc(100vh - 165px))}
 @media(max-width:760px){.report-masthead{display:block;padding:20px}.report-masthead nav{margin-top:14px}.report-main{padding:8px 16px}.section,body[data-style=minimalism] .section{padding:26px 22px}.layout-split .section-content,body[data-style=editorial] .layout-split .section-content,body[data-style=freeform] .layout-split .section-content{display:block}.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi{padding:15px 12px}.kpi-value{font-size:29px}.chart-frame{padding:10px}.layout-cover{min-height:0}.section h2{max-width:none}.report-chart{min-width:450px}.chart-frame{overflow-x:auto}body[data-view=slides] main>.section.active{min-height:0}}
 @media print{.report-masthead{padding:0 0 10px}.report-main{padding:0}.section,body[data-style=minimalism] .section{padding:24px;min-height:0!important;box-shadow:none}.report-chart{max-height:340px;min-width:0}.kpis{grid-template-columns:repeat(3,1fr)}.layout-split .section-content{display:block}.chart-values{display:none}.section h2{font-size:28px}.layout-cover h2{font-size:38px}}
@@ -191,7 +199,7 @@ body[data-view=slides] .reference-toc{display:none}
 @media(min-width:761px){body[data-reference=reference-3] .layout-split .section-content[data-content-columns="2"]{grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr)}}
 @media print{.reference-toc{display:none}}
 '''
-    if data['length'] == 'short' and data['mode'] == 'scroll' and not data.get('referenceCss'):
+    if data['length'] == 'short' and data['mode'] == 'scroll' and not (data.get('referenceCss') or data.get('themeOverrides')):
         base_css += '\n' + SHORT_SCROLL_CSS
     has_diagram = any(row.get('diagram') for row in data['sections'])
     if has_diagram:
@@ -207,6 +215,9 @@ body[data-view=slides] .reference-toc{display:none}
         base_css += '\nbody,button,.explanation-diagram text{font-family:"Noto Sans KR","Malgun Gothic","Segoe UI",sans-serif}'
     if google_font:
         font_link = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;600;700&amp;display=swap">'
+    if data.get('themeOverrides'):
+        from .report_styles import reference_style_css
+        base_css += reference_style_css(data['themeOverrides'])
     if 'fontChoice' in data or 'fontSource' in data:
         from .report_typography import css as font_css
         base_css += font_css(data)
@@ -240,7 +251,7 @@ body[data-view=slides] .reference-toc{display:none}
             blocks['bullets'] = '<ul class="text">'+''.join(f'<li>{esc(v)}</li>' for v in row['bullets'])+'</ul>'
         if row.get('chart'):
             chart = row['chart']
-            blocks['chart'] = svg_chart(chart, i)
+            blocks['chart'] = svg_chart(chart, i, data.get('themeOverrides', {}).get('chart'))
             blocks['chart'] += '<details class="chart-values"><summary>차트 수치 원자료 펼치기</summary>'+table_renderer(['항목']+[s['name'] for s in chart['series']], [[cat]+[s['values'][n] for s in chart['series']] for n, cat in enumerate(chart['categories'])], '차트 원자료')+'</details>'
         if row.get('table'):
             blocks['table'] = table_renderer(row['table']['headers'],row['table']['rows'], options=row['table'])
@@ -279,6 +290,8 @@ body[data-view=slides] .reference-toc{display:none}
     view='slides' if data['mode']=='slides' else 'scroll'
     toggle='<button id="toggle-view" type="button">페이지로 보기</button>' if data['mode']=='both' else ''
     reference_attr = (' data-reference="' + esc(data['referencePreset']) + '"') if data.get('referencePreset') else ''
+    if data.get('themeOverrides') or data.get('referenceCss'):
+        reference_attr += ' data-reference-style="observed"'
     toc = ''
     if data.get('referencePreset') == 'reference-2' and data['mode'] != 'slides' and len(data['sections']) > 1:
         toc = '<nav class="reference-toc" aria-label="보고서 목차">' + ''.join(

@@ -135,7 +135,7 @@ class ManagerServer(ThreadingHTTPServer):
                 query = self.store.query(data['id'], self.engine)
                 return {'query': query, 'sourceName': self.store.profile(query['profile'])['name'], 'executed': False}
             profile = self._profile(data['id'])
-            credentials = self.store.secrets(profile['id'])
+            credentials = self._credentials(profile['id'])
             info = {'id': profile['id'], 'name': profile['name']}
             if self.engine == 'oracle':
                 info.update(user=credentials.get('user', ''), dsn=credentials.get('dsn', ''),
@@ -172,7 +172,7 @@ class ManagerServer(ThreadingHTTPServer):
         secret_key = 'password' if self.engine == 'oracle' else 'token'
         secret = data[secret_key]
         if current and not secret:
-            secret = self.store.secrets(current['id']).get(secret_key, '')
+            secret = self._credentials(current['id']).get(secret_key, '')
         if self.engine == 'oracle':
             if not all((profile['name'], data['user'].strip(), secret, data['dsn'].strip())):
                 raise InputError('DB 이름, 아이디, 비밀번호와 DSN을 모두 입력해 주세요.')
@@ -180,7 +180,7 @@ class ManagerServer(ThreadingHTTPServer):
         elif self.engine == 'datalake':
             if data['lake_type'] not in ('prod', 'dev'):
                 raise InputError('Datalake 환경은 prod 또는 dev로 선택해 주세요.')
-            credentials = dict(self.store.secrets(current['id'])) if current else {}
+            credentials = dict(self._credentials(current['id'])) if current else {}
             for key in ('user_id', 'token', 's3_access_key', 's3_secret_key'):
                 value = data[key].strip() if key == 'user_id' else data[key]
                 if value:
@@ -224,6 +224,14 @@ class ManagerServer(ThreadingHTTPServer):
         if profile.get('engine') != self.engine:
             raise InputError('다른 조회 스킬의 연결은 수정하지 않습니다.')
         return profile
+
+    def _credentials(self, profile_id):
+        from .credentials import CredentialSetupRequired
+        try:
+            return self.store.secrets(profile_id)
+        except CredentialSetupRequired:
+            # 인증 파일만 없는 기존 연결을 같은 ID로 보완합니다. 손상된 파일은 그대로 오류로 남깁니다.
+            return {}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -331,8 +339,13 @@ def show(store, engine, profile_id=None, start_view='profiles'):
     worker.start()
     status = 'closed'
     try:
-        if not webbrowser.open(server.url, new=1, autoraise=True):
-            raise ValueError('기본 브라우저를 열지 못했습니다. 브라우저 설정을 확인한 뒤 다시 실행해 주세요.')
+        from .credentials import CredentialInputUnavailable
+        try:
+            opened = webbrowser.open(server.url, new=1, autoraise=True)
+        except Exception:
+            raise CredentialInputUnavailable(engine, profile_id) from None
+        if not opened:
+            raise CredentialInputUnavailable(engine, profile_id)
         while not server.closed.wait(.25):
             now = time.monotonic()
             if server.detached_at is not None and now - server.detached_at >= DETACH_GRACE:

@@ -49,9 +49,17 @@ _CANDIDATE = {
     "deferred": "적용 보류", "rejected": "적용하지 않음",
 }
 _REASONS = {
+    "applied": "학습 내용을 적용한 기록이 있습니다. 모델의 답변 반영 여부는 별도입니다.",
+    "already_active": "같은 학습 내용이 이미 적용되어 다시 변경하지 않았습니다.",
+    "active_recorded": "기존 기록에 적용 상태로 남아 있습니다. 현재 파일을 다시 확인한 결과는 아닙니다.",
+    "rejected_reapplication": "되돌린 학습 내용의 재적용을 막는 기록에 따라 적용하지 않습니다.",
+    "independent_work_samples_required": "서로 다른 업무에서 같은 선택이 두 번 확인되어야 합니다.",
+    "evidence_required": "적용에 필요한 근거를 모으는 중입니다. 기존 기록에는 세부 사유가 없습니다.",
     "skill_requires_success_and_current_verification": "업무 성공과 현재 스킬 확인 근거가 부족합니다.",
     "independent_work_sample_not_ready": "서로 다른 업무에서 반복됐는지 아직 확인되지 않았습니다.",
     "verified_fix_requires_observed_failure_then_pass": "실패 후 수정으로 해결된 근거가 부족합니다.",
+    "target_validation_deferred": "대상의 현재 상태나 변경 조건 때문에 적용을 보류했습니다. 상세 기록에서 사유를 확인할 수 있습니다.",
+    "decision_not_observable": "현재 기록에서 적용 판단의 사유를 확인할 수 없습니다.",
 }
 
 
@@ -61,6 +69,8 @@ def _count(value):
 
 def explain_learning(status: dict) -> dict:
     """Summarize already-read receipts, without enumerating memories or sessions."""
+    from .learning import _candidate_reason_code
+
     submission = status.get("currentSubmission") or {}
     delivery = status.get("memoryDelivery") or {}
     delivery_code = delivery.get("status", "not-observable")
@@ -72,11 +82,12 @@ def explain_learning(status: dict) -> dict:
     for item in (status.get("recentCandidates") or [])[-10:]:
         if not isinstance(item, dict):
             continue
-        reason = item.get("reason")
+        reason_code = _candidate_reason_code(item)
         candidates.append({
             "title": str(item.get("title", "이름 미확인"))[:160],
             "state": _CANDIDATE.get(item.get("status"), "상태 미확인"),
-            "reason": _REASONS.get(reason, "세부 사유는 상세 학습 기록에서 확인할 수 있습니다.") if reason else "",
+            "reasonCode": reason_code,
+            "reason": _REASONS[reason_code],
         })
     return {
         "automaticLearning": "설정 켜짐" if status.get("enabled") else "일시 중지",

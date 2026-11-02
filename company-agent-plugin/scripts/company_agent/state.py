@@ -714,6 +714,9 @@ def _is_learning_spec_write(tool_name: str, tool_input: dict[str, Any], state: d
 
 def _is_ppt_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
     """Only bounded temporary choice metadata, never jobs or output slides."""
+    from .core_profile import is_core_install
+    if is_core_install():
+        return False
     import json
     if tool_name.casefold() not in {'write', 'edit'}:
         return False
@@ -747,6 +750,9 @@ def _is_ppt_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> 
 
 def _is_html_choices_spec_write(tool_name: str, tool_input: dict, root: Path) -> bool:
     """Disposable design choices only; not report jobs, artifacts or permission."""
+    from .core_profile import is_core_install
+    if is_core_install():
+        return False
     import json
     if tool_name.casefold() not in {"write", "edit"}:
         return False
@@ -972,6 +978,9 @@ def _html_choice_wait(payload: dict[str, Any], root: Path) -> bool:
     This only suspends the current turn's completion check. It does not verify
     older changes, authorize a tool, or reset a retry budget.
     """
+    from .core_profile import is_core_install
+    if is_core_install():
+        return False
     import json
 
     if (payload.get('hook_event_name') != 'PostToolUse' or payload.get('agent_id')

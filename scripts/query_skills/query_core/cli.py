@@ -10,6 +10,8 @@ import sys
 from . import core
 from .adapters import AdapterError
 from .store import Store, read_json
+from .inputs import InputError, read_params
+from .credentials import CredentialSetupRequired, CredentialInputUnavailable
 
 
 def parser(engine):
@@ -53,11 +55,15 @@ def parser(engine):
     register = queries.add_parser('register')
     register.add_argument('--spec',required=True,type=Path)
     register.add_argument('--replace-id',type=int)
+    register.add_argument('--params', help='등록 후 시험할 조건: JSON 파일 경로 또는 JSON 객체 문자열')
+    registration_mode = register.add_mutually_exclusive_group()
+    registration_mode.add_argument('--confirm', action='store_true', help='기존 호환 인자. 등록 시 기본으로 최대 10행 시험 조회')
+    registration_mode.add_argument('--save-only', action='store_true', help='실제 조회 없이 저장만 하고 미검증으로 표시')
     show = queries.add_parser('show')
     show.add_argument('--id',required=True,type=int)
     prepare = commands.add_parser('plan')
     prepare.add_argument('--id',required=True,type=int)
-    prepare.add_argument('--params',required=True,type=Path)
+    prepare.add_argument('--params',required=True,help='JSON 파일 경로 또는 JSON 객체 문자열')
     prepare.add_argument('--max-rows',type=int)
     prepare.add_argument('--max-bytes',type=int)
     prepare.add_argument('--timeout',type=int)
@@ -67,7 +73,7 @@ def parser(engine):
     run.add_argument('--allow-large',action='store_true')
     direct = commands.add_parser('execute', help='명확히 요청한 일반 조회를 한 번에 준비하고 실행')
     direct.add_argument('--id', required=True, type=int)
-    direct.add_argument('--params', required=True, type=Path)
+    direct.add_argument('--params', required=True, help='JSON 파일 경로 또는 JSON 객체 문자열')
     direct.add_argument('--confirm', action='store_true')
     direct.add_argument('--max-rows', type=int)
     direct.add_argument('--max-bytes', type=int)
@@ -85,6 +91,15 @@ def parser(engine):
     export = commands.add_parser('export-csv')
     export.add_argument('--id',required=True)
     export.add_argument('--output',required=True,type=Path)
+    preview = commands.add_parser('preview', help='명시적으로 요청한 소량의 결과 행만 보기')
+    preview.add_argument('--id', required=True)
+    preview.add_argument('--rows', type=int, default=5)
+    preview.add_argument('--columns', nargs='+')
+    workflow = commands.add_parser('workflow', help='Python으로 A 조회의 키를 B 조회 조건에 연결')
+    source = workflow.add_mutually_exclusive_group(required=True)
+    source.add_argument('--spec', type=Path)
+    source.add_argument('--resume')
+    workflow.add_argument('--confirm', action='store_true')
     if engine == 'demo':
         commands.add_parser('demo-init')
     return p
@@ -134,19 +149,33 @@ def execute(engine, args):
             return {'ok':True,'queries':store.queries(engine)}
         if args.action == 'show':
             query = store.query(args.id,engine)
-            return {'ok':True,'query':query,'sourceName':store.profile(query['profile'])['name'],'executed':False}
-        return dict(ok=True, **store.save_query(read_json(args.spec),engine,query_id=args.replace_id))
+            from .registration import validation_info
+            return {'ok':True,'query':query,'sourceName':store.profile(query['profile'])['name'],'executed':False,
+                    'validation': validation_info(store, engine, args.id)}
+        from .registration import register_query
+        return register_query(store, engine, read_json(args.spec),
+                              values=read_params(args.params) if args.params is not None else None,
+                              confirmed=not args.save_only, query_id=args.replace_id)
     if args.command in {'plan', 'execute'}:
         if args.command == 'execute' and not args.confirm:
             raise ValueError('SQL과 조회 조건이 명확한 사용자 요청을 확인한 뒤 실행해 주세요.' if engine == 'datalake' else '조회할 DB와 쿼리, 조건이 명확한 사용자 요청을 확인한 뒤 실행해 주세요.')
         options = {k:getattr(args,k) for k in core.DEFAULTS if getattr(args,k) is not None}
         if args.command == 'plan':
-            return core.plan(store,engine,args.id,read_json(args.params),options)
-        return core.execute(store, engine, args.id, read_json(args.params), options, confirmed=True)
+            return core.plan(store,engine,args.id,read_params(args.params),options)
+        return core.execute(store, engine, args.id, read_params(args.params), options, confirmed=True)
     if args.command == 'run':
         return core.run(store,engine,args.plan,confirmed=args.confirm,allow_large=args.allow_large)
     if args.command == 'result':
-        return core.result_info(store,args.id)
+        return dict(core.result_info(store,args.id), retrievalMode='saved_result', isFreshQuery=False,
+                    reusePermission='not_granted')
+    if args.command == 'preview':
+        from .preview import preview_result
+        return preview_result(store, engine, args.id, rows=args.rows, columns=args.columns)
+    if args.command == 'workflow':
+        from .workflow import run_workflow, resume_workflow
+        if args.resume:
+            return resume_workflow(store, engine, args.resume, confirmed=args.confirm)
+        return run_workflow(store, engine, read_json(args.spec), confirmed=args.confirm)
     if args.command == 'export-csv':
         return core.export_csv(store,args.id,args.output)
     if args.command == 'demo-init':
@@ -191,8 +220,25 @@ def main(engine, argv=None):
     except ImportError:
         result = {'ok':False,'status':'dependency_missing','message':'이 스킬의 requirements.txt에 적힌 Python 패키지를 준비해 주세요.'}
         code = 2
+    except InputError as error:
+        result = {'ok': False, 'status': error.code, 'message': str(error),
+                  'failureStage': 'input', 'queryExecuted': False, 'dataRowsReturned': 0}
+        code = 2
+    except (CredentialSetupRequired, CredentialInputUnavailable) as error:
+        result = {'ok': False, 'status': 'credentials_required' if isinstance(error, CredentialSetupRequired) else 'local_input_unavailable',
+                  'credentialInput': error.credential_input, 'message': str(error), 'queryExecuted': False,
+                  'dataRowsReturned': 0}
+        code = 2
     except AdapterError as error:
         result = {'ok':False,'status':error.code,'message':error.message,'dataRowsReturned':0}
+        if error.details:
+            result['errorDetails'] = error.details
+        if getattr(error, 'result_id', None):
+            result['resultId'] = error.result_id
+        if getattr(error, 'workflow_context', None):
+            result['workflowContext'] = error.workflow_context
+        if getattr(error, 'credential_input', None):
+            result['credentialInput'] = error.credential_input
         if engine == 'datalake' and error.code in {'auth_config', 'api_401', 'api_403'}:
             result['credentialHelp'] = credential_help()
         code = 2
@@ -205,9 +251,16 @@ def main(engine, argv=None):
             message = '작업을 완료하지 못했습니다. 입력 파일과 개인 저장소, 연결 상태를 확인해 주세요.'
             status = 'failed'
         result = {'ok':False,'status':status,'message':message,'dataRowsReturned':0}
+        if getattr(error, 'result_id', None):
+            result['resultId'] = error.result_id
+        if getattr(error, 'workflow_context', None):
+            result['workflowContext'] = error.workflow_context
         code = 2
     except Exception:
         result = {'ok':False,'status':'failed','message':'조회 준비 또는 실행을 완료하지 못했습니다. 접속 정보와 조회 조건을 확인해 주세요.','dataRowsReturned':0}
         code = 2
+    if result.get('credentialInput'):
+        from .credentials import attach_cli_action
+        attach_cli_action(result, args.state_root)
     print(json.dumps(result,ensure_ascii=False,allow_nan=False))
     return code

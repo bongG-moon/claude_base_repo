@@ -11,13 +11,14 @@ try {
     if ($request.Scope -notin @('User', 'Project')) { throw 'Invalid installation scope.' }
     # Only user-facing parameters. No protection/prerequisite bypass switches.
     $parameters = @{ BundleRoot = $BundleRoot; Scope = [string]$request.Scope; NonInteractive = $true }
-    foreach ($name in @('ProjectRoot', 'ClaudeCommand', 'PythonCommand', 'ExistingHarnessAction', 'SkillConflictAction')) {
+    foreach ($name in @('ProjectRoot', 'ClaudeCommand', 'PythonCommand', 'ExistingHarnessAction', 'SkillConflictAction', 'OldVersionAction')) {
         if ($request.PSObject.Properties[$name] -and [string]$request.$name) {
             $parameters[$name] = [string]$request.$name
         }
     }
     if ($parameters.ContainsKey('ExistingHarnessAction') -and $parameters.ExistingHarnessAction -notin @('Ask','Keep','Update','Replace')) { throw 'Invalid existing installation choice.' }
     if ($parameters.ContainsKey('SkillConflictAction') -and $parameters.SkillConflictAction -notin @('Ask','KeepCurrent','PreferIncoming')) { throw 'Invalid skill preference choice.' }
+    if ($parameters.ContainsKey('OldVersionAction') -and $parameters.OldVersionAction -notin @('Keep','DeleteUnused')) { throw 'Invalid old version cleanup choice.' }
     $result = & (Join-Path $BundleRoot 'deploy/Setup-CompanyAgent.ps1') @parameters
     $objects = @($result | Where-Object { $_.PSObject.Properties['status'] })
     if ($objects.Count -ne 1) { throw 'Installer did not return a single completion result.' }

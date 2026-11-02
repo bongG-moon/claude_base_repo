@@ -14,6 +14,16 @@ from company_agent import business_artifacts as artifacts, ppt_html, ppt_workflo
 
 
 class PptHtmlTests(unittest.TestCase):
+    def test_layout_errors_explain_unsupported_page_role_and_profile(self):
+        chart = {'type':'column', 'categories':['가'], 'series':[{'name':'실적','values':[1]}]}
+        cases = [({'slides':[{'title':'상세','pageRole':'detail','chart':chart}]}, 'chart'),
+                 ({'presentationProfile':{'emphasisSize':17},'slides':[{'title':'표지','body':'내용'}]}, 'emphasisSize')]
+        for i,(spec, expected) in enumerate(cases):
+            result = ppt_html.create_draft(spec, self.root / f'layout-error-{i}.html', require_choices=False)
+            self.assertFalse(result['ok'], result)
+            self.assertEqual('ppt_design_invalid', result['code'])
+            self.assertIn(expected, result['message'])
+            self.assertFalse((self.root / f'layout-error-{i}.html').exists())
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -88,6 +98,24 @@ class PptHtmlTests(unittest.TestCase):
         self.assertEqual(meta['presentationTheme']['background'],str(deck.slides[0].background.fill.fore_color.rgb))
         self.assertNotIn('비공개',' '.join(s.text for s in deck.slides[0].shapes if s.has_text_frame))
 
+    def test_saved_role_layouts_keep_all_seven_geometries_without_business_content(self):
+        from company_agent import ppt_layouts
+        spec={**self.spec,'slideCount':7,'slides':ppt_layouts.examples()}
+        spec['slides'][0]['body']='PRIVATE_ROLE_SOURCE_481'
+        preview=self.draft(spec,'role-draft.html')
+        spec['designReview']={**preview['designReview'],'confirmed':True}
+        saved=self.root/'role-template.html'
+        result=ppt_html.save_template(spec,saved)
+        self.assertTrue(result['ok'],result)
+        self.assertEqual(7,result['layoutCount'])
+        metadata=ppt_html.read_template(saved)
+        source_plan=ppt_html.prepare(spec)[0]['presentationPlan']
+        self.assertEqual(7,len(metadata['layouts']))
+        for page,source in zip(metadata['layouts'],source_plan['pages']):
+            self.assertEqual([(e['kind'],e['x'],e['y'],e['w'],e['h']) for e in source['elements']],
+                             [(e['kind'],e['x'],e['y'],e['w'],e['h']) for e in page['elements']])
+        self.assertNotIn('PRIVATE_ROLE_SOURCE',saved.read_text(encoding='utf-8'))
+
     def test_template_save_requires_approval_and_never_overwrites(self):
         self.assertEqual('design_preview',ppt_html.save_template(self.spec,self.root/'saved.html')['stage'])
         self.spec['designReview'] = self.draft()['designReview']
@@ -151,7 +179,8 @@ class PptHtmlTests(unittest.TestCase):
     def test_screenshots_are_optional_style_inputs_not_slide_bitmaps(self):
         question = ppt_workflow.choices({'creationMode':'reference'})
         self.assertEqual('reference_file',question['stage'])
-        self.assertIn('2~3장',question['question'])
+        self.assertIn('60장',question['question'])
+        self.assertIn('작은 묶음',question['question'])
         path = self.root/'reference.png'
         png = base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aMycAAAAASUVORK5CYII=')
         path.write_bytes(png)
@@ -180,7 +209,53 @@ class PptHtmlTests(unittest.TestCase):
         self.assertEqual('input_missing',result['code'])
         self.assertFalse((self.root/'out.html').exists())
         spec['referenceImages'] *= 4
+        self.assertEqual('design_preview',ppt_workflow.choices(spec)['stage'])
+        spec['referenceImages'] *= 16
         self.assertEqual('invalid_choice',ppt_workflow.choices(spec)['code'])
+
+    def test_twelve_webp_references_survive_draft_hash_build_and_change_detection(self):
+        from PIL import Image
+        paths=[]
+        for number in range(12):
+            path=self.root/f'reference-{number}.webp'
+            Image.new('RGB',(4,4),(number*20,70,100)).save(path,'WEBP')
+            paths.append(str(path))
+        spec={**self.spec,'creationMode':'reference','referenceImages':paths,
+              'referenceStyle':{'colors':{'primary':'234E70','secondary':'F0B34B'},
+                                'evidence':[{'source':paths[0],'scope':'synthetic WebP fixture',
+                                             'observed':['test color role mapping'],'uncertain':[]}]}}
+        chosen=ppt_workflow.choices(spec)
+        self.assertEqual('design_preview',chosen['stage'])
+        self.assertEqual(paths,chosen['preservedChoices']['referenceImages'])
+        preview=self.draft(spec)
+        spec['designReview']={**preview['designReview'],'confirmed':True}
+        ppt_workflow.verify_design_review(spec)
+        with patch.object(artifacts,'_office',return_value={'ok':False}):
+            final=artifacts.create_ppt(spec,self.root/'webp-reference.pptx',require_choices=True)
+        self.assertTrue(final['ok'],final)
+        self.assertEqual(0,final['editability']['images'])
+        Image.new('RGB',(4,4),(250,250,250)).save(paths[-1],'WEBP')
+        with self.assertRaises(artifacts.ArtifactError) as caught:
+            ppt_workflow.verify_design_review(spec)
+        self.assertEqual('design_review_changed',caught.exception.code)
+
+    def test_reference_digest_preserves_png_hash_and_bounds_reads(self):
+        import hashlib
+        png=base64.b64decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aMycAAAAASUVORK5CYII=')
+        source=self.root/'reference.png'
+        source.write_bytes(png)
+        self.assertEqual(hashlib.sha256(base64.b64encode(png)).hexdigest(),
+                         ppt_workflow.reference_image_digest(source))
+        source=self.root/'invalid.webp'
+        source.write_bytes(b'not-a-webp')
+        with self.assertRaises(artifacts.ArtifactError) as caught:
+            ppt_workflow.reference_image_digest(source)
+        self.assertEqual('invalid_image',caught.exception.code)
+        source.write_bytes(b'RIFF'+b'0'*4+b'WEBP'+b'0'*(10*1024*1024))
+        with patch.object(Path,'open',side_effect=AssertionError('oversized image must not be opened')):
+            with self.assertRaises(artifacts.ArtifactError) as caught:
+                ppt_workflow.reference_image_digest(source)
+        self.assertEqual('image_too_large',caught.exception.code)
 
     def test_arbitrary_html_is_not_treated_as_editable_template(self):
         source = self.root/'foreign.html'

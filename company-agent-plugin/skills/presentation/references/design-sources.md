@@ -16,3 +16,15 @@ Impeccable은 Apache-2.0으로 공개되어 있습니다. 링크의 최신 버�
 색, 글꼴, 굵기와 그룹 편집은 현재 네이티브 제작기의 기능으로 유지합니다. 화면 이미지와 라이브러리
 정적 검사를 실제 PowerPoint 편집 시험과 혼동하지 않습니다. 초안 승인과 최종 화면 확인은 기존 흐름에서
 수행하며 새 질문, 상시 후크, 반복 모델 호출을 추가하지 않습니다.
+
+## 2026-11-02 PPT Master 추가 검토
+
+[PPT Master 고정 원문](https://github.com/hugohe3/ppt-master/tree/5e8856be0da8e6bc85c4aa28acc614478f7b7137/skills/ppt-master)의 구조와 지침을 읽고 현재 공유 제작기에 필요한 원칙만 독립 구현했습니다. MIT, Copyright (c) 2025–2026 Hugo He입니다. 전체 SVG 변환 엔진이나 스킬 본문을 복사하거나 자동 설치한 것이 아닙니다.
+
+| 원문 | 선택적으로 적용한 부분 | 도입하지 않은 부분 |
+|---|---|---|
+| [native-shape-authoring.md](https://github.com/hugohe3/ppt-master/blob/5e8856be0da8e6bc85c4aa28acc614478f7b7137/skills/ppt-master/references/native-shape-authoring.md) | 실제 관계에 맞는 도형과 연결선, 같은 경로의 HTML과 네이티브 개체, 독립 편집 개체와 의미별 그룹 | 모든 Office 프리셋, 전용 SVG 생성 도구, Boolean 전체 엔진과 장별 강제 판단 기록 |
+| [shared-standards-core.md](https://github.com/hugohe3/ppt-master/blob/5e8856be0da8e6bc85c4aa28acc614478f7b7137/skills/ppt-master/references/shared-standards-core.md), [executor-base.md](https://github.com/hugohe3/ppt-master/blob/5e8856be0da8e6bc85c4aa28acc614478f7b7137/skills/ppt-master/references/executor-base.md) | 같은 문장 안의 부분 강조, 한글 서체 역할과 줄바꿈, 장 역할별 구성과 정보 밀도, 참고 양식의 소수 기준값 재사용 | 별도 계획과 잠금 파일, 매 장의 역할 전환 배너와 추가 작업자, 고정 장수나 카드 금지의 일괄 강제 |
+| [edit-native-pptx.md](https://github.com/hugohe3/ppt-master/blob/5e8856be0da8e6bc85c4aa28acc614478f7b7137/skills/ppt-master/workflows/edit-native-pptx.md), [visual-review.md](https://github.com/hugohe3/ppt-master/blob/5e8856be0da8e6bc85c4aa28acc614478f7b7137/skills/ppt-master/references/visual-review.md) | 바꾸지 않은 개체 보존, 고정 개체를 포함한 초안과 확인 범위 표시, 경고를 모아 영향받은 장만 보정 | 전체 round-trip 변환 엔진, 자동 웹 검색과 이미지 생성, 내레이션과 음성 복제, 반복 확인 단계 |
+
+현재 제작기의 추가 다각형은 같은 좌표의 editable freeform이며 원본 프로젝트의 모든 프리셋 조정 핸들을 구현한 것은 아닙니다. 기존 양식의 HTML 투영은 지원 개체와 근사를 구분하며 실제 PowerPoint 렌더링과 동등하다고 주장하지 않습니다. 기존의 한 번의 양식 선택과 HTML 초안 승인 흐름을 유지하고 새 상시 후크나 모델 호출을 추가하지 않습니다.

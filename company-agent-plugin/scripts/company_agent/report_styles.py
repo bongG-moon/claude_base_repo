@@ -163,13 +163,118 @@ CSS = r'''
 '''
 
 
+def reference_style_css(overrides):
+    """Render validated, data-only observations without importing source CSS."""
+    import json
+    if not overrides:
+        return ''
+    colors = overrides.get('colors', {})
+    typography = overrides.get('typography', {})
+    spacing = overrides.get('spacing', {})
+    table = overrides.get('table', {})
+    chart = overrides.get('chart', {})
+    declarations, rules = [], []
+    root = 'body[data-style][data-reference-style]'
+    color = lambda value: '#' + value.lstrip('#')
+    px = lambda value: f'{value:g}px'
+    mappings = {'bg': ('bg',), 'surface': ('paper', 'surface', 'cell', 'cover'),
+                'text': ('ink',), 'muted': ('muted',), 'primary': ('accent',),
+                'secondary': ('secondary',), 'border': ('line',), 'tint': ('tint', 'head-fill', 'row-fill')}
+    for key, variables in mappings.items():
+        if key in colors:
+            declarations.extend('--' + name + ':' + color(colors[key]) for name in variables)
+    series = chart.get('seriesColors', colors.get('series', []))
+    # Preserve the whole observed combination. A primary-only choice does not
+    # overwrite a separately identified first chart color.
+    if not series:
+        series = [colors[key] for key in ('primary','secondary') if key in colors]
+    if series:
+        # An observed palette is the complete combination, not just replacements
+        # for the first two preset colors. Cycle it just like the PPT renderer.
+        declarations.extend(f'--series-{index}:' + color(series[index % len(series)]) for index in range(30))
+    for key, variable in (('headingFont', 'heading-font'), ('bodyFont', 'body-font')):
+        if key in typography:
+            declarations.append('--' + variable + ':' + json.dumps(typography[key], ensure_ascii=False) + ',"Malgun Gothic",sans-serif')
+    if 'bodyFont' in typography:
+        rules.append(root + '{font-family:var(--body-font)}')
+        rules.append(root + ' :is(button,input,select,textarea,svg text){font-family:var(--body-font)}')
+    if 'headingFont' in typography:
+        rules.append(root + ' :is(h1,h2,h3){font-family:var(--heading-font)}')
+    for key, selector in (('titleSize', ' .section h2'), ('bodySize', ' .text'),
+                          ('captionSize', ' :is(.page-number,.section-source,figcaption,.kpi-label,.kpi-note)')):
+        if key in typography:
+            rules.append(root + selector + '{font-size:' + px(typography[key]) + '}')
+    if 'bodySize' in typography:
+        rules.append(root + '{font-size:' + px(typography['bodySize']) + '}')
+    if 'outer' in spacing:
+        rules.append(root + ' .section{padding:' + px(spacing['outer']) + '}')
+        rules.append(root + ' :is(.report-main,.report-masthead){padding-left:' + px(spacing['outer']) + ';padding-right:' + px(spacing['outer']) + '}')
+        rules.append('@media(max-width:760px){' + root + ' .section{padding:' + px(min(spacing['outer'], 24)) + '}' + root + ' :is(.report-main,.report-masthead){padding-left:' + px(min(spacing['outer'], 20)) + ';padding-right:' + px(min(spacing['outer'], 20)) + '}}')
+    if 'gap' in spacing:
+        rules.append(root + ' :is(.report-main,.section-content,.kpis){gap:' + px(spacing['gap']) + '}')
+    if 'radius' in spacing:
+        declarations.extend('--' + key + ':' + px(spacing['radius']) for key in ('radius', 'section-radius', 'cell-radius'))
+        rules.append(root + ' .report-data-table{border-radius:' + px(spacing['radius']) + '}')
+    # Preset accents sometimes live below body. Override the observed roles on
+    # those surfaces as well so a chosen composition cannot reset the palette.
+    local = ['--' + variable + ':' + color(colors[key])
+             for key, variable in (('text', 'ink'), ('muted', 'muted'), ('primary', 'accent'), ('border', 'line')) if key in colors]
+    if local:
+        rules.append(root + ' .kpi{' + ';'.join(local) + '}')
+    if 'surface' in colors:
+        rules.append(root + ' :is(.kpi,.report-masthead){background:var(--paper)}')
+    if 'text' in colors:
+        rules.append(root + ' .report-masthead{color:var(--ink)}')
+    if 'muted' in colors:
+        rules.append(root + ' .report-masthead .subtitle{color:var(--muted)}')
+    if 'secondary' in colors:
+        rules.append(root + ' .takeaway{border-color:var(--secondary)}')
+        rules.append(root + ' .kpi:nth-child(even) .kpi-value{color:var(--secondary)}')
+        rules.append(root + ' .theme-art{background:linear-gradient(135deg,var(--accent),var(--secondary));box-shadow:none}')
+        rules.append(root + ' .theme-art i:nth-child(even){background:var(--secondary)}')
+    table_map = {'headerFill': 'table-head-fill', 'headerText': 'table-head-text',
+                 'bodyFill': 'table-body-fill', 'bodyText': 'table-body-text',
+                 'alternateFill': 'table-alternate-fill', 'borderColor': 'table-border'}
+    for key, variable in table_map.items():
+        if key in table:
+            declarations.append('--' + variable + ':' + color(table[key]))
+    for key, variable in (('borderWidth', 'table-border-width'), ('fontSize', 'table-font-size'), ('padding', 'table-padding')):
+        if key in table:
+            declarations.append('--' + variable + ':' + px(table[key]))
+    if 'headerBold' in table:
+        declarations.append('--table-head-weight:' + ('700' if table['headerBold'] else '400'))
+    if 'align' in table:
+        declarations.append('--table-align:' + table['align'])
+    if 'fontSize' in chart:
+        rules.append(root + ' :is(.report-chart text,.legend){font-size:' + px(chart['fontSize']) + '}')
+    if 'labelSize' in chart:
+        rules.append(root + ' .report-chart .chart-value{font-size:' + px(chart['labelSize']) + '}')
+    if 'gridColor' in chart:
+        rules.append(root + ' .gridline{stroke:' + color(chart['gridColor']) + '}')
+    if chart.get('showGrid') is False:
+        rules.append(root + ' .gridline{display:none}')
+    if 'lineWidth' in chart:
+        declarations.append('--chart-line-width:' + str(chart['lineWidth']))
+    position = chart.get('legendPosition')
+    if position == 'none':
+        rules.append(root + ' .legend{display:none}')
+    elif position == 'top':
+        rules.append(root + ' .chart-frame{display:flex;flex-direction:column}' + root + ' .chart-frame figcaption{order:-2}' + root + ' .legend{order:-1;margin-bottom:12px}')
+    elif position in ('left', 'right'):
+        first, second = ('1', '2') if position == 'left' else ('2', '1')
+        rules.append(root + ' .chart-frame{display:grid;grid-template-columns:' + ('minmax(90px,.3fr) minmax(0,1fr)' if position == 'left' else 'minmax(0,1fr) minmax(90px,.3fr)') + ';gap:14px;align-items:center}')
+        rules.append(root + ' .chart-frame figcaption{grid-column:1/-1}' + root + ' .legend{grid-column:' + first + ';grid-row:2;flex-direction:column;align-items:flex-start;gap:10px}' + root + ' .report-chart{grid-column:' + second + ';grid-row:2}')
+        rules.append('@media(max-width:760px){' + root + ' .chart-frame{display:block}' + root + ' .legend{flex-direction:row;justify-content:center}}')
+    return '\n' + root + '{' + ';'.join(declarations) + '}\n' + '\n'.join(rules)
+
+
 def choices(spec):
     from . import report_typography
     spec = reference_choices(spec)
     # Expose ONLY the current step. Length/view questions must not be bundled
     # with the initial design question or an unresolved additional-design menu.
     pending = {'ok': False, 'status': 'input_required', 'code': 'report_choices_required',
-               'preservedChoices': {key: spec[key] for key in ('style','referencePreset','length','mode','htmlTemplate','templateReview', *report_typography.FIELDS) if key in spec}}
+               'preservedChoices': {key: spec[key] for key in ('style','referencePreset','referenceStyle','themeOverrides','length','mode','htmlTemplate','templateReview', *report_typography.FIELDS) if key in spec}}
     if spec.get('designMenu') == 'template' or 'htmlTemplate' in spec:
         template = spec.get('htmlTemplate')
         if not (isinstance(template, dict) and isinstance(template.get('path'), str) and template['path']
@@ -187,7 +292,7 @@ def choices(spec):
                                    '이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부 중 선택해 주세요.',
                            templateCommand='business html-template --template ABSOLUTE_PATH --output NEW_PREVIEW.html --open')
             return pending
-    elif 'style' not in spec:
+    elif 'style' not in spec and not spec.get('referenceStyle'):
         pending.update(missing=['style'], stage='design',
                        message='디자인만 먼저 선택해 주세요. 확정 전에는 분량·보기 방식을 묻지 않습니다.')
         if spec.get('designMenu') == 'additional':

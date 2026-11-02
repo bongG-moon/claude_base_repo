@@ -12,13 +12,29 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = "business_artifacts business_safety content_layout explanation_diagram explanation_export html_reference ppt_html ppt_html_import ppt_scene ppt_workflow presentation_design report_design report_facts report_styles report_tables report_typography".split()
+MODULES = "business_artifacts business_safety content_layout explanation_diagram explanation_export html_reference ppt_html ppt_html_import ppt_scene ppt_primitives ppt_text ppt_layouts ppt_template_scene ppt_preflight ppt_workflow ppt_reference ppt_component_styles reference_style presentation_design report_design report_facts report_styles report_tables report_typography".split()
 FILES = [n + ".py" for n in MODULES] + ["ppt_dom_capture.js"]
 ISOLATED_PPTX = subprocess.run([sys.executable, "-I", "-c", "import pptx"],
                                capture_output=True, timeout=20).returncode == 0
 
 
 class PortableVisualTests(unittest.TestCase):
+    def test_presentation_summary_cli_uses_utf8_even_with_legacy_stdout(self):
+        skill = self.stage('presentation')
+        source = self.root / 'example.pptx'
+        source.write_bytes(b'example')  # screen mode creates a plan and never reads PPT contents
+        script = skill / 'scripts/presentation.py'
+        code = ('import runpy,sys;sys.stdout.reconfigure(encoding="cp949");'
+                'target=sys.argv[1];source=sys.argv[2];'
+                'sys.argv=[target,"reference","--mode","screen","--file",source,"--summary"];'
+                'runpy.run_path(target,run_name="__main__")')
+        proc = subprocess.run([sys.executable,'-I','-B','-c',code,str(script),str(source)],
+                              cwd=self.root,env=self.env,capture_output=True,timeout=30)
+        self.assertEqual(0,proc.returncode,proc.stderr)
+        response=json.loads(proc.stdout.decode('utf-8'))
+        self.assertEqual('capture_plan',response['status'])
+        self.assertIn('화면',response['message'])
+        self.assertNotIn(b'\n  ',proc.stdout)
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
@@ -98,6 +114,25 @@ class PortableVisualTests(unittest.TestCase):
         self.assertIn("신청 20명", text)
         self.assertIn("Noto Sans KR", text)
         self.assertNotIn("fonts.googleapis.com", text)
+
+    def test_html_reference_direct_build_waits_for_review(self):
+        template = self.root / 'reference.html'
+        template.write_text('<html><style>:root{--accent:#245678}</style><body>가상</body></html>', encoding='utf-8')
+        preview = self.run_cli('html-report', 'reference', '--file', template, '--preview', self.root/'preview.html')
+        self.assertTrue(preview['ok'], preview)
+        spec = {'htmlTemplate':preview['htmlTemplate'], 'sections':[{'title':'신규','body':'내용'}]}
+        job = self.write_spec(spec)
+        result = self.run_cli('html-report','build','--spec',job,'--output',self.root/'out.html')
+        self.assertEqual('template_preview',result['stage'])
+        self.assertFalse((self.root/'out.html').exists())
+        spec['templateReview'] = preview['templateReview']
+        job = self.write_spec(spec)
+        result = self.run_cli('html-report','build','--spec',job,'--output',self.root/'out.html')
+        self.assertEqual('template_confirm',result['stage'])
+        self.assertFalse((self.root/'out.html').exists())
+        spec['templateReview']['confirmed'] = True
+        job = self.write_spec(spec)
+        self.assertTrue(self.run_cli('html-report','build','--spec',job,'--output',self.root/'out.html')['ok'])
 
     @unittest.skipUnless(ISOLATED_PPTX, "This Python's isolated environment needs python-pptx; run with a prepared runtime")
     def test_ppt_native_groups_edit_and_ungroup(self):
@@ -185,10 +220,15 @@ class PortableVisualTests(unittest.TestCase):
         self.run_cli("presentation", "build", "--spec", job, "--output", path)
         result = self.run_cli("presentation", "reference", "--file", path)
         self.assertTrue(result["ok"], result)
-        self.assertLessEqual(len(result["slides"]), 3)
+        self.assertEqual(len(self.spec["slides"]), len(result["slides"]))
         self.assertEqual(result["slides"][0]["groupCount"], 1)
         result = self.run_cli("presentation", "reference", "--file", path, "--slides", "1,2,3,4", expected=1)
         self.assertFalse(result["ok"])
+
+        plan = self.run_cli("presentation", "reference", "--file", path, "--mode", "screen",
+                            "--slides", "1,2,3,4")
+        self.assertEqual([[1, 2, 3], [4]], plan["batches"])
+        self.assertFalse(plan["captured"])
 
     def test_existing_output_is_preserved(self):
         job = self.approved_spec()

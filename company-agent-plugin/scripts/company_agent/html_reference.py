@@ -5,6 +5,11 @@ from html.parser import HTMLParser
 from pathlib import Path
 import re
 
+# The bound is for safe local file processing, not a model context limit. The
+# parser returns only small validated theme tokens and structural counts.
+# Exactly 10 MiB is excluded; this matches the advertised "10 MB 미만" limit.
+MAX_REFERENCE_BYTES = 10 * 1024 * 1024
+
 
 class ReferenceParser(HTMLParser):
     def __init__(self):
@@ -12,11 +17,25 @@ class ReferenceParser(HTMLParser):
         self.styles = []
         self.in_style = False
         self.counts = Counter()
+        # Deliberately retain only counts for recognized structural markers;
+        # class values, text and scripts never enter the result.
+        self.layout_markers = Counter()
         self.external = False
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
         self.counts[tag] += 1
+        classes = (attrs.get('class') or '').lower().split()[:64]
+        if tag == 'nav' or any(c in ('nav', 'navigation') or c.endswith('-nav') for c in classes):
+            self.layout_markers['navigation'] += 1
+        if any(c == 'card' or c.endswith('-card') for c in classes):
+            self.layout_markers['cards'] += 1
+        if any(c == 'grid' or c.endswith('-grid') for c in classes):
+            self.layout_markers['grids'] += 1
+        if tag in ('ol', 'ul') and any('step' in c or 'workflow' in c for c in classes):
+            self.layout_markers['stepLists'] += 1
+        if any(c in ('badge', 'ordinal', 'step-number') or c.endswith('-badge') for c in classes):
+            self.layout_markers['numberOrBadgeMarkers'] += 1
         if tag == 'style':
             self.in_style = True
         if 'style' in attrs:
@@ -74,9 +93,10 @@ def analyze(path: Path) -> dict:
     from .business_artifacts import _source, ArtifactError
     path = _source(path, ('.html', '.htm'))
     with path.open('rb') as stream:
-        raw = stream.read(1024 * 1024 + 1)
-    if len(raw) > 1024 * 1024:
-        raise ArtifactError('template_too_large', 'HTML 참고 양식은 1 MB 이하로 준비해 주세요.')
+        # Limit the read even if the file changes while it is being accessed.
+        raw = stream.read(MAX_REFERENCE_BYTES)
+    if len(raw) >= MAX_REFERENCE_BYTES:
+        raise ArtifactError('template_too_large', 'HTML 참고 양식은 10 MiB 미만으로 준비해 주세요.')
     for encoding in ('utf-8-sig', 'cp949'):
         try:
             text = raw.decode(encoding)
@@ -105,7 +125,11 @@ def analyze(path: Path) -> dict:
     tokens = {}
     aliases = {'--bg':'bg', '--background':'bg', '--paper':'paper', '--surface':'paper',
                '--ink':'ink', '--text':'ink', '--muted':'muted', '--accent':'accent',
-               '--primary':'accent', '--brand':'accent', '--line':'line', '--tint':'tint'}
+               '--primary':'accent', '--brand':'accent', '--secondary':'secondary', '--line':'line', '--border':'line', '--tint':'tint',
+               '--head-fill':'tableHeaderFill', '--row-fill':'tableAlternateFill',
+               '--table-head-fill':'tableHeaderFill', '--table-head-text':'tableHeaderText',
+               '--table-body-fill':'tableBodyFill', '--table-body-text':'tableBodyText',
+               '--table-alternate-fill':'tableAlternateFill', '--table-border':'tableBorder'}
     # Only literal hex colors, a restricted font-family, and bounded px radii
     # cross into our renderer. No raw CSS, HTML, URLs or source text is copied.
     for selector, body in _global_rules(css):
@@ -117,19 +141,34 @@ def analyze(path: Path) -> dict:
         heading_scope = bool(selectors & {'h1', 'h2', 'h3'})
         panel_scope = bool(selectors & {'section', 'article', '.section', '.card', '.panel'})
         action_scope = bool(selectors & {'button', 'a', '.button', '.btn'})
+        table_head = bool(selectors & {'th', 'thead', 'thead th', 'table th', 'table thead th', '.report-data-table thead th'})
+        table_body = bool(selectors & {'td', 'tbody', 'tbody td', 'table td', 'table tbody', '.report-data-table tbody'})
+        table_alternate = bool(selectors & {'tbody tr:nth-child(even)', 'table tbody tr:nth-child(even)', '.report-data-table tbody tr:nth-child(even)'})
+        table_scope = table_head or table_body or bool(selectors & {'table', 'td,th', '.report-data-table'})
         for declaration in body.split(';'):
             prop, separator, value = declaration.partition(':')
             prop, value = prop.strip().lower(), value.strip()
             if not separator or not re.fullmatch(r'[\w-]{1,40}', prop):
                 continue
             target = aliases.get(prop) if root_scope else None
+            if root_scope and re.fullmatch(r'--series-(?:[0-9]|[12][0-9])', prop):
+                target = prop[2:]
             if not target and root_scope:
                 target = {'background':'bg', 'background-color':'bg', 'color':'ink'}.get(prop)
             if not target and action_scope:
                 target = {'background':'accent', 'background-color':'accent'}.get(prop)
+            if not target and table_head:
+                target = {'background':'tableHeaderFill', 'background-color':'tableHeaderFill', 'color':'tableHeaderText'}.get(prop)
+            if not target and table_body:
+                target = {'background':'tableBodyFill', 'background-color':'tableBodyFill', 'color':'tableBodyText'}.get(prop)
+            if not target and table_alternate and prop in ('background', 'background-color'):
+                target = 'tableAlternateFill'
+            if not target and table_scope and prop in ('border-color', 'border-bottom-color'):
+                target = 'tableBorder'
             if target and re.fullmatch(r'#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?', value):
                 tokens[target] = value.lower()
             font_target = ('headingFont' if prop == '--heading-font' and root_scope else
+                           'font' if prop == '--body-font' and root_scope else
                            'font' if prop == 'font-family' and text_scope else
                            'headingFont' if prop == 'font-family' and heading_scope else None)
             if font_target and re.fullmatch(r"[\w\s,'\"-]{1,160}", value):
@@ -139,10 +178,34 @@ def analyze(path: Path) -> dict:
             radius_scope = prop == '--section-radius' and root_scope or prop == 'border-radius' and panel_scope
             if radius_scope and re.fullmatch(r'\d{1,2}px', value):
                 tokens['radius'] = f'{min(int(value[:-2]), 40)}px'
+            size_target = ('titleSize' if prop == 'font-size' and heading_scope else
+                           'bodySize' if prop == 'font-size' and text_scope else
+                           'tableFontSize' if prop == 'font-size' and table_scope else
+                           'outer' if prop == 'padding' and panel_scope else
+                           'gap' if prop == 'gap' and text_scope else
+                           'tablePadding' if prop == 'padding' and table_scope else None)
+            if size_target and re.fullmatch(r'\d{1,2}(?:\.\d)?px', value):
+                number = float(value[:-2])
+                if (8 <= number <= 96 if size_target.endswith('Size') else 0 <= number <= 96):
+                    tokens[size_target] = value
+            if table_head and prop == 'font-weight' and value in ('normal', 'bold', '400', '500', '600', '700', '800', '900'):
+                tokens['tableHeaderWeight'] = {'normal':'400', 'bold':'700'}.get(value, value)
+            if table_scope and prop == 'text-align' and value in ('left', 'center', 'right'):
+                tokens['tableAlign'] = value
+            if table_scope and prop in ('border-width', 'border-bottom-width') and re.fullmatch(r'[0-6](?:\.\d)?px', value) and float(value[:-2]) <= 6:
+                tokens['tableBorderWidth'] = value
+            if table_scope and prop in ('border', 'border-bottom'):
+                border = re.fullmatch(r'([0-6](?:\.\d)?)px\s+solid\s+(#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)', value)
+                if border and float(border[1]) <= 6:
+                    tokens['tableBorderWidth'], tokens['tableBorder'] = border[1]+'px', border[2].lower()
     return {'path': str(path), 'sha256': hashlib.sha256(raw).hexdigest(), 'tokens': tokens,
             'structure': {key: parser.counts[key] for key in ('header','main','section','article','table','h1','h2')},
+            'layoutHints': {**{key: parser.layout_markers[key] for key in
+                               ('navigation','cards','grids','stepLists','numberOrBadgeMarkers')},
+                            'collapsibleSections': parser.counts['details']},
             'externalResourcesIgnored': parser.external,
             'warnings': ['첨부 양식의 색상·글꼴·모서리와 구역 구성을 참고합니다. 원본 HTML을 그대로 복제하지 않습니다.',
+                         'layoutHints는 HTML 태그와 이름에서 찾은 구조 단서입니다. 실제 CSS 배치나 시각적 유사성을 증명하지 않습니다.',
                          '스크립트·외부 CSS/글꼴·이미지는 실행하거나 가져오지 않습니다. 없는 글꼴은 PC 기본 글꼴로 표시됩니다.',
                          '전체 CSS 계산이 아닙니다. 페이지·제목·주요 구획의 단순 규칙만 참고하며 조건부 CSS와 부분 요소 스타일은 전역 양식으로 쓰지 않습니다.']}
 
@@ -150,11 +213,21 @@ def analyze(path: Path) -> dict:
 def theme_css(reference: dict) -> str:
     # Called only with a fresh analyze() result, never arbitrary job fields.
     mapping = {'bg':['bg'], 'paper':['paper','surface','cell','cover'], 'ink':['ink'],
-               'muted':['muted'], 'accent':['accent','series-0'], 'line':['line'],
+               'muted':['muted'], 'accent':['accent'], 'secondary':['secondary'], 'line':['line'],
                'tint':['tint','head-fill','row-fill'], 'font':[], 'headingFont':[],
-               'radius':['section-radius','cell-radius']}
+               'radius':['section-radius','cell-radius'],
+               'tableHeaderFill':['table-head-fill'], 'tableHeaderText':['table-head-text'],
+               'tableBodyFill':['table-body-fill'], 'tableBodyText':['table-body-text'],
+               'tableAlternateFill':['table-alternate-fill'], 'tableBorder':['table-border'],
+               'tableHeaderWeight':['table-head-weight'], 'tableFontSize':['table-font-size'],
+               'tablePadding':['table-padding'], 'tableAlign':['table-align'], 'tableBorderWidth':['table-border-width']}
     tokens = reference['tokens']
-    declarations = [f'--{variable}:{value}' for key, value in tokens.items() for variable in mapping[key]]
+    declarations = [f'--{variable}:{value}' for key, value in tokens.items()
+                    for variable in ([key] if re.fullmatch(r'series-(?:[0-9]|[12][0-9])', key) else mapping.get(key, []))]
+    if 'accent' in tokens and 'series-0' not in tokens:
+        declarations.append('--series-0:'+tokens['accent'])
+    if 'secondary' in tokens and 'series-1' not in tokens:
+        declarations.append('--series-1:'+tokens['secondary'])
     if tokens.get('bg') and 'paper' not in tokens:
         declarations.extend('--'+key+':#ffffff' for key in ('paper','surface','cell','cover'))
     if 'font' in tokens:
@@ -166,6 +239,26 @@ def theme_css(reference: dict) -> str:
     css = ':is(body,.style-preview)[data-style]{'+';'.join(declarations)+'}'
     if 'font' in tokens:
         css += '\nbody[data-style] :is(button,input,select,textarea,svg text){font-family:inherit}'
+    root = 'body[data-style][data-reference-style]'
+    if 'titleSize' in tokens:
+        css += '\n'+root+' .section h2{font-size:'+tokens['titleSize']+'}'
+    if 'bodySize' in tokens:
+        css += '\n'+root+' .text{font-size:'+tokens['bodySize']+'}'
+    if 'outer' in tokens:
+        css += '\n'+root+' .section{padding:'+tokens['outer']+'}'
+    if 'gap' in tokens:
+        css += '\n'+root+' :is(.report-main,.section-content){gap:'+tokens['gap']+'}'
+    if 'secondary' in tokens:
+        css += '\n'+root+' .takeaway{border-color:var(--secondary)}'
+    local = ['--'+key+':'+tokens[key] for key in ('ink','muted','accent','line') if key in tokens]
+    if local:
+        css += '\n'+root+' .kpi{'+';'.join(local)+'}'
+    if 'paper' in tokens:
+        css += '\n'+root+' :is(.kpi,.report-masthead){background:var(--paper)}'
+    if 'ink' in tokens:
+        css += '\n'+root+' .report-masthead{color:var(--ink)}'
+    if 'muted' in tokens:
+        css += '\n'+root+' .report-masthead .subtitle{color:var(--muted)}'
     return css
 
 

@@ -28,124 +28,30 @@ function Assert-EmployeeBundle {
     Assert-OfflineBundle ($manifest.runtime.mode -ceq 'external') 'Default runtime mode is not external.'
     Assert-OfflineBundle ($manifest.runtime.minimumVersion -ceq '3.11') 'Minimum Python version is not 3.11.'
     Assert-OfflineBundle ($manifest.runtime.command -ceq 'python') 'Default Python command is not recorded.'
-    foreach ($relative in @(
-        'payload/core/plugin/THIRD_PARTY_NOTICES.md',
-        'payload/core/plugin/licenses/frontend-design-Apache-2.0.txt',
-        'payload/core/plugin/resources/onboarding-course.json',
-        'payload/core/plugin/resources/manuals/Company-Agent-사용자-안내서.html',
-        'payload/core/plugin/scripts/company_agent/workspace_api.py',
-        'payload/core/plugin/scripts/company_agent/resource_scope.py',
-        'payload/core/plugin/scripts/company_agent/harness_map.py',
-        'payload/core/plugin/scripts/company_agent/harness_map_html.py',
-        'payload/core/plugin/scripts/company_agent/company_policy.py',
-        'payload/core/plugin/scripts/company_agent/dangerous_commands.py',
-        'payload/core/plugin/scripts/company_agent/usage_diagnostics.py',
-        'payload/core/plugin/scripts/company_agent/diagnostic_report.py',
-        'payload/config/managed.json',
-        'docs/COMPANY_PERSONAL_WORKFLOW.md',
-        'docs/COMPANY_AGENT_HANDBOOK.md',
-        'docs/ONBOARDING_COURSE.md',
-        'docs/Company-Agent-사용자-안내서.html',
-        'payload/core/plugin/scripts/company_agent/skill_catalog.py',
-        'payload/core/plugin/scripts/company_agent/skill_discovery.py',
-        'payload/core/plugin/scripts/company_agent/skill_decision.py',
-        'payload/core/plugin/scripts/company_agent/skill_host_choice.py',
-        'payload/core/plugin/scripts/company_agent/workflow_evidence.py',
-        'payload/core/plugin/scripts/company_agent/skill_execution.py',
-        'payload/core/plugin/scripts/company_agent/skill_metadata_cache.py',
-        'payload/core/plugin/scripts/company_agent/environment_checks.py',
-        'payload/core/plugin/scripts/diagnose_skill_routing.py',
-        'payload/core/plugin/scripts/company_agent/hook_diagnostics.py',
-        'payload/core/plugin/scripts/company_agent/skill_task_context.py',
-        'payload/core/plugin/scripts/company_agent/text_encoding.py',
-        'payload/core/plugin/scripts/company_agent/skill_workflow.py',
-        'payload/core/plugin/skills/company-agent/references/skill-selection.md',
-        'payload/core/plugin/scripts/company_agent/completion_feedback.py',
-        'payload/core/plugin/scripts/company_agent/user_language.py',
-        'payload/core/plugin/scripts/company_agent/report_design.py',
-        'payload/core/plugin/scripts/company_agent/explanation_diagram.py',
-        'payload/core/plugin/scripts/company_agent/explanation_export.py',
-        'payload/core/plugin/templates/business/explanation.spec.json',
-        'payload/core/plugin/skills/html-report/references/explanation-diagrams.md',
-        'payload/core/plugin/skills/presentation/references/image-review.md',
-        'payload/core/plugin/scripts/company_agent/report_facts.py',
-        'payload/core/plugin/scripts/company_agent/report_styles.py',
-        'payload/core/plugin/skills/html-report/assets/design-picker.html',
-        'payload/core/plugin/scripts/company_agent/presentation_design.py',
-        'payload/core/plugin/scripts/company_agent/ppt_workflow.py',
-        'payload/core/plugin/scripts/company_agent/runtime_diagnostics.py',
-        'payload/core/plugin/scripts/Inspect-ClaudeRuntime.ps1',
-        'payload/core/plugin/scripts/read_hook.py',
-        'payload/core/plugin/skills/presentation/references/sources.md',
-        'payload/core/plugin/scripts/company_agent/background_work.py',
-        'payload/core/plugin/skills/presentation/references/design-review.md',
-        'payload/core/plugin/skills/presentation/references/html-template.md',
-        'payload/core/plugin/scripts/company_agent/ppt_html.py',
-        'payload/core/plugin/scripts/company_agent/ppt_scene.py',
-        'payload/core/plugin/scripts/company_agent/ppt_html_import.py',
-        'payload/core/plugin/scripts/company_agent/ppt_dom_capture.js',
-        'payload/core/plugin/scripts/company_agent/ppt_image_edit.py',
-        'payload/core/plugin/skills/presentation/references/native-layout.md',
-        'payload/core/plugin/scripts/company_agent/artifact_delivery.py',
-        'payload/core/plugin/skills/company-agent/references/output-delivery.md',
-        'payload/core/plugin/scripts/company_agent/html_reference.py',
-        'payload/core/plugin/skills/presentation/references/design-and-quality.md',
-        'payload/core/plugin/skills/html-report/references/design-and-numbers.md',
-        'docs/HTML_DESIGN_SELECTION.md',
-        'payload/core/plugin/skills/company-agent/references/completion.md',
-        'deploy/CompanyAgent.PluginCompatibility.ps1',
-        'deploy/CompanyAgent.ReadHook.ps1',
-        'docs/SKILL_CATALOG.md',
-        'payload/core/plugin/skills/asset-factory/references/authoring.md',
-        'payload/core/plugin/skills/asset-factory/references/platform-tools.md',
-        'payload/core/plugin/skills/asset-factory/references/legacy-assets.md',
-        'payload/core/plugin/scripts/company_agent/platform_assets.py',
-        'payload/core/plugin/scripts/company_agent/skill_tool_dependencies.py',
-        'payload/core/plugin/skills/asset-factory/references/windows-setup.md',
-        'payload/core/plugin/skills/platform-mcp-builder/SKILL.md',
-        'payload/core/plugin/skills/platform-mcp-builder/references/platform-contract.md',
-        'payload/core/plugin/skills/platform-mcp-builder/scripts/create_project.py',
-        'payload/core/plugin/skills/platform-mcp-builder/assets/template/src/mcp/tools.py',
-        'payload/core/plugin/skills/platform-mcp-builder/assets/template/src/mcp/__init__.py',
-        'payload/core/plugin/skills/platform-mcp-builder/assets/template/src/__init__.py',
-        'payload/core/plugin/skills/platform-mcp-builder/assets/template/local_server.py',
-        'payload/core/plugin/skills/platform-mcp-builder/assets/template/config.py',
-        'payload/core/plugin/skills/platform-mcp-builder/assets/template/test_tools.py',
-        'payload/core/plugin/skills/platform-mcp-builder/assets/template/requirements-local.txt',
-        'payload/core/plugin/skills/personal-knowledge/references/term-quality.md',
-        'payload/core/plugin/skills/karpathy-guidelines/references/evidence-diagnosis.md'
-    )) {
-        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Lean guidance/provenance is absent: $relative"
+    $plugin = Join-Path $ExpandedPath 'payload\core\plugin'
+    $check = & python -X utf8 -B (Join-Path $sourceRoot 'scripts\harness_core\build-profile.py') --source-root $sourceRoot --destination $plugin --check 2>&1
+    Assert-OfflineBundle ($LASTEXITCODE -eq 0) ('Installed file manifest differs: ' + ($check -join ' '))
+    $profile = Read-CompanyAgentJson -Path (Join-Path $plugin 'resources\core-install.json')
+    Assert-OfflineBundle ($profile.schemaVersion -eq 1 -and $profile.profile -ceq 'personal-harness') 'Personal harness profile marker is missing.'
+    $skills = @(Get-ChildItem -LiteralPath (Join-Path $plugin 'skills') -Directory | Select-Object -ExpandProperty Name | Sort-Object)
+    Assert-OfflineBundle (($skills -join ',') -ceq 'asset-factory,company-agent,personal-knowledge,personal-memory,self-learning') 'The core Skill boundary changed.'
+    foreach ($removed in @('skills\html-report', 'skills\presentation', 'skills\file-organizer',
+        'skills\excel-to-pipeline', 'skills\work-context-catalog', 'skills\web-interface',
+        'skills\website-rebuild', 'skills\platform-mcp-builder', 'skills\karpathy-guidelines',
+        'skills\new-functional-fixture', 'scripts\company_agent\future_engine.py',
+        'scripts\company_agent\business.py', 'scripts\company_agent\business_artifacts.py',
+        'scripts\company_agent\business_files.py', 'scripts\company_agent\excel_pipeline_command.py',
+        'scripts\company_agent\artifact_delivery.py', 'scripts\company_agent\browser_workflow.py',
+        'scripts\Confirm-BusinessAction.ps1', 'scripts\Invoke-BusinessPowerPoint.ps1',
+        'agents\vision-worker.md', 'commands\vision-model.md', 'commands\business-check.md',
+        'templates', 'runtime')) {
+        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $plugin $removed))) "Functional payload leaked into the harness: $removed"
     }
-    foreach ($notice in @('THIRD_PARTY_NOTICES.md', 'licenses/frontend-design-Apache-2.0.txt')) {
-        Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('payload/core/plugin/' + $notice)) -Algorithm SHA256).Hash -ceq
-            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('company-agent-plugin/' + $notice)) -Algorithm SHA256).Hash) "Packaged license differs from source: $notice"
-    }
-    Assert-OfflineBundle ($manifest.runtime.description -match 'existing Python') 'External runtime requirement is not explained.'
-    foreach ($removed in @(
-        'payload/core/plugin/skills/office-reader',
-        'payload/core/plugin/scripts/Read-CompanyOffice.py',
-        'payload/core/plugin/scripts/Read-CompanyExcel.py',
-        'payload/core/plugin/scripts/company_agent/office_reader.py',
-        'payload/core/plugin/scripts/company_agent/office_consent.py',
-        'payload/core/plugin/scripts/company_agent/office_progress.py',
-        'payload/core/plugin/scripts/company_agent/office_pywin32.py',
-        'payload/core/plugin/scripts/company_agent/office_structure.py',
-        'payload/core/plugin/scripts/company_agent/excel_xlwings.py',
-        'docs/UPDATE_1.4.1.md', 'docs/VALIDATION_1.4.1.md', 'docs/UPDATE_1.4.2.md',
-        'docs/UPDATE_1.4.14.md', 'docs/UPDATE_1.4.20.md', 'docs/UPDATE_1.4.21.md',
-        'docs/UPDATE_1.4.22.md', 'docs/OFFICE_READ_TROUBLESHOOTING.md',
-        'docs/OFFICE_READ_PROGRESS_2026-09-17.md',
-        'docs/VALIDATION_EXECUTION_FLOW_2026-09-21.md',
-        'docs/VALIDATION_OFFICE_PATH_ERRORS_2026-09-21.md'
-    )) {
-        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath $removed))) "Removed reader material leaked into the bundle: $removed"
-    }
-    Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath 'payload\core\plugin\runtime'))) 'Source runtime directory leaked into the bundle.'
-    $nativeFiles = @(Get-ChildItem -LiteralPath $ExpandedPath -Recurse -Force | Where-Object {
-        -not $_.PSIsContainer -and $_.Extension -iin @('.exe', '.dll', '.pyd', '.so', '.dylib')
+    $engines = @(Get-ChildItem -LiteralPath $plugin -Recurse -File | Where-Object {
+        $_.Name -match '^(ppt_|report_|presentation_|explanation_|vision_)' -or
+        $_.Extension -iin @('.woff', '.woff2', '.ttf', '.otf', '.exe', '.dll', '.pyd', '.so', '.dylib')
     })
-    Assert-OfflineBundle ($nativeFiles.Count -eq 0) 'Employee bundle contains native binaries.'
+    Assert-OfflineBundle ($engines.Count -eq 0) 'Functional engines, fonts, or native binaries leaked into the core.'
     $requiredDeployFiles = @(
         'Diagnose-CompanyAgent.ps1', 'CompanyAgent.Common.ps1', 'ExistingHarness.ps1', 'HarnessReplacement.ps1',
         'CompanyAgent.UserContext.ps1', 'CompanyAgent.ClaudeDiscovery.ps1',
@@ -156,96 +62,35 @@ function Assert-EmployeeBundle {
         'Uninstall-ScopedCompanyAgent.ps1', 'Update-CompanyAgent.ps1'
     )
     foreach ($name in $requiredDeployFiles) {
-        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('deploy\' + $name)) -PathType Leaf) "Required deployment dependency is absent: $name"
+        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('deploy\' + $name)) -PathType Leaf) "Deployment dependency is absent: $name"
     }
-    $deployFiles = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'deploy') -File -Force)
-    Assert-OfflineBundle ($deployFiles.Count -eq $requiredDeployFiles.Count) 'Unexpected deploy tools were included.'
-    foreach ($name in @(
-        'New-OfflineBundle.ps1', 'Get-EmbeddedPython.ps1', 'Test-DeploymentSmoke.ps1',
-        'Test-ExistingHarness.ps1', 'Test-HarnessReplacement.ps1', 'Test-PersonalStateBackup.ps1',
-        'Test-ScopedInstallSmoke.ps1', 'Test-OfflineBundle.ps1', 'Future-AdminTool.ps1'
-    )) {
-        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath ('deploy\' + $name)))) "Build/test tool leaked into employee bundle: $name"
-    }
-    Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Install-CompanyAgent.cmd') -PathType Leaf) 'Root installer is missing.'
-    Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'Diagnose-CompanyAgent.cmd') -PathType Leaf) 'Root diagnostic launcher is missing.'
-    foreach ($book in @('Company-Agent-사용자-안내서.html')) {
-        $installedBook = Join-Path $ExpandedPath ('payload\core\plugin\resources\manuals\' + $book)
-        Assert-OfflineBundle ((Get-FileHash -LiteralPath $installedBook -Algorithm SHA256).Hash -ceq
-            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $book)) -Algorithm SHA256).Hash) 'Installed manual differs from source.'
+    Assert-OfflineBundle (@(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'deploy') -File -Force).Count -eq $requiredDeployFiles.Count) 'Build/test tools leaked into the employee bundle.'
+    foreach ($name in @('Install-CompanyAgent.cmd', 'Diagnose-CompanyAgent.cmd', 'INSTALL_WITH_CLAUDE.md')) {
+        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $name) -PathType Leaf) "Beginner entrypoint is absent: $name"
     }
     $standards = (Read-CompanyAgentJson -Path (Join-Path $ExpandedPath 'payload\config\managed.json')).workStandards
-    Assert-OfflineBundle ($standards.revision -eq '1' -and @($standards.rules).Count -ge 2) 'Default company standards did not reach the bundle.'
-    Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath 'INSTALL_WITH_CLAUDE.md') -PathType Leaf) 'Installation guide is missing.'
-    foreach ($relative in @('docs\SELF_LEARNING.md', 'docs\USER_GUIDE.md', 'docs\BUSINESS_PILOT_GUIDE.md',
-        'payload\core\plugin\scripts\company_agent\learning.py',
-        'payload\core\plugin\commands\learning.md',
-        'payload\core\plugin\commands\business-check.md',
-        'payload\core\plugin\scripts\company_agent\business.py',
-        'payload\core\plugin\scripts\company_agent\business_safety.py',
-        'payload\core\plugin\scripts\company_agent\business_files.py',
-        'payload\core\plugin\scripts\company_agent\business_artifacts.py',
-        'payload\core\plugin\scripts\Confirm-BusinessAction.ps1',
-        'payload\core\plugin\scripts\Invoke-BusinessPowerPoint.ps1',
-        'payload\core\plugin\skills\file-organizer\SKILL.md',
-        'payload\core\plugin\skills\html-report\SKILL.md',
-        'payload\core\plugin\skills\presentation\SKILL.md',
-        'payload\core\plugin\skills\company-agent\references\business-protection.md',
-        'payload\core\plugin\templates\business\report.spec.json',
-        'payload\core\plugin\skills\self-learning\SKILL.md')) {
-        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath $relative) -PathType Leaf) "Business/learning/guide release file is missing: $relative"
+    Assert-OfflineBundle ($standards.revision -eq '1' -and @($standards.rules).Count -ge 2) 'Company standards did not reach the bundle.'
+    $manuals = @('CLAUDE_CODE_BASICS.md', 'ONBOARDING_COURSE.md', 'USER_GUIDE.md',
+        'COMPANY_AGENT_HANDBOOK.md', 'CLAUDE_CODE_COMMANDS.md', 'README.md', 'Company-Agent-사용자-안내서.html')
+    Assert-OfflineBundle (@(Get-ChildItem -LiteralPath (Join-Path $plugin 'resources\manuals') -File).Count -eq $manuals.Count) 'Only current core manuals should be installed.'
+    foreach ($manual in $manuals) {
+        $expectedHash = (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $manual)) -Algorithm SHA256).Hash
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('docs\' + $manual)) -Algorithm SHA256).Hash -ceq $expectedHash) 'Manual source changed during packaging.'
+        Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $plugin ('resources\manuals\' + $manual)) -Algorithm SHA256).Hash -ceq $expectedHash) 'Installed manual differs from source.'
     }
-    foreach ($removed in @('payload\core\plugin\skills\outlook-assistant',
-        'payload\core\plugin\scripts\Invoke-BusinessOutlook.ps1',
-        'payload\core\plugin\scripts\company_agent\business_mail.py',
-        'payload\core\plugin\scripts\company_agent\business_eml.py')) {
-        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath $removed))) "Retired built-in mail component is still shipped: $removed"
+    foreach ($removed in @('HTML_DESIGN_SELECTION.md', 'BUSINESS_PILOT_GUIDE.md', 'DESIGN_TERMS.md',
+        'PROJECT_HARNESS.md', 'MCP_CONTRACTS.md', 'COMPANY_PERSONAL_WORKFLOW.md', 'LEGACY_MACHINE_DEPLOYMENT.md',
+        'LOCAL_WORKSPACE.md', 'WORKSPACE_STARTUP_DIAGNOSTIC.md', 'WORKSPACE_USER_GUIDE.html')) {
+        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath ('docs\' + $removed)))) "Non-core documentation leaked into the harness: $removed"
     }
-    $htmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -Filter '*.html' -File)
-    Assert-OfflineBundle ($htmlGuides.Count -eq 1 -and $htmlGuides[0].Name -ceq 'Company-Agent-사용자-안내서.html') 'Expected exactly one unified HTML user guide.'
-    $installedHtmlGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'payload/core/plugin/resources/manuals') -Filter '*.html' -File)
-    Assert-OfflineBundle ($installedHtmlGuides.Count -eq 1 -and $installedHtmlGuides[0].Name -ceq 'Company-Agent-사용자-안내서.html') 'Installed HTML manuals must contain only the unified guide.'
-    $installedMarkdownGuides = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'payload/core/plugin/resources/manuals') -Filter '*.md' -File)
-    Assert-OfflineBundle ($installedMarkdownGuides.Count -eq 7) 'The seven existing text manuals must remain installed.'
-    foreach ($removed in @('First-Work.html', 'first-work.html', 'payload/core/plugin/resources/first-work.html',
-        'docs/Company-Agent-Guide.html', 'docs/Company-Agent-Handbook.html', 'docs/Company-Agent-Onboarding.html',
-        'docs/Claude-Code-필수-사용법.html', 'docs/Company-Agent-운영-검증-채팅.html',
-        'payload/core/plugin/resources/manuals/Company-Agent-Guide.html',
-        'payload/core/plugin/resources/manuals/Company-Agent-Handbook.html',
-        'payload/core/plugin/resources/manuals/Company-Agent-Onboarding.html',
-        'payload/core/plugin/resources/manuals/Claude-Code-필수-사용법.html')) {
-        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath $removed))) "Duplicate or legacy HTML leaked into the bundle: $removed"
+    foreach ($required in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md',
+        'ADMIN_KNOWLEDGE_GUIDE.md', 'SELF_LEARNING.md', 'SKILL_CATALOG.md', 'HARNESS_CORE_SPLIT.md')) {
+        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('docs\' + $required)) -PathType Leaf) "Core operation guide is absent: $required"
     }
     $developmentDocs = @(Get-ChildItem -LiteralPath (Join-Path $ExpandedPath 'docs') -File -Recurse | Where-Object {
         $_.Name -match '^(UPDATE_|AUDIT_|VALIDATION_)|_\d{4}-\d{2}-\d{2}\.md$'
     })
     Assert-OfflineBundle ($developmentDocs.Count -eq 0) 'Historical development records leaked into the employee bundle.'
-    foreach ($operationalDoc in @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md',
-        'PROJECT_HARNESS.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md', 'LEGACY_MACHINE_DEPLOYMENT.md',
-        'SELF_LEARNING.md', 'BUSINESS_PILOT_GUIDE.md', 'SKILL_CATALOG.md',
-        'HTML_DESIGN_SELECTION.md', 'COMPANY_PERSONAL_WORKFLOW.md')) {
-        Assert-OfflineBundle (Test-Path -LiteralPath (Join-Path $ExpandedPath ('docs/' + $operationalDoc)) -PathType Leaf) "Operational document is missing: $operationalDoc"
-    }
-    foreach ($appDoc in @('LOCAL_WORKSPACE.md', 'WORKSPACE_STARTUP_DIAGNOSTIC.md', 'WORKSPACE_USER_GUIDE.html')) {
-        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath ('docs/' + $appDoc)))) "Separate Workspace app document leaked into the harness bundle: $appDoc"
-    }
-    foreach ($removed in @('docs/CUA_DRIVER_PILOT.md', 'docs/Company-Agent-Cua-Pilot.html',
-        'docs/VALIDATION_CUA_MANUALS_2026-09-19.md',
-        'payload/core/plugin/resources/manuals/CUA_DRIVER_PILOT.md',
-        'payload/core/plugin/resources/manuals/Company-Agent-Cua-Pilot.html')) {
-        Assert-OfflineBundle (-not (Test-Path -LiteralPath (Join-Path $ExpandedPath $removed))) "Removed screen-control content is still bundled: $removed"
-    }
-    foreach ($htmlGuide in $htmlGuides) {
-        Assert-OfflineBundle ((Get-FileHash -LiteralPath $htmlGuide.FullName -Algorithm SHA256).Hash -ceq
-            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $htmlGuide.Name)) -Algorithm SHA256).Hash) 'HTML guide content changed during packaging.'
-    }
-    foreach ($manual in @('README.md', 'CLAUDE_CODE_BASICS.md', 'COMPANY_AGENT_HANDBOOK.md',
-        'ONBOARDING_COURSE.md', 'USER_GUIDE.md', 'CLAUDE_CODE_COMMANDS.md', 'DESIGN_TERMS.md')) {
-        Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('docs\' + $manual)) -Algorithm SHA256).Hash -ceq
-            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $manual)) -Algorithm SHA256).Hash) 'Manual source changed during packaging.'
-        Assert-OfflineBundle ((Get-FileHash -LiteralPath (Join-Path $ExpandedPath ('payload\core\plugin\resources\manuals\' + $manual)) -Algorithm SHA256).Hash -ceq
-            (Get-FileHash -LiteralPath (Join-Path $sourceRoot ('docs\' + $manual)) -Algorithm SHA256).Hash) 'Installed Markdown differs from source.'
-    }
     return $manifest
 }
 
@@ -256,7 +101,7 @@ $testRoot = Join-Path $temporaryBase ('CompanyAgent-OfflineBundleTest-' + [guid]
 try {
     New-CompanyAgentDirectory -Path $testRoot
     $sourceRoot = Join-Path $testRoot 'source'
-    foreach ($directory in @('deploy', 'company-agent-plugin', 'corporate-knowledge', 'docs', 'config')) {
+    foreach ($directory in @('deploy', 'company-agent-plugin', 'corporate-knowledge', 'docs', 'config', 'harness-core', 'scripts\harness_core')) {
         Copy-CompanyAgentDirectoryContents -Source (Join-Path $repositoryRoot $directory) -Destination (Join-Path $sourceRoot $directory)
     }
     foreach ($name in @('Install-CompanyAgent.cmd', 'Diagnose-CompanyAgent.cmd', 'INSTALL_WITH_CLAUDE.md')) {
@@ -264,6 +109,8 @@ try {
     }
     Write-CompanyAgentUtf8File -Path (Join-Path $sourceRoot 'deploy\Future-AdminTool.ps1') -Content '# Must stay on the build PC.'
     $pluginRoot = Join-Path $sourceRoot 'company-agent-plugin'
+    Write-CompanyAgentUtf8File -Path (Join-Path $pluginRoot 'skills\new-functional-fixture\SKILL.md') -Content 'Never install an unlisted Skill.'
+    Write-CompanyAgentUtf8File -Path (Join-Path $pluginRoot 'scripts\company_agent\future_engine.py') -Content 'Never install an unlisted engine.'
     $pluginManifest = Read-CompanyAgentJson -Path (Join-Path $pluginRoot '.claude-plugin\plugin.json')
     $knowledgeManifest = Read-CompanyAgentJson -Path (Join-Path $sourceRoot 'corporate-knowledge\pack.json')
     $staleRuntime = Join-Path $pluginRoot 'runtime\python'
@@ -307,8 +154,9 @@ try {
     # are rejected even with Force, before damaging the previous output.
     $null = & $buildScript @common -OutputPath $defaultZip -Force
     $immutableHash = (Get-FileHash -LiteralPath $defaultZip -Algorithm SHA256).Hash
-    $changedPayloadFixture = Join-Path $pluginRoot 'same-version-change.txt'
-    Write-CompanyAgentUtf8File -Path $changedPayloadFixture -Content 'This payload needs a new CoreVersion.'
+    $changedPayloadFixture = Join-Path $pluginRoot 'scripts\company_agent\__init__.py'
+    $changedPayloadBytes = [IO.File]::ReadAllBytes($changedPayloadFixture)
+    Write-CompanyAgentUtf8File -Path $changedPayloadFixture -Content '# This changed allowlisted payload needs a new CoreVersion.'
     try {
         $sameVersion = $common.Clone()
         $sameVersion.OutputPath = $defaultZip
@@ -316,7 +164,7 @@ try {
         Assert-BundleBuildRejected $sameVersion 'Increase CoreVersion'
         Assert-OfflineBundle ((Get-FileHash -LiteralPath $defaultZip -Algorithm SHA256).Hash -ceq $immutableHash) 'Same-version rejection overwrote the existing ZIP.'
     }
-    finally { Remove-Item -LiteralPath $changedPayloadFixture -Force }
+    finally { [IO.File]::WriteAllBytes($changedPayloadFixture, $changedPayloadBytes) }
 
     $explicitZip = Join-Path $testRoot 'explicit-external.zip'
     $null = & $buildScript @common -OutputPath $explicitZip -WithoutBundledPython
@@ -374,18 +222,27 @@ try {
     $invalid.Remove('PythonRuntimeZip')
     Assert-BundleBuildRejected $invalid 'archive hash does not match'
 
+    $profileManifestPath = Join-Path $sourceRoot 'deploy\harness-core-manifest.json'
+    $profileManifestBytes = [IO.File]::ReadAllBytes($profileManifestPath)
     foreach ($extension in @('.exe', '.DLL', '.pyd')) {
         $nativeFixture = Join-Path $pluginRoot ('unexpected-runtime' + $extension)
-        Write-CompanyAgentUtf8File -Path $nativeFixture -Content 'This named native runtime file must fail closed.'
+        Write-CompanyAgentUtf8File -Path $nativeFixture -Content 'An explicit native binary entry must fail closed.'
         try {
+            $profileManifest = Read-CompanyAgentJson -Path $profileManifestPath
+            $profileManifest.files = @($profileManifest.files) + @('unexpected-runtime' + $extension)
+            Write-CompanyAgentJsonAtomic -Path $profileManifestPath -Value $profileManifest
             $invalid = $common.Clone()
             $invalid.OutputPath = $sentinelZip
             $invalid.Force = $true
-            Assert-BundleBuildRejected $invalid 'cannot contain native binary files'
+            Assert-BundleBuildRejected $invalid 'cannot include binaries'
             Assert-OfflineBundle (Test-Path -LiteralPath $nativeFixture -PathType Leaf) 'Failed packaging removed the source binary fixture.'
         }
-        finally { Remove-Item -LiteralPath $nativeFixture -Force }
+        finally {
+            [IO.File]::WriteAllBytes($profileManifestPath, $profileManifestBytes)
+            Remove-Item -LiteralPath $nativeFixture -Force
+        }
     }
+
     Assert-OfflineBundle ((Get-FileHash -LiteralPath $sentinelZip -Algorithm SHA256).Hash -ceq $sentinelHash) 'Rejected build replaced an existing output.'
 
     [pscustomobject][ordered]@{

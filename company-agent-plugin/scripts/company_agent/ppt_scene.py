@@ -34,14 +34,19 @@ def elements(rows, width, height, palette, *, embedded=False):
     checked = []
     image_bytes = 0
     for raw in rows:
-        if not isinstance(raw, dict) or raw.get('kind') not in ('text', 'shape', 'image', 'table', 'chart'):
-            raise ArtifactError('invalid_ppt_element', '지원하는 개체는 text, shape, image, table, chart입니다.')
+        if not isinstance(raw, dict) or raw.get('kind') not in ('text', 'shape', 'line', 'path', 'image', 'table', 'chart'):
+            raise ArtifactError('invalid_ppt_element', '지원하는 개체는 text, shape, line, path, image, table, chart입니다.')
         e = {'kind': raw['kind']}
         if raw.get('group') is not None:
             group = raw['group']
-            if not isinstance(group, str) or not re.fullmatch(r'[\w-]{1,64}', group) or raw['kind'] not in ('text','shape','image'):
+            if not isinstance(group, str) or not re.fullmatch(r'[\w-]{1,64}', group) or raw['kind'] not in ('text','shape','line','path','image'):
                 raise ArtifactError('invalid_ppt_group', '그룹 이름은 64자 이하의 글자·숫자·밑줄·하이픈이며 글자·도형·그림만 묶습니다. 표·차트는 독립 개체로 유지하세요.')
             e['group'] = group
+        if raw['kind'] in ('shape','line','path'):
+            from .ppt_primitives import normalize_primitive
+            e.update(normalize_primitive(raw,width,height,palette))
+            checked.append(e)
+            continue
         for key, maximum in (('x', width), ('y', height), ('w', width), ('h', height)):
             e[key] = number(raw.get(key), 0 if key in ('x', 'y') else .01, maximum)
         if e['x']+e['w'] > width+.5 or e['y']+e['h'] > height+.5:
@@ -57,23 +62,15 @@ def elements(rows, width, height, palette, *, embedded=False):
             e['wrap'] = raw.get('wrap', True) is not False
             e['lineSpacing'] = number(raw.get('lineSpacing',1.15), .8, 3)
             e['font'] = _text(raw.get('font',''), 80)
-        elif kind == 'shape':
-            e['shape'] = raw.get('shape','rect')
-            if e['shape'] not in ('rect','roundRect','ellipse'):
-                raise ArtifactError('invalid_ppt_element','도형은 rect, roundRect, ellipse입니다.')
-            e.update(fill=ink(raw.get('fill','background'),palette,transparent=True),
-                     opacity=number(raw.get('opacity',1),0,1),
-                     border=ink(raw.get('border'),palette,transparent=True),
-                     borderWidth=number(raw.get('borderWidth',0),0,20),
-                     radius=number(raw.get('radius',min(12,min(e['w'],e['h'])/2)),0,min(e['w'],e['h'])/2) if e['shape']=='roundRect' else 0)
-            if raw.get('shadow'):
-                s = raw['shadow']
-                if not isinstance(s,dict):
-                    raise ArtifactError('invalid_ppt_element','그림자 형식을 확인해 주세요.')
-                e['shadow'] = {'color':ink(s.get('color','000000'),palette),
-                               'opacity':number(s.get('opacity',.18),0,1),
-                               'blur':number(s.get('blur',8),0,100),
-                               'x':number(s.get('x',0),-100,100),'y':number(s.get('y',3),-100,100)}
+            if 'verticalAlign' in raw:
+                if raw['verticalAlign'] not in ('top','middle','bottom'):
+                    raise ArtifactError('invalid_ppt_element','세로 정렬은 top, middle, bottom입니다.')
+                e['verticalAlign'] = raw['verticalAlign']
+            if raw.get('allowOverlap') is True:
+                e['allowOverlap'] = True
+            if 'runs' in raw:
+                from .ppt_text import normalize_runs
+                e['text'],e['runs'] = normalize_runs(raw,e,palette)
         elif kind == 'image':
             value = raw.get('image')
             if embedded and isinstance(value,dict) and 'data' in value:
@@ -92,10 +89,13 @@ def elements(rows, width, height, palette, *, embedded=False):
                 raise ArtifactError('spec_too_large','한 장의 그림 자료가 너무 큽니다. 그림 용량을 줄여 주세요.')
         else:
             e[kind] = _normalize({'slides':[{kind:raw.get(kind)}]})['sections'][0][kind]
+            if kind + 'Style' in raw:
+                from .ppt_component_styles import normalize
+                e[kind + 'Style'] = normalize(kind, raw[kind + 'Style'])
             if kind == 'table':
                 table = e[kind]
                 count, columns = len(table['rows'])+1, len(table['headers'])
-                e['size'] = number(raw.get('size',16),6,96)
+                e['size'] = number(e.get('tableStyle', {}).get('fontSize',raw.get('size',16)),6,96)
                 for key,n,span in (('columnWidths',columns,e['w']),('rowHeights',count,e['h'])):
                     sizes = raw.get(key,[span/n]*n)
                     if not isinstance(sizes,list) or len(sizes)!=n:
@@ -214,6 +214,7 @@ def template_layouts(plan):
             if e['kind']=='text':
                 slot += 1
                 e['text'] = '예시'
+                e.pop('runs',None)  # Never retain business text in a reusable style.
             elif e['kind']=='chart':
                 c=e['chart']
                 # Rebuild, do not mutate the original payload: auto-layout

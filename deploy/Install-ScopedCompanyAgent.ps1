@@ -15,6 +15,8 @@ param(
     [string] $ExistingHarnessAction = 'Ask',
     [ValidateSet('Ask', 'KeepCurrent', 'PreferIncoming')]
     [string] $SkillConflictAction = 'Ask',
+    [ValidateSet('Keep', 'DeleteUnused')]
+    [string] $OldVersionAction = 'Keep',
     [switch] $NonInteractive,
     [switch] $DryRun,
     [switch] $SkipAdminCheck,
@@ -28,7 +30,7 @@ Set-StrictMode -Version 2.0
 $scopedEntryValues = @{}
 foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'BackupRoot', 'ClaudeConfigRoot',
     'ClaudeCommand', 'PythonCommand', 'InvokingUserProfile', 'InvokingLocalAppData', 'NonInteractive',
-    'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'RepairOtherPluginPython', 'ExistingHarnessAction', 'SkillConflictAction')) {
+    'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'RepairOtherPluginPython', 'ExistingHarnessAction', 'SkillConflictAction', 'OldVersionAction')) {
     $scopedEntryValues[$name] = Get-Variable -Name $name -ValueOnly
 }
 . (Join-Path $PSScriptRoot 'Setup-CompanyAgent.ps1') -FunctionsOnly
@@ -37,6 +39,7 @@ foreach ($name in $scopedEntryValues.Keys) { Set-Variable -Name $name -Value $sc
 . (Join-Path $PSScriptRoot 'HarnessReplacement.ps1')
 . (Join-Path $PSScriptRoot 'CompanyAgent.PluginCompatibility.ps1')
 . (Join-Path $PSScriptRoot 'CompanyAgent.ReadHook.ps1')
+. (Join-Path $PSScriptRoot 'CompanyAgent.Cleanup.ps1')
 $usesConfigOverride = -not [string]::IsNullOrWhiteSpace([string]$scopedEntryValues['ClaudeConfigRoot']) -or
     -not [string]::IsNullOrWhiteSpace($env:CLAUDE_CONFIG_DIR)
 
@@ -199,6 +202,11 @@ if ($Scope -eq 'Project') {
 
 $distributionRoot = Join-Path $InvokingLocalAppData 'CompanyAgent-Distribution'
 $marketplaceRoot = Join-Path $distributionRoot 'marketplace'
+# Acquire before reading registration or recovery snapshots. A rejected second
+# installer must not restore stale snapshots over the installation holding it.
+$maintenanceLease = $null
+if (-not $DryRun) { $maintenanceLease = Enter-CompanyAgentVersionMaintenance -MarketplaceRoot $marketplaceRoot }
+try {
 $registrationsRoot = Join-Path $InvokingLocalAppData 'CompanyAgent\installations'
 $scopeRelative = 'user'
 if ($Scope -eq 'Project') {
@@ -490,6 +498,7 @@ if ($DryRun) {
         operation = $intent.operation; previousCoreVersion = $intent.previousCoreVersion
         coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath
         distributionRoot = $distributionRoot; settingsPath = $settingsPath; backupRoot = $BackupRoot
+        oldVersionAction = $OldVersionAction; cleanupAfterSuccessfulInstallOnly = $true
         backupItems = $backupItems; needsElevation = $false; pythonCommand = $resolvedPython
         claudeCommand = $script:ScopedClaudeExecutable; claudeConfigRoot = $ClaudeConfigRoot; userContext = $userContext
         modelSource = 'existing Claude aliases: haiku/sonnet/opus'; pluginId = $pluginId
@@ -585,7 +594,7 @@ try {
     Set-CompanyAgentReadHookLauncher -Snapshot $readHookSnapshot -PythonCommand $installedPython -PluginRoot $releasePlugin
     Write-CompanyAgentJsonAtomic -Path $marketplaceManifestPath -Value ([pscustomobject]@{
         name = $marketplaceName; owner = [pscustomobject]@{ name = 'Company Agent Platform Team' }
-        plugins = @([pscustomobject]@{ name = 'company-agent'; source = ('./versions/' + [string]$manifest.coreVersion + '/plugin'); description = 'Company Agent organizational harness and project harness builder' })
+        plugins = @([pscustomobject]@{ name = 'company-agent'; source = ('./versions/' + [string]$manifest.coreVersion + '/plugin'); description = 'Personal context, memory and learning harness for Claude Code' })
     })
     $nativeConfigOverride = $(if ($usesConfigOverride) { $ClaudeConfigRoot } else { $null })
     [Environment]::SetEnvironmentVariable('CLAUDE_CONFIG_DIR', $nativeConfigOverride, 'Process')
@@ -649,7 +658,13 @@ try {
     Write-Host "백업 위치: $backupPath"
     if ($null -ne $harnessTransaction) { Write-Host '기존 하네스 복원 자료: 백업 폴더의 previous-harness (현재 Windows 계정으로 복원)' }
     foreach ($note in @($existingHarness.inheritedNotes)) { Write-Host ([string]$note) }
-    return [pscustomobject]@{ status = $resultStatus; operation = $intent.operation; previousCoreVersion = $intent.previousCoreVersion; scope = $Scope; nativeClaudeScope = $nativeScope; projectRoot = $ProjectRoot; pluginId = $pluginId; coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath; safetyBackup = $backupPath; needsElevation = $false; existingHarnessAction = $harnessAction; previousHarnessDeactivated = ($null -ne $harnessTransaction); existingHarness = $existingHarness; skillConflicts = $skillConflicts; skillConflictAction = $resolvedSkillAction; skillWarnings = @($skillInventory.warnings) }
+    # The receipt contains ownership hashes, not a second copy of personal data.
+    # Never attest an existing release which could contain user modifications.
+    if ($releaseCreated) {
+        try { $null = New-CompanyAgentCleanupReceipt -ReleaseRoot $releaseRoot -MarketplaceRoot $marketplaceRoot -NewlyCreated }
+        catch { Write-Warning '설치는 완료됐지만 다음 버전에서 사용할 정리 근거를 기록하지 못했습니다. 이 버전 파일은 자동 정리하지 않습니다.' }
+    }
+    $installationResult = [pscustomobject]@{ status = $resultStatus; operation = $intent.operation; previousCoreVersion = $intent.previousCoreVersion; scope = $Scope; nativeClaudeScope = $nativeScope; projectRoot = $ProjectRoot; pluginId = $pluginId; coreVersion = [string]$manifest.coreVersion; userStateRoot = $UserStateRoot; registrationPath = $registrationPath; safetyBackup = $backupPath; needsElevation = $false; existingHarnessAction = $harnessAction; previousHarnessDeactivated = ($null -ne $harnessTransaction); existingHarness = $existingHarness; skillConflicts = $skillConflicts; skillConflictAction = $resolvedSkillAction; skillWarnings = @($skillInventory.warnings) }
 }
 catch {
     $failure = $_.Exception.Message
@@ -700,4 +715,30 @@ catch {
 finally {
     if ($locationPushed) { Pop-Location }
     [Environment]::SetEnvironmentVariable('CLAUDE_CONFIG_DIR', $previousConfigRoot, 'Process')
+}
+
+# Cleanup is outside the installation transaction: a deletion failure must never
+# roll the successful registration back to a version which was just removed.
+$cleanupResult = [pscustomobject]@{ status = 'kept'; deleted = @(); retained = @(); bytesFreed = 0; message = '이전 설치 파일을 유지했습니다.' }
+if ($OldVersionAction -eq 'DeleteUnused') {
+    Write-Host '사용하지 않는 이전 설치 파일을 확인하고 정리합니다. 개인 자료는 유지합니다.'
+    try {
+        $cleanupResult = Invoke-CompanyAgentVersionCleanup -InvokingLocalAppData $InvokingLocalAppData `
+            -ClaudeConfigRoot $ClaudeConfigRoot -CurrentCoreVersion ([string]$manifest.coreVersion) `
+            -BundleRoot $BundleRoot -OldVersionAction $OldVersionAction `
+            -ProtectedPaths @($UserStateRoot, $BackupRoot, $ProjectRoot, $registrationRoot)
+    }
+    catch {
+        $cleanupResult = [pscustomobject]@{
+            status = 'partial'; deleted = @(); retained = @(); bytesFreed = $null; verified = $false
+            message = '설치는 완료됐습니다. 이전 파일 정리 결과 일부를 확인하지 못해 추가 삭제를 멈췄습니다. 개인 자료와 남은 파일은 유지합니다.'
+        }
+    }
+    Write-Host ([string]$cleanupResult.message)
+}
+$installationResult | Add-Member -NotePropertyName cleanup -NotePropertyValue $cleanupResult
+return $installationResult
+}
+finally {
+    if ($null -ne $maintenanceLease) { Exit-CompanyAgentVersionMaintenance -Lease $maintenanceLease }
 }

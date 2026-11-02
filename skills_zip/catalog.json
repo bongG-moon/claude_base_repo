@@ -1,7 +1,7 @@
 {
   "generator": "company-platform-skills-v1",
   "sourceMode": "working-tree",
-  "sourceVersion": "1.4.50",
+  "sourceVersion": "1.5.1",
   "distributionStandard": {
     "sha256": "90621044e0e9725dbf7b77cd5cf5429cf6f19754ee420935aff425b5617d23c1",
     "files": {
@@ -34,51 +34,51 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "asset-factory",
-      "sha256": "fddb08e6ce704118c2a88fa37bcbaa9347ff1cd52bcadd75f99b8f3e782e3b18",
-      "size": 41260,
+      "sha256": "fff3eb50ca33329d981633997ba67dc30c85fe5075aa251ef154016198c5d485",
+      "size": 41638,
       "files": 25
     },
     {
       "slug": "data-query-demo",
       "file": "data-query-demo.zip",
       "name": "데이터 조회 연습",
-      "description": "계정 없이 가상 데이터로 쿼리 저장, 조건 변경과 큰 조회 확인을 연습합니다. Oracle, Datalake와 E-HUB의 같은 처리 흐름을 연결 없이 시험합니다.",
+      "description": "계정 없이 가상 데이터로 쿼리 등록과 시험 조회, 새 조회와 이전 결과 구분, Python 연속 조회를 연습합니다. 운영 접속 없이 같은 처리 흐름을 확인합니다.",
       "packageId": "data-query-demo",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "data-query-demo",
-      "sha256": "c0bd3f2f35b24542638cbff96aef071874db18a38b2cce77356ff320cc8940bf",
-      "size": 86761,
-      "files": 25
+      "sha256": "0277bac6659eeae0ee462aa1e889f21a5e35492f149c1098483f16c606869b9d",
+      "size": 114244,
+      "files": 32
     },
     {
       "slug": "datalake-query",
       "file": "datalake-query.zip",
       "name": "Datalake 데이터 조회",
-      "description": "Data Lake 인증정보를 한 번 설정하고 테이블 경로와 저장 쿼리로 조회합니다. 기본 5만 행의 결과를 로컬 파일로 전달하며 파일 용량과 본 조회 시간에는 기본 제한을 두지 않습니다.",
+      "description": "SQL의 테이블 경로로 Datalake를 조회하고 등록 쿼리를 작은 실제 조회로 확인합니다. 새 요청은 다시 조회하며 결과 파일과 Python 연속 조회를 사용합니다.",
       "packageId": "datalake-query",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "datalake-query",
-      "sha256": "3c06c140802923b2b718d41e99a0947a06048893ed90cc82e023992afcba9ce7",
-      "size": 96435,
-      "files": 26
+      "sha256": "cf03a1f56373006525e85e99a1205eba3a9f0ff35b113848f5227ac7f8f8d882",
+      "size": 123295,
+      "files": 33
     },
     {
       "slug": "ehub-query",
       "file": "ehub-query.zip",
       "name": "E-HUB 데이터 조회",
-      "description": "LakeHouse의 E-HUB 테이블을 저장 쿼리와 조건으로 조회합니다. 로컬 관리 화면과 기본 5만 행 한도를 사용하며, 별도 E-HUB 직접 API 연결은 아닙니다.",
+      "description": "LakeHouse의 E-HUB 쿼리를 작은 실제 조회로 확인하고 새 요청은 다시 조회합니다. 결과를 파일로 저장하며 Python으로 후속 조회 조건을 전달합니다.",
       "packageId": "ehub-query",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "ehub-query",
-      "sha256": "d810ad1ef4bbc9907fe9c69a9f248cda83a056b4ee2447161313c3b2524dfb00",
-      "size": 90967,
-      "files": 25
+      "sha256": "3f3e2fe34564a5789d85bad496e04e9207ce2de2eb7541458f375157e6dce101",
+      "size": 118104,
+      "files": 32
     },
     {
       "slug": "excel-to-pipeline",
@@ -90,8 +90,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "excel-to-pipeline",
-      "sha256": "d11cee4ace79f3f426396ead5a2056892b3282ae27b1b569bf961782eb7b64da",
-      "size": 5504207,
+      "sha256": "d6ae8484cd767680722c5805ce0f38ece49db2d93e687e8b9f479c0bacb5e9f8",
+      "size": 5504206,
       "files": 43
     },
     {
@@ -104,23 +104,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "file-organizer",
-      "sha256": "e1539896c17656a46eeca12405b3f0acfef84b72e3b6bc3bc67b079ad91a22d8",
-      "size": 27317,
+      "sha256": "133f33dff7368e3dee56ae292b72a7a96b158de703665f871c2fc2b0d9513e2e",
+      "size": 27313,
       "files": 12
     },
     {
       "slug": "html-report",
       "file": "html-report.zip",
       "name": "오프라인 HTML 업무 보고서",
-      "description": "수치와 근거를 보존하며 선택한 글꼴과 디자인으로 HTML 보고서를 만듭니다. 데이터 표는 검색, 정렬, 페이지 이동과 CSV 다운로드를 지원하며 스토리형, 데이터 리포트형, 발표형 레퍼런스를 선택할 수 있습니다.",
+      "description": "기존 HTML이나 여러 참고 이미지의 색 조합, 글꼴, 표와 그래프 구성을 새 내용에 적용하는 오프라인 HTML 보고서입니다. 디자인 선택을 유지하며 표 검색, 정렬, 페이지 이동과 CSV 다운로드를 제공합니다.",
       "packageId": "html-report",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "html-report",
-      "sha256": "3ba8a67cd106492c98aea44f664fdadeabe550219c7c9f2b719245fb2df94e45",
-      "size": 174496,
-      "files": 38
+      "sha256": "4b1e52c0d4945bb83430a78d7f9a0e61cf289db468ea60597ba5270fe4d671aa",
+      "size": 228509,
+      "files": 47
     },
     {
       "slug": "karpathy-guidelines",
@@ -132,23 +132,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "karpathy-guidelines",
-      "sha256": "46e472546d6083853d0052d157fc166a2c176de6cbb79dceebfc9477b4715b18",
-      "size": 30334,
+      "sha256": "e32f359cf2453d2d360aa82077bac11616597f909b039a9a8b0eddc7879d67de",
+      "size": 30332,
       "files": 15
     },
     {
       "slug": "oracle-query",
       "file": "oracle-query.zip",
       "name": "Oracle 데이터 조회",
-      "description": "DB와 저장 쿼리를 로컬 관리 화면에서 확인하고 조건만 바꾸어 조회합니다. 기본 5만 행을 파일로 저장하며, 큰 조회와 이전 결과 삭제는 허락받은 범위로 처리합니다.",
+      "description": "Oracle 쿼리를 저장하며 작은 실제 조회로 확인하고, 새 요청은 다시 조회합니다. 결과는 파일로 저장하며 Python으로 A 결과를 B의 조건에 전달할 수 있습니다.",
       "packageId": "oracle-query",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "oracle-query",
-      "sha256": "f7bb0e1ad5426b7c6520228fd3de9351f95d76dec405cba43ae915cb95e4d89f",
-      "size": 90227,
-      "files": 25
+      "sha256": "ad0d8b21ed743c5c325b6f7417aeb4d8a72e856bd2f3b4af3c9a79663a8ec272",
+      "size": 117495,
+      "files": 32
     },
     {
       "slug": "personal-knowledge",
@@ -160,8 +160,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "personal-knowledge",
-      "sha256": "bbecd6b72541e82e13f12777f9b9292b85a1630cd3ddedc3c0093eb82c4131eb",
-      "size": 24607,
+      "sha256": "c2309c3c7fb360b86c9713d0b606e6d1d34a7f83058badfbc4affd3a7b2499a9",
+      "size": 24606,
       "files": 12
     },
     {
@@ -174,23 +174,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "personal-memory",
-      "sha256": "307da0631529aefd3295087d72dbed96cb9ee94631771f7de4a209eaca9c7c14",
-      "size": 24661,
+      "sha256": "6bea24b009701cb35c48517fada9a657800116c0a0ac6fe108312dda923e655b",
+      "size": 24663,
       "files": 12
     },
     {
       "slug": "presentation",
       "file": "presentation.zip",
       "name": "편집 가능한 업무 발표자료",
-      "description": "참고 PPT, HTML, 이미지의 배치, 말투, 도형, 색, 글꼴을 살펴 한글 HTML 초안을 만들고 글자와 도형, 표, 차트를 편집할 수 있는 PPT로 제작합니다.",
+      "description": "첨부 PPT와 여러 이미지의 글꼴, 표, 그래프, 도형, 말투와 색 조합을 참고해 새 내용의 한글 장표를 설계합니다. 전체 HTML 초안을 확인받은 뒤 글자와 도형, 표, 차트를 편집할 수 있는 PPT로 제작합니다.",
       "packageId": "presentation",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "presentation",
-      "sha256": "f219181028305f78805165296efac310ec0b51f9286a02c6cd5f727e2b952e80",
-      "size": 165610,
-      "files": 37
+      "sha256": "30b2b7fcd396cd86e5829521bd63d822fa1321ba424668f72c911f2366ad96d2",
+      "size": 231069,
+      "files": 48
     },
     {
       "slug": "web-interface",
@@ -202,8 +202,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "web-interface",
-      "sha256": "d8c1739637f83828679195afe96bc50669fce4dc608572d0498bf96a42367a11",
-      "size": 24452,
+      "sha256": "cfcde55bd1726fa669ffa3458ff219c56e1da191be67b33441aeb4db8001e4e9",
+      "size": 24451,
       "files": 11
     },
     {
@@ -216,8 +216,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "website-rebuild",
-      "sha256": "c9af253973a2c7afdeb5c23649d77c3411b50f16588956a367a319a60a988179",
-      "size": 28535,
+      "sha256": "3b1eb082347c45ff1fab7971e1356274ee07b1423aa428bfb9f6fb856bec0638",
+      "size": 28531,
       "files": 13
     },
     {
@@ -230,8 +230,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "work-context-catalog",
-      "sha256": "630ebc76d8002d32f269b58eabd84289eb470beaa7313f2d10db44c0981dbde0",
-      "size": 5434355,
+      "sha256": "d7371204232c63cc53cd97fcec21911f3749376d99fe98522cafb516d418459e",
+      "size": 5434354,
       "files": 21
     },
     {
@@ -281,42 +281,42 @@
     {
       "slug": "platform-mcp-builder",
       "name": "전사 MCP 제작 이전 이름 호환",
-      "reason": "asset-factory로 통합된 이전 이름입니다. 별도 MCP 서버가 아니며 중복 배포하지 않습니다."
+      "reason": "전체 제작판 asset-factory로 통합된 이전 이름의 호환 소스입니다. 기본 하네스에 설치하지 않으며 개별 ZIP도 만들지 않습니다."
     },
     {
       "slug": "company-agent",
-      "name": "Company Agent 업무 조율",
-      "reason": "회사 정책·모델 경로·작업자·후크를 연결하는 하네스 본체입니다."
+      "name": "Company Agent 개인 업무 하네스",
+      "reason": "기본 하네스의 개인 기억, 지식, 학습과 스킬 재사용을 조율합니다. harness-core의 지침을 사용하며 개별 ZIP은 만들지 않습니다."
     },
     {
       "slug": "project-harness",
       "name": "프로젝트 업무 하네스 제작",
-      "reason": "프로젝트의 하네스 설치·정책과 실행 환경을 관리하는 기능입니다."
+      "reason": "기존 프로젝트 하네스 제작 소스를 유지보수용으로 보존합니다. 기본 하네스에 설치하지 않으며 개별 ZIP도 만들지 않습니다."
     },
     {
       "slug": "self-learning",
       "name": "검증된 교정, 절차 학습",
-      "reason": "작업 후 자동 학습과 기록 적용은 하네스의 저장소·후크가 필요합니다."
+      "reason": "검증된 경험의 학습 접수와 적용은 기본 하네스의 기존 저장소와 후크를 사용합니다. 별도 개별 ZIP은 만들지 않습니다."
     }
   ],
   "managedFiles": {
-    "SHA256SUMS.txt": "dca1589186674ae985c060c85b167df3302bdda6b7c10ba486b92c265cad185d",
-    "asset-factory.zip": "fddb08e6ce704118c2a88fa37bcbaa9347ff1cd52bcadd75f99b8f3e782e3b18",
-    "data-query-demo.zip": "c0bd3f2f35b24542638cbff96aef071874db18a38b2cce77356ff320cc8940bf",
-    "datalake-query.zip": "3c06c140802923b2b718d41e99a0947a06048893ed90cc82e023992afcba9ce7",
-    "ehub-query.zip": "d810ad1ef4bbc9907fe9c69a9f248cda83a056b4ee2447161313c3b2524dfb00",
-    "excel-to-pipeline.zip": "d11cee4ace79f3f426396ead5a2056892b3282ae27b1b569bf961782eb7b64da",
-    "file-organizer.zip": "e1539896c17656a46eeca12405b3f0acfef84b72e3b6bc3bc67b079ad91a22d8",
-    "html-report.zip": "3ba8a67cd106492c98aea44f664fdadeabe550219c7c9f2b719245fb2df94e45",
-    "karpathy-guidelines.zip": "46e472546d6083853d0052d157fc166a2c176de6cbb79dceebfc9477b4715b18",
+    "SHA256SUMS.txt": "bb2527e43328346fc5810abe61862db95927135d10f8a16a8e15622572321023",
+    "asset-factory.zip": "fff3eb50ca33329d981633997ba67dc30c85fe5075aa251ef154016198c5d485",
+    "data-query-demo.zip": "0277bac6659eeae0ee462aa1e889f21a5e35492f149c1098483f16c606869b9d",
+    "datalake-query.zip": "cf03a1f56373006525e85e99a1205eba3a9f0ff35b113848f5227ac7f8f8d882",
+    "ehub-query.zip": "3f3e2fe34564a5789d85bad496e04e9207ce2de2eb7541458f375157e6dce101",
+    "excel-to-pipeline.zip": "d6ae8484cd767680722c5805ce0f38ece49db2d93e687e8b9f479c0bacb5e9f8",
+    "file-organizer.zip": "133f33dff7368e3dee56ae292b72a7a96b158de703665f871c2fc2b0d9513e2e",
+    "html-report.zip": "4b1e52c0d4945bb83430a78d7f9a0e61cf289db468ea60597ba5270fe4d671aa",
+    "karpathy-guidelines.zip": "e32f359cf2453d2d360aa82077bac11616597f909b039a9a8b0eddc7879d67de",
     "manufacturing-oracle-mcp-0.1.0-20261024.zip": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
-    "oracle-query.zip": "f7bb0e1ad5426b7c6520228fd3de9351f95d76dec405cba43ae915cb95e4d89f",
-    "personal-knowledge.zip": "bbecd6b72541e82e13f12777f9b9292b85a1630cd3ddedc3c0093eb82c4131eb",
-    "personal-memory.zip": "307da0631529aefd3295087d72dbed96cb9ee94631771f7de4a209eaca9c7c14",
-    "presentation.zip": "f219181028305f78805165296efac310ec0b51f9286a02c6cd5f727e2b952e80",
-    "web-interface.zip": "d8c1739637f83828679195afe96bc50669fce4dc608572d0498bf96a42367a11",
-    "website-rebuild.zip": "c9af253973a2c7afdeb5c23649d77c3411b50f16588956a367a319a60a988179",
-    "work-context-catalog.zip": "630ebc76d8002d32f269b58eabd84289eb470beaa7313f2d10db44c0981dbde0",
-    "등록_설치_안내.html": "634c9d75a9dc58fc3564d137bf3e6eb1c2afe4922f12959f73cc14262d6b65d7"
+    "oracle-query.zip": "ad0d8b21ed743c5c325b6f7417aeb4d8a72e856bd2f3b4af3c9a79663a8ec272",
+    "personal-knowledge.zip": "c2309c3c7fb360b86c9713d0b606e6d1d34a7f83058badfbc4affd3a7b2499a9",
+    "personal-memory.zip": "6bea24b009701cb35c48517fada9a657800116c0a0ac6fe108312dda923e655b",
+    "presentation.zip": "30b2b7fcd396cd86e5829521bd63d822fa1321ba424668f72c911f2366ad96d2",
+    "web-interface.zip": "cfcde55bd1726fa669ffa3458ff219c56e1da191be67b33441aeb4db8001e4e9",
+    "website-rebuild.zip": "3b1eb082347c45ff1fab7971e1356274ee07b1423aa428bfb9f6fb856bec0638",
+    "work-context-catalog.zip": "d7371204232c63cc53cd97fcec21911f3749376d99fe98522cafb516d418459e",
+    "등록_설치_안내.html": "8a8bbf360fe2efc9cbce8c439d105d5ae3e8f241dc2aff1828747d6512d68758"
   }
 }

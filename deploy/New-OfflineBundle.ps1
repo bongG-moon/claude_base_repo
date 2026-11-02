@@ -41,6 +41,7 @@ $productionDeployFiles = @(
     'CompanyAgent.ClaudeDiscovery.ps1',
     'CompanyAgent.PluginCompatibility.ps1',
     'CompanyAgent.ReadHook.ps1',
+    'CompanyAgent.Cleanup.ps1',
     'ExistingHarness.ps1',
     'HarnessReplacement.ps1',
     'Initialize-CompanyAgentUser.ps1',
@@ -59,31 +60,15 @@ $productionDeployFiles = @(
 function Copy-CompanyAgentPluginSource {
     param([string] $Source, [string] $Destination)
 
-    New-CompanyAgentDirectory -Path $Destination
-    foreach ($item in @(Get-ChildItem -LiteralPath $Source -Force)) {
-        if ($item.Name -ieq 'runtime') {
-            # A prior local build must never supply the packaged interpreter.
-            # Opt-in packages also receive a fresh, hash-verified runtime below.
-            continue
-        }
-        if ($item.Name -ieq 'resources') {
-            $resourceDestination = Join-Path $Destination 'resources'
-            New-CompanyAgentDirectory -Path $resourceDestination
-            foreach ($resource in @(Get-ChildItem -LiteralPath $item.FullName -Force)) {
-                if ($resource.Name -ieq 'first-work.html') { continue }
-                if ($resource.Name -ieq 'manuals') {
-                    $manualDestination = Join-Path $resourceDestination 'manuals'
-                    New-CompanyAgentDirectory -Path $manualDestination
-                    foreach ($manualName in @($markdownManuals) + @($htmlManual)) {
-                        Copy-Item -LiteralPath (Join-Path $resource.FullName $manualName) -Destination $manualDestination -Force
-                    }
-                    continue
-                }
-                Copy-Item -LiteralPath $resource.FullName -Destination $resourceDestination -Recurse -Force
-            }
-            continue
-        }
-        Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
+    # Only reviewed files enter an employee installation. New source Skills,
+    # engines and assets stay source-only until explicitly added to the manifest.
+    $profileBuilder = Join-Path $SourceRoot 'scripts\harness_core\build-profile.py'
+    $profileManifest = Join-Path $SourceRoot 'deploy\harness-core-manifest.json'
+    $profileBuild = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @(
+        '-X', 'utf8', '-B', $profileBuilder, '--source-root', $SourceRoot,
+        '--manifest', $profileManifest, '--destination', $Destination)
+    if ($profileBuild.ExitCode -ne 0) {
+        throw "Personal harness profile build failed:`r`n$($profileBuild.StdOut)`r`n$($profileBuild.StdErr)"
     }
 }
 
@@ -141,8 +126,8 @@ foreach ($deployName in $productionDeployFiles) {
 
 # Markdown is a user-facing installed resource as well as a ZIP document.
 # Fail before packaging if source edits were not copied by build-manuals.mjs.
-$markdownManuals = @('README.md', 'CLAUDE_CODE_BASICS.md', 'ONBOARDING_COURSE.md',
-    'USER_GUIDE.md', 'COMPANY_AGENT_HANDBOOK.md', 'CLAUDE_CODE_COMMANDS.md', 'DESIGN_TERMS.md')
+$markdownManuals = @('CLAUDE_CODE_BASICS.md', 'ONBOARDING_COURSE.md',
+    'USER_GUIDE.md', 'COMPANY_AGENT_HANDBOOK.md', 'CLAUDE_CODE_COMMANDS.md', 'README.md')
 $htmlManual = 'Company-Agent-사용자-안내서.html'
 foreach ($manualName in $markdownManuals) {
     $manualSource = Join-Path $SourceRoot ('docs\' + $manualName)
@@ -188,6 +173,11 @@ foreach ($sourcePath in @($pluginSource, $knowledgeSource, $deploySource)) {
     }
 }
 
+# Even a source-validation-free build needs Python for the explicit profile.
+$pythonInfo = Get-Command $PythonCommand | Select-Object -First 1
+$pythonExecutable = $pythonInfo.Source
+if ([string]::IsNullOrWhiteSpace($pythonExecutable)) { $pythonExecutable = $pythonInfo.Definition }
+
 if (-not $SkipSourceValidation) {
     Assert-CompanyAgentPrerequisites -ClaudeCommand $ClaudeCommand -PythonCommand $PythonCommand
     $claudeInfo = Get-Command $ClaudeCommand | Select-Object -First 1
@@ -195,51 +185,7 @@ if (-not $SkipSourceValidation) {
     if ([string]::IsNullOrWhiteSpace($claudeExecutable)) {
         $claudeExecutable = $claudeInfo.Definition
     }
-    $pluginValidation = & $claudeExecutable plugin validate --strict $pluginSource 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        throw "Claude plugin validation failed:`r`n$($pluginValidation -join [Environment]::NewLine)"
-    }
 
-    $pythonInfo = Get-Command $PythonCommand | Select-Object -First 1
-    $pythonExecutable = $pythonInfo.Source
-    if ([string]::IsNullOrWhiteSpace($pythonExecutable)) {
-        $pythonExecutable = $pythonInfo.Definition
-    }
-    $excelSkillValidation = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-B', (Join-Path $SourceRoot 'scripts\sync-excel-pipeline-skill.py'), '--check')
-    if ($excelSkillValidation.ExitCode -ne 0) {
-        throw "Excel skill runtime source validation failed:`r`n$($excelSkillValidation.StdOut)`r`n$($excelSkillValidation.StdErr)"
-    }
-    $catalogSkillValidation = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-B', (Join-Path $SourceRoot 'scripts\sync-work-context-skill.py'), '--check')
-    if ($catalogSkillValidation.ExitCode -ne 0) {
-        throw "Work context skill source validation failed:`r`n$($catalogSkillValidation.StdOut)`r`n$($catalogSkillValidation.StdErr)"
-    }
-    $previousDontWriteBytecode = [Environment]::GetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', 'Process')
-    try {
-        [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', '1', 'Process')
-        $knowledgeValidation = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-B', (Join-Path $pluginSource 'scripts\harness_cli.py'), 'knowledge', 'validate', '--base', $knowledgeSource)
-        if ($knowledgeValidation.ExitCode -ne 0) {
-            throw "Corporate Knowledge validation failed:`r`n$($knowledgeValidation.StdOut)`r`n$($knowledgeValidation.StdErr)"
-        }
-    }
-    finally {
-        [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', $previousDontWriteBytecode, 'Process')
-    }
-
-    $compileCache = Join-Path $env:TEMP ('CompanyAgent-Compile-' + [guid]::NewGuid().ToString('N'))
-    $previousCachePrefix = [Environment]::GetEnvironmentVariable('PYTHONPYCACHEPREFIX', 'Process')
-    try {
-        [Environment]::SetEnvironmentVariable('PYTHONPYCACHEPREFIX', $compileCache, 'Process')
-        $compileOutput = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-m', 'compileall', '-q', $pluginSource)
-        if ($compileOutput.ExitCode -ne 0) {
-            throw "Python compile validation failed:`r`n$($compileOutput.StdOut)`r`n$($compileOutput.StdErr)"
-        }
-    }
-    finally {
-        [Environment]::SetEnvironmentVariable('PYTHONPYCACHEPREFIX', $previousCachePrefix, 'Process')
-        if (Test-Path -LiteralPath $compileCache) {
-            Remove-Item -LiteralPath $compileCache -Recurse -Force -ErrorAction SilentlyContinue
-        }
-    }
 }
 
 $temporaryBase = ConvertTo-CompanyAgentFullPath -Path $env:TEMP
@@ -250,6 +196,31 @@ New-CompanyAgentDirectory -Path $outputParent
 try {
     New-CompanyAgentDirectory -Path $stagePath
     Copy-CompanyAgentPluginSource -Source $pluginSource -Destination (Join-Path $stagePath 'payload\core\plugin')
+    if (-not $SkipSourceValidation) {
+        $pluginValidation = & $claudeExecutable plugin validate --strict (Join-Path $stagePath 'payload\core\plugin') 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            throw "Personal harness plugin validation failed:`r`n$($pluginValidation -join [Environment]::NewLine)"
+        }
+        $corePayload = Join-Path $stagePath 'payload\core\plugin'
+        $previousDontWriteBytecode = [Environment]::GetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', 'Process')
+        try {
+            [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', '1', 'Process')
+            $knowledgeValidation = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @('-B', (Join-Path $corePayload 'scripts\harness_cli.py'), 'knowledge', 'validate', '--base', $knowledgeSource)
+            if ($knowledgeValidation.ExitCode -ne 0) {
+                throw "Corporate Knowledge validation failed:`r`n$($knowledgeValidation.StdOut)`r`n$($knowledgeValidation.StdErr)"
+            }
+        }
+        finally {
+            [Environment]::SetEnvironmentVariable('PYTHONDONTWRITEBYTECODE', $previousDontWriteBytecode, 'Process')
+        }
+
+        $compileOutput = Invoke-CompanyAgentPythonProcess -Executable $pythonExecutable -Arguments @(
+            '-X', 'utf8', '-B', (Join-Path $SourceRoot 'scripts\harness_core\build-profile.py'),
+            '--source-root', $SourceRoot, '--destination', $corePayload, '--check', '--validate-python')
+        if ($compileOutput.ExitCode -ne 0) {
+            throw "Core Python syntax validation failed:`r`n$($compileOutput.StdOut)`r`n$($compileOutput.StdErr)"
+        }
+    }
     Copy-CompanyAgentDirectoryContents -Source $knowledgeSource -Destination (Join-Path $stagePath 'payload\knowledge')
     $deployDestination = Join-Path $stagePath 'deploy'
     New-CompanyAgentDirectory -Path $deployDestination
@@ -332,10 +303,7 @@ try {
     # Keep current user text and operational contracts. Historical changes,
     # audits, validation records and alternate HTML readers remain in source.
     $operationalDocs = @('DEPLOYMENT.md', 'STATE_PRESERVATION.md', 'SKILL_PRIORITY.md',
-        'PROJECT_HARNESS.md', 'MCP_CONTRACTS.md', 'ADMIN_KNOWLEDGE_GUIDE.md',
-        'LEGACY_MACHINE_DEPLOYMENT.md', 'SELF_LEARNING.md', 'BUSINESS_PILOT_GUIDE.md',
-        'SKILL_CATALOG.md', 'HTML_DESIGN_SELECTION.md',
-        'COMPANY_PERSONAL_WORKFLOW.md')
+        'ADMIN_KNOWLEDGE_GUIDE.md', 'SELF_LEARNING.md', 'SKILL_CATALOG.md', 'HARNESS_CORE_SPLIT.md')
     New-CompanyAgentDirectory -Path (Join-Path $stagePath 'docs')
     foreach ($docName in @($operationalDocs) + @($markdownManuals) + @($htmlManual)) {
         Copy-Item -LiteralPath (Join-Path $SourceRoot ('docs\' + $docName)) -Destination (Join-Path $stagePath ('docs\' + $docName)) -Force

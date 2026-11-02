@@ -35,6 +35,7 @@ from .paths import atomic_write_json, ensure_user_layout, knowledge_base_root, l
 from .policy import evaluate_tool_call
 from .state import load_session, mark_verified
 from .state_compatibility import check_state_compatibility
+from .core_profile import is_core_install
 
 
 def _path(value: str | None, default: Path | None = None) -> Path | None:
@@ -177,6 +178,8 @@ def cmd_asset_create(args: argparse.Namespace) -> int:
         return 0
     with Path(args.spec).open("r", encoding="utf-8-sig") as stream:
         spec = json.load(stream)
+    if is_core_install() and (not isinstance(spec, dict) or spec.get('type') != 'skill'):
+        raise ValueError('기본 하네스는 개인 스킬만 생성합니다. 도구와 MCP 제작은 개별 asset-factory 스킬을 설치해 사용하세요.')
     location = None
     if spec.get('type') == 'skill':
         from .native_skill_storage import locate_skill
@@ -230,7 +233,11 @@ def cmd_asset_update(args: argparse.Namespace) -> int:
 
 
 def cmd_asset_validate(args: argparse.Namespace) -> int:
-    result = validate_asset(Path(args.path).resolve())
+    target = Path(args.path).resolve()
+    if is_core_install() and (not (target / 'SKILL.md').is_file()
+                              or (target / 'tool.json').exists() or (target / 'asset.json').exists()):
+        raise ValueError('기본 하네스는 개인 스킬만 검증합니다. 도구와 MCP 검증은 개별 asset-factory 스킬을 사용하세요.')
+    result = validate_asset(target)
     _print_json(result)
     return 0 if result["ok"] else 1
 
@@ -570,7 +577,9 @@ def cmd_policy_check(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     state = _state_root(args)
-    layout = ensure_user_layout(state)
+    # The core doctor is the exact metadata-only permission contract. It must
+    # not initialize a profile merely because the user requested diagnostics.
+    layout = {'config': state / 'config'} if is_core_install() else ensure_user_layout(state)
     base = _base_root(args)
     plugin_root = Path(__file__).resolve().parents[2]
     checks = {
@@ -579,7 +588,8 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         "pluginManifest": {"ok": (plugin_root / ".claude-plugin" / "plugin.json").exists()},
         "hooks": {"ok": (plugin_root / "hooks" / "hooks.json").exists()},
         "userConfig": {"ok": (layout["config"] / "user.json").exists()},
-        "knowledgeBase": {"ok": bool(base and base.exists()), "value": str(base) if base else None},
+        "knowledgeBase": {"ok": bool(base and base.exists()) or (is_core_install() and base is None),
+                          "value": str(base) if base else None},
         "smallModel": {"ok": True, "alias": "haiku", "source": "existing Claude configuration", "liveVerified": False},
         "mediumModel": {"ok": True, "alias": "sonnet", "source": "existing Claude configuration", "liveVerified": False},
         "largeModel": {"ok": True, "alias": "opus", "source": "existing Claude configuration", "liveVerified": False},
@@ -705,14 +715,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=__version__)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    vision = subparsers.add_parser('vision', help='이미지 전용 모델 확인·변경 (일반 모델은 유지).')
-    vision_sub = vision.add_subparsers(dest='vision_command', required=True)
-    for operation in ('status', 'configure'):
-        action = vision_sub.add_parser(operation)
-        _add_state_argument(action)
-        if operation == 'configure':
-            action.add_argument('--model', required=True, help='사용자가 선택한 실제 모델 ID (표시 이름 아님).')
-        action.set_defaults(func=cmd_vision)
+    if not is_core_install():
+        vision = subparsers.add_parser('vision', help='이미지 전용 모델 확인·변경 (일반 모델은 유지).')
+        vision_sub = vision.add_subparsers(dest='vision_command', required=True)
+        for operation in ('status', 'configure'):
+            action = vision_sub.add_parser(operation)
+            _add_state_argument(action)
+            if operation == 'configure':
+                action.add_argument('--model', required=True, help='사용자가 선택한 실제 모델 ID (표시 이름 아님).')
+            action.set_defaults(func=cmd_vision)
 
     state = subparsers.add_parser("state", help="Check personal state compatibility without changing files.")
     state_sub = state.add_subparsers(dest="state_command", required=True)
@@ -832,11 +843,13 @@ def build_parser() -> argparse.ArgumentParser:
     export.add_argument("--output", required=True)
     export.set_defaults(func=cmd_knowledge_export)
 
-    asset = subparsers.add_parser("asset", help="Create and validate personal Skills, script tools, and MCP servers.")
+    asset = subparsers.add_parser("asset", help=("Create, update and validate personal Skills." if is_core_install()
+                                               else "Create and validate personal Skills, script tools, and MCP servers."))
     asset_sub = asset.add_subparsers(dest="asset_command", required=True)
-    web_plan = asset_sub.add_parser("web-plan", help="웹 업무 스킬의 다음 단계 안내. 브라우저 실행·연결·저장 없이 설명만 검사합니다.")
-    web_plan.add_argument("--spec", help="비밀값 없는 업무 설명 JSON. 생략하면 필요한 질문만 표시합니다.")
-    web_plan.set_defaults(func=cmd_asset_web_plan)
+    if not is_core_install():
+        web_plan = asset_sub.add_parser("web-plan", help="웹 업무 스킬의 다음 단계 안내. 브라우저 실행·연결·저장 없이 설명만 검사합니다.")
+        web_plan.add_argument("--spec", help="비밀값 없는 업무 설명 JSON. 생략하면 필요한 질문만 표시합니다.")
+        web_plan.set_defaults(func=cmd_asset_web_plan)
     create = asset_sub.add_parser("create")
     _add_state_argument(create)
     create.add_argument("--spec", required=True)
@@ -860,42 +873,45 @@ def build_parser() -> argparse.ArgumentParser:
     check_skill.add_argument("--project-root")
     check_skill.add_argument("--name", required=True)
     check_skill.set_defaults(func=cmd_asset_check_skill)
-    test_tool = asset_sub.add_parser("test-tool")
-    _add_state_argument(test_tool)
-    test_tool.add_argument("--name", required=True)
-    test_tool.add_argument("--input", required=True)
-    test_tool.add_argument("--timeout", type=int, default=30)
-    test_tool.set_defaults(func=cmd_asset_test_tool)
-    test_mcp = asset_sub.add_parser("test-mcp")
-    _add_state_argument(test_mcp)
-    test_mcp.add_argument("--name", required=True)
-    test_mcp.add_argument("--timeout", type=int, default=30)
-    test_mcp.set_defaults(func=cmd_asset_test_mcp)
-    rebind_mcp = asset_sub.add_parser("rebind-mcp-runtime", help="Explicitly revalidate a signed personal MCP with the current approved Python after a Core update.")
-    _add_state_argument(rebind_mcp)
-    rebind_mcp.add_argument("--name", required=True)
-    rebind_mcp.add_argument("--timeout", type=int, default=30)
-    rebind_mcp.set_defaults(func=cmd_asset_rebind_mcp)
-    activate = asset_sub.add_parser("activate-mcp")
-    _add_state_argument(activate)
-    activate.add_argument("--name", required=True)
-    activate.add_argument("--receipt", required=True)
-    activate.set_defaults(func=cmd_asset_activate_mcp)
-    sync_mcp = asset_sub.add_parser("sync-mcp", help="Retry native scoped registration for an already validated active MCP.")
-    _add_state_argument(sync_mcp)
-    sync_mcp.add_argument("--name", required=True)
-    sync_mcp.set_defaults(func=cmd_asset_sync_mcp)
-    activate_tool = asset_sub.add_parser("activate-tool")
-    _add_state_argument(activate_tool)
-    activate_tool.add_argument("--name", required=True)
-    activate_tool.add_argument("--receipt", required=True)
-    activate_tool.set_defaults(func=cmd_asset_activate_tool)
-    run_tool = asset_sub.add_parser("run-tool")
-    _add_state_argument(run_tool)
-    run_tool.add_argument("--name", required=True)
-    run_tool.add_argument("--input", required=True)
-    run_tool.add_argument("--timeout", type=int, default=60)
-    run_tool.set_defaults(func=cmd_asset_run_tool)
+    functional_assets = []
+    if not is_core_install():
+        test_tool = asset_sub.add_parser("test-tool")
+        _add_state_argument(test_tool)
+        test_tool.add_argument("--name", required=True)
+        test_tool.add_argument("--input", required=True)
+        test_tool.add_argument("--timeout", type=int, default=30)
+        test_tool.set_defaults(func=cmd_asset_test_tool)
+        test_mcp = asset_sub.add_parser("test-mcp")
+        _add_state_argument(test_mcp)
+        test_mcp.add_argument("--name", required=True)
+        test_mcp.add_argument("--timeout", type=int, default=30)
+        test_mcp.set_defaults(func=cmd_asset_test_mcp)
+        rebind_mcp = asset_sub.add_parser("rebind-mcp-runtime", help="Explicitly revalidate a signed personal MCP with the current approved Python after a Core update.")
+        _add_state_argument(rebind_mcp)
+        rebind_mcp.add_argument("--name", required=True)
+        rebind_mcp.add_argument("--timeout", type=int, default=30)
+        rebind_mcp.set_defaults(func=cmd_asset_rebind_mcp)
+        activate = asset_sub.add_parser("activate-mcp")
+        _add_state_argument(activate)
+        activate.add_argument("--name", required=True)
+        activate.add_argument("--receipt", required=True)
+        activate.set_defaults(func=cmd_asset_activate_mcp)
+        sync_mcp = asset_sub.add_parser("sync-mcp", help="Retry native scoped registration for an already validated active MCP.")
+        _add_state_argument(sync_mcp)
+        sync_mcp.add_argument("--name", required=True)
+        sync_mcp.set_defaults(func=cmd_asset_sync_mcp)
+        activate_tool = asset_sub.add_parser("activate-tool")
+        _add_state_argument(activate_tool)
+        activate_tool.add_argument("--name", required=True)
+        activate_tool.add_argument("--receipt", required=True)
+        activate_tool.set_defaults(func=cmd_asset_activate_tool)
+        run_tool = asset_sub.add_parser("run-tool")
+        _add_state_argument(run_tool)
+        run_tool.add_argument("--name", required=True)
+        run_tool.add_argument("--input", required=True)
+        run_tool.add_argument("--timeout", type=int, default=60)
+        run_tool.set_defaults(func=cmd_asset_run_tool)
+        functional_assets = [test_tool, test_mcp, activate, activate_tool, sync_mcp, run_tool, rebind_mcp]
 
     context = subparsers.add_parser("context", help="Read-only instruction size diagnostics.")
     context_sub = context.add_subparsers(dest="context_command", required=True)
@@ -1002,12 +1018,12 @@ def build_parser() -> argparse.ArgumentParser:
     # Selection never accepts a browser/model supplied destination path. Existing
     # state-root remains the installation/session root, not a second scope flag.
     for action in (upsert, create, inspect_skill, update_skill, memory_upsert, memory_search, memory_compact, memory_history, memory_restore,
-                   test_tool, test_mcp, activate, activate_tool, sync_mcp, run_tool, rebind_mcp,
-                   search, build, export, reconcile):
+                   search, build, export, reconcile, *functional_assets):
         action.add_argument('--storage-scope', choices=('personal', 'project'))
         action.add_argument('--project-root')
-    from .business import register as register_business
-    register_business(subparsers)
+    if not is_core_install():
+        from .business import register as register_business
+        register_business(subparsers)
     from .usability import register as register_usability
     register_usability(subparsers)
     return parser

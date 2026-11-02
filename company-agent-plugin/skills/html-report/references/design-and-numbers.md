@@ -1,5 +1,7 @@
 # 보고서 디자인과 수치 계약
 
+PPT나 이미지 참고가 있을 때만 `referenceImages`와 `referenceStyle`을 추가합니다. 최대 60장의 전체 목록과 여러 장에서 합친 색 조합, 한글 서체, 여백, 표와 차트의 규칙 및 관찰 근거는 [reference-style.md](reference-style.md)의 공통 계약을 따릅니다. 현재 호스트가 실제 확인한 규칙을 사용하며 이미 정한 style, 글꼴, 분량과 표시 방식은 유지합니다.
+
 <!-- Company Agent adaptation, 2026-09-27; selected frontend-design principles, modified; see ../../../THIRD_PARTY_NOTICES.md. -->
 
 선택을 마치고 전체 HTML 보고서 job을 작성할 때 읽습니다. 질문/런타임/스킬 탐색을

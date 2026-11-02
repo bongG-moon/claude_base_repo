@@ -1,18 +1,21 @@
 # 내부 명세와 실행
 
+PPT나 이미지 참고가 있을 때만 `referenceImages`와 `referenceStyle`을 추가합니다. 최대 60장의 전체 목록과 여러 장에서 합친 색 조합, 한글 서체, 여백, 표와 차트의 규칙 및 관찰 근거는 [reference-style.md](reference-style.md)의 계약을 따릅니다. 이미지에서 자동으로 추론하는 기능이 아니라 현재 호스트가 실제 확인한 규칙을 명세에 반영하는 흐름입니다.
+
 JSON은 작업자가 만드는 내부 파일입니다. 사용자는 목적·자료·수정 의견을 대화로 전달하면 됩니다.
 최종 사용자 결과는 PPT 하나이며 초안·명세는 작업 내부에 유지합니다.
 
 ```json
 {
-  "title":"교육 신청 현황", "creationMode":"new", "designPreset":"business",
+  "title":"교육 신청 현황", "creationMode":"new", "designPreset":"business", "compositionMode":"content-led",
   "purpose":"진행 현황 보고", "audience":"담당자", "slideCount":2,
+  "presentationFont":"맑은 고딕", "presentationProfile":{"density":"presentation"},
   "slides":[
-    {"title":"신청은 두 부서에서 진행됐습니다", "layout":"summary", "body":"가상 자료입니다.",
+    {"title":"신청은 두 부서에서 진행됐습니다", "pageRole":"cover", "body":"가상 자료입니다.",
      "bullets":["부서별 수요 확인","후속 교육 일정 검토"]},
-    {"title":"부서별 신청 현황", "layout":"evidence",
+    {"title":"부서별 신청 현황", "pageRole":"detail",
      "table":{"headers":["부서","신청"],"rows":[["생산","12명"],["품질","8명"]]},
-     "body":"신청 인원만 집계했습니다.","contentOrder":["table","body"],"source":"실습 가상 자료"}
+     "body":"신청 인원만 집계했습니다.","source":"실습 가상 자료"}
   ]
 }
 ```
@@ -20,8 +23,20 @@ JSON은 작업자가 만드는 내부 파일입니다. 사용자는 목적·자�
 기본 페이지는 960×540pt입니다. `presentationFrame:{"width":960,"height":540}`로 명시할 수 있습니다.
 기본 디자인은 business이며 monochrome / warm도 지원합니다. `presentationTheme`에 title/accent/text/muted/background/tint의
 색을 `#` 없는 6자리 RGB로 지정할 수 있습니다. `presentationFont`는 PC에서 확인한 설치 글꼴 이름입니다.
+직접 입력한 디자인은 `designDirection`에 사용자의 문장을 짧게 보존하고 실제 `presentationTheme`, `presentationFont`, `elements`에도 반영합니다. 문장만 기록하고 기본 카드 배치를 그대로 쓰지 않습니다. 추천을 선택하면 내용과 청중에 맞는 지원 preset과 배치를 정해 명시적으로 저장합니다.
+
+## 장별 구성과 참고 양식의 기준값
+
+새 장의 `pageRole`은 cover / key-message / comparison / workflow / timeline / detail / closing입니다. 목적과 자료에서 필요한 역할을 정하며 장마다 새 질문을 하지 않습니다. 각각 표지, 핵심 결론과 지표, 비교 영역, 실제 업무 분기, 날짜 비례 일정, 넓은 상세 표, 결론과 후속 행동을 만듭니다. 단순화가 목적이 아니며 복잡한 관계나 사용자 양식은 `elements`의 도형과 곡선, 글자와 그룹을 함께 사용합니다. `elements`, 명시한 contentOrder와 기존 job은 자동 역할로 덮지 않습니다.
+
+`presentationProfile`은 같은 job에 보관하는 짧은 기준값입니다. `titleSize`, `bodySize`, `emphasisSize`, `annotationSize`, `tableSize`, `titleFont`, `bodyFont`, `margin`, `gap`, `density`를 받습니다. 단위는 pt이며 역할형 배치에 사용합니다. `density:"presentation"`은 발표용, `"reading"`은 읽기용입니다. 사용자가 이미 정한 목적과 원본 글꼴, 크기, 여백을 먼저 사용하며 별도 설문이나 새로운 설정 파일을 만들지 않습니다.
+
+comparison은 `panels:[{title,body,bullets?}]` 2~3개를 비교합니다. workflow는 `workflow:{nodes,edges}`의 실제 연결만 그립니다. nodes는 1~8개이며 `{id,title,body?,shape?}`, edges는 최대 12개 `{from,to,label?}`입니다. 자동 배치는 순환 없는 4단계 이내이고 순환이나 더 복잡한 위치는 `elements`로 명시합니다. timeline은 `milestones:[{label,date,detail?}]` 2~7개이며 날짜는 실제 `YYYY-MM-DD`입니다. 날짜를 시간 비율로 배치하므로 확인되지 않은 날짜를 만들거나 같은 간격의 그림으로 바꾸지 않습니다. detail의 데이터 행은 17개 이하로 나누며 실제 공간도 확인합니다.
+
+부분 강조, 분기 흐름과 복합 도형의 최소 예시는 [advanced-shapes.md](advanced-shapes.md)에 있습니다. 해당 기능이 필요한 경우에만 읽습니다.
 
 `layout`: auto/summary/evidence/comparison/actions. `body`·`bullets`·`table`·`chart`·`image`를 사용합니다.
+새 제작의 `compositionMode:"content-led"`는 layout을 지정하지 않은 장에서 실제 내용에 맞는 요약, 넓은 근거, 비교, 실행안 배치를 고릅니다. 명시한 layout/contentOrder/elements와 참고 양식의 배치를 바꾸는 옵션이 아닙니다. 기존 작업을 재개할 때 새로 끼워 넣지 않습니다.
 chart는 type(column/bar/line/pie), categories, series(name/values)입니다. `contentOrder`는 해당 장에 존재하는
 body/bullets/table/chart/image를 한 번씩 적습니다. 자동 배치가 공간을 초과하면 내용·장수 조정으로 해결하며 몰래 축소하지 않습니다.
 
@@ -40,9 +55,8 @@ body/bullets/table/chart/image를 한 번씩 적습니다. 자동 배치가 공�
 ]}
 ```
 
-text는 size/bold/color/font/align(left/center/right)를 지정합니다. 같은 그룹의 text/shape/image는 목록에서
-연속으로 둡니다. 그룹 이름은 64자 이하의 글자·숫자·밑줄·하이픈입니다. table/chart를 그룹에 섞지 않습니다.
-shape 지원 이름은 실행기의 오류가 반환하는 범위를 따르며 임의 PowerPoint 상수를 넣지 않습니다.
+text는 size/bold/color/font/align(left/center/right)를 지정하며 같은 상자 안의 부분 강조는 `runs`를 사용합니다. 구간을 합친 문자열은 text와 같아야 합니다. 같은 그룹의 text/shape/line/path/image는 목록에서 연속으로 둡니다. 그룹 이름은 64자 이하의 글자, 숫자, 밑줄, 하이픈입니다. table/chart를 그룹에 섞지 않습니다.
+shape는 기존 rect/roundRect/ellipse 외에 화살표, chevron, diamond, triangle, hexagon 등 16종을 지원합니다. line과 구조화한 path로 꺾은선과 Bézier 곡선을 편집 가능한 개체로 구성합니다. 전체 도형 목록과 좌표 규칙은 advanced-shapes.md를 사용하며 임의 PowerPoint 상수나 SVG 실행 코드를 넣지 않습니다.
 image는 `image:{"path":"그림.png","alt":"설명"}`와 x/y/w/h, fit(contain/cover/stretch)를 지정합니다.
 사용자 그림을 꽉 채우는 경우 cover 또는 stretch의 자르기/왜곡 차이를 설명하고 요청에 맞게 선택합니다.
 
@@ -68,3 +82,5 @@ draft 결과의 `designReview`는 경로·명세 해시·초안 해시를 포함
 build는 승인 누락, `false`, 문자열 `"true"`와 초안 또는 내용 변경을 거절합니다.
 같은 승인 기록과 같은 초안을 재사용할 때는 다시 질문하지 않습니다. 실행기는 기록의 형식과 일치를
 검사하며, 실제 사용자 답변이 있었는지는 대화를 진행하는 호스트가 확인해야 합니다.
+
+초안 응답의 `scenePreflight`는 같은 장면에 대한 한 번의 경고 검사입니다. 글자 겹침이나 넘침을 모아 해당 장만 보정합니다. 의도한 배경이나 도식의 겹침을 오류로 단정하지 않으며 자동 글자 축소, 새 모델 호출과 장별 승인 절차를 추가하지 않습니다. `templatePreview`가 반환되면 원본 양식의 미지원 개체와 근사 범위도 함께 확인합니다. 구조 검사가 실제 PowerPoint 화면 검토를 대신하지 않습니다.

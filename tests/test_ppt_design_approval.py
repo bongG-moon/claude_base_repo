@@ -103,7 +103,7 @@ class PptDesignApprovalTests(unittest.TestCase):
         for content,path in [({'creationMode':'new'},self.root/'ppt-choices-test.json'),
                              ({'slideCount':True},state/'tmp/ppt-choices-test.json'),
                              ({'creationMode':'reference','referenceImages':['https://example.invalid/a.png']},state/'tmp/ppt-choices-test.json'),
-                             ({'creationMode':'reference','referenceImages':[str(self.root/'a.png')]*4},state/'tmp/ppt-choices-test.json')]:
+                             ({'creationMode':'reference','referenceImages':[str(self.root/'a.png')]*61},state/'tmp/ppt-choices-test.json')]:
             record_activity({'session_id':'ppt-choice','tool_name':'Write','tool_input':{
                 'file_path':str(path),'content':json.dumps(content)}},state)
         self.assertEqual(4,load_session('ppt-choice',state)['mutationCount'])

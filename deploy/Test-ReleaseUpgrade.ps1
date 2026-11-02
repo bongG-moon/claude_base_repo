@@ -18,8 +18,14 @@ function Assert-ReleaseUpgrade {
     if (-not $Condition) { throw "Release upgrade failed: $Message" }
 }
 function Get-ReleaseTreeSnapshot {
-    param([string] $Path)
-    return (@(Get-CompanyAgentTreeRecords -Root $Path | ConvertTo-Json -Depth 10 -Compress) -join '')
+    param([string] $Path, [switch] $IgnoreNativeCacheMarker)
+    $records = @(Get-CompanyAgentTreeRecords -Root $Path)
+    if ($IgnoreNativeCacheMarker) {
+        # Claude marks its former cache orphaned during plugin update. This
+        # host-owned timestamp is not an installed or personal source file.
+        $records = @($records | Where-Object { $_.path -cne '.orphaned_at' })
+    }
+    return (@($records | ConvertTo-Json -Depth 10 -Compress) -join '')
 }
 # Keep the fixture profile close to a real user's path length. A long test name
 # can exceed legacy PowerShell Copy-Item limits before the update is exercised.
@@ -67,6 +73,23 @@ try {
     }
     $installed = & (Join-Path $baseline 'deploy\Setup-CompanyAgent.ps1') @common -BundleRoot $baseline -ExistingHarnessAction Replace
     Assert-ReleaseUpgrade ($installed.status -eq 'installed') 'Original release did not install'
+    $oldEntries = @((Read-CompanyAgentJson -Path (Join-Path $config 'plugins\installed_plugins.json')).plugins.'company-agent@company-agent-local')
+    $oldCurrent = @($oldEntries | Where-Object { $_.scope -eq 'user' -and $_.version -eq $oldVersion })
+    Assert-ReleaseUpgrade ($oldCurrent.Count -eq 1) 'Baseline plugin cache is ambiguous'
+    $oldPluginRoot = [string]$oldCurrent[0].installPath
+    $oldPluginBefore = Get-ReleaseTreeSnapshot $oldPluginRoot -IgnoreNativeCacheMarker
+    # A preference referring to a removed built-in remains user-owned history.
+    # The update must not rewrite it or install a replacement functional Skill.
+    $oldCli = Join-Path $oldPluginRoot 'scripts\harness_cli.py'
+    $oldSkillArgs = @('--state-root', $state, '--claude-root', $config, '--plugin-root', $oldPluginRoot,
+        '--base', (Join-Path $baseline 'payload\knowledge'), '--no-project')
+    $oldInventoryText = & $PythonCommand -B $oldCli skill inventory @oldSkillArgs
+    Assert-ReleaseUpgrade ($LASTEXITCODE -eq 0) 'Baseline skill inventory failed'
+    $oldInventory = ($oldInventoryText -join [Environment]::NewLine) | ConvertFrom-Json
+    $oldHtml = @($oldInventory.skills | Where-Object { $_.source -eq 'company' -and $_.name -eq 'html-report' })
+    Assert-ReleaseUpgrade ($oldHtml.Count -eq 1) 'Baseline must contain the built-in HTML skill being removed'
+    $null = & $PythonCommand -B $oldCli skill prefer --scope default --name html-report --candidate $oldHtml[0].id @oldSkillArgs
+    Assert-ReleaseUpgrade ($LASTEXITCODE -eq 0) 'Baseline removed-skill preference fixture could not be saved'
     # Real-world synced Office Skills gain another long prefix during backup.
     # Add this after the baseline install so the update exercises that boundary.
     $longSkillRelative = 'skills\synced\aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb\docx\scripts\office\schemas\ISO-IEC29500-4_2016\dml-spreadsheetDrawing.xsd'
@@ -75,14 +98,25 @@ try {
     [IO.File]::WriteAllText(('\\?\' + $longSkillPath), 'Preserve long-path schema fixture.', (New-Object Text.UTF8Encoding($false)))
     $instruction = Join-Path $config 'CLAUDE.md'
     Write-CompanyAgentUtf8File -Path $instruction -Content 'Preserve personal instructions added after installation.'
+    $individualFiles = @()
+    foreach ($slug in @('html-report', 'presentation', 'file-organizer', 'work-context-catalog')) {
+        $individualSkill = Join-Path $config ('skills\' + $slug + '\SKILL.md')
+        Write-CompanyAgentUtf8File -Path $individualSkill -Content ("---`nname: " + $slug + "`ndescription: Separately installed personal Skill fixture`n---`nPreserve my individual package and edits.")
+        $individualCode = Join-Path $config ('skills\' + $slug + '\scripts\personal.py')
+        Write-CompanyAgentUtf8File -Path $individualCode -Content '# Preserve separate functional package code.'
+        $individualFiles += @($individualSkill, $individualCode)
+    }
     $personalMailSkill = Join-Path $config 'skills\outlook-assistant\SKILL.md'
     Write-CompanyAgentUtf8File -Path $personalMailSkill -Content "---`nname: outlook-assistant`ndescription: Personal mail fixture`n---`nPreserve this separately installed skill."
-    foreach ($relative in @('memory\notes\release.md', 'knowledge\personal-release.md', 'skills\personal-release\SKILL.md')) {
+    foreach ($relative in @('memory\notes\release.md', 'knowledge\personal-release.md', 'skills\personal-release\SKILL.md',
+        'personal-root\.claude\skills\learned-procedure\SKILL.md', 'handoffs\unfinished\handoff.md')) {
         Write-CompanyAgentUtf8File -Path (Join-Path $state $relative) -Content ('Preserve release sentinel: ' + $relative)
     }
+    Write-CompanyAgentJsonAtomic -Path (Join-Path $state 'config\learning.json') -Value @{ schemaVersion = 1; enabled = $false }
+    Write-CompanyAgentJsonAtomic -Path (Join-Path $state 'learning\state.json') -Value @{ schemaVersion = 1; preservationFixture = 'Keep observations and rollback history.' }
     $stateBefore = Get-ReleaseTreeSnapshot $state
     $personalHashes = @{}
-    foreach ($path in @($personalSkill, $personalMailSkill, $instruction, $mcp)) { $personalHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
+    foreach ($path in @($personalSkill, $personalMailSkill, $instruction, $mcp) + $individualFiles) { $personalHashes[$path] = (Get-FileHash -LiteralPath $path -Algorithm SHA256).Hash }
     $updated = & (Join-Path $update 'deploy\Setup-CompanyAgent.ps1') @common -BundleRoot $update -ExistingHarnessAction Update
     Assert-ReleaseUpgrade ($updated.status -eq 'updated' -and $updated.previousCoreVersion -eq $oldVersion) 'Update did not report the real old version'
     $longSkillBackup = Join-Path $updated.safetyBackup (Join-Path 'claude-config' $longSkillRelative)
@@ -101,64 +135,30 @@ try {
     $entries = @((Read-CompanyAgentJson -Path (Join-Path $config 'plugins\installed_plugins.json')).plugins.'company-agent@company-agent-local')
     $current = @($entries | Where-Object { $_.scope -eq 'user' -and $_.version -eq $newVersion })
     Assert-ReleaseUpgrade ($current.Count -eq 1) 'Native Claude registry did not select the new version'
-    # These hashes compare only the updated cache with the update ZIP. The
-    # baseline release need not contain newly added learning runtime files.
-    foreach ($relative in @(
-        'scripts\company_agent\skill_execution.py', 'scripts\company_agent\skill_workflow.py',
-        'scripts\company_agent\skill_question_receipts.py',
-        'scripts\company_agent\execution_contract.py', 'scripts\company_agent\native_runtime.py',
-        'scripts\native_entry.py',
-        'scripts\company_agent\vision_routing.py', 'scripts\company_agent\vision_handoff.py',
-        'agents\vision-worker.md', 'agents\small-worker.md',
-        'agents\medium-worker.md', 'agents\large-worker.md',
-        'scripts\company_agent\business.py',
-        'scripts\company_agent\business_safety.py', 'scripts\company_agent\workspace_api.py',
-        'scripts\company_agent\resource_scope.py', 'scripts\company_agent\harness_map.py',
-        'scripts\company_agent\harness_map_html.py',
-        'scripts\company_agent\company_policy.py', 'scripts\company_agent\skill_decision.py',
-        'scripts\company_agent\skill_host_choice.py',
-        'scripts\company_agent\explanation_diagram.py', 'scripts\company_agent\explanation_export.py',
-        'templates\business\explanation.spec.json',
-        'skills\html-report\references\explanation-diagrams.md',
-        'skills\presentation\references\image-review.md',
-        'scripts\company_agent\workflow_evidence.py', 'scripts\company_agent\state.py',
-        'scripts\company_agent\learning.py', 'scripts\company_agent\work.py',
-        'scripts\company_agent\cli.py', 'scripts\company_agent\memory.py',
-        'scripts\company_agent\memory_delivery.py', 'scripts\model_route_hook.py',
-        'scripts\company_agent\memory_activity.py', 'scripts\company_agent\memory_history.py',
-        'scripts\company_agent\content_layout.py', 'scripts\company_agent\execution_contract.py',
-        'scripts\company_agent\completion_readonly.py', 'scripts\company_agent\report_facts.py',
-        'scripts\company_agent\business_artifacts.py', 'scripts\company_agent\presentation_design.py',
-        'scripts\company_agent\skill_task_context.py', 'skills\self-learning\SKILL.md',
-        'skills\self-learning\references\review-schema.md', 'commands\learning.md',
-        'skills\personal-memory\SKILL.md', 'skills\company-agent\references\completion.md',
-        'scripts\company_agent\html_reference.py', 'scripts\company_agent\knowledge.py',
-        'scripts\Invoke-CompanyAgent.ps1', 'scripts\Confirm-BusinessAction.ps1',
-        'skills\html-report\SKILL.md',
-        'resources\onboarding-course.json',
-        'resources\manuals\Company-Agent-사용자-안내서.html',
-        'resources\manuals\README.md', 'resources\manuals\CLAUDE_CODE_BASICS.md',
-        'resources\manuals\ONBOARDING_COURSE.md', 'resources\manuals\USER_GUIDE.md',
-        'resources\manuals\COMPANY_AGENT_HANDBOOK.md', 'resources\manuals\CLAUDE_CODE_COMMANDS.md',
-        'resources\manuals\DESIGN_TERMS.md',
-        'scripts\company_agent\project_bootstrap.py',
-        'scripts\company_agent\artifact_delivery.py', 'scripts\company_agent\ppt_html.py',
-        'scripts\company_agent\ppt_html_import.py', 'scripts\company_agent\ppt_dom_capture.js',
-        'scripts\company_agent\ppt_scene.py', 'scripts\company_agent\ppt_image_edit.py',
-        'skills\platform-mcp-builder\SKILL.md',
-        'licenses\frontend-design-Apache-2.0.txt', 'THIRD_PARTY_NOTICES.md',
-        'scripts\company_agent\user_language.py', 'scripts\company_agent\native_runtime.py',
-        'skills\html-report\references\design-and-numbers.md',
-        'skills\presentation\references\design-and-quality.md'
-    )) {
+    # Verify every declared new payload file, including the exact core profile.
+    # hooks.json is adapted once by the scoped installer and checked below.
+    $newPluginRoot = Join-Path $update 'payload\core\plugin'
+    foreach ($packedFile in @(Get-ChildItem -LiteralPath $newPluginRoot -Recurse -File -Force)) {
+        $relative = $packedFile.FullName.Substring($newPluginRoot.TrimEnd('\').Length + 1)
+        if ($relative -ieq 'hooks\hooks.json') { continue }
         $cachedModule = Join-Path $current[0].installPath $relative
-        $packedModule = Join-Path (Join-Path $update 'payload\core\plugin') $relative
-        Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedModule -Algorithm SHA256).Hash) "Updated file was not installed intact: $relative"
+        Assert-ReleaseUpgrade (Test-Path -LiteralPath $cachedModule -PathType Leaf) "Updated file was not installed: $relative"
+        Assert-ReleaseUpgrade ((Get-FileHash -LiteralPath $cachedModule -Algorithm SHA256).Hash -ceq (Get-FileHash -LiteralPath $packedFile.FullName -Algorithm SHA256).Hash) "Updated file was not installed intact: $relative"
     }
-    foreach ($removed in @('skills\outlook-assistant', 'scripts\Invoke-BusinessOutlook.ps1',
-        'scripts\company_agent\business_mail.py', 'scripts\company_agent\business_eml.py')) {
-        Assert-ReleaseUpgrade (-not (Test-Path -LiteralPath (Join-Path $current[0].installPath $removed))) "Retired built-in mail component survived in the new core: $removed"
+    $coreMarker = Read-CompanyAgentJson -Path (Join-Path $current[0].installPath 'resources\core-install.json')
+    Assert-ReleaseUpgrade ($coreMarker.schemaVersion -eq 1 -and $coreMarker.profile -ceq 'personal-harness') 'The updated plugin is not the personal harness profile'
+    $coreSkills = @(Get-ChildItem -LiteralPath (Join-Path $current[0].installPath 'skills') -Directory | Select-Object -ExpandProperty Name | Sort-Object)
+    Assert-ReleaseUpgrade (($coreSkills -join ',') -ceq 'asset-factory,company-agent,personal-knowledge,personal-memory,self-learning') 'Functional Skills remained in the active core'
+    foreach ($removed in @('skills\html-report', 'skills\presentation', 'skills\file-organizer',
+        'skills\excel-to-pipeline', 'skills\work-context-catalog', 'skills\web-interface',
+        'skills\website-rebuild', 'skills\platform-mcp-builder', 'agents\vision-worker.md',
+        'scripts\company_agent\business.py', 'scripts\company_agent\business_artifacts.py',
+        'scripts\company_agent\business_files.py', 'scripts\company_agent\excel_pipeline_command.py',
+        'scripts\company_agent\ppt_workflow.py', 'scripts\company_agent\vision_routing.py',
+        'scripts\Invoke-BusinessPowerPoint.ps1', 'templates\business')) {
+        Assert-ReleaseUpgrade (-not (Test-Path -LiteralPath (Join-Path $current[0].installPath $removed))) "Functional payload survived in the new core: $removed"
     }
+    Assert-ReleaseUpgrade ((Get-ReleaseTreeSnapshot $oldPluginRoot -IgnoreNativeCacheMarker) -ceq $oldPluginBefore) 'Update changed previous plugin source files'
     # A scoped installation changes exactly the Read launcher command/args.
     # Compare the entire expected document, not a blanket exclusion or the
     # source-byte hash that can never match this intentional adaptation.
@@ -200,6 +200,8 @@ try {
         nativeClaudeRegistration = $true; nativeSessionStart = $true
         readHookRegistrationVerified = $true
         personalStatePreserved = $true; originalArchivesPreserved = $true
+        individualFunctionalSkillsPreserved = $true; removedSkillPreferencePreserved = $true
+        previousPluginPreserved = $true; activeCoreProfile = $coreMarker.profile
         longPathSkillBackupPreserved = $true
         artifactsKept = [bool]$KeepArtifacts; testRoot = $testRoot
     }

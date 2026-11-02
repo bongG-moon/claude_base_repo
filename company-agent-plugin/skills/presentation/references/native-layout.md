@@ -44,7 +44,20 @@ HTML을 표 중심으로 다시 그리지 않는다. 같은 artifact work에서 
 - 승인된 변환 배치는 검토 HTML에 저장한다. PPT 제작 때 브라우저를 다시 띄우지 않는다.
   소스 HTML/CSS/그림 또는 초안 해시가 달라지면 새 초안이 필요하다.
 
-## 새 디자인·세밀한 위치: slides[].elements
+## 장별 구성과 참고 양식의 기준값
+
+새 장의 `pageRole`은 cover / key-message / comparison / workflow / timeline / detail / closing입니다. 목적과 자료에서 필요한 역할을 정하며 장마다 새 질문을 하지 않습니다. 각각 표지, 핵심 결론과 지표, 비교 영역, 실제 업무 분기, 날짜 비례 일정, 넓은 상세 표, 결론과 후속 행동을 만듭니다. 단순화가 목적이 아니며 복잡한 관계나 사용자 양식은 `elements`의 도형과 곡선, 글자와 그룹을 함께 사용합니다. `elements`, 명시한 contentOrder와 기존 job은 자동 역할로 덮지 않습니다.
+
+`presentationProfile`은 같은 job에 보관하는 짧은 기준값입니다. `titleSize`, `bodySize`, `emphasisSize`, `annotationSize`, `tableSize`, `titleFont`, `bodyFont`, `margin`, `gap`, `density`를 받습니다. 단위는 pt이며 역할형 배치에 사용합니다. `density:"presentation"`은 발표용, `"reading"`은 읽기용입니다. 사용자가 이미 정한 목적과 원본 글꼴, 크기, 여백을 먼저 사용하며 별도 설문이나 새로운 설정 파일을 만들지 않습니다.
+
+comparison은 `panels:[{title,body,bullets?}]` 2~3개를 비교합니다. workflow는 `workflow:{nodes,edges}`의 실제 연결만 그립니다. nodes는 1~8개이며 `{id,title,body?,shape?}`, edges는 최대 12개 `{from,to,label?}`입니다. 자동 배치는 순환 없는 4단계 이내이고 순환이나 더 복잡한 위치는 `elements`로 명시합니다. timeline은 `milestones:[{label,date,detail?}]` 2~7개이며 날짜는 실제 `YYYY-MM-DD`입니다. 날짜를 시간 비율로 배치하므로 확인되지 않은 날짜를 만들거나 같은 간격의 그림으로 바꾸지 않습니다. detail의 데이터 행은 17개 이하로 나누며 실제 공간도 확인합니다.
+
+부분 강조, 분기 흐름과 복합 도형의 최소 예시는 [advanced-shapes.md](advanced-shapes.md)에 있습니다. 해당 기능이 필요한 경우에만 읽습니다.
+
+
+## 새 디자인과 세밀한 위치: slides[].elements
+
+복잡한 분기, 연결선, 자유 곡선과 한글 부분 강조는 advanced-shapes.md를 필요할 때만 읽는다. 해당 장의 모든 개체를 같은 장면 명세에 담아 HTML 확인 후 PPT로 만들며 기본 카드나 표로만 단순화하지 않는다.
 
 자동 배치 body/table/chart 대신 한 장의 모든 내용을 elements로 작성한다.
 제목도 text 개체에 담는다. 단위는 페이지 포인트, 기본 960×540. 입력 순서가 겹침 순서다.
@@ -63,9 +76,11 @@ HTML을 표 중심으로 다시 그리지 않는다. 같은 artifact work에서 
 ]}
 ```
 
-shape: rect/roundRect/ellipse, fill(RGB 또는 null), opacity(0~1), border,
-borderWidth, radius, shadow(x/y/blur/color/opacity). text: text/size/color/bold,
-italic/underline/align(left/center/right)/wrap/lineSpacing/font.
+shape: rect/roundRect/ellipse와 advanced-shapes.md의 화살표 및 다각형 13종.
+fill(RGB 또는 null), opacity(0~1), border, borderWidth를 사용한다. 기존 3종의
+radius와 shadow(x/y/blur/color/opacity)를 유지한다. text: text/size/color/bold,
+italic/underline/align(left/center/right)/wrap/lineSpacing/font. 같은 상자 안의
+부분 강조는 runs를 사용하고 구간별 text를 이어 붙인 값이 text와 정확히 같아야 한다.
 image: 같은 x/y/w/h + `image:{path,alt}`와 `fit:"contain"|"cover"|"stretch"`.
 table/chart: 같은 x/y/w/h + 기존 table/chart 데이터. table은 size와 선택적인
 columnWidths/rowHeights를 받는다. 각각 영역 너비/높이와 합계가 같아야 한다.
@@ -76,7 +91,7 @@ columnWidths/rowHeights를 받는다. 각각 영역 너비/높이와 합계가 �
 
 카드의 바탕·제목·설명·태그처럼 함께 이동할 개체에는 같은 `group:"실적카드"`를
 지정한다. 같은 그룹을 연속으로 배치하고 장 전체는 묶지 않는다. 이름은 64자 이하의
-글자·숫자·밑줄·하이픈이다. 글자·도형·그림 2개 이상을 실제 PowerPoint 그룹으로
+글자·숫자·밑줄·하이픈이다. 글자, 도형, 선, 경로와 그림 2개 이상을 실제 PowerPoint 그룹으로
 만들며 그룹 안의 글자 색·굵기·크기도 편집할 수 있다. 한 개이면 독립 개체로 남는다.
 표·차트는 PowerPoint의 편집 기능을 유지하려고 독립 개체로 둔다. 중첩 그룹은 만들지 않는다.
 자동 배치의 KPI 이름·값도 한 묶음으로 만든다.

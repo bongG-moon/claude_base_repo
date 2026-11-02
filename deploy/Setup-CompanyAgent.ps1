@@ -18,6 +18,8 @@ param(
     [string] $ExistingHarnessAction = 'Ask',
     [ValidateSet('Ask', 'KeepCurrent', 'PreferIncoming')]
     [string] $SkillConflictAction = 'Ask',
+    [ValidateSet('Keep', 'DeleteUnused')]
+    [string] $OldVersionAction = 'Keep',
     [switch] $AllowExistingCompanyAgentPlugin,
     [switch] $NonInteractive,
     [switch] $FriendlyOutput,
@@ -1157,7 +1159,11 @@ function Write-SetupFriendlyResult {
         default { Write-Host '위의 단계별 결과를 확인해 주세요. 이 메시지만으로 설치 완료를 판단하지 마세요.' }
     }
     if ($status -in @('installed', 'updated', 'reapplied')) {
-        Write-Host '업무별 준비 상태는 Diagnose-CompanyAgent.cmd에서 확인할 수 있습니다. Office·MCP는 별도 준비가 필요할 수 있습니다.'
+        Write-Host '개인 기억과 지식, 설치한 스킬은 기존 위치에서 이어서 사용합니다.'
+        $cleanupResult = Get-SetupPropertyValue -Object $Result -Name 'cleanup'
+        if ($null -ne $cleanupResult -and [string](Get-SetupPropertyValue -Object $cleanupResult -Name 'status') -ne 'kept') {
+            Write-Host ([string](Get-SetupPropertyValue -Object $cleanupResult -Name 'message'))
+        }
     }
 }
 
@@ -1219,7 +1225,7 @@ if ($Scope -in @('User', 'Project')) {
     $scopedParameters = @{}
     foreach ($name in @('BundleRoot', 'Scope', 'ProjectRoot', 'UserStateRoot', 'BackupRoot', 'ClaudeConfigRoot',
         'ClaudeCommand', 'PythonCommand', 'InvokingUserProfile', 'InvokingLocalAppData', 'NonInteractive',
-        'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction', 'SkillConflictAction')) {
+        'DryRun', 'SkipAdminCheck', 'SkipPrerequisiteCheck', 'SkipBundleVerification', 'ExistingHarnessAction', 'SkillConflictAction', 'OldVersionAction')) {
         $value = Get-Variable -Name $name -ValueOnly
         if ($null -ne $value -and -not ($value -is [string] -and [string]::IsNullOrWhiteSpace($value))) {
             $scopedParameters[$name] = $value
@@ -1238,6 +1244,9 @@ if ($ExistingHarnessAction -ne 'Ask') {
 }
 if ($SkillConflictAction -ne 'Ask') {
     throw 'SkillConflictAction applies only to User/Project installation. Legacy Machine setup reports Skill overlap warnings without changing Skill preferences.'
+}
+if ($OldVersionAction -ne 'Keep') {
+    throw 'Old version cleanup is available only for User/Project installation. Legacy Machine files and rollback references are preserved.'
 }
 
 $isHandoff = -not [string]::IsNullOrWhiteSpace($HandoffData)

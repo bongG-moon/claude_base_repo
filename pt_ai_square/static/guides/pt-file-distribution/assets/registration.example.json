@@ -1,0 +1,24 @@
+{
+  "_note": "웹 등록 입력값을 정리하는 예시이며, 확정된 서버 manifest나 자동 등록 API 형식이 아닙니다.",
+  "name": "업무 메모로 주간 보고서 작성",
+  "description": "이번 주에 한 일을 적은 메모를 팀 보고서 양식에 맞춰 정리합니다. 주간 보고서 초안을 만들 때 사용합니다.",
+  "program": "Claude",
+  "type": "Skill",
+  "organization": "등록자가 선택",
+  "owner": "담당자 표시명 (자동 게시는 인증된 사용자 이름을 기본 입력하며 실제 등록자 사번은 서버가 기록)",
+  "sourceType": "file",
+  "sourceFile": "weekly-report.zip",
+  "runtime": "실제 확인한 환경을 작성",
+  "visibility": "목록 공개 (상세 조회 승인 여부는 requiresApproval로 선택)",
+  "requiresApproval": false,
+  "installationGuide": "INSTALL_GUIDE.md 참고",
+  "releaseNumber": "웹에서 자동 발급",
+  "changes": "첫 공유",
+  "automaticUpdate": "미검증",
+  "rollback": "미검증",
+  "workTags": [
+    "주간 보고",
+    "업무 메모",
+    "보고서 작성"
+  ]
+}

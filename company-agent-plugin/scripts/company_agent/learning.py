@@ -230,6 +230,37 @@ def _submission_receipt(value: Any) -> dict[str, Any]:
     return {key: value[key] for key in ("captureStatus", "capturedCount", "appliedCount", "deferredCount")}
 
 
+def _candidate_reason_code(candidate: dict[str, Any]) -> str:
+    """Bounded explanation of a recorded decision, never new admission evidence.
+
+    Older candidates and submission receipts have no reasonCode. Derive only
+    what their existing state proves, without migrating or rechecking targets.
+    """
+    status = candidate.get("status")
+    if status == "active":
+        code = candidate.get("reasonCode")
+        return code if code in ("applied", "already_active") else "active_recorded"
+    if status == "rejected":
+        return "rejected_reapplication"
+    if status == "deferred":
+        reason = candidate.get("reason") or candidate.get("reasonCode")
+        if reason in ("skill_requires_success_and_current_verification",
+                      "independent_work_sample_not_ready",
+                      "verified_fix_requires_observed_failure_then_pass"):
+            return reason
+        return "target_validation_deferred"
+    if status == "observing":
+        signal = candidate.get("signal")
+        if signal == "repeated_choice":
+            return "independent_work_samples_required"
+        if signal == "verified_fix":
+            return "verified_fix_requires_observed_failure_then_pass"
+        code = candidate.get("reasonCode")
+        return code if code in ("independent_work_samples_required",
+                                "verified_fix_requires_observed_failure_then_pass") else "evidence_required"
+    return "decision_not_observable"
+
+
 def _load(root: Path) -> dict[str, Any]:
     path = _safe(root / "learning" / "state.json", root)
     if not path.exists():
@@ -686,6 +717,7 @@ def _commit_change(root: Path, data: dict[str, Any], review: dict[str, Any], obs
     change["status"] = "active"
     _save(root, data)
     return {"id": identifier, "kind": change["kind"], "title": change["title"], "status": "active",
+            "reasonCode": "applied",
             **_change_target_receipt(change)}
 
 
@@ -741,6 +773,7 @@ def _rollback(root: Path, data: dict[str, Any], change: dict[str, Any], reason: 
         for candidate in data["candidates"].values():
             if candidate.get("changeId") == change["id"]:
                 candidate["status"] = "rejected"
+                candidate["reasonCode"] = "rejected_reapplication"
         _restore_previous_skill_owner(data, change, rendered)
         return _rollback_receipt(root, change, changed=True,
                                  effect="preference_deactivated" if change["kind"] == "preference" else "owned_checklist_restored")
@@ -856,7 +889,8 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
                     "reviewId": review_id, "originalStatus": existing["status"],
                     "mode": existing.get("mode", "review"),
                     "submission": existing.get("submission"),
-                    "observationResults": existing.get("observationResults", []),
+                    "observationResults": [{**item, "reasonCode": _candidate_reason_code(item)}
+                                           for item in existing.get("observationResults", [])],
                     "changes": [], "assessments": []}
         if session.get("learningDeferredReason") == "late-business-activity":
             raise ValueError("business activity followed the recorded review; learning remains deferred until the next user turn")
@@ -903,7 +937,8 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
                     target = _read_skill_revision(root, observation['skillName'], session)[3]
                     identity.append(target)  # Never pool votes across native ownership generations/scopes.
                 except (OSError, ValueError, UnicodeError) as exc:
-                    changes.append({'kind': 'skill', 'key': observation['key'], 'status': 'deferred', 'reason': _defer_reason(exc)})
+                    changes.append({'kind': 'skill', 'key': observation['key'], 'status': 'deferred',
+                                    'reason': _defer_reason(exc), 'reasonCode': 'target_validation_deferred'})
                     continue
             candidate_id = _hash(json.dumps(identity, ensure_ascii=False))
             candidate = data["candidates"].get(candidate_id)
@@ -925,6 +960,7 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
             candidate["signal"] = observation["signal"]
             if candidate["status"] == "active" and not _candidate_is_current(root, data, observation, candidate_id):
                 candidate["status"] = "observing"
+                candidate.pop("reasonCode", None)
                 # Votes collected before a newer correction cannot outweigh
                 # that correction on the first later inferred choice.
                 candidate["choiceReviews"] = []
@@ -953,29 +989,37 @@ def _submit_locked(root: Path, session_id: str, turn_id: str, spec: dict[str, An
                 elif observation["signal"] == "verified_fix" and not eligible:
                     reason = "verified_fix_requires_observed_failure_then_pass"
                 if reason:
-                    candidate.update(status="deferred", reason=reason)
+                    candidate.update(status="deferred", reason=reason, reasonCode=reason)
                     changes.append({"kind": observation["kind"], "key": observation["key"],
-                                    "status": "deferred", "reason": reason})
+                                    "status": "deferred", "reason": reason, "reasonCode": reason})
                     continue
                 # New relevant evidence can release a previously deferred
                 # sample; failed ownership/version checks below remain pending.
                 candidate["status"] = "observing"
                 candidate.pop("reason", None)
+                candidate.pop("reasonCode", None)
             if not eligible or candidate["status"] in {"active", "rejected"}:
-                changes.append({"kind": observation["kind"], "key": observation["key"], "status": candidate["status"]})
+                candidate["reasonCode"] = ("already_active" if candidate["status"] == "active"
+                                           else _candidate_reason_code(candidate))
+                changes.append({"kind": observation["kind"], "key": observation["key"],
+                                "status": candidate["status"], "reasonCode": candidate["reasonCode"]})
                 continue
             try:
                 change = _commit_change(root, data, review, observation, session, candidate_id)
                 changes.append(change)
-                candidate.update({"status": "active", "changeId": change["id"]})
+                candidate.update({"status": "active", "changeId": change["id"], "reasonCode": "applied"})
+                candidate.pop("reason", None)
             except (OSError, ValueError, UnicodeError) as exc:
                 candidate["status"] = "deferred"
                 candidate["reason"] = _defer_reason(exc)
-                changes.append({"kind": observation["kind"], "key": observation["key"], "status": "deferred", "reason": candidate["reason"]})
+                candidate["reasonCode"] = "target_validation_deferred"
+                changes.append({"kind": observation["kind"], "key": observation["key"], "status": "deferred",
+                                "reason": candidate["reason"], "reasonCode": candidate["reasonCode"]})
         review["status"] = "complete"
         if submission:
             from .work import observation_id
-            review["observationResults"] = [{"id": observation_id(item), "status": change["status"]}
+            review["observationResults"] = [{"id": observation_id(item), "status": change["status"],
+                                            "reasonCode": change["reasonCode"]}
                                             for item, change in zip(spec["observations"], changes)]
             review["submission"] = {
                 "captureStatus": "captured" if spec["observations"] else "no_candidates",
@@ -1161,7 +1205,8 @@ def learning_status(root: Path, *, session: dict[str, Any] | None = None) -> dic
             "recentCandidates": [{"key": c["key"], "kind": c["kind"], "title": c["title"], "body": c["body"],
                                   "signal": c.get("signal"), "observedUserTurns": len(c["reviews"]),
                                   "userChoiceTurns": len(c.get("choiceReviews", [])),
-                                  "status": c["status"], "reason": c.get("reason")}
+                                  "status": c["status"], "reason": c.get("reason"),
+                                  "reasonCode": _candidate_reason_code(c)}
                                  for c in sorted(data["candidates"].values(), key=lambda c: c.get("lastSeen", ""))[-10:]],
             "recentReviews": [{**{key: r[key] for key in ("taskType", "summary", "reportedOutcome", "evidence", "status")},
                                "mode": r.get("mode", "review"), "submission": r.get("submission")}

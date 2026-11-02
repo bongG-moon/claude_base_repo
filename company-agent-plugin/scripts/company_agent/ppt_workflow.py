@@ -67,17 +67,35 @@ def choices(spec, template=None, *, for_preview=False):
             return _choice_error('$', 'PPT 제작 조건은 JSON 객체로 지정해 주세요.', expected='JSON object')
         if template is not None and not isinstance(template, (str, Path)):
             return _choice_error('template', '참고 양식은 파일 경로로 지정해 주세요.', expected='PPTX or HTML path')
-        # A missing preference is not an unanswered design questionnaire.
-        # Explicit reference/saved requests still require their actual source.
+        # Offer a direction once for a new, unselected task. Existing full jobs,
+        # approved drafts and explicit reference/layout choices keep their route.
         spec = dict(spec)
+        reference_style = spec.get('referenceStyle')
+        if reference_style is not None:
+            from .reference_style import normalize as normalize_reference_style
+            try:
+                normalize_reference_style(reference_style)
+            except ValueError:
+                return _choice_error('referenceStyle', '참고 스타일은 실제 관찰한 지원 필드와 짧은 근거로 지정해 주세요.')
+        direction = spec.get('designDirection')
+        if direction is not None and (not isinstance(direction, str) or not direction.strip() or len(direction) > 500):
+            return _choice_error('designDirection', '원하는 디자인은 500자 이하의 짧은 설명으로 지정해 주세요.',
+                                 expected='non-empty string, at most 500 characters')
+        undecided = (not any(key in spec for key in ('creationMode', 'designPreset', 'designDirection',
+                     'designReview', 'presentationTheme', 'presentationFont', 'slides', 'sections'))
+                     and not template and not spec.get('referenceImages') and not spec.get('htmlSource') and not reference_style
+                     and 'referenceMode' not in spec)
         if 'creationMode' not in spec:
             spec['creationMode'] = ('reference' if template or spec.get('referenceImages')
-                                    or spec.get('htmlSource') or 'referenceMode' in spec else 'new')
+                                    or spec.get('htmlSource') or reference_style or 'referenceMode' in spec else 'new')
+        if template or spec.get('referenceImages') or spec.get('htmlSource') or reference_style:
+            spec.setdefault('referenceMode', 'style')
         if spec['creationMode'] == 'new':
             spec.setdefault('designPreset', 'business')
         for key, allowed in (('creationMode', ('new','reference','saved')),
                              ('referenceMode', ('style','preserve')),
-                             ('designPreset', tuple(DESIGNS))):
+                             ('designPreset', tuple(DESIGNS)),
+                             ('compositionMode', ('classic','content-led'))):
             if key in spec and spec[key] not in allowed:
                 return _choice_error(key, f'{key}에 지원하는 값을 지정해 주세요.', allowed=allowed)
         if 'slideCount' in spec and (type(spec['slideCount']) is not int or not 1 <= spec['slideCount'] <= 60):
@@ -86,10 +104,10 @@ def choices(spec, template=None, *, for_preview=False):
             if key in spec and (not isinstance(spec[key], str) or not spec[key].strip() or len(spec[key]) > 200):
                 return _choice_error(key, '목적과 대상은 빈칸이 아닌 짧은 문장으로 지정해 주세요.', expected='non-empty string, at most 200 characters')
         images = spec.get('referenceImages', [])
-        if (not isinstance(images,list) or len(images)>3 or any(not isinstance(p,str) or len(p)>2048
-                or not Path(p).is_absolute() or Path(p).suffix.lower() not in ('.png','.jpg','.jpeg') for p in images)):
-            return _choice_error('referenceImages', '참고 캡처는 로컬 PNG/JPEG 경로 1~3개로 지정해 주세요. 보통 2~3장이면 충분합니다.',
-                                 expected='list of at most 3 absolute PNG/JPEG paths')
+        if (not isinstance(images,list) or len(images)>60 or any(not isinstance(p,str) or len(p)>2048
+                or not Path(p).is_absolute() or Path(p).suffix.lower() not in ('.png','.jpg','.jpeg','.webp') for p in images)):
+            return _choice_error('referenceImages', '참고 이미지는 로컬 PNG/JPEG/WebP 경로를 최대 60개 지정해 주세요. 전체 목록을 유지하고 2~3장씩 확인합니다.',
+                                 expected='list of at most 60 absolute PNG/JPEG/WebP paths')
         html_template = bool(template and Path(template).suffix.lower() in ('.html','.htm'))
         html_source = spec.get('htmlSource')
         if html_source:
@@ -97,23 +115,33 @@ def choices(spec, template=None, *, for_preview=False):
                 return _choice_error('htmlSource.path', '기준 HTML의 절대경로를 htmlSource.path에 지정해 주세요.', expected='absolute HTML path')
             if template or images or spec.get('referenceMode')=='preserve':
                 return _choice_error('htmlSource', 'HTML 직접 변환은 다른 양식/캡처 또는 PPTX 개체 유지와 섞지 않습니다.')
-        known = {k:spec[k] for k in ('creationMode','referenceMode','purpose','audience','slideCount','designPreset','designReview','referenceImages') if k in spec}
+        if undecided and not for_preview:
+            return {'ok':False, 'status':'input_required', 'stage':'design_selection',
+                    'waitForUser':True, 'missing':['designSelection'],
+                    'preservedChoices':{k:spec[k] for k in ('purpose','audience','slideCount') if k in spec},
+                    'briefMissing':[k for k in ('purpose','audience','slideCount') if k not in spec],
+                    'question':'어떤 양식으로 만들까요? 알려준 목적과 장수는 유지하고, 선택한 방향으로 HTML 초안을 먼저 보여드리겠습니다.',
+                    'options':[{'id':key, 'label':value[0], 'description':value[1],
+                                'selection':{'creationMode':'new','designPreset':key,'compositionMode':'content-led'}}
+                               for key,value in DESIGNS.items()]+
+                              [{'id':'reference','label':'기존 PPT나 이미지 양식 활용',
+                                'description':'첨부한 자료의 배치와 색, 글꼴과 문장 스타일을 참고합니다.',
+                                'selection':{'creationMode':'reference'}},
+                               {'id':'recommend','label':'내용에 맞게 추천',
+                                'description':'청중과 자료 관계에 맞는 색감과 장별 구성을 제안합니다.'},
+                               {'id':'custom','label':'원하는 느낌 직접 입력',
+                                'description':'원하는 색감이나 배치, 참고 스타일을 짧게 알려 주세요.'}]}
+        known = {k:spec[k] for k in ('creationMode','referenceMode','purpose','audience','slideCount','designPreset','designReview','referenceImages','referenceStyle','designDirection','compositionMode') if k in spec}
         if spec.get('creationMode') == 'new' and (template or images or html_source or 'referenceMode' in spec):
             return _choice_error('creationMode', '새 디자인 제작과 기존 양식 유지 조건이 함께 지정되었습니다. 제작 방식을 확인해 주세요.')
         result = {'ok':False,'status':'input_required','preservedChoices':known,'waitForUser':True}
         if spec['creationMode'] != 'new':
-            if not template and not images and not html_source:
+            if not template and not images and not html_source and (not reference_style or spec.get('referenceMode') == 'preserve'):
                 return {**result,'stage':'reference_file','missing':['template'],
                         'question':('저장한 HTML 대표 양식을 첨부하거나 경로를 알려 주세요. 기존 PPTX 양식도 사용할 수 있습니다.'
-                                    if spec['creationMode']=='saved' else '원하는 PPT의 캡처 2~3장(표지·본문·표/차트)을 첨부해 주세요. 1장이나 기존 PPTX/HTML 양식도 괜찮습니다.')}
+                                    if spec['creationMode']=='saved' else '참고할 PPTX/HTML 또는 장표 이미지를 첨부해 주세요. 이미지는 최대 60장까지 목록을 유지하며 작은 묶음으로 확인합니다.')}
             if (images or html_template) and spec.get('referenceMode') == 'preserve':
                 return _choice_error('referenceMode', '캡처·HTML 양식은 디자인 참고용입니다. 원본 개체·마스터 유지에는 기존 PPTX 양식이 필요합니다.', allowed=('style',))
-            if template and images:
-                return _choice_error('referenceImages', '이번 디자인의 기준을 캡처 또는 양식 파일 중 하나로 정해 주세요.')
-            if 'referenceMode' not in spec and not (images or html_template or html_source):
-                return {**result,'stage':'reference_scope','missing':['referenceMode'],
-                        'question':'기존 양식을 어느 정도 유지할까요?',
-                        'options':['색감·폰트·분위기를 참고해서 새로 구성','기존 슬라이드 배치와 개체를 유지하고 내용 교체']}
         missing = [key for key in ('purpose','audience','slideCount') if key not in spec]
         if missing:
             return {**result,'stage':'brief','missing':missing,'question':'아직 알려주지 않은 목적·대상·장수만 알려 주세요.'}
@@ -136,6 +164,32 @@ def choices(spec, template=None, *, for_preview=False):
         return _failure(exc)
 
 
+def reference_image_digest(path):
+    """Fingerprint a bounded local style image without embedding it in a slide.
+
+    Base64-byte hashing intentionally retains existing PNG/JPEG review hashes.
+    This validates container magic, not pixels or a completed visual review.
+    """
+    import base64
+    import hashlib
+    from .business_artifacts import ArtifactError, _source
+    if not isinstance(path, (str, Path)):
+        raise ArtifactError('invalid_image', '참고 이미지는 로컬 PNG/JPEG/WebP 경로로 지정해 주세요.')
+    source = _source(Path(path), ('.png','.jpg','.jpeg','.webp'))
+    limit = 10 * 1024 * 1024
+    if source.stat().st_size > limit:
+        raise ArtifactError('image_too_large', '참고 이미지는 10 MB 이하로 준비해 주세요.')
+    with source.open('rb') as stream:
+        raw = stream.read(limit + 1)
+    if len(raw) > limit:
+        raise ArtifactError('image_too_large', '참고 이미지는 10 MB 이하로 준비해 주세요.')
+    valid = (raw.startswith(b'\x89PNG\r\n\x1a\n') or raw.startswith(b'\xff\xd8\xff')
+             or len(raw) >= 12 and raw[:4] == b'RIFF' and raw[8:12] == b'WEBP')
+    if not valid:
+        raise ArtifactError('invalid_image', '참고 이미지의 실제 형식이 PNG/JPEG/WebP가 아닙니다.')
+    return hashlib.sha256(base64.b64encode(raw)).hexdigest()
+
+
 def design_digest(spec, template=None):
     import hashlib
     import json
@@ -153,8 +207,7 @@ def design_digest(spec, template=None):
                     from .business_artifacts import _image
                     images.append(hashlib.sha256(_image(element['image'])['data'].encode('ascii')).hexdigest())
     for path in spec.get('referenceImages', []):
-        from .business_artifacts import _image
-        images.append(hashlib.sha256(_image({'path':path})['data'].encode('ascii')).hexdigest())
+        images.append(reference_image_digest(path))
     from .ppt_html_import import fingerprint
     data = {'spec':{k:v for k,v in spec.items() if k!='designReview'},'templateSha256':reference,'imageSha256':images,
             'htmlSource':fingerprint(spec['htmlSource']) if spec.get('htmlSource') else None}
@@ -197,6 +250,22 @@ def installed_fonts():
             except OSError:
                 pass
     return result
+
+
+def font_available(name, available=None):
+    """Match an installed family, including its known localized family name.
+
+    Keep the document's declared typeface unchanged. A name alias is evidence
+    only when one of the equivalent names is actually present in the inventory.
+    Weight-specific faces are deliberately not treated as the regular family.
+    """
+    if not isinstance(name, str):
+        return False
+    key = name.strip().casefold()
+    families = {font.strip().casefold() for font in
+                (installed_fonts() if available is None else available)}
+    aliases = {'맑은 고딕', 'malgun gothic'}
+    return key in families or (key in aliases and bool(families & aliases))
 
 
 def _declared_shape_style(node, namespace):
@@ -392,9 +461,11 @@ def analyze(template, selected_slides=None, *, first_slides=None):
                     'message':'요청한 장과 원본 순서를 정확히 연결하지 못했습니다. 추측으로 다른 장을 반환하지 않습니다.'}
         pages = [page_map[number - 1] for number in selected_slides]
     available=installed_fonts()
+    from .ppt_layouts import reference_profile
     return {'ok':True,'status':'analyzed','sha256':inspected['sha256'],'slideCount':inspected['slideCount'],
             'sizeEmu':inspected['sizeEmu'],'themeColors':theme,'declaredColors':[c for c,_ in colors.most_common(12)],
-            'declaredFonts':[{'name':f,'available':f in available} for f,_ in fonts.most_common(12)],
+            'declaredFonts':[{'name':f,'available':font_available(f, available)} for f,_ in fonts.most_common(12)],
+            'suggestedPresentationProfile':reference_profile(pages,available),
             'slides':pages[:60], 'visualReview':'not_performed', 'savedToMemory':False,
             'message':'양식의 개체·명시된 색상·폰트를 확인했습니다. 상속된 최종 모양과 혼합 서식은 실제 미리보기에서 확인해야 합니다.'}
 
@@ -615,7 +686,11 @@ def fill_template(data, draft, template, mappings, *, html_only=False):
         # Avoid silently leaving old report data in unmapped editable objects.
         for sid,shape in shapes.items():
             if hasattr(shape,'shapes'):
-                raise ArtifactError('template_group_unsupported','그룹 개체는 양식 유지 자동 교체를 지원하지 않습니다. 원본은 보존했습니다.')
+                if sid not in keep:
+                    raise ArtifactError('template_group_unsupported','그룹 내부 자동 교체는 지원하지 않습니다. 그대로 유지할 그룹은 keepShapeIds에 명시하거나 분위기 참고 방식으로 재구성해 주세요. 원본은 보존했습니다.')
+                # Keep the explicitly selected native group in place, including
+                # its children, transforms and styles. This is not a group edit.
+                continue
             meaningful=(shape.has_text_frame and bool(shape.text.strip())) or shape.has_table or shape.has_chart
             if meaningful and sid not in used and sid not in keep:
                 raise ArtifactError('template_unmapped_content','이전 내용이 남을 수 있는 개체가 있습니다. 교체할 내용과 유지할 로고·고정 문구를 먼저 구분해 주세요.')
@@ -623,37 +698,18 @@ def fill_template(data, draft, template, mappings, *, html_only=False):
         if slide.has_notes_slide and slide.notes_slide.notes_text_frame is not None:
             slide.notes_slide.notes_text_frame.clear()
         if html_only:
-            # This is an explicit content/geometry projection, not a claim to
-            # reproduce inherited masters, fixed artwork or Office typography.
-            elements=[]
-            for field in ('title','body','table','chart'):
-                if field not in mapping:
-                    continue
-                shape=shapes[mapping[field]]
-                e={'kind':'text' if field in ('title','body') else field,
-                   **{key:getattr(shape,attr)/12700 for key,attr in (('x','left'),('y','top'),('w','width'),('h','height'))}}
-                if e['w']<=0 or e['h']<=0 or e['x']<0 or e['y']<0 or e['x']+e['w']>deck.slide_width/12700+1 or e['y']+e['h']>deck.slide_height/12700+1:
-                    raise ArtifactError('template_geometry_invalid','양식 개체가 화면 밖에 있거나 크기가 잘못되었습니다.')
-                if field in ('title','body'):
-                    runs=[r for p in shape.text_frame.paragraphs for r in p.runs]
-                    ink='title' if field=='title' else 'text'
-                    if runs:
-                        try:
-                            candidate=str(runs[0].font.color.rgb)
-                            if re.fullmatch('[0-9A-Fa-f]{6}',candidate):
-                                ink=candidate
-                        except (AttributeError,ValueError):
-                            pass
-                    e.update(text=row[field],size=max([r.font.size.pt for r in runs if r.font.size] or [30 if field=='title' else 18]),
-                             color=ink,bold=any(r.font.bold for r in runs))
-                elif field=='table':
-                    e.update(columnWidths=[c.width/12700 for c in shape.table.columns],
-                             rowHeights=[r.height/12700 for r in shape.table.rows],size=16)
-                elements.append(e)
-            preview_pages.append({'elements':elements})
+            from .ppt_template_scene import preview_slide
+            from .ppt_scene import elements as validate_elements
+            page=preview_slide(slide,deck,data['presentationTheme'],data['presentationFont'])
+            if page['elements']:
+                page['elements']=validate_elements(page['elements'],deck.slide_width/12700,
+                                                    deck.slide_height/12700,data['presentationTheme'],embedded=True)
+            preview_pages.append(page)
     if html_only:
         return {'width':deck.slide_width/12700,'height':deck.slide_height/12700,'pages':preview_pages,
-                'font':data['presentationFont'],'theme':data['presentationTheme']}
+                'font':data['presentationFont'],'theme':data['presentationTheme'],
+                'warnings':list(dict.fromkeys(warning for page in preview_pages for warning in page.get('warnings',[]))),
+                'coverage':[{'slide':index,**page.get('coverage',{})} for index,page in enumerate(preview_pages,1)]}
     original=list(deck.slides._sldIdLst)
     for i,relation in enumerate(original):
         deck.slides._sldIdLst.remove(relation)

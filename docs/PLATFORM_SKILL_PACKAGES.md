@@ -29,24 +29,28 @@ python -X utf8 -B scripts/build-skill-packages.py --distribution-skill "최신 p
 
 ## 무엇을 넣나요?
 
+기본 하네스와 개별 스킬 ZIP은 서로 다른 배포본입니다. 기본 하네스는 개인 기억과 업무 지식, 검증된 경험 학습, 설치된 스킬 선택, 재사용할 개인 절차 저장을 담당합니다. `deploy/harness-core-manifest.json`이 기본 설치 파일을 지정하며 포함 스킬은 `company-agent`, `personal-memory`, `personal-knowledge`, `self-learning`, `asset-factory` 5개입니다. HTML, PPT, Excel, 웹 제작과 데이터 조회 같은 업무 기능은 필요한 개별 스킬을 선택해 설치합니다. 관련 스킬이 없는 일반 요청도 현재 도구로 가능한 작업을 계속하며 기능 설치를 공통 선행 조건으로 삼지 않습니다.
+
+기본 하네스의 `company-agent`와 `asset-factory`는 `harness-core/skills/`의 별도 지침을 manifest에 지정한 대체 원본으로 적용합니다. 기본 `asset-factory`는 사용자가 요청하거나 제안을 수락한 개인 절차를 스킬로 저장하고 같은 원본을 수정합니다. 개별 `asset-factory.zip`은 `standalone-skills/asset-factory`의 전체 제작판으로, 개인 스킬과 Python 실행 도구, 표준 `tools.py` MCP 제작 기능을 유지합니다. 같은 이름이어도 출처와 실제 기능 범위를 확인하며 기본 절차 저장판을 전체 도구 제작판으로 설명하지 않습니다.
+
 등록할 이름은 무엇을 하는 도구인지 짧게 적고, 소개는 동료가 넣을 자료와 얻을 결과를 쉬운 말로 설명합니다. 예를 들어 `AI 업무 기록 정리`처럼 동작이 드러나게 쓰고, 슬로건을 덧붙이지 않습니다. 검색 태그에는 실제 사용하는 업무 표현을 넣습니다. 기술 용어·설치 조건·수집 범위는 상세 안내에 남겨 기능이나 제약을 감추지 않습니다. 작성 기준과 예시는 정본 배포 Skill의 **등록 설명과 설치 안내**를 따릅니다. 표시 이름을 고쳐도 packageId와 설치 폴더 이름은 바꾸지 않습니다.
 
 새로 작성하는 제목, 소개와 안내에서 나열용 가운데점을 쓰지 않습니다. `글자와 도형, 표, 차트`처럼 쉼표나 연결 표현으로 쓰며, 코드와 식별자 및 공식 고유명은 유지합니다.
 
-- 하네스 `skills/*/SKILL.md`를 기준으로 목록을 자동 발견합니다. 각 항목은 `portable` 또는 이유가 있는 `harness-only`로 분류합니다. 새 항목을 조용히 누락하지 않습니다.
+- `company-agent-plugin/skills/*/SKILL.md`의 소스를 기준으로 목록을 자동 발견합니다. 이 소스 목록이 기본 설치 목록을 뜻하지는 않습니다. 각 항목은 `portable` 또는 이유가 있는 `harness-only`로 분류하며 새 항목을 조용히 누락하지 않습니다. `harness-only`는 개별 ZIP 제외 분류이고, 기본 설치 여부는 하네스 manifest가 결정합니다.
 - 하네스에 넣지 않는 독립 스킬은 `standalone-skills/<이름>`에 정본을 두고 카탈로그에 `standaloneOnly: true`, `distribution: portable`을 명시합니다. 조회 스킬 3개와 가상 조회 실습이 이 방식이며 하네스 설치에 자동 추가되지 않습니다. 정본이나 등록 정보가 없으면 ZIP 생성이 실패합니다.
 - 조회 스킬의 공통 실행 코드는 `scripts/query_skills/query_core`에서 관리합니다. 변경 후 `python -X utf8 -B scripts/sync-query-skills.py`와 같은 명령의 `--check`를 먼저 실행한 뒤 ZIP을 생성합니다. 각 독립 스킬에는 전체 실행 코드가 들어가므로 다른 스킬 설치를 요구하지 않습니다. 동기화는 개인 접속 정보와 저장 쿼리를 읽거나 수정하지 않습니다.
-- 개별 업무 스킬은 `standalone-skills`의 독립형 지침·코드·참고자료를 사용합니다. Company 세션·CLI·후크·작업자 없이 사용할 수 있습니다. 원래 하네스용 스킬은 그대로 유지합니다.
+- 개별 업무 스킬은 `standalone-skills`의 독립형 지침과 코드, 참고자료를 사용합니다. Company 세션, CLI, 후크, 작업자 없이 사용할 수 있습니다. 기존 개별 스킬 15개의 기능과 배포 식별자는 유지하며 기본 하네스에서 빠졌다는 이유로 삭제하거나 축소하지 않습니다. 기존 플러그인의 기능 소스는 비교와 개별 배포에 필요한 원본으로 유지합니다.
 - HTML/PPT는 같은 제작 엔진의 순수 모듈을 `packaging.runtimeModules`로 지정하여 ZIP에 함께 담습니다. 원본 엔진을 두 벌로 수정하지 않으며 빌드 시 정확한 원본 바이트를 포함합니다. 런처·정책·세션·후크 모듈은 포함하지 않습니다.
 - 독립 실행의 기준은 `skills_zip`의 전체 ZIP을 설치한 폴더입니다. 특히 HTML/PPT의 `standalone-skills` 원본 폴더에는 패키징할 때 넣는 공통 제작 모듈이 아직 없으므로 그 폴더나 SKILL.md만 복사한 상태를 완성된 실행 배포본으로 안내하지 않습니다.
-- `company-agent`, `project-harness`, `self-learning`은 하네스 설치 기능으로 남깁니다. `platform-mcp-builder`는 asset-factory의 이전 이름이므로 중복 ZIP을 만들지 않습니다. 제외 사유는 catalog의 `harnessOnly`와 HTML에서 확인합니다.
+- `company-agent`와 `self-learning`은 기본 하네스 내부 기능으로 개별 ZIP을 만들지 않습니다. `project-harness`와 이전 이름 `platform-mcp-builder`의 소스는 호환과 유지보수용으로 남기며 기본 하네스에 설치하거나 개별 ZIP으로 배포하지 않습니다. 제외 사유는 catalog의 `harnessOnly`와 HTML에서 확인합니다.
 - 개인 기억·지식의 독립판은 요청에 따라 범위를 선택한 Markdown 파일을 저장·조회합니다. 하네스의 자동 학습·적용·이력 저장소와 같은 기능이라고 설명하지 않습니다.
-- 루트 SKILL.md는 실제 지침으로 연결하는 짧은 진입점이며 상대 경로는 보존합니다. 이미 하네스로 쓰는 기능은 중복 설치하지 않아도 됩니다.
+- 루트 SKILL.md는 실제 지침으로 연결하는 짧은 진입점이며 상대 경로는 보존합니다. 이미 설치된 스킬이 요청한 기능을 제공하면 중복 설치하지 않아도 됩니다. 기본 하네스의 개인 절차 저장과 개별판의 MCP 제작처럼 범위가 다르면 해당 기능을 제공하는 개별판을 사용합니다.
 - 개인 기억·세션·인증 설정·캐시는 넣지 않습니다. 설정 변경이나 의존성 자동 설치도 하지 않습니다.
 
 ## 스킬을 바꿀 때
 
-`scripts/platform_skills/catalog-metadata.json`의 설명·필요 환경·업무 흐름을 함께 확인합니다. 이는 게시용 설명이며 기능을 자동 추측하지 않습니다. 새 스킬은 이 파일에 설명을 추가하지 않으면 생성기가 누락으로 중단합니다. 하네스 지침을 바꿀 때는 대응하는 독립판도 검토합니다. 실행 엔진 변경은 모듈 목록을 통해 자동 반영되지만 업무 지침의 의미는 기계적으로 변환하지 않습니다. 독립판에 없는 하네스용 참조를 묵시적으로 섞지 않습니다. 필요한 추가 참고자료는 `includeAdditionalPaths`에 지정합니다.
+`scripts/platform_skills/catalog-metadata.json`의 설명과 필요 환경, 업무 흐름을 함께 확인합니다. 이는 게시용 설명이며 기능을 자동 추측하지 않습니다. 새 스킬은 이 파일에 설명을 추가하지 않으면 생성기가 누락으로 중단합니다. 기본 하네스의 별도 지침을 바꿀 때는 대응하는 원본과 독립판의 역할 차이를 확인하며 기본판의 제한을 개별판에 그대로 옮기지 않습니다. 기존 플러그인 지침을 바꿀 때는 대응하는 독립판도 검토합니다. 실행 엔진 변경은 모듈 목록을 통해 자동 반영되지만 업무 지침의 의미는 기계적으로 변환하지 않습니다. 독립판에 없는 하네스용 참조를 묵시적으로 섞지 않습니다. 필요한 추가 참고자료는 `includeAdditionalPaths`에 지정합니다.
 
 각 ZIP 안의 `PACKAGE_SOURCE.json`은 원본 경로·해시·배포 규격을, `PACKAGE_CONTENTS.json`은 전체 파일 해시를 기록합니다. `catalog.json`과 `SHA256SUMS.txt`는 목록과 ZIP 무결성을 확인하는 기계용 파일입니다. 일반 사용자는 HTML과 ZIP만 보면 됩니다.
 
@@ -58,7 +62,7 @@ python -X utf8 -B scripts/build-skill-packages.py --distribution-skill "최신 p
 
 ## 다른 프로젝트의 MCP 함께 배포하기
 
-`skills_zip`에는 개별 스킬 15개와 별도 도구인 **제조 메타데이터 Oracle MCP**가 있습니다. HTML의 **별도 MCP**에서 선택합니다. MCP는 하네스에 내장되거나 Skill로 자동 등록되지 않습니다. ZIP 전체를 풀고 README.md의 설치 범위·MongoDB/Oracle 접속 설정 안내를 따릅니다. asset-factory는 MCP 제작 스킬이며 자체 MCP 서버가 아닙니다.
+`skills_zip`에는 개별 스킬 15개와 별도 도구인 **제조 메타데이터 Oracle MCP**가 있습니다. HTML의 **별도 MCP**에서 선택합니다. MCP는 하네스에 내장되거나 Skill로 자동 등록되지 않습니다. ZIP 전체를 풀고 README.md의 설치 범위와 MongoDB/Oracle 접속 설정 안내를 따릅니다. 개별 `asset-factory.zip`은 MCP 제작을 지원하는 스킬이며 자체 MCP 서버가 아닙니다. 기본 하네스의 `asset-factory`는 개인 절차 저장만 담당합니다.
 
 이 MCP의 정본은 `metadata_driven_v5` 프로젝트이며, 여기서는 검토된 ZIP을 바이트 그대로 보관합니다. `scripts/platform_skills/external-packages.json`에 원본 프로젝트·산출물·대화·packageId·SHA-256을 기록했습니다. 생성기는 등록된 ZIP의 해시와 최신 플랫폼 규격을 검사하고 목록·설치 안내·체크섬에 포함합니다. 원본 프로젝트를 자동 탐색하거나 수정하지 않습니다.
 

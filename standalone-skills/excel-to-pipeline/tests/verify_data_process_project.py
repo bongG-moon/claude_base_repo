@@ -28,11 +28,14 @@ def main():
     analysis = analyze(source)
     publish(analysis, output)
     process_before = hashes(output / 'PROCESS')
-    command = [sys.executable, '-X', 'utf8', '-B', str(output / 'main.py'), '--output']
+    # Compact projects keep cell-by-cell records under _details only when
+    # diagnostics are requested. This verifier needs those records to compare
+    # every formula; ordinary user runs remain compact and unchanged.
+    command = [sys.executable, '-X', 'utf8', '-B', str(output / 'main.py'), '--diagnostics', '--output']
     first = subprocess.run(command + [str(output / 'outputs/01-excel')], cwd=output.parent,
                            capture_output=True, text=True, encoding='utf-8', timeout=120)
     assert first.returncode == 0, first.stderr
-    baseline = json.loads((output / 'outputs/01-excel/formulas.json').read_text(encoding='utf-8'))
+    baseline = json.loads((output / 'outputs/01-excel/_details/formulas.json').read_text(encoding='utf-8'))
     assert {(f['sheet'], f['cell']): (f['value'], f['status']) for f in baseline} == {
         (f['sheet'], f['cell']): (f['value'], f['status']) for f in analysis['formulas']}
     data = read_excel_data(source, make_rules(analysis))
@@ -53,7 +56,7 @@ def main():
     second = subprocess.run(command + [str(output / 'outputs/02-python-source')], cwd=output.parent,
                             capture_output=True, text=True, encoding='utf-8', timeout=120)
     assert second.returncode == 0, second.stderr
-    changed = json.loads((output / 'outputs/02-python-source/formulas.json').read_text(encoding='utf-8'))
+    changed = json.loads((output / 'outputs/02-python-source/_details/formulas.json').read_text(encoding='utf-8'))
     amount = lambda items: next(f['value'] for f in items if f['sheet'] == '수식처리' and f['cell'] == 'J7')
     # Independent arithmetic: C08 price 222512 × quantity 2 × 95%, rounded to whole units.
     assert amount(baseline) == 211386
@@ -61,7 +64,7 @@ def main():
     assert process_before == hashes(output / 'PROCESS')
     assert source_hash == hashlib.sha256(source.read_bytes()).hexdigest()
     for folder in ('01-excel', '02-python-source'):
-        assert len((output / 'outputs' / folder / 'model_context.json').read_text(encoding='utf-8')) <= 12000
+        assert len((output / 'outputs' / folder / '_details' / 'model_context.json').read_text(encoding='utf-8')) <= 12000
     report = {'status': 'passed', 'source_sha256': source_hash, 'source_unchanged': True,
               'sheets': analysis['summary']['sheet_count'], 'tables': analysis['summary']['table_count'],
               'formulas': len(baseline), 'formula_status': analysis['summary']['formula_status'],
