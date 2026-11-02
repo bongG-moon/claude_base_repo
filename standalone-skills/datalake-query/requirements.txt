@@ -1,3 +1,4 @@
 sqlglot==28.5.0
-requests==2.32.5
-mysql-connector-python>=9.6,<10
+# Install the private LakeHouse SDK from the company-approved source described
+# in references/usage.md. Do not install the unrelated public PyPI package lakes.
+# The SDK's pandas dependency declaration has not been independently verified.

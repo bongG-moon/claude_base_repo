@@ -3,13 +3,15 @@
   "source": "scripts/query_skills/query_core",
   "files": {
     "__init__.py": "c7e5fd713c5f613722c589048f1b6ca5ef19fc02f0e04ab8612a75702bd12bf8",
-    "adapters.py": "92e84830c52221f41bee40514bd4a8f4afef26e2ac832bceb25b52c801c70e61",
-    "cli.py": "245fb0858e7265babbdf7730818b128feb1ba89bccbefa29d1a13e4f67797f94",
-    "core.py": "bf828e62d44007696473ac767d0ac3d19816dfa557dfdb4b4b1214e8cad35d21",
-    "manager_ui.py": "f9ff25e08b0df27f7acd1f1cdce5ba2fe1ce72914844f2aa25dea7f0b1efb12e",
+    "adapters.py": "eb2deaceb28f05e77b9e936ff42c842aaf87b5b0d588a5fd7e8a05acda97c131",
+    "cli.py": "b13aa08562a853c829d351fd98cc65b4a0dd926f12a89a53f05babc1181af6fc",
+    "core.py": "43310857346085f2ada1ca0c17a5b5187a248dac15e1805c295c19253b1d4ef1",
+    "discovery.py": "a031b693f2f050f2c74a9ace1ea621e7bbbc8bf1951dacd095a034d2bb18366f",
+    "manager_ui.py": "a9c43485ea6f74efe78ccf8d6dfbe9e1566b02230d7ac5fe0e7cbd87fa6a4f0e",
     "results.py": "2c5ef53fee13cbb2adc82a01871e091e4ba1cc64688745856c93fa515199cc0a",
+    "sdk_adapter.py": "8a80dee8f3faa855ec3c19e0133a06778a797e23bc9afd8980ccdceafe22237a",
     "setup_ui.py": "ebfe591bd443698e9459dee36c0b09910d6e83ed906724e2edce194b4bad2a98",
-    "sql.py": "2098dfbedc9bf099a2379afa6bef32329ff04605c6d2b3638255a008faac27ee",
-    "store.py": "01978a1eb959ba530b09fb8006a500f830f20640686af93fd18b43f275e00aad"
+    "sql.py": "5aff05cdf0338e31784f1991c78939c941291e9a6847a4b02ff5529d6e34bac0",
+    "store.py": "144ff630026f9c844d8cf5155e70a7ae8f0e65f325ee536e0f077c838a59607f"
   }
 }

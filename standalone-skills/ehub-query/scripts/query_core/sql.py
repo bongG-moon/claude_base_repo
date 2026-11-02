@@ -415,3 +415,101 @@ def bounded_sql(sql: str, engine: str, limit: int, *, source_engine: str | None 
     if dialect(engine) == 'oracle':
         return f'SELECT * FROM ({rendered}) qs_rows WHERE ROWNUM <= {limit}'
     return f'SELECT * FROM ({rendered}) AS qs_rows LIMIT {limit}'
+
+
+def compile_for_sdk(sql: str, params: dict) -> str:
+    """별도 bind API가 없는 LakeHouse SDK에 검증된 값만 AST 리터럴로 전달한다.
+
+    서버의 역슬래시 SQL 모드를 추정하지 않는다. 역슬래시와 제어 문자가 있는
+    값은 거부하고 작은따옴표는 표준 SQL의 doubled quote로만 렌더링한다.
+    """
+    tree = _tree(sql, 'datalake')
+    names = {node.name for node in tree.find_all(exp.Placeholder)}
+    if not isinstance(params, dict) or set(params) != names:
+        raise ValueError('실행 SQL의 조건과 입력값이 일치하지 않습니다.')
+
+    def literal(value):
+        if value is None:
+            return exp.Null()
+        if isinstance(value, str):
+            if len(value) > MAX_TEXT or any(ord(c) < 32 or 127 <= ord(c) <= 159 or c == '\\' for c in value):
+                raise ValueError('SDK 조회 조건에는 역슬래시와 제어 문자를 사용할 수 없습니다. 해당 조건을 제외하거나 다른 조회 방법을 사용해 주세요.')
+            return exp.Literal.string(value)
+        if type(value) is int and len(str(abs(value))) <= 38:
+            return exp.Literal.number(str(value))
+        if isinstance(value, Decimal) and value.is_finite() and len(str(value)) <= 100 and abs(value.adjusted()) <= 300:
+            return exp.Literal.number(format(value, 'f'))
+        if isinstance(value, datetime) and value.tzinfo is None:
+            return exp.Cast(this=exp.Literal.string(value.isoformat(sep=' ')), to=exp.DataType.build('DATETIME'))
+        if isinstance(value, date) and not isinstance(value, datetime):
+            return exp.Cast(this=exp.Literal.string(value.isoformat()), to=exp.DataType.build('DATE'))
+        raise ValueError('SDK 조회 조건의 자료형을 확인해 주세요. 검증된 문자열, 정수, 소수와 날짜만 사용할 수 있습니다.')
+
+    for node in list(tree.find_all(exp.Placeholder)):
+        value = params[node.name]
+        if isinstance(value, (list, tuple)):
+            parent = node.parent
+            if not 1 <= len(value) <= MAX_LIST:
+                raise ValueError('목록 조건은 1~500개 값으로 입력해 주세요.')
+            if not isinstance(parent, exp.In) or len(parent.expressions) != 1 or parent.expressions[0] is not node:
+                raise ValueError('목록 조건은 IN (:조건이름) 안에서 단독으로 사용해 주세요.')
+            parent.set('expressions', [literal(item) for item in value])
+        else:
+            node.replace(literal(value))
+    # SQL 안의 고정 리터럴에도 같은 모드 독립적인 문자열 제한을 적용한다.
+    strings = [node.this for node in tree.find_all(exp.Literal) if node.is_string]
+    for value in strings:
+        literal(value)
+    rendered = _render(tree, 'datalake')
+    # 라이브러리 버전이 escaping 방식을 바꿔도 조용히 다른 값을 보내지 않는다.
+    if any(exp.Literal.string(value).sql(dialect='starrocks') != "'" + value.replace("'", "''") + "'" for value in strings):
+        raise ValueError('SDK가 사용하는 SQL 문자열 변환 방식을 확인할 수 없습니다.')
+    try:
+        with _quiet_parser():
+            parsed = sqlglot.parse(rendered, read='starrocks', error_level=ErrorLevel.RAISE)
+        if (len(parsed) != 1 or not isinstance(parsed[0], (exp.Select, exp.SetOperation))
+                or list(parsed[0].find_all(exp.Placeholder))
+                or sorted(strings) != sorted(node.this for node in parsed[0].find_all(exp.Literal) if node.is_string)):
+            raise ValueError()
+    except Exception:
+        raise ValueError('SDK 조회 조건을 안전한 SQL 값으로 변환하지 못했습니다.') from None
+    return rendered
+
+
+def sdk_metadata_sql(sql: str) -> tuple[str, str]:
+    """테이블 탐색 전용의 좁은 문법만 허용한다. 일반 실행 경로와 분리한다."""
+    if not isinstance(sql, str) or not sql.strip() or len(sql) > MAX_SQL_CHARS:
+        raise ValueError('테이블 탐색 SQL 형식을 확인해 주세요.')
+    sql = sql.strip()
+    if any(kind == 'comment' for kind, _ in _parts(sql)):
+        raise ValueError('테이블 탐색 SQL에는 주석을 사용할 수 없습니다.')
+    identifier = r'(?:[A-Za-z_][A-Za-z0-9_$]*|`(?:``|[^`\\\x00-\x1f\x7f])+`)'
+    qualified = rf'{identifier}(?:\s*\.\s*{identifier}){{0,2}}'
+
+    def table_name(value, maximum=3):
+        tree = _tree('SELECT * FROM ' + value, 'datalake')
+        tables = list(tree.find_all(exp.Table))
+        if len(tables) != 1 or len(tables[0].parts) > maximum or any(not isinstance(p, exp.Identifier) or len(p.name) > 256 for p in tables[0].parts):
+            raise ValueError('테이블 또는 데이터베이스 이름을 확인해 주세요.')
+        return _render(tables[0], 'datalake')
+
+    match = re.fullmatch(rf'SHOW\s+TABLES\s+FROM\s+({qualified})(?:\s+LIKE\s+(\'(?:\'\'|[^\'])*\'))?', sql, re.I)
+    if match:
+        statement = 'SHOW TABLES FROM ' + table_name(match[1], maximum=2)
+        if match[2] is not None:
+            tree = _tree('SELECT ' + match[2], 'datalake')
+            if len(tree.expressions) != 1 or not isinstance(tree.expressions[0], exp.Literal) or not tree.expressions[0].is_string:
+                raise ValueError('테이블 이름 검색 조건을 확인해 주세요.')
+            rendered = compile_for_sdk('SELECT :pattern', {'pattern': tree.expressions[0].this})
+            statement += ' LIKE ' + rendered[len('SELECT '):]
+        return statement, 'tables'
+    match = re.fullmatch(rf'SHOW\s+CREATE\s+TABLE\s+({qualified})', sql, re.I)
+    if match:
+        return 'SHOW CREATE TABLE ' + table_name(match[1]), 'create_table'
+    match = re.fullmatch(rf'DESC(?:RIBE)?\s+({qualified})', sql, re.I)
+    if match:
+        return 'DESCRIBE ' + table_name(match[1]), 'describe'
+    match = re.fullmatch(r'EXPLAIN\s+(.+)', sql, re.I | re.S)
+    if match:
+        return 'EXPLAIN ' + compile_for_sdk(match[1], {}), 'explain'
+    raise ValueError('SHOW TABLES FROM, SHOW CREATE TABLE, DESCRIBE 또는 읽기 전용 EXPLAIN만 사용할 수 있습니다.')

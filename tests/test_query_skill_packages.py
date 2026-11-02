@@ -76,7 +76,11 @@ class StandaloneDiscoveryTests(unittest.TestCase):
                 self.assertFalse((ROOT / 'company-agent-plugin/skills' / slug).exists())
                 body = (ROOT / 'standalone-skills' / slug / 'SKILL.md').read_text(encoding='utf-8')
                 self.assertLess(len(body.splitlines()), 100)
-                self.assertIn('등록한 DB 이름', body)
+                if slug == 'datalake-query':
+                    self.assertIn('테이블 경로', body)
+                    self.assertIn('auth setup', body)
+                else:
+                    self.assertIn('등록한 DB 이름', body)
                 self.assertIn('--allow-large', body)
 
 
@@ -173,6 +177,30 @@ class ActualQueryZipTests(unittest.TestCase):
                 response = self.command(self.unpack(slug),'profiles','list')
                 self.assertFalse(response['connected'])
                 self.assertEqual(response['profiles'],[])
+
+    def test_datalake_zip_reuses_auth_for_queries_in_multiple_schemas_without_sdk(self):
+        script = self.unpack('datalake-query')
+        values = {'USER_ID': 'zip-fixture-id', 'TOKEN': 'zip-fixture-jwt',
+                  'S3_ACCESS_KEY': 'zip-fixture-access', 'S3_SECRET_KEY': 'zip-fixture-secret'}
+        env = self.root / '.env'
+        env.write_text('\n'.join('LAKEHOUSE_' + key + '=' + value for key, value in values.items()), encoding='utf-8')
+        imported = self.command(script, 'auth', 'import-env')
+        refreshed = self.command(script, 'auth', 'import-env')
+        self.assertEqual(imported['profile']['id'], refreshed['profile']['id'])
+        for index, table in enumerate(('lake_catalog.mes.production_records', 'lake_catalog.fdc.sensor_records')):
+            spec = self.root / ('query-' + str(index) + '.json')
+            spec.write_text(json.dumps({'name': '조회 ' + str(index),
+                'sql': 'SELECT value FROM ' + table + ' WHERE id=:record_id',
+                'parameters': {'record_id': {'type': 'int'}}}), encoding='utf-8')
+            saved = self.command(script, 'queries', 'register', '--spec', str(spec))
+            self.assertFalse(saved['executed'])
+        status = self.command(script, 'start')
+        self.assertEqual(status['targetSelection'], 'table-path')
+        self.assertEqual(status['profileCount'], 1)
+        self.assertEqual(status['queryCount'], 2)
+        self.assertFalse(status['connected'])
+        for secret in values.values():
+            self.assertNotIn(secret, json.dumps(status))
 
     def test_demo_zip_complete_conversation_commands(self):
         script = self.unpack('data-query-demo')

@@ -206,8 +206,13 @@ class OracleBackend:
                 driver.init_oracle_client(lib_dir=self.profile.get('client_lib_dir') or None)
             elif mode == 'thin' and not driver.is_thin_mode():
                 raise AdapterError('oracle_mode', '다른 Oracle 연결 방식이 사용 중입니다. 조회 프로세스를 다시 시작해 주세요.')
-            self.connection = driver.connect(user=self.secrets['user'], password=self.secrets['password'],
-                dsn=self.secrets['dsn'], tcp_connect_timeout=_seconds(self.profile.get('connect_timeout', 10), 120))
+            try:
+                self.connection = driver.connect(user=self.secrets['user'], password=self.secrets['password'],
+                    dsn=self.secrets['dsn'], tcp_connect_timeout=_seconds(self.profile.get('connect_timeout', 10), 120))
+            except AdapterError:
+                raise
+            except Exception:
+                raise AdapterError('db_connect', '등록한 DB에 연결하지 못했습니다. HyDAP(Chakra)실행 여부 및 MyAccess권한 확인 부탁드립니다. 접속 정보와 네트워크도 확인해 주세요.') from None
             self.connection.autocommit = False
             return self.connection
         except AdapterError:
@@ -475,8 +480,13 @@ def open_backend(profile, secrets, *, demo=False, timeout_seconds=60):
     if engine not in ('oracle', 'datalake', 'ehub'):
         raise AdapterError('engine_unknown', '조회 종류를 확인해 주세요.')
     _query_seconds(timeout_seconds, unbounded=engine == 'datalake')
-    backend = DemoBackend(profile) if demo is True else (
-        OracleBackend(profile, secrets) if engine == 'oracle' else LakeBackend(profile, secrets))
+    if demo is True:
+        backend = DemoBackend(profile)
+    elif engine == 'datalake':
+        from .sdk_adapter import LakeHouseSDKBackend
+        backend = LakeHouseSDKBackend(profile, secrets)
+    else:
+        backend = OracleBackend(profile, secrets) if engine == 'oracle' else LakeBackend(profile, secrets)
     try:
         yield backend
     finally:

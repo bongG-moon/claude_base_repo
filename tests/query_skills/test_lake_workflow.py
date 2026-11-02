@@ -16,8 +16,10 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts/query_skills'))
+sys.path.insert(0, str(Path(__file__).parent))
 from query_core import adapters, cli, core, results
 from query_core.store import Store, atomic_json, read_json
+from test_datalake_sdk import FakeSDK, pd
 
 
 class FakeLakeTransport:
@@ -108,10 +110,13 @@ class LakeWorkflowTests(unittest.TestCase):
         self.store = Store(self.root / 'personal')
         self.ids = {}
         for engine in ('datalake', 'ehub'):
+            secrets = {'user_id':'SYNTHETIC_USER', 'token':'SYNTHETIC_TOKEN_' + engine}
+            if engine == 'datalake':
+                secrets.update(s3_access_key='SYNTHETIC_ACCESS', s3_secret_key='SYNTHETIC_SECRET')
             self.store.save_profile({'id':engine, 'name':'가상 ' + engine, 'engine':engine,
                                      'api_base':'https://fixture.invalid/api/v4', 'cluster':'fixture-cluster',
                                      'allow_cluster_start':True},
-                                    {'user_id':'SYNTHETIC_USER', 'token':'SYNTHETIC_TOKEN_' + engine})
+                                    secrets)
             query = self.store.save_query({'name':'같은 조회', 'profile':engine,
                 'sql':'SELECT sample_id FROM samples WHERE sample_id >= :minimum ORDER BY sample_id',
                 'parameters':{'minimum':{'type':'integer'}}}, engine)
@@ -120,6 +125,16 @@ class LakeWorkflowTests(unittest.TestCase):
 
     def execute(self, engine, **kwargs):
         return core.execute(self.store, engine, self.ids[engine], self.values, confirmed=True, **kwargs)
+
+    def transport(self, engine, *, row_count=2, value=None):
+        if engine == 'datalake':
+            frame = pd.DataFrame({'sample_id': range(row_count) if value is None else [value] * row_count})
+            return FakeSDK(frame).installed()
+        return FakeLakeTransport(row_count=row_count, value=value)
+
+    @staticmethod
+    def query_count(transport):
+        return len(transport.queries) if isinstance(transport, FakeSDK) else len(transport.selects())
 
     def old(self, response, *, legacy=False):
         folder = Path(response['dataFile']).parent
@@ -143,8 +158,8 @@ class LakeWorkflowTests(unittest.TestCase):
             self.assertEqual(core.default_limits(engine), expected)
         self.assertEqual(core.default_limits('demo')['max_rows'], 10000)
 
-    def test_normal_execute_reuses_one_cluster_request_and_connection_per_engine(self):
-        for engine in ('datalake', 'ehub'):
+    def test_ehub_execute_reuses_one_cluster_request_and_connection(self):
+        for engine in ('ehub',):
             with self.subTest(engine=engine), FakeLakeTransport(row_count=50000, cardinality=50000) as transport:
                 response = self.execute(engine)
                 self.assertTrue(response['complete'])
@@ -161,13 +176,10 @@ class LakeWorkflowTests(unittest.TestCase):
                 sql, binds = transport.selects()[0]
                 self.assertIn('50001', sql)
                 self.assertEqual(binds, self.values)
-                if engine == 'ehub':
-                    self.assertIn(('SET query_timeout = 60', None), transport.sql_calls)
-                else:
-                    self.assertFalse(any(sql.startswith('SET query_timeout') for sql, _ in transport.sql_calls))
+                self.assertIn(('SET query_timeout = 60', None), transport.sql_calls)
 
     def test_explicit_plan_then_run_closes_for_user_wait_and_does_not_reinspect(self):
-        for engine in ('datalake', 'ehub'):
+        for engine in ('ehub',):
             with self.subTest(engine=engine), FakeLakeTransport() as transport:
                 plan = core.plan(self.store, engine, self.ids[engine], self.values)
                 self.assertFalse(plan['requiresLargeApproval'])
@@ -183,21 +195,21 @@ class LakeWorkflowTests(unittest.TestCase):
 
     def test_50001_overflow_is_partial_and_expansion_requires_large_approval(self):
         for engine in ('datalake', 'ehub'):
-            with self.subTest(engine=engine), FakeLakeTransport(row_count=50001) as transport:
+            with self.subTest(engine=engine), self.transport(engine, row_count=50001) as transport:
                 response = self.execute(engine)
                 self.assertEqual((response['savedRows'], response['reason'], response['complete']), (50000, 'row_limit', False))
                 proposal = core.plan(self.store, engine, self.ids[engine], self.values, {'max_rows':60000})
                 self.assertTrue(proposal['requiresLargeApproval'])
-                before = len(transport.selects())
+                before = self.query_count(transport)
                 self.assertEqual(core.run(self.store, engine, proposal['planId'], confirmed=True)['status'], 'large_query_approval_required')
-                self.assertEqual(before, len(transport.selects()))
+                self.assertEqual(before, self.query_count(transport))
                 approved = core.run(self.store, engine, proposal['planId'], confirmed=True, allow_large=True)
                 self.assertEqual(approved['savedRows'], 50001)
                 self.assertTrue(approved['complete'])
 
     def test_default_byte_policy_is_unbounded_only_for_datalake_and_receipts_stay_small(self):
         for engine in ('datalake', 'ehub'):
-            with self.subTest(engine=engine), FakeLakeTransport(row_count=50, value='x'*500000):
+            with self.subTest(engine=engine), self.transport(engine, row_count=50, value='x'*500000):
                 response = self.execute(engine)
                 if engine == 'datalake':
                     self.assertTrue(response['complete'])
@@ -213,7 +225,7 @@ class LakeWorkflowTests(unittest.TestCase):
                 self.assertEqual(metadata['limits'], core.default_limits(engine))
 
     def test_large_plan_closes_connection_and_runs_only_after_separate_confirmation(self):
-        for engine in ('datalake', 'ehub'):
+        for engine in ('ehub',):
             with self.subTest(engine=engine), FakeLakeTransport(cardinality=50001) as transport:
                 response = self.execute(engine)
                 self.assertEqual(response['status'], 'confirmation_required')
@@ -232,21 +244,29 @@ class LakeWorkflowTests(unittest.TestCase):
     def test_changed_token_or_profile_invalidates_prepared_plan_without_select(self):
         for engine in ('datalake', 'ehub'):
             for changed in ('token', 'profile'):
-                with self.subTest(engine=engine, changed=changed), FakeLakeTransport() as transport:
+                with self.subTest(engine=engine, changed=changed), self.transport(engine) as transport:
                     proposal = core.plan(self.store, engine, self.ids[engine], self.values)
                     if changed == 'token':
-                        self.store.write_secrets(engine, {'user_id':'SYNTHETIC_USER', 'token':'CHANGED_' + engine})
+                        secrets = self.store.secrets(engine)
+                        secrets['token'] = 'CHANGED_' + engine
+                        self.store.write_secrets(engine, secrets)
                     else:
                         profile = self.store.profile(engine)
-                        profile['api_base'] += '/changed'
+                        if engine == 'datalake':
+                            profile['lake_type'] = 'dev'
+                        else:
+                            profile['api_base'] += '/changed'
                         self.store.save_profile(profile, replace=True)
                     with self.assertRaises(ValueError):
                         core.run(self.store, engine, proposal['planId'], confirmed=True)
-                    self.assertEqual(len(transport.selects()), 0)
-                    self.assertEqual(len(transport.connect_calls), 1)
+                    self.assertEqual(self.query_count(transport), 0)
+                    if engine == 'datalake':
+                        self.assertEqual(transport.constructors, [])
+                    else:
+                        self.assertEqual(len(transport.connect_calls), 1)
 
     def test_token_change_during_inspection_cannot_reuse_stale_authenticated_connection(self):
-        for engine in ('datalake', 'ehub'):
+        for engine in ('ehub',):
             callback = lambda: self.store.write_secrets(engine, {'user_id':'SYNTHETIC_USER', 'token':'REPLACED_' + engine})
             with self.subTest(engine=engine), FakeLakeTransport(on_explain=callback) as transport:
                 with self.assertRaises(ValueError):
@@ -257,7 +277,7 @@ class LakeWorkflowTests(unittest.TestCase):
     def test_startup_cleanup_and_legacy_used_plan_mapping_are_engine_isolated(self):
         receipts, folders = {}, {}
         for engine in ('datalake', 'ehub'):
-            with FakeLakeTransport():
+            with self.transport(engine):
                 receipts[engine] = self.execute(engine)
             folders[engine] = self.old(receipts[engine], legacy=True)
         catalog = self.store.db.read_bytes()
@@ -283,7 +303,7 @@ class LakeWorkflowTests(unittest.TestCase):
 
     def test_repeated_queries_preserve_ids_conditions_and_previous_file_bytes(self):
         for engine in ('datalake', 'ehub'):
-            with self.subTest(engine=engine), FakeLakeTransport():
+            with self.subTest(engine=engine), self.transport(engine):
                 first = self.execute(engine)
                 original = {p.name:p.read_bytes() for p in Path(first['dataFile']).parent.iterdir()}
                 second = self.execute(engine)
@@ -303,11 +323,15 @@ class LakeWorkflowTests(unittest.TestCase):
 
     def test_unconfirmed_execute_does_not_open_adapter(self):
         for engine in ('datalake', 'ehub'):
-            with self.subTest(engine=engine), FakeLakeTransport() as transport:
+            with self.subTest(engine=engine), self.transport(engine) as transport:
                 with self.assertRaises(ValueError):
                     core.execute(self.store, engine, self.ids[engine], self.values)
-                self.assertEqual(transport.http_calls, [])
-                self.assertEqual(transport.connect_calls, [])
+                if engine == 'datalake':
+                    self.assertEqual(transport.queries, [])
+                    self.assertEqual(transport.constructors, [])
+                else:
+                    self.assertEqual(transport.http_calls, [])
+                    self.assertEqual(transport.connect_calls, [])
 
 
 if __name__ == '__main__':

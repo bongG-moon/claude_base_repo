@@ -1,7 +1,7 @@
 {
   "generator": "company-platform-skills-v1",
   "sourceMode": "working-tree",
-  "sourceVersion": "1.4.49",
+  "sourceVersion": "1.4.50",
   "distributionStandard": {
     "sha256": "90621044e0e9725dbf7b77cd5cf5429cf6f19754ee420935aff425b5617d23c1",
     "files": {
@@ -34,7 +34,7 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "asset-factory",
-      "sha256": "a8a7a0492e17eed0964ac1d0d821aa8674b47d6b0302208c66971b02fddc4d68",
+      "sha256": "fddb08e6ce704118c2a88fa37bcbaa9347ff1cd52bcadd75f99b8f3e782e3b18",
       "size": 41260,
       "files": 25
     },
@@ -48,23 +48,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "data-query-demo",
-      "sha256": "e10b0425a6fd6a9e8e39ffdbbba215734613f396dfedab2fbfed1fab4551e8cd",
-      "size": 74707,
-      "files": 23
+      "sha256": "c0bd3f2f35b24542638cbff96aef071874db18a38b2cce77356ff320cc8940bf",
+      "size": 86761,
+      "files": 25
     },
     {
       "slug": "datalake-query",
       "file": "datalake-query.zip",
       "name": "Datalake 데이터 조회",
-      "description": "LakeHouse 연결과 저장 쿼리를 로컬 관리 화면에서 확인하고 결과를 파일로 저장합니다. 기본 5만 행을 조회하며 파일 용량과 본 조회 시간에는 도구의 기본 제한을 두지 않습니다.",
+      "description": "Data Lake 인증정보를 한 번 설정하고 테이블 경로와 저장 쿼리로 조회합니다. 기본 5만 행의 결과를 로컬 파일로 전달하며 파일 용량과 본 조회 시간에는 기본 제한을 두지 않습니다.",
       "packageId": "datalake-query",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "datalake-query",
-      "sha256": "e996795f88cfe48987ed8c72556a01bc843b57b09bad6a1e2bbd0805b868faca",
-      "size": 79344,
-      "files": 23
+      "sha256": "3c06c140802923b2b718d41e99a0947a06048893ed90cc82e023992afcba9ce7",
+      "size": 96435,
+      "files": 26
     },
     {
       "slug": "ehub-query",
@@ -76,9 +76,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "ehub-query",
-      "sha256": "ab96b90536d83a01dcd0f1b0169037e417e6b51b6b8b1eaba7d8e081b8ed5273",
-      "size": 78941,
-      "files": 23
+      "sha256": "d810ad1ef4bbc9907fe9c69a9f248cda83a056b4ee2447161313c3b2524dfb00",
+      "size": 90967,
+      "files": 25
     },
     {
       "slug": "excel-to-pipeline",
@@ -90,8 +90,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "excel-to-pipeline",
-      "sha256": "839d84a6cdbaf84f9f92b67af0173e8db73de5a961e82967f9190b8ebf4a3397",
-      "size": 5504204,
+      "sha256": "d11cee4ace79f3f426396ead5a2056892b3282ae27b1b569bf961782eb7b64da",
+      "size": 5504207,
       "files": 43
     },
     {
@@ -104,8 +104,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "file-organizer",
-      "sha256": "c4f4e4f75373c746baee73551589c18632bd27952c8759b079b3288c3ab980aa",
-      "size": 27316,
+      "sha256": "e1539896c17656a46eeca12405b3f0acfef84b72e3b6bc3bc67b079ad91a22d8",
+      "size": 27317,
       "files": 12
     },
     {
@@ -118,8 +118,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "html-report",
-      "sha256": "61cd2bff06d5d2f856161c40f2bdff6d80a771b0cb8d0a9f2f5890b11d7ee622",
-      "size": 174498,
+      "sha256": "3ba8a67cd106492c98aea44f664fdadeabe550219c7c9f2b719245fb2df94e45",
+      "size": 174496,
       "files": 38
     },
     {
@@ -132,8 +132,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "karpathy-guidelines",
-      "sha256": "5a58f8288c8429350903f64c36bd01cde4210f2e3fe0b224f352f94ee5b4541e",
-      "size": 30333,
+      "sha256": "46e472546d6083853d0052d157fc166a2c176de6cbb79dceebfc9477b4715b18",
+      "size": 30334,
       "files": 15
     },
     {
@@ -146,9 +146,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "oracle-query",
-      "sha256": "efe5780e06824da54d6c9d93ba9aedbdd1392ae5a2fc3358d59c7ff984ffe8c4",
-      "size": 77635,
-      "files": 23
+      "sha256": "f7bb0e1ad5426b7c6520228fd3de9351f95d76dec405cba43ae915cb95e4d89f",
+      "size": 90227,
+      "files": 25
     },
     {
       "slug": "personal-knowledge",
@@ -160,8 +160,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "personal-knowledge",
-      "sha256": "3d3bc3aa3db1b610c569fb766cea8c28114f823740c8fc85a1ee1694e13a04c8",
-      "size": 24608,
+      "sha256": "bbecd6b72541e82e13f12777f9b9292b85a1630cd3ddedc3c0093eb82c4131eb",
+      "size": 24607,
       "files": 12
     },
     {
@@ -174,8 +174,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "personal-memory",
-      "sha256": "6e1f80f7d3d1c81bb46aec93fc5d4b4fc59f7be12e77d7bc03d52c41d1b1bfb4",
-      "size": 24664,
+      "sha256": "307da0631529aefd3295087d72dbed96cb9ee94631771f7de4a209eaca9c7c14",
+      "size": 24661,
       "files": 12
     },
     {
@@ -188,7 +188,7 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "presentation",
-      "sha256": "42a52e3c1376dcd26add4c123114d8fe811dc4da66edcab8ed03cb8a1b266369",
+      "sha256": "f219181028305f78805165296efac310ec0b51f9286a02c6cd5f727e2b952e80",
       "size": 165610,
       "files": 37
     },
@@ -202,7 +202,7 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "web-interface",
-      "sha256": "eccf05391be75fb01cf0afd511b69c31c1a6a0f12fc06a847065d09d2e95158c",
+      "sha256": "d8c1739637f83828679195afe96bc50669fce4dc608572d0498bf96a42367a11",
       "size": 24452,
       "files": 11
     },
@@ -216,8 +216,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "website-rebuild",
-      "sha256": "44152f4d029e8dbd1954804a0501ae69983a95d87b61cc098e6f0e84d9398a74",
-      "size": 28534,
+      "sha256": "c9af253973a2c7afdeb5c23649d77c3411b50f16588956a367a319a60a988179",
+      "size": 28535,
       "files": 13
     },
     {
@@ -230,8 +230,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "work-context-catalog",
-      "sha256": "0a84cfd3fc04030b05260748d47c3595f9487bbce0a2b45ee1be0088d0c51029",
-      "size": 5434356,
+      "sha256": "630ebc76d8002d32f269b58eabd84289eb470beaa7313f2d10db44c0981dbde0",
+      "size": 5434355,
       "files": 21
     },
     {
@@ -300,23 +300,23 @@
     }
   ],
   "managedFiles": {
-    "SHA256SUMS.txt": "10286c87b28bab96c29eee1a1c83b051cf88d3f9ead1a0179f8a83be98d628d5",
-    "asset-factory.zip": "a8a7a0492e17eed0964ac1d0d821aa8674b47d6b0302208c66971b02fddc4d68",
-    "data-query-demo.zip": "e10b0425a6fd6a9e8e39ffdbbba215734613f396dfedab2fbfed1fab4551e8cd",
-    "datalake-query.zip": "e996795f88cfe48987ed8c72556a01bc843b57b09bad6a1e2bbd0805b868faca",
-    "ehub-query.zip": "ab96b90536d83a01dcd0f1b0169037e417e6b51b6b8b1eaba7d8e081b8ed5273",
-    "excel-to-pipeline.zip": "839d84a6cdbaf84f9f92b67af0173e8db73de5a961e82967f9190b8ebf4a3397",
-    "file-organizer.zip": "c4f4e4f75373c746baee73551589c18632bd27952c8759b079b3288c3ab980aa",
-    "html-report.zip": "61cd2bff06d5d2f856161c40f2bdff6d80a771b0cb8d0a9f2f5890b11d7ee622",
-    "karpathy-guidelines.zip": "5a58f8288c8429350903f64c36bd01cde4210f2e3fe0b224f352f94ee5b4541e",
+    "SHA256SUMS.txt": "dca1589186674ae985c060c85b167df3302bdda6b7c10ba486b92c265cad185d",
+    "asset-factory.zip": "fddb08e6ce704118c2a88fa37bcbaa9347ff1cd52bcadd75f99b8f3e782e3b18",
+    "data-query-demo.zip": "c0bd3f2f35b24542638cbff96aef071874db18a38b2cce77356ff320cc8940bf",
+    "datalake-query.zip": "3c06c140802923b2b718d41e99a0947a06048893ed90cc82e023992afcba9ce7",
+    "ehub-query.zip": "d810ad1ef4bbc9907fe9c69a9f248cda83a056b4ee2447161313c3b2524dfb00",
+    "excel-to-pipeline.zip": "d11cee4ace79f3f426396ead5a2056892b3282ae27b1b569bf961782eb7b64da",
+    "file-organizer.zip": "e1539896c17656a46eeca12405b3f0acfef84b72e3b6bc3bc67b079ad91a22d8",
+    "html-report.zip": "3ba8a67cd106492c98aea44f664fdadeabe550219c7c9f2b719245fb2df94e45",
+    "karpathy-guidelines.zip": "46e472546d6083853d0052d157fc166a2c176de6cbb79dceebfc9477b4715b18",
     "manufacturing-oracle-mcp-0.1.0-20261024.zip": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
-    "oracle-query.zip": "efe5780e06824da54d6c9d93ba9aedbdd1392ae5a2fc3358d59c7ff984ffe8c4",
-    "personal-knowledge.zip": "3d3bc3aa3db1b610c569fb766cea8c28114f823740c8fc85a1ee1694e13a04c8",
-    "personal-memory.zip": "6e1f80f7d3d1c81bb46aec93fc5d4b4fc59f7be12e77d7bc03d52c41d1b1bfb4",
-    "presentation.zip": "42a52e3c1376dcd26add4c123114d8fe811dc4da66edcab8ed03cb8a1b266369",
-    "web-interface.zip": "eccf05391be75fb01cf0afd511b69c31c1a6a0f12fc06a847065d09d2e95158c",
-    "website-rebuild.zip": "44152f4d029e8dbd1954804a0501ae69983a95d87b61cc098e6f0e84d9398a74",
-    "work-context-catalog.zip": "0a84cfd3fc04030b05260748d47c3595f9487bbce0a2b45ee1be0088d0c51029",
-    "등록_설치_안내.html": "5505cc557a6b72dfdaf01adbe2b3cc82be3c89c056860937d614c2cfecc7bd5c"
+    "oracle-query.zip": "f7bb0e1ad5426b7c6520228fd3de9351f95d76dec405cba43ae915cb95e4d89f",
+    "personal-knowledge.zip": "bbecd6b72541e82e13f12777f9b9292b85a1630cd3ddedc3c0093eb82c4131eb",
+    "personal-memory.zip": "307da0631529aefd3295087d72dbed96cb9ee94631771f7de4a209eaca9c7c14",
+    "presentation.zip": "f219181028305f78805165296efac310ec0b51f9286a02c6cd5f727e2b952e80",
+    "web-interface.zip": "d8c1739637f83828679195afe96bc50669fce4dc608572d0498bf96a42367a11",
+    "website-rebuild.zip": "c9af253973a2c7afdeb5c23649d77c3411b50f16588956a367a319a60a988179",
+    "work-context-catalog.zip": "630ebc76d8002d32f269b58eabd84289eb470beaa7313f2d10db44c0981dbde0",
+    "등록_설치_안내.html": "634c9d75a9dc58fc3564d137bf3e6eb1c2afe4922f12959f73cc14262d6b65d7"
   }
 }

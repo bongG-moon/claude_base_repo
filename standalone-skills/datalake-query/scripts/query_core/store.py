@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import shlex
 import sqlite3
 import tempfile
 import time
@@ -14,6 +15,8 @@ from contextlib import contextmanager
 
 
 ENGINES = {'oracle', 'datalake', 'ehub'}
+SECRET_KEYS = {'user', 'password', 'dsn', 'user_id', 'token', 's3_access_key', 's3_secret_key'}
+DATALAKE_KEYS = ('user_id', 'token', 's3_access_key', 's3_secret_key')
 
 
 def safe_path(path):
@@ -101,7 +104,7 @@ class Store:
 
     def save_profile(self, profile, secrets=None, *, replace=False):
         allowed = {'id','name','engine','api_base','cluster','allow_http','allow_cluster_start',
-                   'tls_ca','connect_timeout','mode','client_lib_dir','demo_database'}
+                   'tls_ca','connect_timeout','mode','client_lib_dir','demo_database','lake_type'}
         if not isinstance(profile, dict) or set(profile) - allowed:
             raise ValueError('지원하는 연결 설정만 입력해 주세요.')
         profile = dict(profile)
@@ -111,6 +114,8 @@ class Store:
             raise ValueError('Oracle, Datalake 또는 E-HUB 연결을 선택해 주세요.')
         if not self.demo and 'demo_database' in profile:
             raise ValueError('실습 데이터는 실제 연결에 등록할 수 없습니다.')
+        if 'lake_type' in profile and profile['lake_type'] not in ('prod', 'dev'):
+            raise ValueError('Datalake 환경은 prod 또는 dev로 선택해 주세요.')
         for key in ('allow_http', 'allow_cluster_start'):
             if key in profile and type(profile[key]) is not bool:
                 raise ValueError('연결 동의 항목의 형식을 확인해 주세요.')
@@ -132,7 +137,7 @@ class Store:
             if secrets:
                 raise ValueError('실습에는 인증정보를 저장하지 않습니다.')
             return
-        if not isinstance(secrets, dict) or set(secrets) - {'user','password','dsn','user_id','token'}:
+        if not isinstance(secrets, dict) or set(secrets) - SECRET_KEYS:
             raise ValueError('지원하는 인증 설정만 입력해 주세요.')
         if any(not isinstance(v, str) or len(v) > 16000 for v in secrets.values()):
             raise ValueError('인증 설정의 형식을 확인해 주세요.')
@@ -164,17 +169,87 @@ class Store:
                 continue
             key, sep, value = line.partition('=')
             key = key.strip().lower()
-            if not sep or key not in {'user','password','dsn','user_id','token'}:
+            if not sep or key not in SECRET_KEYS:
                 raise ValueError('연결 설정 파일의 항목을 확인해 주세요.')
             value = value.strip()
             result[key] = json.loads(value) if value.startswith('"') else value
             if not isinstance(result[key], str):
                 raise ValueError('인증 설정은 문자열이어야 합니다.')
-        for key in ('user','password','dsn','user_id','token'):
+        for key in SECRET_KEYS:
             override = os.environ.get('DATAQUERY_' + profile_id.upper().replace('-', '_') + '_' + key.upper())
             if override is not None:
                 result[key] = override
         return result
+
+    def import_datalake_env(self, path=None, name=None, profile_id=None):
+        """Explicitly import cwd/.env only, without searching parents or emitting values."""
+        if self.demo:
+            raise ValueError('실습 저장소에는 Datalake 인증정보를 가져오지 않습니다.')
+        expected = safe_path(Path.cwd() / '.env')
+        source = expected if path is None else safe_path(path)
+        if source != expected:
+            raise ValueError('현재 작업 폴더의 .env 파일만 가져올 수 있습니다. 다른 위치를 자동 탐색하지 않습니다.')
+        try:
+            with source.open('rb') as stream:
+                raw = stream.read(65_537)
+            if len(raw) > 65_536:
+                raise ValueError
+            lines = raw.decode('utf-8-sig').splitlines()
+            values = {}
+            for line in lines:
+                match = re.fullmatch(r'\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)', line)
+                if not match:
+                    continue
+                key, value = match.groups()
+                key = key.lower()
+                if not key.startswith('lakehouse_'):
+                    continue
+                key = key.removeprefix('lakehouse_')
+                if key not in (*DATALAKE_KEYS, 'type'):
+                    continue
+                if key in values:
+                    raise ValueError
+                if value.startswith(('"', "'")):
+                    parts = shlex.split(value, comments=True, posix=True)
+                    if len(parts) != 1:
+                        raise ValueError
+                    value = parts[0]
+                else:
+                    value = re.split(r'\s+#', value, maxsplit=1)[0].strip()
+                if not value.strip() or len(value) > 16000:
+                    raise ValueError
+                values[key] = value
+            if not set(DATALAKE_KEYS).issubset(values) or values.get('type', 'prod') not in ('prod', 'dev'):
+                raise ValueError
+        except (OSError, UnicodeError, ValueError):
+            raise ValueError('선택한 .env 파일에서 사번, JWT, S3 Access Key와 S3 Secret Key 4개 값을 확인해 주세요. 기존 설정은 바꾸지 않았습니다.') from None
+        current = self.datalake_profile(profile_id, allow_missing=True)
+        profile = dict(current) if current else {'id': 'db_' + uuid.uuid4().hex[:12], 'engine': 'datalake'}
+        profile['name'] = (current['name'] if current else 'Datalake') if name is None else name
+        profile['lake_type'] = values.pop('type', profile.get('lake_type', 'prod'))
+        if current:
+            previous = self.secrets(current['id'])
+            previous.update(values)
+            values = previous
+        info = self.save_profile(profile, values, replace=current is not None)
+        return {'ok': True, 'status': 'imported', 'profile': info, 'connected': False, 'executed': False,
+                'message': 'Data Lake 인증정보를 가져왔습니다. 실제 접속은 아직 하지 않았습니다.'}
+
+    def datalake_profile(self, profile_id=None, *, allow_missing=False):
+        """인증정보는 재사용하며 실제 조회 대상은 SQL의 테이블 경로로 지정한다."""
+        if profile_id is not None:
+            profile = self.profile(profile_id)
+            if profile['engine'] != 'datalake':
+                raise ValueError('Data Lake 인증정보를 선택해 주세요. 다른 서비스의 설정은 바꾸지 않았습니다.')
+            return profile
+        profiles = self.profiles('datalake')
+        if not profiles:
+            if allow_missing:
+                return None
+            raise ValueError('Data Lake 인증정보가 없습니다. auth setup으로 사번, JWT와 S3 키를 한 번 설정해 주세요. 테이블별 DB 등록은 필요하지 않습니다.')
+        if len(profiles) != 1:
+            raise ValueError('기존 Data Lake 인증정보가 여러 개입니다. 관리 화면에서 사용할 인증정보를 고르거나 --profile로 지정해 주세요. 테이블별 DB 등록은 필요하지 않습니다.')
+        return self.profile(profiles[0]['id'])
 
     def profile(self, profile_id):
         with self.connect() as conn:
@@ -220,7 +295,13 @@ class Store:
             raise ValueError('조회 이름, 연결, SQL, 조건 정의만 등록해 주세요.')
         spec = dict(spec)
         spec['name'] = label(spec.get('name'))
-        profile = self.profile(spec.get('profile'))
+        if engine == 'datalake' and spec.get('profile') is None:
+            # 기존 쿼리를 고칠 때는 다른 계정으로 바뀌지 않도록 원래 인증정보를 따른다.
+            previous = self.query(query_id, engine) if query_id is not None else None
+            profile = self.datalake_profile(previous['profile'] if previous else None)
+            spec['profile'] = profile['id']
+        else:
+            profile = self.profile(spec.get('profile'))
         if engine != 'demo' and profile['engine'] != engine:
             raise ValueError('이 스킬에 맞는 연결을 선택해 주세요.')
         spec['sql'] = validate_sql(spec.get('sql'), profile['engine'])

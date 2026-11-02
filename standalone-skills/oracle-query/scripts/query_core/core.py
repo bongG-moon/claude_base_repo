@@ -75,7 +75,7 @@ def _using_backend(profile, secrets, *, demo, timeout_seconds, reuse=None):
 def execute(store: Store, engine, query_id, values, options=None, *, confirmed=False):
     """원래 요청이 명확한 일반 조회는 준비와 실행에 같은 연결을 사용합니다."""
     if not confirmed:
-        raise ValueError('조회할 DB와 쿼리, 조건이 명확한 사용자 요청을 확인한 뒤 실행해 주세요.')
+        raise ValueError('SQL과 조회 조건이 명확한 사용자 요청을 확인한 뒤 실행해 주세요.' if engine == 'datalake' else '조회할 DB와 쿼리, 조건이 명확한 사용자 요청을 확인한 뒤 실행해 주세요.')
     if not isinstance(values, dict):
         raise ValueError('조회 조건은 이름과 값으로 입력해 주세요.')
     selected = limits(options, engine)
@@ -95,6 +95,8 @@ def plan(store: Store, engine, query_id, values, options=None, *, _reuse=None):
     if not isinstance(values, dict):
         raise ValueError('조회 조건은 이름과 값으로 입력해 주세요.')
     selected = limits(options, engine)
+    if engine == 'datalake' and not store.demo and selected['timeout'] is not None:
+        raise ValueError('현재 lakes SDK에는 조회 취소와 시간 제한을 전달하는 규격이 확인되지 않았습니다. Datalake의 --timeout 지정을 생략해 주세요.')
     defaults = default_limits(engine)
     query, profile, binds, analysis = _prepared(store, engine, query_id, values)
     # 연결 검사/추정은 이 명시적 조회 요청에서만 수행합니다. 등록과 목록은 접속하지 않습니다.
