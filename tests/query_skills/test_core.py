@@ -228,6 +228,60 @@ class QueryFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'같은 DB 이름'):
             self.store.save_profile({'id':'another','name':'생산DB','engine':'oracle'})
 
+    def oracle_store(self):
+        store = Store(self.root / 'oracle')
+        store.save_profile({'id':'fixture','name':'가상 Oracle','engine':'oracle'})
+        store.save_query({'name':'측정 조회','profile':'fixture',
+            'sql':'SELECT sample_id FROM samples WHERE sample_id >= :minimum',
+            'parameters':{'minimum':{'type':'integer'}}}, 'oracle')
+        return store
+
+    def test_live_defaults_are_50000_and_demo_keeps_10000(self):
+        for engine in ('oracle','ehub'):
+            self.assertEqual(core.default_limits(engine), {'max_rows':50000,'max_bytes':20*1024*1024,'timeout':60})
+        self.assertEqual(core.default_limits('datalake'), {'max_rows':50000,'max_bytes':None,'timeout':None})
+        self.assertEqual(core.default_limits('demo')['max_rows'],10000)
+        store = self.oracle_store()
+        with patch.object(store,'secrets',return_value={}), self.fake_backend([(1,)], observation={'estimated_rows':20000,'exact_count':20000,'notes':[]}):
+            proposal = core.plan(store,'oracle',1,{'minimum':1})
+            self.assertEqual(proposal['limits']['max_rows'],50000)
+            self.assertFalse(proposal['requiresLargeApproval'])
+            self.assertTrue(core.run(store,'oracle',proposal['planId'],confirmed=True)['complete'])
+            for sql_limit in (20000,50000):
+                store.save_query({'name':'측정 조회','profile':'fixture',
+                    'sql':f'SELECT sample_id FROM samples WHERE sample_id >= :minimum FETCH FIRST {sql_limit} ROWS ONLY',
+                    'parameters':{'minimum':{'type':'integer'}}},'oracle',query_id=1)
+                self.assertFalse(core.plan(store,'oracle',1,{'minimum':1})['requiresLargeApproval'])
+        with patch.object(store,'secrets',return_value={}), self.fake_backend([], observation={'estimated_rows':50001,'exact_count':50001,'notes':[]}):
+            proposal = core.plan(store,'oracle',1,{'minimum':1})
+            self.assertTrue(proposal['requiresLargeApproval'])
+            self.assertEqual(core.run(store,'oracle',proposal['planId'],confirmed=True)['status'],'large_query_approval_required')
+            self.assertEqual(core.run(store,'oracle',proposal['planId'],confirmed=True,allow_large=True)['status'],'larger_limit_required')
+
+    def test_oracle_unknown_count_fetches_once_and_stops_at_50000_without_duplicate_inspection(self):
+        store = self.oracle_store()
+        calls = {'inspect':0,'execute':0}
+        class Backend:
+            def inspect(self,*args):
+                calls['inspect'] += 1
+                return {'estimated_rows':None,'exact_count':None,'notes':[]}
+            @contextmanager
+            def execute(self,*args,**kwargs):
+                calls['execute'] += 1
+                self_limit = kwargs['limit']
+                self_timeout = kwargs['timeout_seconds']
+                if (self_limit,self_timeout) != (50000,60): raise AssertionError('Oracle defaults changed')
+                yield ['VALUE'], ((i,) for i in range(50001))
+        @contextmanager
+        def opened(*args,**kwargs): yield Backend()
+        with patch.object(store,'secrets',return_value={}), patch('query_core.adapters.open_backend',opened):
+            proposal = core.plan(store,'oracle',1,{'minimum':1})
+            result = core.run(store,'oracle',proposal['planId'],confirmed=True)
+        self.assertEqual(calls,{'inspect':1,'execute':1})
+        self.assertEqual(result['savedRows'],50000)
+        self.assertEqual(result['reason'],'row_limit')
+        self.assertLess(len(json.dumps(result)),1800)
+
     def test_secret_env_roundtrip_multiline_and_no_catalog_leak(self):
         store = Store(self.root / 'personal')
         secrets = {'user':'person','password':'pw="$# complex\\value','dsn':'(DESCRIPTION=\n (CONNECT_DATA=(SERVICE_NAME=DEMO)))'}

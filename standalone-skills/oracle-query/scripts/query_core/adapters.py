@@ -28,6 +28,12 @@ def _seconds(value, maximum=3600):
     return float(value)
 
 
+def _query_seconds(value, *, unbounded=False):
+    if unbounded and value is None:
+        return None
+    return _seconds(value, maximum=threading.TIMEOUT_MAX - 1 if unbounded else 3600)
+
+
 def _limit(value):
     if type(value) is not int or not 1 <= value <= 1_000_000:
         raise AdapterError('invalid_limit', '조회 행 한도는 1~1,000,000 사이여야 합니다.')
@@ -57,17 +63,17 @@ def _sql(sql, params, engine, count=None):
 def _rows(cursor, count, deadline, expired):
     read = 0
     while read < count:
-        if expired.is_set() or time.monotonic() >= deadline:
+        if expired.is_set() or (deadline is not None and time.monotonic() >= deadline):
             raise AdapterError('query_timeout', '조회 제한 시간이 지나 중단했습니다. 기간이나 조건을 줄여 주세요.')
         try:
             batch = cursor.fetchmany(min(500, count - read))
         except Exception:
-            code = 'query_timeout' if expired.is_set() or time.monotonic() >= deadline else 'db_fetch'
+            code = 'query_timeout' if expired.is_set() or (deadline is not None and time.monotonic() >= deadline) else 'db_fetch'
             raise AdapterError(code, '결과를 끝까지 받지 못했습니다. 제한 시간, 네트워크와 조회 상태를 확인해 주세요.') from None
         if not batch:
             return
         for row in batch:
-            if expired.is_set() or time.monotonic() >= deadline:
+            if expired.is_set() or (deadline is not None and time.monotonic() >= deadline):
                 raise AdapterError('query_timeout', '조회 제한 시간이 지나 중단했습니다. 기간이나 조건을 줄여 주세요.')
             read += 1
             yield tuple(row)
@@ -77,7 +83,10 @@ def _rows(cursor, count, deadline, expired):
 def _deadline(seconds, cancel):
     """전체 실행 시간 경과 시 취소를 요청한다. 서버 종료를 보증하는 표시는 하지 않는다."""
     expired = threading.Event()
-    end = time.monotonic() + _seconds(seconds)
+    if seconds is None:
+        yield None, expired
+        return
+    end = time.monotonic() + _query_seconds(seconds, unbounded=True)
 
     def expire():
         expired.set()
@@ -147,8 +156,8 @@ class DemoBackend:
         cursor = None
         yielding = False
         try:
-            with _deadline(_seconds(timeout_seconds), self.connection.interrupt) as (end, expired):
-                self.connection.set_progress_handler(lambda: int(expired.is_set() or time.monotonic() >= end), 1000)
+            with _deadline(_query_seconds(timeout_seconds, unbounded=True), self.connection.interrupt) as (end, expired):
+                self.connection.set_progress_handler(lambda: int(expired.is_set() or (end is not None and time.monotonic() >= end)), 1000)
                 cursor = self.connection.execute(statement, binds)
                 yielding = True
                 yield [c[0] for c in cursor.description], _rows(cursor, count, end, expired)
@@ -375,7 +384,8 @@ class LakeBackend:
                     use_pure=True, auth_plugin='mysql_clear_password', ssl_disabled=False,
                     ssl_verify_cert=True, ssl_verify_identity=True, allow_local_infile=False,
                     connection_timeout=max(1, int(_seconds(self.profile.get('connect_timeout', 10), 120))),
-                    read_timeout=30, write_timeout=30)
+                    read_timeout=None if self.profile.get('engine') == 'datalake' else 60,
+                    write_timeout=None if self.profile.get('engine') == 'datalake' else 60)
                 if self.profile.get('tls_ca'):
                     options['ssl_ca'] = self.profile['tls_ca']
                 self.connection = driver.connect(**options)
@@ -396,7 +406,10 @@ class LakeBackend:
         try:
             with _deadline(5, conn.close) as (end, expired):
                 cursor = conn.cursor()
-                cursor.execute('SET query_timeout = 5')
+                # Datalake는 서버의 원래 세션 제한을 바꾸지 않습니다.
+                # 계획 확인은 클라이언트의 짧은 실패 감지만 적용합니다.
+                if self.profile.get('engine') != 'datalake':
+                    cursor.execute('SET query_timeout = 5')
                 cursor.execute('EXPLAIN COSTS ' + statement, binds)
                 highest = None
                 # 실행계획 원문과 필터 상수는 반환하지 않는다.
@@ -420,17 +433,20 @@ class LakeBackend:
 
     @contextmanager
     def execute(self, sql, params, *, limit, timeout_seconds):
-        count, seconds = _limit(limit) + 1, _seconds(timeout_seconds)
+        count = _limit(limit) + 1
+        unbounded = self.profile.get('engine') == 'datalake'
+        seconds = _query_seconds(timeout_seconds, unbounded=unbounded)
         statement, binds = _sql(sql, params, 'starrocks', count)
         conn, cursor = self._connect(), None
         expired = threading.Event()
         yielding = False
         try:
-            conn.read_timeout = max(1, math.ceil(seconds))
-            conn.write_timeout = max(1, math.ceil(seconds))
+            conn.read_timeout = None if seconds is None else max(1, math.ceil(seconds))
+            conn.write_timeout = None if seconds is None else max(1, math.ceil(seconds))
             with _deadline(seconds, conn.close) as (end, expired):
                 cursor = conn.cursor()
-                cursor.execute('SET query_timeout = ' + str(max(1, math.ceil(seconds))))
+                if not unbounded:
+                    cursor.execute('SET query_timeout = ' + str(max(1, math.ceil(seconds))))
                 cursor.execute(statement, binds)
                 if cursor.description is None:
                     raise AdapterError('readonly_required', '조회 결과가 없는 명령은 실행할 수 없습니다.')
@@ -453,12 +469,12 @@ class LakeBackend:
 
 
 @contextmanager
-def open_backend(profile, secrets, *, demo=False, timeout_seconds=30):
+def open_backend(profile, secrets, *, demo=False, timeout_seconds=60):
     """선택한 연결만 연다. 실패한 운영 연결을 실습 데이터로 바꾸지 않는다."""
-    _seconds(timeout_seconds)
     engine = profile.get('engine')
     if engine not in ('oracle', 'datalake', 'ehub'):
         raise AdapterError('engine_unknown', '조회 종류를 확인해 주세요.')
+    _query_seconds(timeout_seconds, unbounded=engine == 'datalake')
     backend = DemoBackend(profile) if demo is True else (
         OracleBackend(profile, secrets) if engine == 'oracle' else LakeBackend(profile, secrets))
     try:

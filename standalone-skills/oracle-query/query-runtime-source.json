@@ -3,11 +3,13 @@
   "source": "scripts/query_skills/query_core",
   "files": {
     "__init__.py": "c7e5fd713c5f613722c589048f1b6ca5ef19fc02f0e04ab8612a75702bd12bf8",
-    "adapters.py": "59da5b8b05af43b16ea4e80391f3feea6cf44b9fea5f98ecb1f56f5aca8f8671",
-    "cli.py": "f9bb81d5a6c494a5e122485eb1c8e617047cfe7bcfb0d723abc559d484ca0cdf",
-    "core.py": "ecf23b3b92c8f2faac616646176eb3cfda35cab21b4efb239adf59223d78f99c",
-    "setup_ui.py": "2a9b0a764d6179852af5772f343e7c0f2620cbcbe995166a45c9bd111551cfd6",
+    "adapters.py": "92e84830c52221f41bee40514bd4a8f4afef26e2ac832bceb25b52c801c70e61",
+    "cli.py": "245fb0858e7265babbdf7730818b128feb1ba89bccbefa29d1a13e4f67797f94",
+    "core.py": "bf828e62d44007696473ac767d0ac3d19816dfa557dfdb4b4b1214e8cad35d21",
+    "manager_ui.py": "f9ff25e08b0df27f7acd1f1cdce5ba2fe1ce72914844f2aa25dea7f0b1efb12e",
+    "results.py": "2c5ef53fee13cbb2adc82a01871e091e4ba1cc64688745856c93fa515199cc0a",
+    "setup_ui.py": "ebfe591bd443698e9459dee36c0b09910d6e83ed906724e2edce194b4bad2a98",
     "sql.py": "2098dfbedc9bf099a2379afa6bef32329ff04605c6d2b3638255a008faac27ee",
-    "store.py": "936842915d7730434ba7d80de305679104d009593aed1ea67bdfff89b128cf77"
+    "store.py": "01978a1eb959ba530b09fb8006a500f830f20640686af93fd18b43f275e00aad"
   }
 }

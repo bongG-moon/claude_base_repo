@@ -202,9 +202,13 @@ class Store:
     def queries(self, engine):
         result = []
         with self.connect() as conn:
-            rows = list(conn.execute('SELECT id,name,profile FROM queries ORDER BY id'))
+            # 관리 화면의 목록은 한 번에 읽습니다. 쿼리마다 연결 파일이나 DB를 열지 않습니다.
+            rows = list(conn.execute('SELECT q.id,q.name,p.body AS profile_body '
+                                     'FROM queries q LEFT JOIN profiles p ON p.id=q.profile ORDER BY q.id'))
         for row in rows:
-            p = self.profile(row['profile'])
+            if row['profile_body'] is None:
+                raise ValueError('저장 쿼리의 연결을 찾을 수 없습니다. 등록 상태를 확인해 주세요.')
+            p = json.loads(row['profile_body'])
             if engine == 'demo' or p['engine'] == engine:
                 result.append({'id':row['id'], 'name':row['name'], 'sourceName':p['name'],
                                'display':f"{row['id']}. {row['name']} — {p['name']}"})

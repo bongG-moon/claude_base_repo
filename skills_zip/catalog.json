@@ -48,37 +48,37 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "data-query-demo",
-      "sha256": "8e9b60dac8ae36ca055630c0276681e68cdfe70fb9c94084b2f4c8c9f49a99dc",
-      "size": 57125,
-      "files": 21
+      "sha256": "e10b0425a6fd6a9e8e39ffdbbba215734613f396dfedab2fbfed1fab4551e8cd",
+      "size": 74707,
+      "files": 23
     },
     {
       "slug": "datalake-query",
       "file": "datalake-query.zip",
       "name": "Datalake 데이터 조회",
-      "description": "LakeHouse 데이터를 이름으로 저장한 SQL과 조건으로 조회합니다. 넓은 범위는 허락을 확인하고 결과 파일을 Python 분석에 재사용할 수 있습니다.",
+      "description": "LakeHouse 연결과 저장 쿼리를 로컬 관리 화면에서 확인하고 결과를 파일로 저장합니다. 기본 5만 행을 조회하며 파일 용량과 본 조회 시간에는 도구의 기본 제한을 두지 않습니다.",
       "packageId": "datalake-query",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "datalake-query",
-      "sha256": "d04f51f60de9eabc9b77111e2f9829ae96d5094215c6adac505f5fef01b546bb",
-      "size": 58116,
-      "files": 21
+      "sha256": "e996795f88cfe48987ed8c72556a01bc843b57b09bad6a1e2bbd0805b868faca",
+      "size": 79344,
+      "files": 23
     },
     {
       "slug": "ehub-query",
       "file": "ehub-query.zip",
       "name": "E-HUB 데이터 조회",
-      "description": "LakeHouse에 제공된 E-HUB 데이터를 이름으로 저장한 SQL과 조건으로 조회합니다. 별도 E-HUB 웹서비스 API가 아닌 LakeHouse 경유 방식입니다.",
+      "description": "LakeHouse의 E-HUB 테이블을 저장 쿼리와 조건으로 조회합니다. 로컬 관리 화면과 기본 5만 행 한도를 사용하며, 별도 E-HUB 직접 API 연결은 아닙니다.",
       "packageId": "ehub-query",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "ehub-query",
-      "sha256": "c4ef0e0d40ebb919a3714a79ffd245671493a29dbe8406c371d7b29fa20cef73",
-      "size": 58082,
-      "files": 21
+      "sha256": "ab96b90536d83a01dcd0f1b0169037e417e6b51b6b8b1eaba7d8e081b8ed5273",
+      "size": 78941,
+      "files": 23
     },
     {
       "slug": "excel-to-pipeline",
@@ -140,15 +140,15 @@
       "slug": "oracle-query",
       "file": "oracle-query.zip",
       "name": "Oracle 데이터 조회",
-      "description": "DB 연결을 이름으로 등록하고 SQL을 저장해 조건만 바꾸어 조회합니다. 큰 조회는 범위 확인과 사용자 허락 뒤 실행하며 결과는 로컬 파일로 전달합니다.",
+      "description": "DB와 저장 쿼리를 로컬 관리 화면에서 확인하고 조건만 바꾸어 조회합니다. 기본 5만 행을 파일로 저장하며, 큰 조회와 이전 결과 삭제는 허락받은 범위로 처리합니다.",
       "packageId": "oracle-query",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "oracle-query",
-      "sha256": "b6eb196a7d2d834ce63af5a7aa6b47671d0b7e8deb2902e95617637f9e83ff18",
-      "size": 57772,
-      "files": 21
+      "sha256": "efe5780e06824da54d6c9d93ba9aedbdd1392ae5a2fc3358d59c7ff984ffe8c4",
+      "size": 77635,
+      "files": 23
     },
     {
       "slug": "personal-knowledge",
@@ -300,23 +300,23 @@
     }
   ],
   "managedFiles": {
-    "SHA256SUMS.txt": "39d6795f5edfa358476f3da578d223c7a2cef669f6bd4fd908c37a2a280032c8",
+    "SHA256SUMS.txt": "10286c87b28bab96c29eee1a1c83b051cf88d3f9ead1a0179f8a83be98d628d5",
     "asset-factory.zip": "a8a7a0492e17eed0964ac1d0d821aa8674b47d6b0302208c66971b02fddc4d68",
-    "data-query-demo.zip": "8e9b60dac8ae36ca055630c0276681e68cdfe70fb9c94084b2f4c8c9f49a99dc",
-    "datalake-query.zip": "d04f51f60de9eabc9b77111e2f9829ae96d5094215c6adac505f5fef01b546bb",
-    "ehub-query.zip": "c4ef0e0d40ebb919a3714a79ffd245671493a29dbe8406c371d7b29fa20cef73",
+    "data-query-demo.zip": "e10b0425a6fd6a9e8e39ffdbbba215734613f396dfedab2fbfed1fab4551e8cd",
+    "datalake-query.zip": "e996795f88cfe48987ed8c72556a01bc843b57b09bad6a1e2bbd0805b868faca",
+    "ehub-query.zip": "ab96b90536d83a01dcd0f1b0169037e417e6b51b6b8b1eaba7d8e081b8ed5273",
     "excel-to-pipeline.zip": "839d84a6cdbaf84f9f92b67af0173e8db73de5a961e82967f9190b8ebf4a3397",
     "file-organizer.zip": "c4f4e4f75373c746baee73551589c18632bd27952c8759b079b3288c3ab980aa",
     "html-report.zip": "61cd2bff06d5d2f856161c40f2bdff6d80a771b0cb8d0a9f2f5890b11d7ee622",
     "karpathy-guidelines.zip": "5a58f8288c8429350903f64c36bd01cde4210f2e3fe0b224f352f94ee5b4541e",
     "manufacturing-oracle-mcp-0.1.0-20261024.zip": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
-    "oracle-query.zip": "b6eb196a7d2d834ce63af5a7aa6b47671d0b7e8deb2902e95617637f9e83ff18",
+    "oracle-query.zip": "efe5780e06824da54d6c9d93ba9aedbdd1392ae5a2fc3358d59c7ff984ffe8c4",
     "personal-knowledge.zip": "3d3bc3aa3db1b610c569fb766cea8c28114f823740c8fc85a1ee1694e13a04c8",
     "personal-memory.zip": "6e1f80f7d3d1c81bb46aec93fc5d4b4fc59f7be12e77d7bc03d52c41d1b1bfb4",
     "presentation.zip": "42a52e3c1376dcd26add4c123114d8fe811dc4da66edcab8ed03cb8a1b266369",
     "web-interface.zip": "eccf05391be75fb01cf0afd511b69c31c1a6a0f12fc06a847065d09d2e95158c",
     "website-rebuild.zip": "44152f4d029e8dbd1954804a0501ae69983a95d87b61cc098e6f0e84d9398a74",
     "work-context-catalog.zip": "0a84cfd3fc04030b05260748d47c3595f9487bbce0a2b45ee1be0088d0c51029",
-    "등록_설치_안내.html": "68f6e321e60e0ae021bd8bb0ed4df10909acbe7d6ea87c82212b2cc7795fb5db"
+    "등록_설치_안내.html": "5505cc557a6b72dfdaf01adbe2b3cc82be3c89c056860937d614c2cfecc7bd5c"
   }
 }

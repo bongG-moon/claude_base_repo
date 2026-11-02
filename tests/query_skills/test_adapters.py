@@ -286,10 +286,10 @@ class AdapterTests(unittest.TestCase):
         with backend.execute('SELECT value FROM source WHERE name=:name', {'name': 'PRIVATE_VALUE'}, limit=2, timeout_seconds=5) as (_, rows):
             self.assertEqual(len(list(rows)), 3)
         calls = connection.cursors[0].calls
-        self.assertEqual(calls[0][0], 'SET query_timeout = 5')
-        self.assertIn('%(name)s', calls[1][0])
-        self.assertNotIn('PRIVATE_VALUE', calls[1][0])
-        self.assertEqual(calls[1][1], {'name': 'PRIVATE_VALUE'})
+        self.assertFalse(any(sql.startswith('SET query_timeout') for sql, _ in calls))
+        self.assertIn('%(name)s', calls[0][0])
+        self.assertNotIn('PRIVATE_VALUE', calls[0][0])
+        self.assertEqual(calls[0][1], {'name': 'PRIVATE_VALUE'})
         with self.assertRaisesRegex(ValueError, 'output limit'):
             with backend.execute('SELECT 1', {}, limit=1, timeout_seconds=1):
                 raise ValueError('output limit')
@@ -303,7 +303,7 @@ class AdapterTests(unittest.TestCase):
         self.assertIsNone(result['estimated_rows'])
         self.assertIsNone(result['exact_count'])
         self.assertNotIn('PRIVATE', json.dumps(result))
-        statement = connection.cursors[0].calls[1][0]
+        statement = connection.cursors[0].calls[0][0]
         self.assertTrue(statement.startswith('EXPLAIN COSTS '))
         self.assertNotIn('ANALYZE', statement)
 

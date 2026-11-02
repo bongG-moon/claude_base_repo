@@ -1,12 +1,15 @@
 """조회 준비, 조건 확인과 파일 전달. 원본 데이터 행은 반환값에 넣지 않습니다."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 import csv
 import datetime as dt
 import decimal
+import hashlib
 import json
 from pathlib import Path
 import time
+import threading
 import uuid
 
 from .store import Store, atomic_json, fingerprint, read_json, safe_path
@@ -16,9 +19,30 @@ DEFAULTS = {'max_rows':10_000, 'max_bytes':20*1024*1024, 'timeout':30}
 CEILINGS = {'max_rows':1_000_000, 'max_bytes':512*1024*1024, 'timeout':1800}
 
 
-def limits(values):
+def default_limits(engine='demo'):
     result = dict(DEFAULTS)
+    if engine in {'oracle', 'datalake', 'ehub'}:
+        result['max_rows'] = 50_000
+    if engine in {'oracle', 'ehub'}:
+        result['timeout'] = 60
+    if engine == 'datalake':
+        result.update(max_bytes=None, timeout=None)
+    return result
+
+
+def limits(values, engine='demo'):
+    result = default_limits(engine)
     for key, value in (values or {}).items():
+        if engine == 'datalake' and key in {'max_bytes', 'timeout'}:
+            if value is None:
+                result[key] = None
+                continue
+            # JSON 정수 정밀도와 OS 대기 API가 지원하는 범위만 검사합니다.
+            maximum = min(2**53 - 1, int(threading.TIMEOUT_MAX) - 1) if key == 'timeout' else 2**53 - 1
+            if type(value) is not int or not 1 <= value <= maximum:
+                raise ValueError('지정한 용량이나 시간을 이 실행 환경에서 처리할 수 없습니다. 제한 없이 조회하려면 해당 지정을 생략해 주세요.')
+            result[key] = value
+            continue
         if key not in result or type(value) is not int or not 1 <= value <= CEILINGS[key]:
             raise ValueError('조회 한도는 양의 정수로 설정하고 실행기의 최대 범위 안에서 지정해 주세요.')
         result[key] = value
@@ -34,16 +58,49 @@ def _prepared(store, engine, query_id, values):
     return query, profile, binds, analysis
 
 
-def plan(store: Store, engine, query_id, values, options=None):
-    from .adapters import open_backend
+@contextmanager
+def _using_backend(profile, secrets, *, demo, timeout_seconds, reuse=None):
+    """명시적인 한 번의 조회에서만 같은 연결을 쓰고 설정 변경은 거부합니다."""
+    if reuse is not None:
+        backend, connection_hash = reuse
+        if fingerprint({'profile': profile, 'secrets': secrets, 'demo': demo}) != connection_hash:
+            raise ValueError('연결 설정이 바뀌었습니다. 현재 설정으로 다시 조회해 주세요.')
+        yield backend
+    else:
+        from .adapters import open_backend
+        with open_backend(profile, secrets, demo=demo, timeout_seconds=timeout_seconds) as backend:
+            yield backend
+
+
+def execute(store: Store, engine, query_id, values, options=None, *, confirmed=False):
+    """원래 요청이 명확한 일반 조회는 준비와 실행에 같은 연결을 사용합니다."""
+    if not confirmed:
+        raise ValueError('조회할 DB와 쿼리, 조건이 명확한 사용자 요청을 확인한 뒤 실행해 주세요.')
     if not isinstance(values, dict):
         raise ValueError('조회 조건은 이름과 값으로 입력해 주세요.')
-    selected = limits(options)
+    selected = limits(options, engine)
+    _, profile, _, _ = _prepared(store, engine, query_id, values)
+    secrets = store.secrets(profile['id'])
+    with _using_backend(profile, secrets, demo=store.demo, timeout_seconds=selected['timeout']) as backend:
+        reuse = (backend, fingerprint({'profile': profile, 'secrets': secrets, 'demo': store.demo}))
+        proposal = plan(store, engine, query_id, values, options, _reuse=reuse)
+        if proposal['requiresLargeApproval'] or proposal['conditionsTruncated']:
+            # 승인 대기 중 연결을 보관하지 않습니다. 이후 같은 계획을 run으로 실행합니다.
+            return dict(proposal, executed=False,
+                        nextStep='표시한 범위 또는 전체 조건을 확인한 뒤 같은 준비 번호로 실행하세요.')
+        return run(store, engine, proposal['planId'], confirmed=True, _reuse=reuse)
+
+
+def plan(store: Store, engine, query_id, values, options=None, *, _reuse=None):
+    if not isinstance(values, dict):
+        raise ValueError('조회 조건은 이름과 값으로 입력해 주세요.')
+    selected = limits(options, engine)
+    defaults = default_limits(engine)
     query, profile, binds, analysis = _prepared(store, engine, query_id, values)
     # 연결 검사/추정은 이 명시적 조회 요청에서만 수행합니다. 등록과 목록은 접속하지 않습니다.
     connection_secrets = store.secrets(profile['id'])
-    with open_backend(profile, connection_secrets, demo=store.demo,
-                      timeout_seconds=min(selected['timeout'], 10)) as backend:
+    with _using_backend(profile, connection_secrets, demo=store.demo,
+                        timeout_seconds=10 if selected['timeout'] is None else min(selected['timeout'], 10), reuse=_reuse) as backend:
         observation = backend.inspect(query['sql'], binds)
     exact = observation.get('exact_count')
     estimated = observation.get('estimated_rows')
@@ -56,11 +113,11 @@ def plan(store: Store, engine, query_id, values, options=None):
         risks.append('입력한 날짜 사이가 31일을 넘습니다. 긴 기간 조회인지 확인해 주세요.')
     if exact is not None and exact > selected['max_rows']:
         risks.append(f"현재 한도 {selected['max_rows']:,}행보다 결과가 많습니다. 확대할 행 수를 지정해 다시 준비하세요.")
-    if estimated is not None and estimated > DEFAULTS['max_rows']:
+    if estimated is not None and estimated > defaults['max_rows']:
         risks.append('예상 결과가 기본 조회 범위보다 큽니다.')
-    if observation.get('plan_max_rows', 0) and observation['plan_max_rows'] > DEFAULTS['max_rows']:
+    if observation.get('plan_max_rows', 0) and observation['plan_max_rows'] > defaults['max_rows']:
         risks.append('실행계획에 큰 중간 처리량이 관찰됐습니다. 결과 건수와는 다릅니다.')
-    if any(selected[k] > DEFAULTS[k] for k in selected):
+    if any(defaults[k] is not None and selected[k] > defaults[k] for k in selected):
         risks.append('기본 한도를 확대하는 조회입니다.')
     risks = list(dict.fromkeys(risks))
     body = {'queryId':query['id'], 'queryHash':fingerprint(query), 'profileHash':fingerprint(profile),
@@ -104,8 +161,7 @@ def _cell(value):
     raise ValueError('자동 저장하지 않는 자료형이 있습니다. 필요한 일반 컬럼만 선택해 주세요.')
 
 
-def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False):
-    from .adapters import open_backend
+def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False, _reuse=None):
     if not confirmed:
         raise ValueError('조회 조건을 사용자에게 먼저 확인해 주세요.')
     proposal = store.get_plan(plan_id)
@@ -121,7 +177,7 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False):
     if proposal['knownOverLimit']:
         return {'ok':False, 'status':'larger_limit_required', 'planId':plan_id,
                 'message':'사용자가 허용한 행 수로 한도를 확대해 새 조회를 준비해 주세요. 아직 실행하지 않았습니다.', 'dataRowsReturned':0}
-    selected = limits(proposal['limits'])
+    selected = limits(proposal['limits'], engine)
     secrets = store.secrets(profile['id'])
     if fingerprint(secrets) != proposal['connectionHash']:
         raise ValueError('접속 정보가 바뀌었습니다. 변경된 연결로 다시 준비해 주세요.')
@@ -131,13 +187,23 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False):
     folder = safe_path(store.root / 'results' / result_id)
     folder.mkdir(parents=True, exist_ok=False)
     data = folder / 'data.jsonl'
+    created = time.time()
+    executed_at = dt.datetime.fromtimestamp(created, dt.timezone.utc).isoformat(timespec='seconds')
+    from .results import result_label
+    identity = {'schemaVersion':1, 'resultId':result_id, 'engine':engine, 'dbId':profile['id'],
+                'queryId':query['id'], 'sourceName':profile['name'], 'queryName':query['name'],
+                'createdAt':created, 'executedAt':executed_at,
+                'label':result_label(query['name'], profile['name'], created, result_id),
+                'params':proposal['params'], 'limits':selected, 'demo':store.demo,
+                'queryHash':proposal['queryHash'], 'planId':plan_id}
+    digest = hashlib.sha256()
     start = time.monotonic()
     count = written = 0
     columns = []
     status = 'complete'
     reason = None
     try:
-        with open_backend(profile, secrets, demo=store.demo, timeout_seconds=selected['timeout']) as backend:
+        with _using_backend(profile, secrets, demo=store.demo, timeout_seconds=selected['timeout'], reuse=_reuse) as backend:
             with backend.execute(query['sql'], binds, limit=selected['max_rows'], timeout_seconds=selected['timeout']) as result:
                 columns, rows = result
                 columns = list(columns)
@@ -145,7 +211,7 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False):
                     raise ValueError('조회 컬럼이 너무 많거나 형식이 맞지 않습니다.')
                 with data.open('xb') as out:
                     for row in rows:
-                        if time.monotonic() - start > selected['timeout']:
+                        if selected['timeout'] is not None and time.monotonic() - start > selected['timeout']:
                             status, reason = 'partial', 'time_limit'
                             break
                         if count >= selected['max_rows']:
@@ -158,32 +224,32 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False):
                             status, reason = 'partial', 'cell_limit'
                             break
                         chunk = (json.dumps(normalized, ensure_ascii=False, allow_nan=False)+'\n').encode('utf-8')
-                        if written + len(chunk) > selected['max_bytes']:
+                        if selected['max_bytes'] is not None and written + len(chunk) > selected['max_bytes']:
                             status, reason = 'partial', 'byte_limit'
                             break
                         out.write(chunk)
+                        digest.update(chunk)
                         written += len(chunk)
                         count += 1
     except Exception:
         # 생성 중인 원본 값이나 드라이버 예외를 대화로 전달하지 않습니다.
         if data.exists():
             data.unlink()
-        atomic_json(folder / 'metadata.json', {'resultId':result_id, 'status':'failed', 'dataAvailable':False})
+        atomic_json(folder / 'metadata.json', dict(identity, status='failed', dataAvailable=False))
         raise
-    metadata = {'ok':True, 'resultId':result_id, 'sourceName':profile['name'], 'queryName':query['name'],
+    metadata = dict(identity, **{'ok':True,
                 'status':status, 'complete':status=='complete', 'reason':reason, 'savedRows':count,
                 'columnCount':len(columns), 'columns':columns, 'limits':selected, 'demo':store.demo,
                 'elapsedMs':round((time.monotonic()-start)*1000), 'dataBytes':written,
-                'dataFile':str(data), 'format':'jsonl-arrays', 'params':proposal['params'],
-                'queryHash':proposal['queryHash'], 'planId':plan_id,
+                'dataFile':str(data), 'format':'jsonl-arrays', 'dataSha256':digest.hexdigest(),
                 'message':'조회 결과를 로컬에 저장했습니다.' if status=='complete' else '일부 데이터만 저장했습니다. 전체 결과로 해석하지 말고 범위 또는 한도를 다시 지정해 주세요.',
-                'dataRowsReturned':0}
+                'dataRowsReturned':0})
     atomic_json(folder / 'metadata.json', metadata)
     return receipt(metadata)
 
 
 def receipt(metadata):
-    keys = ('ok','resultId','sourceName','queryName','status','complete','reason','savedRows',
+    keys = ('ok','resultId','sourceName','queryName','dbId','queryId','executedAt','label','status','complete','reason','savedRows',
             'columnCount','demo','elapsedMs','dataBytes','dataFile','format','message','dataRowsReturned')
     return {k:metadata[k] for k in keys if k in metadata}
 
@@ -210,6 +276,9 @@ def export_csv(store, result_id, output):
     output = safe_path(output)
     if output.suffix.lower() != '.csv':
         raise ValueError('CSV 파일 이름을 지정해 주세요.')
+    managed_exports = safe_path(store.root / 'results' / result_id / 'exports')
+    if output.parent == managed_exports:
+        managed_exports.mkdir(exist_ok=True)
     def spreadsheet_safe(v):
         # Excel이 문자열을 수식으로 실행하지 않게 표시용 CSV에서만 보호합니다.
         return "'"+v if isinstance(v,str) and (v.lstrip().startswith(('=','+','-','@')) or v.startswith(('\t','\r'))) else v
@@ -218,6 +287,9 @@ def export_csv(store, result_id, output):
         writer.writerow([spreadsheet_safe(v) for v in metadata['columns']])
         for row in load_result_rows(metadata['dataFile']):
             writer.writerow([spreadsheet_safe(v) for v in row])
+    if output.parent == managed_exports:
+        from .results import register_export
+        register_export(store, result_id, output)
     return {'ok':True, 'filePath':str(output), 'savedRows':metadata['savedRows'],
             'complete':metadata['complete'], 'format':'csv', 'dataRowsReturned':0,
             'message':'CSV는 Excel용 수식 문자열 보호를 적용했습니다. 원본 값은 JSONL에 유지됩니다.'}

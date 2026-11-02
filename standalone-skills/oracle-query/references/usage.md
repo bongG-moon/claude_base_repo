@@ -4,10 +4,11 @@
 
 - “처음 사용할 거야. 연결 설정해줘.”
 - “DB 하나 더 추가해줘. 이름은 품질DB야.”
+- “등록한 DB와 쿼리를 관리할 수 있는 화면을 열어줘.”
 - “이 SQL을 생산실적조회로 저장해줘. 기간과 공정만 바꿀 수 있으면 좋겠어.”
 - “저장한 쿼리를 보여줘.”
 - “1번을 지난달 WB 공정으로 조회해줘.”
-- “데이터가 많아도 이번에는 5만 행까지 허용할게.”
+- “이번에는 10만 행, 50MiB까지 허용할게.”
 
 프로필과 쿼리 이름은 사용자 표현을 유지합니다. 실제 등록된 DB 이름을 화면과 답변에 사용합니다. 계정과 토큰은 로컬 설정창에서만 입력합니다.
 
@@ -16,6 +17,9 @@
 아래 `scripts/query.py`는 **현재 스킬 본문이 있는 폴더** 기준입니다. 플랫폼 ZIP은 본문과 함께 있는 scripts 폴더를 사용합니다. 알려진 실제 경로를 인용하고 설치 위치나 세션 ID를 찾으려고 PC 전체를 탐색하지 않습니다.
 
 ```text
+python -X utf8 -B scripts/query.py start
+python -X utf8 -B scripts/query.py manage
+python -X utf8 -B scripts/query.py manage --profile <등록된 연결 ID>
 python -X utf8 -B scripts/query.py profiles list
 python -X utf8 -B scripts/query.py profiles setup
 python -X utf8 -B scripts/query.py profiles setup --profile <등록된 연결 ID>
@@ -23,6 +27,7 @@ python -X utf8 -B scripts/query.py queries register --spec <등록 명세 JSON>
 python -X utf8 -B scripts/query.py queries register --spec <수정 명세 JSON> --replace-id 1
 python -X utf8 -B scripts/query.py queries list
 python -X utf8 -B scripts/query.py queries show --id 1
+python -X utf8 -B scripts/query.py execute --id 1 --params <조건 JSON> --confirm
 python -X utf8 -B scripts/query.py plan --id 1 --params <조건 JSON>
 python -X utf8 -B scripts/query.py run --plan <반환된 계획 ID> --confirm
 python -X utf8 -B scripts/query.py result --id <반환된 결과 ID>
@@ -31,6 +36,32 @@ python -X utf8 -B scripts/query.py result --id <반환된 결과 ID>
 사용자에게 위 명령어 작성을 요구하지 않습니다. 대화를 바탕으로 스킬이 실행하고 사람이 정할 조건만 확인합니다. 별도 실습 경로는 `--state-root <절대경로>`를 명령 앞에 지정합니다. 실제 사용은 기본 개인 저장소를 재사용합니다.
 
 연결 설정을 저장하는 작업과 실제 접속은 별개입니다. 서버 주소를 임의로 낮은 보안 방식으로 바꾸거나 인증서 검증을 끄지 않습니다. 연결 실패 시 설정값 자체를 출력하지 않습니다.
+
+## 업무 시작과 이전 결과 정리
+
+`start`는 새 조회 업무를 시작할 때 한 번만 실행합니다. 등록된 연결과 쿼리 요약을 함께 받고, 24시간이 지난 로컬 결과가 있으면 최대 10개 후보를 정리 계획으로 준비합니다. 결과 행과 인증정보는 반환하지 않습니다. 같은 업무에서 조건을 바꾸어 다시 조회하거나 저장된 결과를 분석할 때는 `start`를 반복하지 않습니다.
+
+후보가 있을 때만 “이전 결과 3건, 8MiB를 삭제할까요, 보존할까요?”처럼 `cleanup.count`와 `cleanup.totalBytes`의 실제 계획 범위로 한 번 묻습니다. 전체 후보가 더 많더라도 이번 계획보다 많은 파일을 삭제한다고 안내하지 않습니다. 삭제를 선택하면 `cleanup.planId`의 고정된 대상에 대해 다음을 실행합니다. 사용자가 이미 같은 범위의 삭제를 지시했다면 그 지시를 사용하며 같은 허락을 재질문하지 않습니다.
+
+```text
+python -X utf8 -B scripts/query.py results cleanup --plan <cleanup.planId> --confirm
+```
+
+후보가 없거나 보존을 선택했다면 바로 조회를 계속합니다. 계획을 준비한 것만으로 삭제됐다고 말하지 않습니다. 계획에 없던 파일이나 바뀐 결과까지 삭제 범위를 넓히지 않습니다. 등록한 DB 연결, 인증정보와 쿼리 원본은 결과 정리 대상이 아닙니다. 후속 분석에 필요한 결과는 보존합니다.
+
+별도로 결과를 확인하거나 사용자가 지정한 결과만 정리할 때는 다음 명령을 사용합니다. 번호는 응답의 실제 결과 ID를 사용합니다. `cleanup-plan`의 `--id`는 여러 번 지정할 수 있으며 생략하면 24시간이 지난 후보 중 최대 10개로 계획을 만듭니다. 계획 작성 후 삭제에는 실제 허락과 `--confirm`이 필요합니다.
+
+```text
+python -X utf8 -B scripts/query.py results list --limit 20
+python -X utf8 -B scripts/query.py results cleanup-plan
+python -X utf8 -B scripts/query.py results cleanup-plan --id <결과 ID> --id <다른 결과 ID>
+```
+
+## 연결과 쿼리 관리
+
+`manage`는 현재 저장된 DB와 쿼리를 보여주는 로컬 웹 화면을 엽니다. DB 연결을 추가하거나 수정할 수 있고 입력칸의 설명을 보고 필요한 값을 넣습니다. `manage --profile <ID>`와 `profiles setup --profile <ID>`는 지정한 연결의 설정 화면을 엽니다. `profiles setup`도 같은 Oracle 설정 화면을 사용하며 저장이 끝나면 대화로 돌아옵니다. `manage`는 저장 뒤에도 목록을 계속 볼 수 있고 닫기로 종료합니다. 실제 DB에 접속해 확인하는 작업과 저장된 설정을 보는 작업은 구분합니다.
+
+사용자가 이미 지정한 연결과 쿼리가 있으면 그 값을 재사용합니다. 매번 `profiles list`, `queries list`, `queries show`를 모두 호출하거나 관리 화면을 열 필요가 없습니다. 목록과 상세 조회는 선택이 필요하거나 SQL과 조건 정의를 아직 모를 때만 사용합니다.
 
 ## 쿼리 등록
 
@@ -55,23 +86,37 @@ python -X utf8 -B scripts/query.py result --id <반환된 결과 ID>
 {"start_date":"2026-10-01","end_date":"2026-11-01","process":"WB"}
 ```
 
-위 예문의 종료 날짜는 `미만` 조건이므로 10월 전체입니다. 날짜 경계와 시간대를 SQL 의미에 맞게 설명합니다. 상대 날짜는 실제 날짜로 풀어 확인합니다. 값은 바인드로 전달하며 문자열 조합으로 SQL에 끼워 넣지 않습니다.
+위 예문의 종료 날짜는 `미만` 조건이므로 10월 전체입니다. 날짜 경계와 시간대를 SQL 의미에 맞게 설명합니다. 상대 날짜는 실제 날짜로 풀고 의미가 불명확할 때만 확인합니다. 값은 바인드로 전달하며 문자열 조합으로 SQL에 끼워 넣지 않습니다.
+
+## 같은 조건을 다시 묻지 않고 조회하기
+
+사용자가 “생산DB의 1번을 10월 WB 공정으로 조회해줘”라고 했고 쿼리와 날짜 경계, 필수 조건이 모두 정해졌다면 그 요청을 실행 승인으로 사용합니다. 기본 한도는 **50,000행, 20MiB, 60초**입니다.
+
+```text
+python -X utf8 -B scripts/query.py execute --id 1 --params <조건 JSON> --confirm
+```
+
+`execute`는 계획 검증을 거쳐 일반 조회만 바로 실행합니다. 사용자가 정한 DB와 조건을 짧게 알리고 진행하며, 같은 내용을 “실행할까요?”라고 다시 묻지 않습니다. 단순히 쿼리를 보여 달라는 요청이나 SQL 등록 요청을 조회 승인으로 바꾸지 않습니다. DB 선택과 필수 조건이 빠졌거나 의미가 모호하면 필요한 내용만 먼저 확인합니다.
+
+응답이 `executed: false`와 `planId`를 반환하면 아직 조회 결과가 아닙니다. 큰 조회 승인이 필요하면 아래 절차를 따릅니다. `conditionsTruncated`가 참이면 사용자가 `conditionReviewFile`의 전체 조건을 로컬에서 확인한 뒤 해당 계획을 실행합니다. 큰 조회가 아니라면 `run --confirm`만 사용하며, `requiresLargeApproval`도 참일 때만 `--allow-large`를 추가합니다.
+
+검토만 요청했거나 실행 전에 계획을 따로 보고 싶으면 `plan`을 사용합니다. 이때 확인한 계획을 `run --plan <계획 ID> --confirm`으로 실행하며 동일한 허락을 다시 묻지 않습니다.
 
 ## 큰 조회를 허용하는 흐름
 
 기본 한도보다 넓은 범위도 사용자 허락을 받으면 실행할 수 있습니다. 필요한 한도로 먼저 새 계획을 만듭니다.
 
 ```text
-python -X utf8 -B scripts/query.py plan --id 1 --params <조건 JSON> --max-rows 50000 --max-bytes 52428800 --timeout 90
+python -X utf8 -B scripts/query.py plan --id 1 --params <조건 JSON> --max-rows 100000 --max-bytes 52428800 --timeout 90
 ```
 
-반환된 계획의 DB 이름, 조건과 예상 크기, 실행 제한을 보여주고 허락을 받습니다. 실제 답변 뒤에만 다음을 실행합니다.
+반환된 계획의 DB 이름, 조건, 실행 제한과 주의점을 보여주고 허락을 받습니다. 기본 한도 확대 외에 31일을 넘는 기간, 조건 없는 범위나 결합 조건 없는 조인, 사용자 함수와 재귀 조회 등도 승인 대상이 될 수 있습니다. 이미 같은 범위와 한도를 명시적으로 허용했다면 그 지시를 재사용하되, 새 주의점이나 변경된 범위를 이전 허락으로 넘기지 않습니다. 실제 허락이 있을 때만 다음을 실행합니다.
 
 ```text
 python -X utf8 -B scripts/query.py run --plan <새 계획 ID> --confirm --allow-large
 ```
 
-기본 한도는 10,000행, 20MiB, 30초입니다. 이 실행기의 최대 범위는 1,000,000행, 512MiB, 1,800초이며 DB의 더 낮은 제한은 그대로 적용됩니다. 계획은 15분 뒤 만료되고 한 번만 실행됩니다. 계획과 다른 SQL, 조건, 연결 또는 한도에는 이전 허락을 재사용하지 않습니다. 정확한 건수가 없으면 미확인으로 말합니다. DB의 권한과 자원 제한, 드라이버 지원 범위는 사용자 허락으로 해제되지 않습니다. 실패를 피해 다른 SQL이나 계정으로 바꾸지 않습니다.
+이 실행기의 최대 범위는 1,000,000행, 512MiB, 1,800초이며 DB의 더 낮은 제한은 그대로 적용됩니다. 계획은 15분 뒤 만료되고 한 번만 실행됩니다. 계획과 다른 SQL, 조건, 연결 또는 한도에는 이전 허락을 재사용하지 않습니다. Oracle 계획은 전체 COUNT나 EXPLAIN PLAN을 실행하지 않으므로 사전 건수가 미확인일 수 있습니다. 기본 한도로 실행한다는 뜻을 실제 결과가 50,000행 이하라고 확인한 것으로 설명하지 않습니다. 한도에 걸리면 일부 결과로 안내합니다. DB의 권한과 자원 제한, 드라이버 지원 범위는 사용자 허락으로 해제되지 않습니다. 실패를 피해 다른 SQL이나 계정으로 바꾸지 않습니다.
 
 수정은 `queries register --replace-id <기존 번호>`로 같은 항목을 갱신합니다. SQL이나 조건이 달라졌다면 예전 계획을 실행하지 말고 새 계획을 만듭니다.
 
@@ -83,7 +128,7 @@ python -X utf8 -B scripts/query.py run --plan <새 계획 ID> --confirm --allow-
 
 ## 설치 환경과 실제 검증 범위
 
-Python 3.11 이상과 이 스킬의 requirements.txt에 적힌 패키지가 필요합니다. 패키지 설치는 승인된 사내 패키지 저장소 또는 접근 가능한 공급처를 사용합니다. 기존 Python이나 다른 환경의 설정을 초기화하지 않습니다. 로컬 설정창에는 tkinter가 포함된 Python이 필요합니다.
+Python 3.11 이상과 이 스킬의 requirements.txt에 적힌 패키지, 로컬 관리 화면을 열 웹 브라우저가 필요합니다. 패키지 설치는 승인된 사내 패키지 저장소 또는 접근 가능한 공급처를 사용합니다. 기존 Python이나 다른 환경의 설정을 초기화하지 않습니다.
 
 이 ZIP은 지침과 실행 코드입니다. 실제 DB 권한이나 사내망 접근을 제공하지 않습니다. 더미 검증으로 사내 연결, Oracle 버전별 SQL 호환성을 보증하지 않습니다.
 
