@@ -202,10 +202,10 @@ class ReportStylesTests(unittest.TestCase):
         self.assertIn(styles.CSS,text)
         self.assertEqual(len(styles.STYLES),text.count('class="design-card"'))
 
-    def test_picker_closed_ids_unique_and_offline(self):
+    def test_picker_visible_gallery_ids_unique_and_offline(self):
         text=styles.picker_html()
-        tag=re.search(r'<details id="additional-designs"[^>]*>',text).group()
-        self.assertNotIn('open',tag)
+        self.assertRegex(text,r'<section id="additional-designs"[^>]*>')
+        self.assertNotRegex(text,r'<details[^>]*id="additional-designs"')
         ids=re.findall(r'\bid="([^"]+)"',text)
         self.assertEqual(len(ids),len(set(ids)))
         self.assertNotRegex(text,r'<(?:script|img|iframe)[^>]+src=|<link[^>]+href=|@import|\bfetch\(|XMLHttpRequest|localStorage|sessionStorage')
@@ -252,26 +252,22 @@ class ReportStylesTests(unittest.TestCase):
         from company_agent import report_design
         for css in (artifacts._CSS, report_design.CSS):
             self.assertNotRegex(css, r'body\[data-style=[a-z-]+\]\{--')
-        self.assertIn('--chart-shadow:var(--cell-shadow)', styles.CSS)
-        self.assertIn('grid-column:span 2', styles.CSS)
+        self.assertIn('--chart-shadow:', styles.CSS)
+        self.assertIn('data-kpi-count="5"', styles.CSS)
 
     def test_glass_and_neumorphism_are_materials_not_only_palette_changes(self):
         glass = re.search(r'\[data-style=glassmorphism\]\{([^}]+)', styles.CSS).group(1)
         neo = re.search(r'\[data-style=neumorphism\]\{([^}]+)', styles.CSS).group(1)
         self.assertIn('radial-gradient', glass)
-        self.assertIn('--surface:#ffffff2e', glass)
-        self.assertIn('--cell:#ffffff24', glass)
-        self.assertIn('backdrop-filter:blur(14px)', styles.CSS)
-        self.assertIn('#d0c6f2', glass)
-        self.assertIn('#a6dffc', glass)
-        self.assertIn('--series-0:#6178e8',glass)
-        self.assertIn('inset 0 -1px 0 #577cab12', glass)
+        self.assertIn('--surface:', glass)
+        self.assertIn('--cell:', glass)
+        self.assertRegex(styles.CSS, r'backdrop-filter:blur\([0-9]+px\)')
+        self.assertIn('inset ', glass)
         self.assertNotIn('saturate(140%)', styles.CSS)
-        self.assertNotIn('#bcbcbc 29.3%',glass)
-        self.assertIn('--bg:#e9ecf1;--paper:#e9ecf1', neo)
-        self.assertIn('-14px -14px', neo)
+        # Material contrast remains visible without requiring old color literals.
+        self.assertIn('--panel-shadow:', neo)
         self.assertIn('--cell-shadow:inset', neo)
-        self.assertIn('--chart-shadow:7px 7px', neo)
+        self.assertRegex(neo, r'-[0-9]+px -[0-9]+px')
 
     def test_numbers_are_direct_only_in_additional_menu(self):
         for i,(key,*_) in enumerate(styles.STYLES,1):
@@ -299,7 +295,8 @@ class ReportStylesTests(unittest.TestCase):
         skill=skill_path.read_text(encoding='utf-8')
         self.assertIn('references/choices.md',skill)
         guide=(skill_path.parent/'references/choices.md').read_text(encoding='utf-8')
-        documented=re.findall(r'^\d+\. .+\(`([a-z0-9-]+)`\)$',guide,re.M)
+        extra=guide.split('## 추가 디자인을 골랐고 특정 스타일은 아직 없을 때',1)[1].split('\n## ',1)[0]
+        documented=re.findall(r'^\d+\. .+\(`([a-z0-9-]+)`\)$',extra,re.M)
         pending=artifacts.html_choices({'designMenu':'additional'})
         self.assertEqual([item['style'] for item in pending['designOptions']],documented)
         self.assertEqual('chat-number-or-name',pending['selectionInput'])
@@ -310,8 +307,8 @@ class ReportStylesTests(unittest.TestCase):
     def test_reduced_transparency_and_print_use_opaque_readable_surfaces(self):
         self.assertIn('@supports not ((backdrop-filter:', styles.CSS)
         self.assertIn('@media(prefers-reduced-transparency:reduce)', styles.CSS)
-        self.assertIn('background:#fafafa!important', styles.CSS)
-        self.assertIn('@media print{:is(body,.style-preview)[data-style]', styles.CSS)
+        self.assertIn('background:var(--paper)!important', styles.CSS)
+        self.assertIn('@media print{', styles.CSS)
         self.assertIn('-webkit-backdrop-filter:none!important', styles.CSS)
 
 

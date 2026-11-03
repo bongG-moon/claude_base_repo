@@ -36,6 +36,7 @@ class DesignSkillContracts(unittest.TestCase):
                 entry = ROOT / base / name / 'SKILL.md'
                 source = entry.read_text(encoding='utf-8')
                 references = re.findall(r'`((?:\.\./[^`/]+/references/|references/)[^`]+\.md)`', source)
+                references += re.findall(r'\]\(((?:\.\./[^/]+/references/|references/)[^)]+\.md)\)', source)
                 # Workflow references resolve in source. Package-wide license
                 # paths are checked after export by the package contract tests.
                 for relative in references:
@@ -50,10 +51,13 @@ class DesignSkillContracts(unittest.TestCase):
         paths = [ROOT / 'company-agent-plugin/skills' / name / 'SKILL.md'
                  for name in ('html-report', 'presentation')]
         paths.append(ROOT / 'company-agent-plugin/skills/html-report/references/choices.md')
+        paths.append(ROOT / 'company-agent-plugin/skills/presentation/references/choices.md')
         checked = set()
         for path in paths:
             source = path.read_text(encoding='utf-8')
-            for command in re.findall(r'`(business [^`\n]+)`', source):
+            commands = re.findall(r'`(business [^`\n]+)`', source)
+            commands += re.findall(r'^business [^\n]+$', source, re.M)
+            for command in commands:
                 # Square brackets document optional arguments, not shell syntax.
                 variants = (re.sub(r'\[[^\]]+\]', '', command), command.replace('[', '').replace(']', ''))
                 for variant in variants:

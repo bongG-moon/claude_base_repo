@@ -34,7 +34,8 @@ def main(argv=None):
     gallery.add_argument("--output", type=Path, required=True)
     reference = sub.add_parser("reference", help="참고 자료의 요청 장 구조 분석 또는 실제 화면 도구용 캡처 계획")
     reference.add_argument("--file", type=Path, required=True)
-    reference.add_argument("--mode", choices=("file", "screen"), default="file", help="screen은 정상 PowerPoint 화면 캡처 계획만 반환")
+    reference.add_argument("--mode", choices=("file", "screen", "office"), default="file", help="screen은 캡처 계획, office는 정상 PowerPoint 열기와 허용된 장별 이미지 내보내기")
+    reference.add_argument("--output", type=Path, help="office 모드의 새 이미지 폴더")
     reference.add_argument("--slides", help="1부터 시작하는 장 번호, 예: 1,3,5,8 (최대 60장, 3장씩 묶음)")
     reference.add_argument("--summary", action="store_true", help="스타일 참고에 필요한 짧은 구조 요약만 반환")
     args = parser.parse_args(argv)
@@ -53,7 +54,13 @@ def main(argv=None):
                               "inputMode": "powerpoint-screen" if args.mode == "screen" else "file"}
             if slides is not None:
                 reference_spec["slides"] = slides
-            result = ppt_reference.prepare_reference(reference_spec)
+            if args.mode == 'office':
+                if args.output is None:
+                    raise ValueError('office 모드에는 --output 새 이미지 폴더를 지정하세요.')
+                from visual_engine.ppt_office_reference import render_reference
+                result = render_reference(args.file, args.output, slides)
+            else:
+                result = ppt_reference.prepare_reference(reference_spec)
             if args.summary:
                 result = ppt_reference.summarize_reference(result)
             if result.get("ok") and result.get("inputKind") == "html":
@@ -98,6 +105,8 @@ def main(argv=None):
                         native = (ppt_workflow.fill_template(data, draft, template, spec.get("templateSlides"))
                                   if preserve else presentation_design.render_python(data, draft, template))
                         check = artifacts.inspect_template(draft)
+                        if check.get('code') in {'protected_or_unsupported', 'protected_or_invalid'}:
+                            raise artifacts.ArtifactError('generated_ppt_unreadable', '새 PPT 저장 후 일반 PPTX 구조를 다시 읽지 못했습니다. 저장 단계의 파일 보호 또는 형식 문제를 확인해 주세요. 기존 HTML 승인본은 유지합니다.', 'unknown')
                         if not check.get("ok") or check.get("slideCount") != len(data["sections"]):
                             raise ValueError("출력 장수 또는 파일 구조 확인에 실패했습니다.")
                         layout = content_layout.check_ppt(draft, data) if not preserve else {"status": "not-requested"}

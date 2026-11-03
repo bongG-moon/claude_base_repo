@@ -148,7 +148,7 @@ class CredentialInputFlowTests(unittest.TestCase):
         source = self.root / 'query.json'
         source.write_text(json.dumps({'name': '첫 조회',
             'sql': 'SELECT value FROM lake_catalog.mes.records WHERE id=1', 'parameters': {}}), encoding='utf-8')
-        code, result, fake = self.call('datalake', 'queries', 'register', '--spec', source)
+        code, result, fake = self.call('datalake', 'queries', 'register', '--spec', source, '--parameters-reviewed')
         self.assertEqual(code, 2)
         self.assertEqual(result['status'], 'credentials_required')
         self.assert_local(result['credentialInput'], 'datalake', None)
@@ -203,7 +203,7 @@ class CredentialInputFlowTests(unittest.TestCase):
         source = self.root / 'query.json'
         source.write_text(json.dumps({'name': '등록 시험', 'profile': identity,
             'sql': 'SELECT value FROM fixtures WHERE id=1', 'parameters': {}}), encoding='utf-8')
-        code, result, fake = self.call('datalake', 'queries', 'register', '--spec', source)
+        code, result, fake = self.call('datalake', 'queries', 'register', '--spec', source, '--parameters-reviewed')
         self.assertEqual(code, 2)
         self.assertTrue(result['registered'])
         self.assertEqual(result['validationStatus'], 'error')

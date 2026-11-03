@@ -10,7 +10,7 @@ import sys
 from . import core
 from .adapters import AdapterError
 from .store import Store, read_json
-from .inputs import InputError, read_params
+from .inputs import InputError, read_cli_params
 from .credentials import CredentialSetupRequired, CredentialInputUnavailable
 
 
@@ -52,10 +52,14 @@ def parser(engine):
                 operation.add_argument('--table', required=True)
     queries = commands.add_parser('queries').add_subparsers(dest='action',required=True)
     queries.add_parser('list')
+    review = queries.add_parser('review', help='등록 전 바꿀 수 있는 고정 조건 후보 확인 (DB 접속 없음)')
+    review.add_argument('--spec', required=True, type=Path)
     register = queries.add_parser('register')
     register.add_argument('--spec',required=True,type=Path)
     register.add_argument('--replace-id',type=int)
     register.add_argument('--params', help='등록 후 시험할 조건: JSON 파일 경로 또는 JSON 객체 문자열')
+    register.add_argument('--param', action='append', help='조건 이름=값. 여러 번 지정 가능')
+    register.add_argument('--parameters-reviewed', action='store_true', help='후보 중 변수와 고정값을 사용자와 이미 결정함')
     registration_mode = register.add_mutually_exclusive_group()
     registration_mode.add_argument('--confirm', action='store_true', help='기존 호환 인자. 등록 시 기본으로 최대 10행 시험 조회')
     registration_mode.add_argument('--save-only', action='store_true', help='실제 조회 없이 저장만 하고 미검증으로 표시')
@@ -63,7 +67,8 @@ def parser(engine):
     show.add_argument('--id',required=True,type=int)
     prepare = commands.add_parser('plan')
     prepare.add_argument('--id',required=True,type=int)
-    prepare.add_argument('--params',required=True,help='JSON 파일 경로 또는 JSON 객체 문자열')
+    prepare.add_argument('--params',help='JSON 파일 경로 또는 JSON 객체 문자열')
+    prepare.add_argument('--param', action='append', help='조건 이름=값. 여러 번 지정 가능')
     prepare.add_argument('--max-rows',type=int)
     prepare.add_argument('--max-bytes',type=int)
     prepare.add_argument('--timeout',type=int)
@@ -71,10 +76,13 @@ def parser(engine):
     run.add_argument('--plan',required=True)
     run.add_argument('--confirm',action='store_true')
     run.add_argument('--allow-large',action='store_true')
+    run.add_argument('--output-dir', type=Path, help='승인한 조회 결과를 전달할 CSV 폴더')
     direct = commands.add_parser('execute', help='명확히 요청한 일반 조회를 한 번에 준비하고 실행')
     direct.add_argument('--id', required=True, type=int)
-    direct.add_argument('--params', required=True, help='JSON 파일 경로 또는 JSON 객체 문자열')
-    direct.add_argument('--confirm', action='store_true')
+    direct.add_argument('--params', help='목록 등 복잡한 조건의 JSON 파일 경로')
+    direct.add_argument('--param', action='append', help='조건 이름=값. 예: --param fac_id=CJPKG')
+    direct.add_argument('--confirm', action='store_true', help='기존 호환 인자. 일반 execute에는 추가 승인 불필요')
+    direct.add_argument('--output-dir', type=Path, help='사용자에게 전달할 CSV 폴더. 내부 실행 기록과 분리')
     direct.add_argument('--max-rows', type=int)
     direct.add_argument('--max-bytes', type=int)
     direct.add_argument('--timeout', type=int)
@@ -152,19 +160,27 @@ def execute(engine, args):
             from .registration import validation_info
             return {'ok':True,'query':query,'sourceName':store.profile(query['profile'])['name'],'executed':False,
                     'validation': validation_info(store, engine, args.id)}
-        from .registration import register_query
-        return register_query(store, engine, read_json(args.spec),
-                              values=read_params(args.params) if args.params is not None else None,
+        from .registration import register_query, parameter_review
+        spec = read_json(args.spec)
+        review = parameter_review(store, engine, spec)
+        if args.action == 'review' or (review['candidates'] and not args.parameters_reviewed):
+            return review
+        return register_query(store, engine, spec,
+                              values=read_cli_params(args.params, args.param),
                               confirmed=not args.save_only, query_id=args.replace_id)
     if args.command in {'plan', 'execute'}:
-        if args.command == 'execute' and not args.confirm:
-            raise ValueError('SQL과 조회 조건이 명확한 사용자 요청을 확인한 뒤 실행해 주세요.' if engine == 'datalake' else '조회할 DB와 쿼리, 조건이 명확한 사용자 요청을 확인한 뒤 실행해 주세요.')
         options = {k:getattr(args,k) for k in core.DEFAULTS if getattr(args,k) is not None}
         if args.command == 'plan':
-            return core.plan(store,engine,args.id,read_params(args.params),options)
-        return core.execute(store, engine, args.id, read_params(args.params), options, confirmed=True)
+            return core.plan(store,engine,args.id,read_cli_params(args.params, args.param),options)
+        result = core.execute(store, engine, args.id, read_cli_params(args.params, args.param), options, confirmed=True)
+        if args.output_dir and result.get('dataAvailable'):
+            result = core.deliver_csv(store, result, args.output_dir)
+        return result
     if args.command == 'run':
-        return core.run(store,engine,args.plan,confirmed=args.confirm,allow_large=args.allow_large)
+        result = core.run(store,engine,args.plan,confirmed=args.confirm,allow_large=args.allow_large)
+        if args.output_dir and result.get('dataAvailable'):
+            result = core.deliver_csv(store, result, args.output_dir)
+        return result
     if args.command == 'result':
         return dict(core.result_info(store,args.id), retrievalMode='saved_result', isFreshQuery=False,
                     reusePermission='not_granted')

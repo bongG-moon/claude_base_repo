@@ -41,12 +41,11 @@ class QueryCliWorkflowTests(unittest.TestCase):
         self.assertEqual(result['dataRowsReturned'], 0)
         self.assertNotIn('LOT006', json.dumps(result))
 
-    def test_missing_confirmation_does_not_even_prepare(self):
-        with patch.object(core, 'plan') as plan:
-            code, result = self.call('execute', '--id', '1', '--params', str(self.params))
-        self.assertEqual(code, 2)
-        plan.assert_not_called()
-        self.assertFalse((self.store.root / 'results').exists())
+    def test_explicit_execute_needs_no_second_confirmation(self):
+        code, result = self.call('execute', '--id', '1', '--params', str(self.params))
+        self.assertEqual(code, 0)
+        self.assertTrue(result['complete'])
+        self.assertEqual(result['savedRows'], 1)
 
     def test_large_request_returns_same_unconsumed_plan_without_execution(self):
         self.params.write_text('{}', encoding='utf-8')

@@ -4,7 +4,7 @@
 
 처음이라면 **[사용자 안내서](docs/Company-Agent-사용자-안내서.html)**를 여세요. 설치, 기억과 지식의 차이, 개인 스킬, 학습 내역, Claude Code 명령어와 단축키를 한 파일에서 볼 수 있습니다. 인터넷 없이 읽을 수 있으며 Noto Sans KR을 포함합니다.
 
-현재 소스는 **1.5.1** 구성입니다. 기본 설치와 개별 업무 기능을 분리했습니다. 로컬 빌드와 온라인 게시, 직원 PC 업데이트는 서로 다른 단계입니다. 이전 공개 파일은 [Release 이력](https://github.com/bongG-moon/claude_base_repo/releases)에 보존됩니다.
+기본 하네스는 **1.5.2**, 개별 스킬의 최신 갱신은 **2026-11-04**입니다. [스킬 변경과 검증 기록](docs/releases/v1.5.2-skills-20261104.md)을 참고하세요. 기본 설치와 개별 업무 기능을 분리했습니다. 로컬 빌드와 온라인 게시, 직원 PC 업데이트는 서로 다른 단계입니다. 이전 공개 파일은 [Release 이력](https://github.com/bongG-moon/claude_base_repo/releases)에 보존됩니다.
 
 ## 기본 하네스와 개별 스킬
 
@@ -52,9 +52,9 @@ Claude Code와 회사 승인 Python 3.11 이상이 준비된 Windows PC에서 �
 저장소 루트에서 Windows PowerShell 5.1로 실행합니다.
 
 ```powershell
-powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.5.1 -KnowledgeVersion 2026.09.03
+powershell.exe -NoProfile -File .\deploy\New-OfflineBundle.ps1 -CoreVersion 1.5.2 -KnowledgeVersion 2026.09.03
 powershell.exe -NoProfile -File .\deploy\Test-OfflineBundle.ps1
-powershell.exe -NoProfile -File .\deploy\New-CompanyAgentSetup.ps1 -BundleZip .\dist\company-agent-1.5.1-2026.09.03.zip
+powershell.exe -NoProfile -File .\deploy\New-CompanyAgentSetup.ps1 -BundleZip .\dist\company-agent-1.5.2-2026.09.03.zip
 ```
 
 뒤의 날짜는 회사 지식팩 버전입니다. 빌드는 게시나 개인 PC 설치를 실행하지 않습니다. 사내 GitLab 배포 자료는 `deploy/New-GitLabHarnessDelivery.ps1`로 준비합니다. 공개 Release나 GitLab 업로드는 별도로 진행합니다. EXE의 회사 코드 서명은 배포 담당자가 적용합니다.

@@ -164,6 +164,64 @@ body[data-motion=subtle] .report-masthead button{transition:background-color 120
 """
 
 
+# Only the geometry of named report references changes here. Explicit palettes,
+# font choices, content ordering and the optional page view keep their contracts.
+REFERENCE_CSS = """
+.reference-toc{display:flex;flex-wrap:wrap;gap:8px;padding:16px 30px;max-width:1320px;margin:auto;box-sizing:border-box}
+.reference-toc a{color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 12px;text-decoration:none;max-width:100%;overflow-wrap:anywhere;min-height:44px;align-content:center}
+.reference-toc a:hover,.reference-toc a[aria-current=location]{border-color:var(--accent);color:var(--accent)}
+body[data-view=slides] .reference-toc{display:none}
+body[data-reference] .section{scroll-margin-top:24px}
+body[data-reference][data-view=scroll] .report-main{max-width:1240px;padding-top:32px;padding-bottom:64px;gap:56px}
+body[data-reference=reference-1][data-view=scroll] .section{border:0;box-shadow:none;background:transparent;padding:0 12px;border-radius:0}
+body[data-reference=reference-1][data-view=scroll] .section+.section{border-top:1px solid var(--line);padding-top:40px}
+body[data-reference=reference-1][data-view=scroll] .section-content{border:0;padding-top:0}
+body[data-reference][data-view=scroll] .section.text-panel{max-width:100%;padding-inline:clamp(24px,6vw,80px)}
+body[data-reference] .text{font-size:17px;line-height:1.85;max-width:72ch}
+body[data-reference] .section-source{font-size:13px;line-height:1.7}
+body[data-reference] .takeaway{font-size:19px;line-height:1.7}
+body[data-reference] .page-number{font-size:12px;letter-spacing:.1em}
+body[data-reference=reference-2][data-view=scroll] .report-main{gap:28px}
+body[data-reference=reference-2][data-view=scroll] .section.data-panel{grid-column:1/-1}
+body[data-reference=reference-3][data-view=scroll] .section{border-radius:0;border-width:0 0 1px;box-shadow:none}
+body[data-reference=reference-3] .layout-split .section-content[data-content-columns="2"]{grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr)}
+@media(min-width:1000px){
+body[data-reference][data-view=scroll] .section:first-child.layout-split:has(>.section-content[data-content-columns="2"]):not(.has-diagram){display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:48px;align-items:start}
+body[data-reference][data-view=scroll] .section:first-child.layout-split>.section-content[data-content-columns="2"]{display:contents}
+body[data-reference][data-view=scroll] .section:first-child.layout-split :is(.page-number,h2,.takeaway,.copy-block){grid-column:1}
+body[data-reference][data-view=scroll] .section:first-child.layout-split .visual-block{grid-column:2;grid-row:1/6;align-self:center}
+body[data-reference][data-view=scroll] .section:first-child.layout-split h2{font-size:clamp(32px,3.4vw,50px);line-height:1.25;letter-spacing:-.045em;max-width:20ch}
+body[data-reference][data-view=scroll] .section:first-child.layout-split .section-source{grid-column:1/-1}
+}
+@media(min-width:1480px){
+body[data-reference=reference-2][data-view=scroll]:has(.reference-toc){padding-left:240px}
+body[data-reference=reference-2][data-view=scroll] .reference-toc{position:fixed;left:24px;top:140px;width:224px;max-height:calc(100vh - 170px);overflow:auto;padding:0 16px 24px 0;display:grid;align-content:start;font-size:13px}
+body[data-reference=reference-2][data-view=scroll] .reference-toc a{background:transparent;border-width:0 0 0 2px;border-radius:0}
+}
+@media(max-width:760px){
+body[data-reference][data-view=scroll] .report-main{padding:12px 16px 32px;gap:32px}
+body[data-reference][data-view=scroll] .section{padding:24px 20px}
+body[data-reference=reference-1][data-view=scroll] .section{padding:16px 4px}
+body[data-reference][data-view=scroll] .section.text-panel{padding-inline:20px}
+body[data-reference] .text{font-size:16px;line-height:1.8}
+body[data-reference=reference-3] .layout-split .section-content[data-content-columns="2"]{display:block}
+.reference-toc{padding:8px 16px;font-size:13px}
+}
+@media print{.reference-toc{display:none}body[data-reference]{padding:0!important}body[data-reference][data-view=scroll] .report-main{padding:0;display:block}body[data-reference] .section{display:block!important;break-inside:auto;margin-bottom:24px!important}body[data-reference] .section-content{display:block!important}}
+"""
+
+REFERENCE_JS = """(()=>{
+const links=[...document.querySelectorAll('.reference-toc a')];
+if(!links.length||!('IntersectionObserver' in window))return;
+const observer=new IntersectionObserver(entries=>{
+ const entry=entries.filter(item=>item.isIntersecting).sort((a,b)=>a.boundingClientRect.top-b.boundingClientRect.top)[0];
+ if(!entry)return;
+ links.forEach(link=>link.hash==='#'+entry.target.id?link.setAttribute('aria-current','location'):link.removeAttribute('aria-current'));
+},{rootMargin:'0px 0px -50% 0px'});
+links.forEach(link=>{const section=document.querySelector(link.hash);if(section)observer.observe(section)});
+})();"""
+
+
 def _layout(row: dict) -> str:
     return row.get("layout", "dashboard" if row.get("chart") or row.get("kpis") else "table" if row.get("table") else "summary")
 
@@ -171,7 +229,7 @@ def _layout(row: dict) -> str:
 def _bento_wide_sections(rows: list[dict]) -> set[int]:
     """Fill each consecutive run without reordering sections or inventing cards."""
     wide = {i for i, row in enumerate(rows) if _layout(row) in ("cover", "table", "split", "dashboard")
-            or any(row.get(key) for key in ("table", "chart", "image", "diagram"))}
+            or any(row.get(key) for key in ("table", "chart", "image", "diagram", "scenarios"))}
     run = []
     for i in range(len(rows) + 1):
         if i == len(rows) or i in wide:
@@ -191,14 +249,13 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
         base_css += '\n' + table_css
         script += '\n' + table_js
     if data.get('referencePreset'):
-        # Geometry only: the chosen palette and Korean typeface remain intact.
-        base_css += '''
-.reference-toc{display:flex;flex-wrap:wrap;gap:8px;padding:16px 30px;max-width:1440px;margin:auto;box-sizing:border-box}
-.reference-toc a{color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:6px;padding:8px 12px;text-decoration:none;max-width:100%;overflow-wrap:anywhere}
-body[data-view=slides] .reference-toc{display:none}
-@media(min-width:761px){body[data-reference=reference-3] .layout-split .section-content[data-content-columns="2"]{grid-template-columns:minmax(0,.8fr) minmax(0,1.6fr)}}
-@media print{.reference-toc{display:none}}
-'''
+        base_css += '\n' + REFERENCE_CSS
+        script += '\n' + REFERENCE_JS
+    has_interactions = any(row.get('scenarios') or row.get('details') for row in data['sections'])
+    if has_interactions:
+        from . import report_interactions
+        base_css += '\n' + report_interactions.CSS
+        script += '\n' + report_interactions.JS
     if data['length'] == 'short' and data['mode'] == 'scroll' and not (data.get('referenceCss') or data.get('themeOverrides')):
         base_css += '\n' + SHORT_SCROLL_CSS
     has_diagram = any(row.get('diagram') for row in data['sections'])
@@ -218,9 +275,8 @@ body[data-view=slides] .reference-toc{display:none}
     if data.get('themeOverrides'):
         from .report_styles import reference_style_css
         base_css += reference_style_css(data['themeOverrides'])
-    if 'fontChoice' in data or 'fontSource' in data:
-        from .report_typography import css as font_css
-        base_css += font_css(data)
+    from .report_typography import css as font_css
+    base_css += font_css(data)
     if any('contentOrder' in row for row in data['sections']):
         # Structural preference wins over a preset's split/grid styling on all
         # viewport sizes and print. DOM order is also the reading/tab order.
@@ -232,7 +288,7 @@ body[data-view=slides] .reference-toc{display:none}
         layout = _layout(row)
         diagram_class = ' has-diagram' if row.get('diagram') else ''
         has_art = layout == 'cover' and data['style'] in ('immersive-3d','editorial','retro-y2k') and not row.get('image')
-        has_visual = any(row.get(key) for key in ('chart', 'table', 'image', 'diagram', 'kpis'))
+        has_visual = any(row.get(key) for key in ('chart', 'table', 'image', 'diagram', 'kpis', 'scenarios'))
         text_class = ' text-panel' if not has_visual and layout != 'cover' and data['style'] != 'freeform' else ''
         if row.get('table') and len(row['table']['rows']) > 12:
             text_class += ' data-panel'
@@ -277,13 +333,15 @@ body[data-view=slides] .reference-toc{display:none}
                 if visuals:
                     fragment += '<div class="visual-block">'+visuals+'</div>'
                 fragment += '</div>'
+        if has_interactions:
+            fragment += report_interactions.render(row, i)
         if row.get('source'):
             fragment += f'<p class="section-source">{esc(row["source"])}</p>'
         sections.append(fragment+'</section>')
     digest=base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
-    csp=f"default-src 'none'; img-src data:; style-src 'unsafe-inline'; script-src 'sha256-{digest}'; base-uri 'none'; form-action 'none'"
+    csp=f"default-src 'none'; img-src data:; font-src data:; style-src 'unsafe-inline'; script-src 'sha256-{digest}'; base-uri 'none'; form-action 'none'"
     if google_font:
-        csp = csp.replace("style-src 'unsafe-inline'", "style-src 'unsafe-inline' https://fonts.googleapis.com") + '; font-src https://fonts.gstatic.com'
+        csp = csp.replace("style-src 'unsafe-inline'", "style-src 'unsafe-inline' https://fonts.googleapis.com").replace('font-src data:', 'font-src data: https://fonts.gstatic.com')
     footer = '인터넷 없이 열리는 업무 보고서 · 원자료와 확인 필요 사항을 함께 검토해 주세요.'
     if google_font:
         footer = '본문은 오프라인에서도 열립니다. Google Fonts 연결이 안 되면 PC 글꼴로 표시됩니다.'

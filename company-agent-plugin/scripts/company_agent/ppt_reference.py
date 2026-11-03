@@ -138,9 +138,11 @@ def prepare_reference(spec: dict[str, Any]) -> dict[str, Any]:
     if not result.get("ok"):
         code = result.get("code")
         if code in _AMBIGUOUS_FORMATS:
-            return {**_error("reference_format_unreadable", "파일 구조를 읽지 못했습니다. 보호·구형 형식·손상 여부는 이 결과만으로 판정할 수 없습니다.", status="unknown"),
+            return {**_error("reference_format_unreadable", "일반 PPTX 구조로 읽지 못했습니다. XML 문서나 특정 DRM으로 단정하지 않습니다. PowerPoint에서 정상 열 수 있으면 허용된 각 장을 이미지로 참고하세요.", status="unknown"),
                     "sourceReadCode": code, "restrictionConfirmed": False,
-                    "nextAction": "check_known_source_context", "automaticCapture": False}
+                    "nextAction": "check_known_source_context", "automaticCapture": False,
+                    "availableRoutes": ["reference --mode office --output NEW_PREVIEW_FOLDER: PowerPoint 정상 열기와 허용된 이미지 내보내기", "reference --mode screen: 연결된 화면 도구로 실제 장별 캡처 계획"],
+                    "doNotInfer": ["xml_document", "specific_drm_vendor", "capture_permission"]}
         return {**result, "restrictionConfirmed": code in _DENIED or code == "protected_input",
                 "retryAllowed": False, "captured": False, "sourcePreserved": True}
     count = result["slideCount"]

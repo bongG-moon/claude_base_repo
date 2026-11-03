@@ -54,8 +54,10 @@ class PptHtmlTests(unittest.TestCase):
         self.assertEqual(3, result['slides'])
         document = (self.root/'draft.html').read_text(encoding='utf-8')
         self.assertIn('비공개 고객 A 보고', document)
-        self.assertIn('script-src &#x27;none&#x27;', document)
-        self.assertNotIn('<script', document)
+        self.assertIn('script-src &#x27;sha256-', document)
+        self.assertIn('id="deck-edit-toggle"', document)
+        self.assertEqual('editable-html-deck', result['format'])
+        self.assertTrue(result['pptxOptional'])
         self.assertNotIn('https://', document)
         self.assertNotIn('fetch(', document)
 
@@ -70,7 +72,7 @@ class PptHtmlTests(unittest.TestCase):
         result = self.draft()
         document = Path(result['outputPath']).read_text(encoding='utf-8')
         self.assertIn('&lt;script&gt;',document)
-        self.assertNotIn('<script>',document)
+        self.assertNotIn('<script>danger()',document)
         self.assertNotIn('<img src=x',document)
 
     def test_saved_representative_is_one_content_free_reusable_html(self):

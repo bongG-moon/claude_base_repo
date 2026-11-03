@@ -7,6 +7,7 @@ import datetime as dt
 import decimal
 import hashlib
 import json
+import re
 from pathlib import Path
 import time
 import threading
@@ -324,6 +325,26 @@ def export_csv(store, result_id, output):
     return {'ok':True, 'filePath':str(output), 'savedRows':metadata['savedRows'],
             'complete':metadata['complete'], 'format':'csv', 'dataRowsReturned':0,
             'message':'CSV는 Excel용 수식 문자열 보호를 적용했습니다. 원본 값은 JSONL에 유지됩니다.'}
+
+
+def deliver_csv(store, result, directory):
+    """실행 기록은 개인 저장소에 두고 전달할 CSV만 업무 폴더에 만든다."""
+    try:
+        directory = safe_path(directory)
+        # 개인 저장소 내부에 사용자 결과 폴더를 섞지 않는다.
+        if directory == store.root or store.root in directory.parents:
+            raise ValueError('전달할 결과 폴더는 개인 저장소 밖에 지정해 주세요.')
+        directory.mkdir(parents=True, exist_ok=True)
+        name = re.sub(r'[^\w가-힣-]+', '_', result['sourceName'] + '_' + result['queryName'])[:80].strip('_') or '조회'
+        stamp = re.sub(r'[^0-9]', '', result['executedAt'])[:14]
+        suffix = '_일부' if not result['complete'] else ''
+        output = directory / f"{name}_{stamp}_{result['resultId'][:8]}{suffix}.csv"
+        exported = export_csv(store, result['resultId'], output)
+    except (ValueError, OSError):
+        return dict(result, exportStatus='failed',
+                    exportMessage='조회는 끝났지만 전달용 CSV 저장에 실패했습니다. 기존 결과 ID로 내보내기를 다시 하세요. 같은 조회를 반복하지 마세요.')
+    return dict(result, outputFile=exported['filePath'], exportStatus='complete',
+                exportMessage=exported['message'])
 
 
 def demo_init(store):

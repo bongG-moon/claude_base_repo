@@ -34,8 +34,8 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "asset-factory",
-      "sha256": "8ed2ca9fbb1254a33e9ebc3306b560a71cae80c099a3396f09977d8902b3f69c",
-      "size": 41638,
+      "sha256": "fd978a56571bb36702874a53282123f0075a3681e79897f460f98dd45199c24b",
+      "size": 41671,
       "files": 25
     },
     {
@@ -48,9 +48,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "data-query-demo",
-      "sha256": "5c7ba909819fb06259e96687932b4d8d07f99fecfc91d9a1664e953960042200",
-      "size": 114245,
-      "files": 32
+      "sha256": "37cd6132c9b394c5f524afb8572252458531af8d9c7c8b02caded3f62694c0fe",
+      "size": 115884,
+      "files": 33
     },
     {
       "slug": "datalake-query",
@@ -62,9 +62,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "datalake-query",
-      "sha256": "2406ebdeea42ac97333463f79c40c190e22b2d3a88d143aa9bda8114df8c02b5",
-      "size": 123292,
-      "files": 33
+      "sha256": "e9092079c9155fc8d2a74cf16bda76855942d4d313ab940a03f711a78a9ee038",
+      "size": 120789,
+      "files": 34
     },
     {
       "slug": "ehub-query",
@@ -76,9 +76,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "ehub-query",
-      "sha256": "d1829fde3b8242817b934544e22fe32b0efcaf931c7b87938619e1c880480a6a",
-      "size": 118106,
-      "files": 32
+      "sha256": "41ef1bea47f024ca9033deb5a7b8d2c9bdd737f25aec495559a9eaf794233d9f",
+      "size": 116694,
+      "files": 33
     },
     {
       "slug": "excel-to-pipeline",
@@ -112,15 +112,15 @@
       "slug": "html-report",
       "file": "html-report.zip",
       "name": "오프라인 HTML 업무 보고서",
-      "description": "기존 HTML이나 여러 참고 이미지의 색 조합, 글꼴, 표와 그래프 구성을 새 내용에 적용하는 오프라인 HTML 보고서입니다. 디자인 선택을 유지하며 표 검색, 정렬, 페이지 이동과 CSV 다운로드를 제공합니다.",
+      "description": "정리한 내용을 HTML 보고서로 만듭니다. 갤러리에서 실제 사례를 참고한 10가지 디자인과 3가지 구성을 비교하고, 글꼴과 조건을 골라 채팅에 전달합니다. 기존 양식을 참고하고 표 탐색과 다운로드까지 제공합니다.",
       "packageId": "html-report",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "html-report",
-      "sha256": "f1e2ab89872a5637ed1d90c0a0e970c65303b42e8a5ae9745cb123355d20bfd0",
-      "size": 228813,
-      "files": 47
+      "sha256": "12a5577a537156c34794f7ace231d1acc27706cc5a8fefce39a383cac8722d72",
+      "size": 6561056,
+      "files": 79
     },
     {
       "slug": "karpathy-guidelines",
@@ -146,9 +146,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "oracle-query",
-      "sha256": "3231afe7b3b6f80f6295be9f56dda07e09bb109c55f510789ccd32b5106d9fa9",
-      "size": 117494,
-      "files": 32
+      "sha256": "9d00843202b19577e9062131ac71ddf3c46b2b9bb180b42752524c164efe295d",
+      "size": 116402,
+      "files": 33
     },
     {
       "slug": "personal-knowledge",
@@ -182,15 +182,15 @@
       "slug": "presentation",
       "file": "presentation.zip",
       "name": "편집 가능한 업무 발표자료",
-      "description": "첨부 PPT와 여러 이미지의 글꼴, 표, 그래프, 도형, 말투와 색 조합을 참고해 새 내용의 한글 장표를 설계합니다. 전체 HTML 초안을 확인받은 뒤 글자와 도형, 표, 차트를 편집할 수 있는 PPT로 제작합니다.",
+      "description": "첨부 PPT와 이미지의 글꼴, 표, 도형, 말투와 색 조합을 참고해 한글 HTML 발표본을 만듭니다. 모든 디자인에서 페이지 이동과 문구 편집, 수정본 저장을 제공하며 요청하면 확인한 발표본을 편집 가능한 PPT로 내보냅니다.",
       "packageId": "presentation",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "presentation",
-      "sha256": "a41e89cc7de537ccb4b454b4369b9d21178bd8debdbb14dc70b84d03c54cb25c",
-      "size": 232990,
-      "files": 49
+      "sha256": "a557c99f70eb4a946ece2a91c21aa963074218ef5ad77cb56ae1dd9648dca097",
+      "size": 299907,
+      "files": 63
     },
     {
       "slug": "web-interface",
@@ -202,9 +202,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "web-interface",
-      "sha256": "7248d2fbeaa8425c8ee4d62b1821e3deb2a170625568e6206cf4f3b4873b92be",
-      "size": 24451,
-      "files": 11
+      "sha256": "4a7c20a9feb94d79fe39c7efd1567c6bcf864c5b2a5cb2c98941480eaa7e44e5",
+      "size": 28056,
+      "files": 12
     },
     {
       "slug": "website-rebuild",
@@ -216,9 +216,9 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "website-rebuild",
-      "sha256": "1b7d587d42fb682d1bbc3cbf8c657faf19f4bb75fcaa28126eab0d933423a798",
-      "size": 28535,
-      "files": 13
+      "sha256": "5fbca7bbcd6b03e7b88438c74244b6ea10f4979fda15c3ecd9fc8c836687c464",
+      "size": 32034,
+      "files": 14
     },
     {
       "slug": "work-context-catalog",
@@ -300,23 +300,23 @@
     }
   ],
   "managedFiles": {
-    "SHA256SUMS.txt": "7b5e7055944ea1e3a706fff671a4eaa43669f26206a9a73e217d6de5ae83eb30",
-    "asset-factory.zip": "8ed2ca9fbb1254a33e9ebc3306b560a71cae80c099a3396f09977d8902b3f69c",
-    "data-query-demo.zip": "5c7ba909819fb06259e96687932b4d8d07f99fecfc91d9a1664e953960042200",
-    "datalake-query.zip": "2406ebdeea42ac97333463f79c40c190e22b2d3a88d143aa9bda8114df8c02b5",
-    "ehub-query.zip": "d1829fde3b8242817b934544e22fe32b0efcaf931c7b87938619e1c880480a6a",
+    "SHA256SUMS.txt": "136787bf49354e0fc6b6164c6aca816dc689dbc29c2f5c8e04a3c92b434ed2a1",
+    "asset-factory.zip": "fd978a56571bb36702874a53282123f0075a3681e79897f460f98dd45199c24b",
+    "data-query-demo.zip": "37cd6132c9b394c5f524afb8572252458531af8d9c7c8b02caded3f62694c0fe",
+    "datalake-query.zip": "e9092079c9155fc8d2a74cf16bda76855942d4d313ab940a03f711a78a9ee038",
+    "ehub-query.zip": "41ef1bea47f024ca9033deb5a7b8d2c9bdd737f25aec495559a9eaf794233d9f",
     "excel-to-pipeline.zip": "6e46bae3413e3059efa155ed8ed22b9ef71620e3fadfc3fd9c42c356dca10df4",
     "file-organizer.zip": "a8d5db97e15f420c2c652918ab34f241ec1b34989f24eb2cbf20becc470e699a",
-    "html-report.zip": "f1e2ab89872a5637ed1d90c0a0e970c65303b42e8a5ae9745cb123355d20bfd0",
+    "html-report.zip": "12a5577a537156c34794f7ace231d1acc27706cc5a8fefce39a383cac8722d72",
     "karpathy-guidelines.zip": "ed43ee83b2244da7c721488566c182fd3e088059e0edbac04471d90b9a3a660a",
     "manufacturing-oracle-mcp-0.1.0-20261024.zip": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
-    "oracle-query.zip": "3231afe7b3b6f80f6295be9f56dda07e09bb109c55f510789ccd32b5106d9fa9",
+    "oracle-query.zip": "9d00843202b19577e9062131ac71ddf3c46b2b9bb180b42752524c164efe295d",
     "personal-knowledge.zip": "fb1035fc95cb6b5dd36ddead07638b359ef024358cce2848bc9a887f46f56b49",
     "personal-memory.zip": "66d6c1e2661c143bcd15c0bf1c9e775e46385d573d484919d1d1d2288d3dfc7b",
-    "presentation.zip": "a41e89cc7de537ccb4b454b4369b9d21178bd8debdbb14dc70b84d03c54cb25c",
-    "web-interface.zip": "7248d2fbeaa8425c8ee4d62b1821e3deb2a170625568e6206cf4f3b4873b92be",
-    "website-rebuild.zip": "1b7d587d42fb682d1bbc3cbf8c657faf19f4bb75fcaa28126eab0d933423a798",
+    "presentation.zip": "a557c99f70eb4a946ece2a91c21aa963074218ef5ad77cb56ae1dd9648dca097",
+    "web-interface.zip": "4a7c20a9feb94d79fe39c7efd1567c6bcf864c5b2a5cb2c98941480eaa7e44e5",
+    "website-rebuild.zip": "5fbca7bbcd6b03e7b88438c74244b6ea10f4979fda15c3ecd9fc8c836687c464",
     "work-context-catalog.zip": "f8f5f3ca21b0100eb5a5e40ff3e6e7a1c81da291be8ed367669a1889c1bd6650",
-    "등록_설치_안내.html": "8a8bbf360fe2efc9cbce8c439d105d5ae3e8f241dc2aff1828747d6512d68758"
+    "등록_설치_안내.html": "d52dc5df16b2065ea60718ea136169258fca77812ce187d9088f21632b4aee87"
   }
 }

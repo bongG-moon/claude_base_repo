@@ -1,0 +1,23 @@
+{
+  "format": "WOFF2 variable, offline only; no installed fonts changed",
+  "fonts": [
+    {
+      "family": "Noto Sans KR",
+      "file": "NotoSansKR-Variable.woff2",
+      "source": "https://github.com/google/fonts/tree/main/ofl/notosanskr",
+      "bytes": 3908308,
+      "sha256": "06871c15e7f14ae426c13eefafef615298ed8644ca8b0cbcd9863859170fe817",
+      "modernHangulSyllables": 11172,
+      "conversion": "Lossless WOFF to WOFF2, cmap unchanged"
+    },
+    {
+      "family": "Pretendard",
+      "file": "PretendardVariable.woff2",
+      "source": "https://github.com/orioncactus/pretendard",
+      "bytes": 2057688,
+      "sha256": "9599f12fd42fc0bce1cd50b47a0c022e108d7aa64dd0d1bb0ed44f3282d900b4",
+      "modernHangulSyllables": 11172,
+      "conversion": "Unchanged existing WOFF2"
+    }
+  ]
+}

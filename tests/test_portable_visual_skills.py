@@ -12,13 +12,35 @@ import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
-MODULES = "business_artifacts business_safety content_layout explanation_diagram explanation_export html_reference ppt_html ppt_html_import ppt_scene ppt_primitives ppt_text ppt_layouts ppt_template_scene ppt_preflight ppt_workflow ppt_reference ppt_component_styles reference_style presentation_design report_design report_facts report_styles report_tables report_typography".split()
+MODULES = "business_artifacts business_safety content_layout explanation_diagram explanation_export html_reference ppt_html ppt_html_import ppt_empty ppt_office_reference ppt_deck_shell ppt_deck_source ppt_scene ppt_primitives ppt_text ppt_layouts ppt_template_scene ppt_preflight ppt_workflow ppt_reference ppt_component_styles reference_style presentation_design report_design report_facts report_styles report_tables report_typography report_gallery report_interactions report_theme_templates report_theme_sources report_picker_ui".split()
 FILES = [n + ".py" for n in MODULES] + ["ppt_dom_capture.js"]
 ISOLATED_PPTX = subprocess.run([sys.executable, "-I", "-c", "import pptx"],
                                capture_output=True, timeout=20).returncode == 0
 
 
 class PortableVisualTests(unittest.TestCase):
+    def test_presentation_basic_schema_runs_one_draft_without_advanced_guides(self):
+        guide = (ROOT / 'standalone-skills/presentation/references/schema.md').read_text(encoding='utf-8')
+        spec = json.loads(re.search(r'```json\n(.*?)\n```', guide, re.S).group(1))
+        target = self.root / 'basic-presentation.html'
+        response = self.run_cli('presentation', 'draft', '--spec', self.write_spec(spec), '--output', target)
+        self.assertTrue(response['ok'], response)
+        text = target.read_text(encoding='utf-8')
+        for slide in spec['slides']:
+            self.assertIn(slide['title'], text)
+        self.assertIn('edit-toggle', text)
+        self.assertIn('id="deck-save"', text)
+
+    def test_html_entrypoint_minimum_example_runs_without_extra_planning_commands(self):
+        entry = (ROOT / 'standalone-skills/html-report/SKILL.md').read_text(encoding='utf-8')
+        spec = json.loads(re.search(r'```json\n(.*?)\n```', entry, re.S).group(1))
+        target = self.root / 'entry-example.html'
+        response = self.run_cli('html-report', 'build', '--spec', self.write_spec(spec), '--output', target)
+        self.assertTrue(response['ok'], response)
+        self.assertTrue(target.is_file())
+        self.assertIn(spec['title'], target.read_text(encoding='utf-8'))
+        self.assertFalse((self.root / '.claude').exists())
+
     def test_presentation_summary_cli_uses_utf8_even_with_legacy_stdout(self):
         skill = self.stage('presentation')
         source = self.root / 'example.pptx'

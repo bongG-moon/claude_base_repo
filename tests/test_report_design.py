@@ -124,7 +124,8 @@ class ReportDesignTests(unittest.TestCase):
         self.assertEqual(len(hashes),len(STYLES))
         text=output.read_text(encoding="utf-8")
         self.assertIn('layout-cover',text);self.assertIn('layout-split',text)
-        self.assertIn('grid-template-columns:1.2fr 1fr',text)
+        from company_agent.report_theme_templates import CSS
+        self.assertRegex(CSS, r'\[data-style=freeform\] \.layout-split \.section-content\{grid-template-columns:minmax\(0,[.\d]+fr\) minmax\(0,[.\d]+fr\)')
 
     def test_no_facts_is_not_numerical_verification(self):
         result=create_html({"sections":[{"body":"합계 510"}]},self.output)

@@ -36,10 +36,10 @@ def normalize_runs(raw, element, palette):
     return joined, result
 
 
-def html_runs(element, canvas_width):
+def html_runs(element, canvas_width, edit_prefix='', *, title=False):
     """No source HTML or CSS is accepted in a run."""
     output = []
-    for run in element['runs']:
+    for index, run in enumerate(element['runs']):
         face = ''.join(c for c in run.get('font','') if c.isalnum() or c in ' -_')
         style = (f"font-size:{run['size']/canvas_width*100:.6f}cqw;"
                  f"color:#{run['color']};font-weight:{700 if run['bold'] else 400};"
@@ -47,7 +47,10 @@ def html_runs(element, canvas_width):
                  f"text-decoration:{'underline' if run['underline'] else 'none'}")
         if face:
             style += f";font-family:'{face}',sans-serif"
-        output.append(f'<span style="{html.escape(style,quote=True)}">{html.escape(run["text"])}</span>')
+        edit = f' data-edit="{html.escape(edit_prefix,quote=True)}-r{index}"' if edit_prefix else ''
+        if edit and title:
+            edit += ' data-deck-title="true"'
+        output.append(f'<span{edit} style="{html.escape(style,quote=True)}">{html.escape(run["text"])}</span>')
     return ''.join(output)
 
 

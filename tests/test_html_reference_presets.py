@@ -126,7 +126,7 @@ class HtmlReferencePresetsTests(unittest.TestCase):
     def test_picker_reference_buttons_emit_named_choices_without_resetting_existing_choices(self):
         setup = r'''
 const vm=require('node:vm'),assert=require('node:assert/strict');
-function element(value='keep'){return {value,options:[{text:'기존 선택 유지'}],selectedIndex:0,handlers:{},dataset:{},attrs:{},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attrs[k]=v}}}
+function element(value='keep'){return {value,options:[{text:'기존 선택 유지'}],selectedIndex:0,handlers:{},dataset:{},attrs:{},closest(){return null},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attrs[k]=v}}}
 const ids={};for(const id of ['length-choice','mode-choice','font-choice','font-name','choice-result','copy-status','additional-designs','selected-design','copy-choice'])ids[id]=element();
 const buttons=[1,2,3].map(n=>{const b=element();b.dataset={choice:'reference-'+n,label:'레퍼런스 '+n};return b});
 const context={document:{getElementById:id=>ids[id],querySelectorAll:s=>s==='[data-choice]'?buttons:[]},location:{hash:''},window:{addEventListener(){}},navigator:{}};

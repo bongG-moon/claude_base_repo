@@ -2,6 +2,21 @@
 
 ## PPTX
 
+PK/ZIP이 아니거나 DOCUMENT SAFER 같은 헤더가 보이면 실제 파일 형식과 열람 경로를 확인합니다.
+XML이라고 단정하거나 내용을 텍스트로 덤프하지 않습니다. 아래 명령은 Windows에 설치된
+PowerPoint가 원본을 정상 읽기 전용으로 열어 요청 장을 PNG로 내보냅니다. pywin32가 필요합니다.
+
+```text
+python "스킬폴더/scripts/presentation.py" reference --mode office --file "참고.pptx" --slides 1,2,3,4 --output "참고-장별이미지"
+```
+
+output은 새 폴더로 지정합니다. 반환된 실제 이미지 파일을 호스트 비전 기능으로 보고 스타일을
+관찰합니다. **이 명령은 PowerPoint Export이며 화면 스크린샷과 같지 않습니다.** 정상 Export가
+거절되면 자동으로 다른 추출 경로로 바꾸지 않습니다. 사용자가 이미 열어 놓은 문서는 닫지 않고
+현재 호스트의 화면 도구로 정확한 문서를 확인하여 아래 screen 계획을 실행합니다.
+PowerPoint 정상 열기나 화면 캡처가 허용되지 않으면 보안 설정을 변경하지 않고 사유를 알립니다.
+
+
 스타일 참고는 `python "스킬폴더/scripts/presentation.py" reference --file "참고.pptx" --summary`로
 최대 60장의 순서, 공통 색상·글꼴과 제한된 서식 표본만 짧게 읽습니다. 원본 내용이나 모든 개체를 대화에 넣지 않습니다.
 개체별 상세 좌표나 내용이 실제로 필요한 경우에만 `--summary`를 빼고 다시 확인합니다.

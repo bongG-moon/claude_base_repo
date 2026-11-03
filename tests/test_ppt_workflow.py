@@ -246,7 +246,10 @@ class PptWorkflowTests(unittest.TestCase):
             saved=folder/'not-portable.html'
             self.assertEqual('preserved_template_not_portable',ppt_html.save_template(spec,saved,path)['code'])
             self.assertFalse(saved.exists())
-            self.assertIn('고정 개체', (folder/'draft.html').read_text(encoding='utf-8'))
+            reader=ppt_html._TemplateReader('deck-config')
+            reader.feed((folder/'draft.html').read_text(encoding='utf-8'))
+            notes=json.loads(reader.payloads[0])['notes']
+            self.assertIn('고정 개체', notes['P01']['text'])
 
     def test_missing_mapping_duplicate_and_overflow_do_not_publish(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -10,6 +10,68 @@ from .store import atomic_json, fingerprint, read_json, safe_path
 TEST_ROWS = 10
 
 
+def parameter_review(store, engine, spec):
+    """WHERE/HAVING의 고정 리터럴만 변수 후보로 제안한다. SQL은 바꾸지 않는다."""
+    from .sql import _tree
+    from sqlglot import exp
+    profile = (store.datalake_profile(spec.get('profile')) if engine == 'datalake'
+               else store.profile(spec.get('profile')))
+    tree = _tree(spec.get('sql'), profile['engine'])
+    candidates = []
+    seen = set()
+
+    def scalar_value(node):
+        # 조건 값만 제안한다. 날짜/문자열 함수의 포맷과 컬럼 쪽 상수는
+        # SQL 문법의 일부이며 사용자가 바꿀 조회 값으로 섞지 않는다.
+        if isinstance(node, exp.Literal):
+            return [str(node.this)]
+        if isinstance(node, exp.Neg) and isinstance(node.this, exp.Literal) and not node.this.is_string:
+            return ['-' + str(node.this.this)]
+        if isinstance(node, (exp.Paren, exp.Cast, exp.DateStrToDate, exp.StrToDate, exp.StrToTime)):
+            return scalar_value(node.this)
+        # 산술식, CASE, 임의 함수의 인자는 의미를 추측해 분해하지 않는다.
+        return []
+
+    for clause in tree.find_all(exp.Where, exp.Having):
+        for node in clause.walk():
+            if not isinstance(node, (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE,
+                                     exp.Like, exp.Between, exp.In)):
+                continue
+            if list(node.find_all(exp.Select)):
+                continue
+            if isinstance(node, (exp.Between, exp.In)):
+                column_side = node.this
+                value_sides = ([node.args.get('low'), node.args.get('high')]
+                               if isinstance(node, exp.Between) else node.expressions)
+            else:
+                left_columns = list(node.this.find_all(exp.Column))
+                right_columns = list(node.expression.find_all(exp.Column))
+                if left_columns and not right_columns:
+                    column_side, value_sides = node.this, [node.expression]
+                elif right_columns and not left_columns:
+                    column_side, value_sides = node.expression, [node.this]
+                else:
+                    continue
+            columns = list(column_side.find_all(exp.Column))
+            values = [value for side in value_sides for value in scalar_value(side)]
+            if len(columns) != 1 or not values:
+                continue
+            column = columns[0].sql()
+            key = (column, tuple(values))
+            if key in seen:
+                continue
+            seen.add(key)
+            candidates.append({'column': column, 'operator': node.key,
+                               'currentValues': [value[:160] for value in values[:5]],
+                               'valueCount': len(values), 'suggestedName': columns[0].name,
+                               'reason': '조회할 때 바꿀 수 있는 고정 조건입니다. 고정값으로 유지해도 됩니다.'})
+    return {'ok': True, 'status': 'parameter_review_required' if candidates else 'parameter_review_not_needed',
+            'registered': False, 'executed': False, 'candidates': candidates[:30],
+            'candidateCount': len(candidates), 'dataRowsReturned': 0,
+            'message': ('변수로 바꿀 후보를 보여 주고 한 번 선택받으세요. 선택한 항목만 :변수와 parameters로 작성한 뒤 --parameters-reviewed로 등록합니다. 이미 명확히 선택했다면 다시 묻지 않습니다.'
+                        if candidates else '추가로 선택할 고정 조건 후보가 없습니다.')}
+
+
 def _from_result(record, result):
     record.update(checkedAt=dt.datetime.now(dt.timezone.utc).isoformat(timespec='seconds'),
                   resultId=result.get('resultId'))

@@ -41,8 +41,8 @@ def browser_path(choice='auto'):
 
 class StaticHTML(HTMLParser):
     """Positive tag/attribute allowlist; source CSS cannot execute script under CSP."""
-    tags=set('html head body title style section main article header footer aside div span p h1 h2 h3 h4 h5 h6 b strong i em u small sup sub br hr ul ol li table thead tbody tfoot tr th td colgroup col img pre code a figure figcaption'.split())
-    void={'br','hr','col','img'}
+    tags=set('html head body title style section main article header footer aside nav button label textarea input div span p h1 h2 h3 h4 h5 h6 b strong i em u small sup sub br hr ul ol li table thead tbody tfoot tr th td colgroup col img pre code a figure figcaption'.split())
+    void={'br','hr','col','img','input'}
 
     def __init__(self,path):
         super().__init__(convert_charrefs=True)
@@ -80,7 +80,7 @@ class StaticHTML(HTMLParser):
             raise ArtifactError('html_element_unsupported','지원하지 않는 HTML 요소가 있습니다. 정적 슬라이드 본문으로 준비해 주세요.')
         clean=[]
         for key,value in attrs:
-            if key in ('class','id','style','lang','dir','colspan','rowspan','width','height','alt','data-ppt-group'):
+            if key in ('class','id','style','lang','dir','hidden','colspan','rowspan','width','height','alt','data-ppt-group'):
                 if key=='style': self.check_css(value or '')
                 clean.append((key,value or ''))
         if tag=='img':
@@ -120,7 +120,7 @@ class StaticHTML(HTMLParser):
 
 
 def source_document(value):
-    if not isinstance(value,dict) or set(value)-{'path','selector','viewportWidth','browser'} or not isinstance(value.get('path'),str) or value.get('browser','auto') not in ('auto','edge','chrome'):
+    if not isinstance(value,dict) or set(value)-{'path','selector','viewportWidth','browser','deckMode'} or not isinstance(value.get('path'),str) or value.get('browser','auto') not in ('auto','edge','chrome') or type(value.get('deckMode',False)) is not bool:
         raise ArtifactError('invalid_html_source','htmlSource에는 로컬 path와 선택적인 selector, viewportWidth만 지정하세요.')
     source=_source(Path(value['path']),('.html','.htm'))
     if source.stat().st_size>10*1024*1024:
@@ -138,6 +138,13 @@ def source_document(value):
 
 
 def fingerprint(value):
+    if isinstance(value, dict) and 'nativeDeck' in value:
+        if value.get('nativeDeck') is not True or set(value) != {'path', 'nativeDeck'} or not isinstance(value.get('path'),str):
+            raise ArtifactError('invalid_html_source','공통 발표 HTML은 path와 nativeDeck:true만 지정하세요. 외부 HTML은 selector와 deckMode를 사용합니다.')
+        source=_source(Path(value['path']),('.html','.htm'))
+        if source.stat().st_size>16*1024*1024:
+            raise ArtifactError('html_too_large','편집 가능한 발표 HTML은 16MiB 이하로 준비해 주세요.')
+        return {'path':str(source),'sha256':hashlib.sha256(source.read_bytes()).hexdigest(),'dependencies':{}}
     return source_document(value)[1]
 
 
@@ -153,12 +160,20 @@ class _Result(HTMLParser):
 
 
 def capture(value,palette,font):
+    if isinstance(value,dict) and 'nativeDeck' in value:
+        from .ppt_deck_source import read_deck
+        source=fingerprint(value)
+        plan=read_deck(source['path'],palette)
+        if source != fingerprint(value):
+            raise ArtifactError('html_source_changed','발표 HTML이 처리 중 변경되었습니다. 다시 확인해 주세요.')
+        return {**plan,'source':source,
+                'warnings':plan.get('warnings',[])+['공통 HTML의 문구와 표 셀 편집을 반영했습니다. 배치와 차트는 HTML에 포함된 제작 구조를 유지합니다.']}
     reader,source,selector,viewport=source_document(value)
     browser=browser_path(value.get('browser','auto'))
     if browser is None:
         raise ArtifactError('html_layout_engine_unavailable','정적 HTML 배치 확인에 사용할 Edge/Chrome이 없습니다. 자동 설치나 전체 슬라이드 이미지 대체는 하지 않았습니다.')
     marker='company-layout-'+uuid.uuid4().hex
-    script=Path(__file__).with_name('ppt_dom_capture.js').read_text(encoding='utf-8').replace('__COMPANY_OPTIONS__',json.dumps({'selector':selector,'outputId':marker}))
+    script=Path(__file__).with_name('ppt_dom_capture.js').read_text(encoding='utf-8').replace('__COMPANY_OPTIONS__',json.dumps({'selector':selector,'outputId':marker,'deckMode':value.get('deckMode',False)}))
     digest=base64.b64encode(hashlib.sha256(script.encode()).digest()).decode()
     csp=f"default-src 'none'; script-src 'sha256-{digest}'; style-src 'unsafe-inline'; img-src data:; font-src 'none'; connect-src 'none'; base-uri 'none'; form-action 'none'"
     content=''.join(reader.parts)

@@ -167,18 +167,33 @@ def compose(row, number, width, height, palette, font, profile):
             e.update(border=palette.get(border,border),borderWidth=.8)
         elements.append(e)
 
-    def line(x1,y1,x2,y2, *, arrow=False, group=None):
+    def polyline(points, *, arrow=False, group=None):
         # Local point coordinates also express decreasing paths without negative
         # scene dimensions. A 0.1pt orthogonal extent is visually negligible.
-        x,y = min(x1,x2),min(y1,y2)
-        w,h = max(.1,abs(x2-x1)),max(.1,abs(y2-y1))
-        e = dict(kind='line',x=x,y=y,w=w,h=h,points=[[x1-x,y1-y],[x2-x,y2-y]],
+        points=[point for i,point in enumerate(points) if not i or point!=points[i-1]]
+        # Preserve a native straight connector when no actual bend is needed.
+        compact=[]
+        for point in points:
+            while len(compact)>1:
+                a,b=compact[-2:]
+                cross=(b[0]-a[0])*(point[1]-b[1])-(b[1]-a[1])*(point[0]-b[0])
+                forward=(b[0]-a[0])*(point[0]-b[0])+(b[1]-a[1])*(point[1]-b[1])
+                if abs(cross)>.0001 or forward<0:break
+                compact.pop()
+            compact.append(point)
+        points=compact
+        x,y = min(point[0] for point in points),min(point[1] for point in points)
+        w,h = max(.1,max(point[0] for point in points)-x),max(.1,max(point[1] for point in points)-y)
+        e = dict(kind='line',x=x,y=y,w=w,h=h,points=[[px-x,py-y] for px,py in points],
                  border=palette.get('accent','087F8C'),borderWidth=1.4,fill='none')
         if arrow:
             e['endArrow'] = 'triangle'
         if group:
             e['group'] = group
         elements.append(e)
+
+    def line(x1,y1,x2,y2, *, arrow=False, group=None):
+        polyline([(x1,y1),(x2,y2)],arrow=arrow,group=group)
 
     note = _string(row.get('source',''), '출처', 180)
     if note:
@@ -299,23 +314,111 @@ def compose(row, number, width, height, palette, font, profile):
         columns=max(levels.values())+1
         if columns>4:
             raise LayoutError('한 장의 업무 흐름은 4단계 이내로 나누거나 elements에 명시한 좌표를 사용해 주세요.')
-        cw=(usable-gap*(columns-1))/columns
-        positions={}
-        for level,bucket in buckets.items():
-            nh=min(130.,(bottom-top-gap*(len(bucket)-1))/len(bucket))
-            if nh<65:raise LayoutError('병렬 업무 노드를 읽기 좋은 크기로 담기 어렵습니다. 장을 나누어 주세요.')
-            y=top+(bottom-top-(nh*len(bucket)+gap*(len(bucket)-1)))/2
-            for node in bucket:
-                positions[node['id']]=(margin+level*(cw+gap),y,cw,nh)
-                y+=nh+gap
-        # Lines are behind editable node boxes and only reflect supplied edges.
-        for edge in edges:
-            sx,sy,sw,sh=positions[edge['from']];tx,ty,tw,th=positions[edge['to']]
-            line(sx+sw,sy+sh/2,tx,ty+th/2,arrow=True)
+        # Labels need real space between columns; a fixed 80pt label over a
+        # 24pt gutter used to sit on the neighbouring node's border.
+        column_gaps=[gap]*(columns-1)
+        labels={}
+        gutter_edges=defaultdict(list)
+        for i,edge in enumerate(edges):
+            if levels[edge['to']]==levels[edge['from']]+1:
+                gutter_edges[levels[edge['from']]].append(i)
+        for i,edge in enumerate(edges):
             if edge.get('label'):
                 label=_string(edge['label'],'연결 설명',40)
-                lx=(sx+sw+tx)/2
-                text(label,lx-40,(sy+sh/2+ty+th/2)/2-25,80,24,p['annotationSize'],'muted',align='center')
+                labels[i]=label
+                if levels[edge['to']]==levels[edge['from']]+1:
+                    label_w=24.
+                    while label_w<120 and lines(label,label_w,p['annotationSize'])>1:
+                        label_w+=4
+                    band=10+3*(len(gutter_edges[levels[edge['from']]])-1)
+                    level=levels[edge['from']]
+                    column_gaps[level]=max(column_gaps[level],label_w+2*band+12)
+        # Widen only the gutter that owns a label. Applying its maximum width
+        # to every column needlessly squeezed Korean node text elsewhere.
+        cw=(usable-sum(column_gaps))/columns
+        column_x=[margin+level*cw+sum(column_gaps[:level]) for level in range(columns)]
+        if cw<65:
+            raise LayoutError('업무 연결 설명을 읽기 좋은 크기로 담기 어렵습니다. 장을 나누거나 elements로 배치해 주세요.')
+        # Skipping a level must not draw through the intervening work. Reserve
+        # an independent lane above all nodes, including space for its label.
+        lanes={}
+        node_top=top
+        for i,edge in enumerate(edges):
+            if levels[edge['to']]<=levels[edge['from']]+1:
+                continue
+            span=column_x[levels[edge['to']]]-column_x[levels[edge['from']]]-cw-12
+            label_w=min(180.,span)
+            label_h=lines(labels[i],label_w,p['annotationSize'])*p['annotationSize']*1.22+4 if i in labels else 0
+            lanes[i]=(node_top+label_h+4,label_w,label_h)
+            node_top+=label_h+14
+        positions={}
+        for level,bucket in buckets.items():
+            desired=130.
+            for node in bucket:
+                if node.get('shape')=='diamond':
+                    detail=_string(node.get('body',''),'업무 설명',500)
+                    value=_string(node['title'],'업무 제목',120)+('\n'+detail if detail else '')
+                    desired=max(desired,(lines(value,cw*.55,p['bodySize'])*p['bodySize']*1.22+4)/.4)
+            nh=min(desired,(bottom-node_top-gap*(len(bucket)-1))/len(bucket))
+            if nh<65:raise LayoutError('병렬 업무 노드를 읽기 좋은 크기로 담기 어렵습니다. 장을 나누어 주세요.')
+            y=node_top+(bottom-node_top-(nh*len(bucket)+gap*(len(bucket)-1)))/2
+            for node in bucket:
+                positions[node['id']]=(column_x[level],y,cw,nh)
+                y+=nh+gap
+        # Forks and merges can share the same source or target height. Give
+        # every edge in a labelled gutter its own horizontal route and reserve
+        # narrow side bands for vertical segments so no line crosses a label.
+        local_routes={}
+        for level,indexes in gutter_edges.items():
+            if not any(i in labels for i in indexes):continue
+            band=10+3*(len(indexes)-1)
+            label_w=column_gaps[level]-2*band-12
+            slots=[]
+            for rank,i in enumerate(indexes):
+                edge=edges[i]
+                sx,sy,sw,sh=positions[edge['from']];tx,ty,tw,th=positions[edge['to']]
+                label_h=lines(labels[i],label_w,p['annotationSize'])*p['annotationSize']*1.22+4 if i in labels else 0
+                slots.append({'i':i,'rank':rank,'h':label_h,'target':ty+th/2,
+                              'source':sy+sh/2,'extent':label_h+10})
+            slots.sort(key=lambda item:(item['target'],item['source'],item['i']))
+            cursor=node_top
+            for slot in slots:
+                slot['y']=max(cursor,slot['target']-slot['h']-4)
+                cursor=slot['y']+slot['extent']
+            cursor=bottom
+            for slot in reversed(slots):
+                slot['y']=min(slot['y'],cursor-slot['extent'])
+                cursor=slot['y']
+            if cursor<node_top:
+                raise LayoutError('업무 연결 설명을 읽기 좋은 크기로 담기 어렵습니다. 장을 나누거나 elements로 배치해 주세요.')
+            for slot in slots:
+                local_routes[slot['i']]={**slot,'w':label_w,'band':band}
+        # Lines are behind editable node boxes and only reflect supplied edges.
+        for i,edge in enumerate(edges):
+            sx,sy,sw,sh=positions[edge['from']];tx,ty,tw,th=positions[edge['to']]
+            source_y,target_y=sy+sh/2,ty+th/2
+            if i in lanes:
+                lane_y,label_w,label_h=lanes[i]
+                # Keep vertical bypasses outside the adjacent edge's label.
+                exit_x,entry_x=sx+sw+6,tx-6
+                polyline([(sx+sw,source_y),(exit_x,source_y),(exit_x,lane_y),
+                          (entry_x,lane_y),(entry_x,target_y),(tx,target_y)],arrow=True)
+                if i in labels:
+                    text(labels[i],(exit_x+entry_x-label_w)/2,lane_y-label_h-3,
+                         label_w,label_h,p['annotationSize'],'muted',align='center')
+            elif i in local_routes:
+                slot=local_routes[i]
+                offset=10+3*slot['rank']
+                exit_x,entry_x=sx+sw+offset,tx-offset
+                route_y=slot['y']+slot['h']+4
+                polyline([(sx+sw,source_y),(exit_x,source_y),(exit_x,route_y),
+                          (entry_x,route_y),(entry_x,target_y),(tx,target_y)],arrow=True)
+                if i in labels:
+                    text(labels[i],sx+sw+slot['band']+6,slot['y'],slot['w'],slot['h'],
+                         p['annotationSize'],'muted',align='center')
+            else:
+                mid=(sx+sw+tx)/2
+                polyline([(sx+sw,source_y),(mid,source_y),(mid,target_y),(tx,target_y)],arrow=True)
         for index,node in enumerate(nodes):
             x,y,w,h=positions[node['id']]
             group=f'flow-{number}-{index+1}'
@@ -325,7 +428,10 @@ def compose(row, number, width, height, palette, font, profile):
             detail=_string(node.get('body',''),'업무 설명',500)
             if contour=='diamond':
                 value=label+('\n'+detail if detail else '')
-                text(value,x+w*.20,y+h*.25,w*.60,h*.5,p['bodySize'],'title',True,group=group,align='center')
+                # A centred rectangle is inside a diamond only if its width
+                # and height ratios sum to <=1. Keep a little border clearance.
+                text(value,x+w*.225,y+h*.30,w*.55,h*.4,p['bodySize'],'title',True,group=group,align='center')
+                elements[-1]['verticalAlign']='middle'
                 continue
             if contour in ('chevron','hexagon','parallelogram'):
                 # Reserve the sloped contour ends; do not let text rest on them.

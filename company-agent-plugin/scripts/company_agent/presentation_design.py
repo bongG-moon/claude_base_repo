@@ -50,6 +50,7 @@ def prepare(spec, data):
         row['eyebrow'] = bind(_text(raw.get('eyebrow', ''), 70))
         row['takeaway'] = bind(_text(raw.get('takeaway', ''), 160))
         row['source'] = bind(_text(raw.get('source', ''), 180))
+        row['notes'] = bind(_text(raw.get('notes', ''), 8000))
         # Page roles and design anchors are optional; legacy jobs stay unchanged.
         from copy import deepcopy
         for field in ('pageRole','workflow','milestones','panels'):
@@ -92,7 +93,9 @@ def prepare(spec, data):
                                 if isinstance(run,dict) and isinstance(run.get('text'),str):
                                     run['text']=bind(run['text'])
             from .ppt_scene import ink
-            row['background']=ink(raw.get('background','FFFFFF'),{})
+            # Keep omission distinct until the active theme is resolved below.
+            if 'background' in raw:
+                row['background']=ink(raw['background'],{})
         if raw.get('imageLayout') == 'full-slide':
             if 'contentOrder' in row:
                 raise DesignError('전체 화면 이미지와 contentOrder를 함께 지정하지 마세요.')
@@ -407,7 +410,7 @@ def plan(data, width=960., height=540.):
 
         if 'elements' in row:
             from .ppt_scene import elements as validate_elements
-            pages.append({'elements':validate_elements(component_styles(row['elements'],row),width,height,data['presentationTheme']), 'background':row.get('background','FFFFFF')})
+            pages.append({'elements':validate_elements(component_styles(row['elements'],row),width,height,data['presentationTheme']), 'background':row.get('background',data['presentationTheme']['background'])})
             continue
         if row.get('imageLayout') == 'full-slide':
             pages.append({'elements':[dict(kind='image',x=0,y=0,w=width,h=height,fit=row['imageFit'])]})
@@ -546,7 +549,11 @@ def render_python(data, draft, template):
     from pptx.dml.color import RGBColor
     from pptx.util import Pt
     from pptx.oxml.xmlchemy import OxmlElement
-    prs = Presentation(str(template)) if template else Presentation()
+    # New documents do not depend on site-packages/templates/default.pptx,
+    # which an enterprise document policy may wrap on disk. Supplied templates
+    # still use the normal reader and retain all existing access checks.
+    from .ppt_empty import blank_presentation
+    prs = Presentation(str(template)) if template else blank_presentation(data['presentationPlan']['font'])
     if not template:
         prs.slide_width, prs.slide_height = Pt(data['presentationPlan']['width']), Pt(data['presentationPlan']['height'])
     for relation in list(prs.slides._sldIdLst):

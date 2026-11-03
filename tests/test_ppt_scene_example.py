@@ -12,16 +12,25 @@ from company_agent import ppt_html, presentation_design
 
 class PptSceneExampleTests(unittest.TestCase):
     def test_preflight_guidance_precedes_approval_in_both_skill_versions(self):
-        for path, approval_step in (
-            (ROOT / 'standalone-skills/presentation/SKILL.md', '3. 초안 전체'),
-            (ROOT / 'company-agent-plugin/skills/presentation/SKILL.md', '4. **확인:**'),
+        for path, quality_reference in (
+            (ROOT / 'standalone-skills/presentation/SKILL.md', 'references/design.md'),
+            (ROOT / 'company-agent-plugin/skills/presentation/SKILL.md', 'references/design-review.md'),
         ):
             with self.subTest(path=path):
                 text = path.read_text(encoding='utf-8')
-                warning = text.index('반환된 `scenePreflight`에 경고가 있으면')
-                self.assertLess(warning, text.index(approval_step))
-                self.assertIn('경고를 없애려고 반복 보정하지 않으며 경고가 없으면 이 검토를 추가하지 않습니다', text)
-                self.assertIn('경고의 진위가 불확실하면 미확인으로 알려 줍니다', text)
+                flow = text.split('## 기본 흐름', 1)[1].split('## 필요한 경로만 읽기', 1)[0]
+                warning = flow.index('경고가 있으면 관련 장만 확인합니다')
+                self.assertLess(warning, flow.index('실제 승인 후'))
+                self.assertLess(flow.index('실제 승인 후'), flow.index('`confirmed:true`'))
+                self.assertIn('같은 내용의 유효한 승인은 다시 묻지 않습니다', flow)
+                self.assertIn('화면을 못 봤으면 구조 검사와 구분합니다', text)
+                # Detailed preflight guidance is loaded only when needed; the
+                # concise entrypoint still links to the warning interpretation.
+                self.assertIn(f']({quality_reference})', text)
+                quality = (path.parent / quality_reference).read_text(encoding='utf-8')
+                self.assertIn('scenePreflight', quality)
+                self.assertIn('possible_diamond_text_clipping', quality)
+                self.assertIn('추정', quality)
 
     def test_example_draft_and_native_table_chart_and_group(self):
         source = ROOT / 'standalone-skills/presentation/references/scene-example.json'

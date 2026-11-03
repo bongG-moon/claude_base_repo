@@ -188,8 +188,8 @@ def _normalize(spec: dict[str, Any], *, html_tables: bool = False) -> dict[str, 
         for key in ('referenceStyle', 'themeOverrides'):
             if key in spec:
                 result[key] = spec[key]
-    if "fontSource" in spec and spec["fontSource"] not in ("system", "google"):
-        raise ArtifactError("invalid_font_source", "글꼴은 system 또는 google 중에서 선택해 주세요.")
+    if "fontSource" in spec and spec["fontSource"] not in ("system", "google", "bundled"):
+        raise ArtifactError("invalid_font_source", "글꼴은 bundled, system 또는 google 중에서 선택해 주세요.")
     from . import report_typography
     try:
         result.update(report_typography.validate(spec))
@@ -205,6 +205,14 @@ def _normalize(spec: dict[str, Any], *, html_tables: bool = False) -> dict[str, 
         if not isinstance(bullets, list) or len(bullets) > 30:
             raise ArtifactError("invalid_bullets", "한 페이지의 목록은 30개 이하로 나누어 주세요.")
         section["bullets"] = [_text(value, 2000) for value in bullets]
+        if html_tables and any(key in row for key in ('scenarios', 'details')):
+            from .report_interactions import validate as validate_interactions
+            interaction = {key: row[key] for key in ('scenarios', 'details') if key in row}
+            try:
+                validate_interactions(interaction)
+            except ValueError as exc:
+                raise ArtifactError('invalid_interaction', str(exc)) from None
+            section.update(interaction)
         if "table" in row:
             table = row["table"]
             max_columns, max_rows = (64, 5000) if html_tables else (12, 100)
@@ -368,7 +376,12 @@ def html_designs(output: Path | None = None, *, open_preview: bool = False) -> d
         source = _source(source, ('.html',))
         target = _target(output, '.html') if output else source
         if output:
-            _publish(source, target)
+            # 복사본에서도 배포된 완성 예제를 열 수 있게 절대 로컬 링크를 사용합니다.
+            from .report_styles import picker_html
+            with tempfile.TemporaryDirectory() as folder:
+                copied = Path(folder) / 'picker.html'
+                copied.write_text(picker_html((source.parent / 'examples').as_uri(), (source.parent / 'fonts').as_uri()), encoding='utf-8')
+                _publish(copied, target)
         result = {'ok': True, 'status': 'choices_available', 'outputPath': str(target),
                 'message': '추천 디자인만 먼저 표시합니다. 추가 디자인을 펼쳐 비교한 뒤 선택 내용을 Claude 채팅에 붙여 넣어 주세요.',
                 'settingsChanged': False, 'browserOpened': False}
@@ -423,6 +436,24 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
                 for field in ("title", "body"):
                     row[field] = bind(row[field], facts)
                 row["bullets"] = [bind(value, facts) for value in row["bullets"]]
+                if row.get('scenarios') or row.get('details'):
+                    # 사례와 접힌 설명도 표/본문과 같은 수치 원본을 참조합니다.
+                    def bind_explanation(value):
+                        if isinstance(value, str):
+                            return bind(value, facts)
+                        if isinstance(value, list):
+                            return [bind_explanation(item) for item in value]
+                        if isinstance(value, dict):
+                            return {key: bind_explanation(item) for key, item in value.items()}
+                        return value
+                    for field in ('scenarios', 'details'):
+                        if field in row:
+                            row[field] = bind_explanation(row[field])
+                    from .report_interactions import validate as validate_interactions
+                    try:
+                        validate_interactions(row)
+                    except ValueError as exc:
+                        raise ArtifactError('invalid_interaction', str(exc)) from None
                 if "table" in row:
                     row["table"]["headers"] = [bind(value, facts) for value in row["table"]["headers"]]
                     bound_rows, numeric_rows = [], []
@@ -468,7 +499,7 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
         apply_reference(data)
         document = render(data, _CSS, _JS, _html_table)
         from .report_typography import selection as font_selection
-        typography = font_selection(data) if 'fontChoice' in data or 'fontSource' in data else None
+        typography = font_selection(data)
         from .content_layout import check_html, LayoutError
         try:
             layout_check = check_html(document, data['sections'])
@@ -488,7 +519,7 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
                 "templateReference": reference,
                 "typography": typography,
                 "warnings": ["선언한 계산식·대조 항목만 확인했습니다. 원본 일치·자유문장 수치·실제 화면은 별도로 확인해야 합니다."] + (reference['warnings'] if reference else [])
-                + (["선택한 글꼴의 PC 설치 여부는 확인하지 않았습니다. 없으면 대체 글꼴로 표시됩니다."] if typography and typography['source'] != 'google' else [])
+                + (["선택한 글꼴의 PC 설치 여부는 확인하지 않았습니다. 없으면 대체 글꼴로 표시됩니다."] if typography['source'] == 'system' else [])
                 + (["Google Fonts 사용 시 글꼴 서비스로 연결합니다. 연결 불가 시 PC 글꼴로 표시하며 본문은 오프라인에서도 열립니다."] if data.get("fontSource") == "google" else [])}
     except Exception as exc:
         return _failure(exc)
@@ -526,8 +557,9 @@ def inspect_template(path: Path) -> dict[str, Any]:
     try:
         path = _source(path, (".pptx",))
         with path.open("rb") as stream:
-            if stream.read(8) == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":
-                raise ArtifactError("protected_or_unsupported", "암호화·보호되었거나 지원하지 않는 형식입니다. 복호화나 화면 캡처를 시도하지 않습니다.")
+            header = stream.read(16)
+            if not header.startswith(b"PK"):
+                raise ArtifactError("protected_or_unsupported", "일반 PPTX 압축 구조를 읽을 수 없습니다. 파일 헤더만으로 XML 문서, DRM 제품이나 원인을 단정하지 않습니다. 정상 PowerPoint 열기 후 허용된 장별 이미지 참고 경로를 사용하세요.", "unknown")
         with zipfile.ZipFile(path) as package:
             entries = package.infolist()
             if len(entries) > MAX_PARTS or sum(v.file_size for v in entries) > MAX_EXPANDED:
@@ -721,6 +753,8 @@ def create_ppt(spec: dict[str, Any], output: Path, template: Path | None = None,
                 native = {"text": "native", "tables": "native", "charts": "native", "images": "raster"}
                 engine = "powerpoint-com"
             structure = inspect_template(draft)
+            if structure.get('code') in {'protected_or_unsupported', 'protected_or_invalid'}:
+                raise ArtifactError('generated_ppt_unreadable', '새 PPT를 저장했지만 저장된 파일을 일반 PPTX로 다시 읽지 못했습니다. 저장 단계의 파일 보호 또는 형식 문제는 별도 확인이 필요합니다. HTML 승인본은 유지하며 원본 보호 해제나 다른 추출을 시도하지 않았습니다.', 'unknown')
             if not structure["ok"] or structure["slideCount"] != len(data["sections"]):
                 raise ArtifactError("ppt_validation_failed", "생성한 PPT의 구조 검증에 실패해 결과물을 저장하지 않았습니다.", "unknown")
             from .content_layout import check_ppt, LayoutError

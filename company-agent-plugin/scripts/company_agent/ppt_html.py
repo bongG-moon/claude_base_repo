@@ -226,7 +226,8 @@ def prepare_import(spec,template=None):
         plan=ppt_html_import.capture(spec['htmlSource'],data['presentationTheme'],data['presentationFont'])
     if spec.get('slideCount',len(plan['pages']))!=len(plan['pages']):
         raise artifacts.ArtifactError('slide_count_mismatch','HTML 장수와 요청 장수가 다릅니다. 내용을 생략하지 않았습니다.')
-    data['sections']=[{'title':p.get('title',f'{i+1}장'),'body':'','bullets':[]} for i,p in enumerate(plan['pages'])]
+    data['sections']=[{'title':p.get('title',f'{i+1}장'),'body':'','bullets':[],
+                       'notes':p.get('notes',''),'source':p.get('source','')} for i,p in enumerate(plan['pages'])]
     data['presentationPlan']=plan
     return data,{'status':'not_declared','message':'HTML의 수치는 원문대로 옮겼으며 계산 관계는 별도 검증이 필요합니다.'},None,None,False
 
@@ -249,8 +250,9 @@ header,footer{max-width:1160px;margin:auto;padding:24px}header h1{margin:0 0 10p
 
 
 def render(data, *, metadata=None, preserve=False, fragment=False, id_prefix=''):
+    from copy import deepcopy
     from .report_design import svg_chart
-    plan = data['presentationPlan']
+    plan = deepcopy(data['presentationPlan'])
     palette = plan['theme']
     color = lambda key: '#' + palette.get(key, key)
     font = plan['font']
@@ -263,16 +265,27 @@ def render(data, *, metadata=None, preserve=False, fragment=False, id_prefix='')
     pages = []
     for index,(row,page) in enumerate(zip(data['sections'],plan['pages']),1):
         content = []
-        for e in page['elements']:
+        page['notes'] = row.get('notes', '')
+        page['source'] = row.get('source', '')
+        page['title'] = row['title']
+        title_marked = False
+        for ei, e in enumerate(page['elements']):
+            edit_id = f'p{index-1}-e{ei}'
+            edit_attrs = ''
             position = ';'.join(f'{prop}:{e[key]/plan[dimension]*100:.6f}%'
                                 for prop,key,dimension in [('left','x','width'),('top','y','height'),('width','w','width'),('height','h','height')])
             kind = e['kind']
             if kind == 'text':
+                if not fragment and not e.get('runs'):
+                    edit_attrs = f' data-edit="{edit_id}"'
+                if not title_marked and e.get('text') == row['title']:
+                    edit_attrs += ' data-deck-title="true"'
+                    title_marked = True
                 position += f";font-size:{e['size']}px;font-size:{e['size']/plan['width']*100:.6f}cqw;color:{color(e['color'])};font-weight:{700 if e['bold'] else 400}"
                 inner = esc(e['text'])
                 if e.get('runs'):
                     from .ppt_text import html_runs
-                    inner = html_runs(e,plan['width'])
+                    inner = html_runs(e,plan['width'], edit_id if not fragment else '', title='data-deck-title' in edit_attrs)
                 if 'wrap' in e:
                     position+=f';padding:0;line-height:{e.get("lineSpacing",1.15)};text-align:{e.get("align","left")};white-space:{"pre-wrap" if e["wrap"] else "pre"}'
                     face=''.join(c for c in e.get('font','') if c.isalnum() or c in ' -_')
@@ -281,7 +294,8 @@ def render(data, *, metadata=None, preserve=False, fragment=False, id_prefix='')
                     if e.get('underline'): position+=';text-decoration:underline'
                 if e.get('verticalAlign') in ('middle','bottom'):
                     position+=';display:flex;flex-direction:column;justify-content:'+('center' if e['verticalAlign']=='middle' else 'flex-end')
-                    inner='<div>'+inner+'</div>'
+                    inner='<div'+edit_attrs+'>'+inner+'</div>'
+                    edit_attrs=''
             elif kind in ('line','path') or (kind == 'shape' and e.get('shape') not in ('rect','roundRect','ellipse')):
                 from .ppt_primitives import render_primitive_html
                 position+=';padding:0;overflow:visible'
@@ -304,16 +318,20 @@ def render(data, *, metadata=None, preserve=False, fragment=False, id_prefix='')
             elif kind == 'table':
                 from .ppt_component_styles import table_style, table_cell_css
                 table = e.get('table',row.get('table'))
+                e['table'] = deepcopy(table)
                 style = table_style(e, palette) if 'tableStyle' in e else None
                 columns = ''.join(f'<col style="width:{w/e["w"]*100:.6f}%">' for w in e['columnWidths'])
                 rows = []
                 for ri,cells in enumerate([table['headers'],*table['rows']]):
                     tag = 'th' if ri == 0 else 'td'
                     cell_css = f' style="{table_cell_css(style,ri,plan["width"])}"' if style else ''
-                    rows.append(f'<tr style="height:{e["rowHeights"][ri]/plan["width"]*100:.6f}cqw">'+''.join(f'<{tag}{cell_css}>{esc(v)}</{tag}>' for v in cells)+'</tr>')
+                    cells_html = ''.join(f'<{tag}'+(f' data-edit="{edit_id}-c{ri}-{ci}"' if not fragment else '')+
+                                         f'{cell_css}>{esc(v)}</{tag}>' for ci,v in enumerate(cells))
+                    rows.append(f'<tr style="height:{e["rowHeights"][ri]/plan["width"]*100:.6f}cqw">'+cells_html+'</tr>')
                 inner = '<table class="ppt-table"><colgroup>'+columns+'</colgroup>'+''.join(rows)+'</table>'
                 position += f';font-size:{e.get("size",16)/plan["width"]*100:.6f}cqw'
             elif kind == 'chart':
+                e['chart'] = deepcopy(e.get('chart',row.get('chart')))
                 if 'chartStyle' in e:
                     from .ppt_component_styles import styled_chart_html
                     inner = styled_chart_html(e.get('chart',row.get('chart')), f'{id_prefix}{index}', e, palette, plan['width'], font)
@@ -321,18 +339,19 @@ def render(data, *, metadata=None, preserve=False, fragment=False, id_prefix='')
                     inner = svg_chart(e.get('chart',row.get('chart')), f'{id_prefix}{index}')
             elif kind == 'image':
                 im = e.get('image',row.get('image'))
+                e['image'] = deepcopy(im)
                 fit={'contain':'contain','cover':'cover','stretch':'fill'}[e.get('fit','contain')]
                 position+=';padding:0'
                 inner = f'<img style="object-fit:{fit}" src="data:{im["mime"]};base64,{im["data"]}" alt="{esc(im["alt"])}">'
             else:
                 raise artifacts.ArtifactError('invalid_ppt_element', '지원하지 않는 배치 요소입니다.')
-            content.append(f'<div class="ppt-element" data-kind="{kind}" style="{esc(position)}">{inner}</div>')
+            content.append(f'<div class="ppt-element" data-kind="{kind}"{edit_attrs} style="{esc(position)}">{inner}</div>')
         notes = ''
         if row.get('chart'):
             chart = row['chart']
             rows = [[c]+[s['values'][i] for s in chart['series']] for i,c in enumerate(chart['categories'])]
             notes = '<details class="data-notes"><summary>차트 수치 확인</summary>'+artifacts._html_table(['항목']+[s['name'] for s in chart['series']],rows)+'</details>'
-        pages.append(f'<section class="ppt-page" id="{esc(id_prefix)}slide-{index}" aria-label="{index}장 {esc(row["title"])}"><div class="ppt-slide" style="background:{color(page.get("background","background"))}">'+''.join(content)+'</div>'+notes+'</section>')
+        pages.append(f'<section class="ppt-page" id="{esc(id_prefix)}slide-{index}" style="{esc(variables)}" aria-label="{index}장 {esc(row["title"])}"><div class="ppt-slide" data-slide="P{index:02d}" data-title="{esc(row["title"])}" style="background:{color(page.get("background","background"))}">'+''.join(content)+'</div>'+notes+'</section>')
     if fragment:
         return f'<div style="{esc(variables)}">'+''.join(pages)+'</div>'
     coverage = plan.get('coverage',[])
@@ -346,8 +365,8 @@ def render(data, *, metadata=None, preserve=False, fragment=False, id_prefix='')
                            (' 미지원: '+', '.join(esc(item.get('reason',item.get('kind','미확인'))) for item in unsupported[:8]) if unsupported else '')+
                            (' 근사 표현: '+', '.join(esc(item.get('reason',item.get('kind','미확인'))) for item in approximations[:8]) if approximations else '')+'</li>')
         coverage_html='<details class="data-notes"><summary>참고 양식의 미리보기 확인 범위</summary><ul>'+''.join(details)+'</ul><p>개체 투영 검사이며 실제 PowerPoint와의 화면 일치를 검증한 결과는 아닙니다.</p></details>'
-    notice = ('재사용 대표 양식 · 아래는 가상 예시입니다. 원래 업무 내용·캡처·경로는 저장하지 않았습니다.' if metadata else
-              'HTML 초안 · 전체 슬라이드를 확인한 뒤 대화에서 제작을 승인해 주세요. HTML을 직접 수정하지 말고 수정 내용을 알려 주세요.')
+    notice = ('재사용 대표 양식: 가상 예시이며 원래 업무 내용과 캡처, 경로는 저장하지 않았습니다.' if metadata else
+              '편집 가능한 HTML 발표본입니다. 문구 편집 후 수정본을 저장할 수 있습니다. PPTX가 필요하면 현재 HTML로 변환을 요청하세요.')
     notice += ' PPT의 글꼴 줄바꿈·차트 세부 모양은 최종 렌더링에서 다시 확인합니다.'
     if preserve:
         notice += ' 기존 양식의 고정 개체와 교체 내용을 함께 표시합니다. 지원하지 않는 효과나 상속 서식은 아래 확인 범위를 참고하고 원본 및 최종 PPT와 비교하세요.'
@@ -355,14 +374,19 @@ def render(data, *, metadata=None, preserve=False, fragment=False, id_prefix='')
     if metadata:
         payload = json.dumps(metadata,ensure_ascii=True,separators=(',',':')).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
         meta = f'<script id="{TEMPLATE_ID}" type="application/json">{payload}</script>'
-    elif plan.get('source'):
-        payload=json.dumps(plan,ensure_ascii=True,separators=(',',':')).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
-        meta=f'<script id="{SCENE_ID}" type="application/json">{payload}</script>'
-    csp = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'"
-    return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
-            f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title><style>{CSS}</style>{meta}</head>'
-            f'<body data-ppt-draft="1" style="{esc(variables)}"><header><h1>{esc(data["title"])}</h1><p>{esc(notice)}</p></header>'
-            '<main class="ppt-main">'+coverage_html+''.join(pages)+'</main><footer>텍스트·표·차트는 최종 PPT에서 네이티브 개체로 제작합니다. 사진·그림 자체는 이미지입니다.</footer></body></html>')
+    # Declarative scene data is carried with the editable document so that text
+    # edits can be reimported without flattening native charts into SVG images.
+    payload=json.dumps(plan,ensure_ascii=True,separators=(',',':')).replace('<','\\u003c').replace('>','\\u003e').replace('&','\\u0026')
+    meta+=f'<script id="{SCENE_ID}" type="application/json">{payload}</script>'
+    from .ppt_deck_shell import render_shell
+    deck_notes={f'P{i:02d}':{'text':row.get('notes','') or notice,'source':row.get('source','')}
+                for i,row in enumerate(data['sections'],1)}
+    if coverage:
+        deck_notes['P01']['text'] += '\n기존 개체의 투영 범위와 미지원 효과는 초안 생성 결과의 templatePreview를 확인하세요.'
+    return render_shell(title=data['title'], slides_html=''.join(pages),
+                        width=plan['width'], height=plan['height'], notes=deck_notes,
+                        extra_head='<meta name="ppt-deck-format" content="editable-scene-v1">',
+                        metadata_html=meta, design_css=CSS)
 
 
 def _write(document, output):
@@ -439,6 +463,10 @@ def create_draft(spec, output, template=None, *, require_choices=True):
             raise artifacts.ArtifactError('design_review_changed','HTML 초안 준비 중 참고 자료가 변경되었습니다. 다시 확인해 주세요.')
         output = _write(document, output)
         return {'ok':True,'status':'created','outputPath':str(output),'previewOnly':True,'stage':'design_confirm',
+                'format':'editable-html-deck','previewUrl':output.resolve().as_uri(),
+                'previewLink':f'[{output.name}]({output.resolve().as_posix()})',
+                'htmlReady':True,'pptxOptional':True,
+                'editability':{'text':True,'tableCells':True,'layout':'authoring-spec','chartData':'authoring-spec'},
                 'slides':len(data['sections']),'outline':[row['title'] for row in data['sections']],
                 'engine':'offline-html','offline':True,'officeStarted':False,
                 'contentLayoutValidation':layout_check,

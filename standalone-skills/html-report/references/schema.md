@@ -8,7 +8,7 @@ PPT나 이미지 참고가 있을 때만 `referenceImages`와 `referenceStyle`�
 {
   "title":"교육 신청 현황", "subtitle":"가상 예시 · 10월",
   "style":"minimal", "length":"standard", "mode":"scroll",
-  "fontChoice":"noto-sans-kr", "fontSource":"system",
+  "fontChoice":"noto-sans-kr",
   "facts":[{"id":"total","label":"신청","unit":"명","op":"sum","inputs":[{"table":[0,0,1]},{"table":[0,1,1]}]}],
   "sections":[{
     "title":"신청자는 {{fact:total}}명입니다",
@@ -20,10 +20,10 @@ PPT나 이미지 참고가 있을 때만 `referenceImages`와 `referenceStyle`�
 ```
 
 - `length`: short / standard / detailed, `mode`: scroll / slides / both. 본문 분량은 직접 맞춥니다.
-- `referencePreset`: 선택한 경우에만 reference-1(스토리형 설명) / reference-2(데이터 리포트형) / reference-3(발표형). 미지정 작업은 기존과 같습니다. 기존 style·fontChoice·length·mode는 유지하고 sections의 내용 흐름도 해당 구성에 맞춰 작성합니다.
-- `motion`: subtle 기본 / none. 페이지 전환·버튼 피드백만 짧게 표시하며 움직임 줄이기와 인쇄에서는 꺼집니다. 스크롤 내용은 즉시 보입니다.
+- `referencePreset`: 선택한 경우에만 reference-1(스토리형 설명) / reference-2(데이터 리포트형) / reference-3(핵심 브리핑형, 기존 발표형 ID 유지). 미지정 작업은 기존과 같습니다. 기존 style·fontChoice·length·mode는 유지하고 sections의 내용 흐름도 해당 구성에 맞춰 작성합니다.
+- `motion`: subtle 기본 / none. 페이지와 선택한 사례의 전환, 버튼 피드백을 짧게 표시하며 움직임 줄이기와 인쇄에서는 꺼집니다. 스크롤 내용은 즉시 보입니다.
 - `fontChoice`: noto-sans-kr / pretendard / nanum-square-neo / auto / custom. custom에는 `fontName`을 넣습니다.
-- `fontSource`: system 기본. google은 외부 연결을 허용한 경우만 사용합니다.
+- `fontSource`: 생략하면 Noto Sans KR와 Pretendard는 동봉 글꼴을 HTML에 넣습니다(bundled). system은 PC 글꼴만 사용하는 명시 선택이고 google은 외부 연결을 허용한 경우만 사용합니다. 다른 글꼴과 첨부 양식은 기존 설정을 보존합니다. `typography.availability:embedded_not_rendered`는 파일 포함을 뜻하며 실제 화면 확인을 뜻하지 않습니다.
 - sections에는 title/body/bullets/table/chart/image를 필요한 만큼 넣습니다. image는 `{"path":"절대경로.png","alt":"설명"}`입니다.
 - 각 section의 `layout`: cover / summary / dashboard / split / table. 첫 결론·현황·비교·상세를 구분하며 전체 style은 바꾸지 않습니다.
 - `takeaway`는 제목 근처 핵심 문장, `source`는 출처·집계 범위·단위·기간입니다. 차트 다음 해석은 takeaway 대신 body와 contentOrder로 배치합니다.
@@ -53,3 +53,31 @@ HTML 양식 참고 명령은 원본을 실행하지 않고 색·글꼴·구획�
 ## 데이터 표 기본 동작
 
 한 표는 최대 5,000행과 64열이며 전체 명세는 실행기의 크기 제한을 따릅니다. 숫자는 숫자, ID는 문자열로 둡니다. `table.interactive`는 기본 true이고 명시적으로 false이면 정적 비교표를 만듭니다. 13행 이상이면 검색과 범주 필터를, 26행 이상이면 25/50/100행 페이지 이동을 제공하며 데이터가 있으면 정렬과 CSV 다운로드를 지원합니다. 자세한 범위와 검토 기준은 [데이터 표](data-tables.md)를 따릅니다. 페이지의 `mode:slides`와 표 안의 페이지 이동은 독립적입니다.
+
+## 필요한 보고서에만 사례 선택과 상세 설명
+
+같은 규칙에서 입력이나 예외에 따라 처리가 달라지는 경우 `section.scenarios`를 넣습니다. 사례를 선택하면 입력, 처리 순서와 결과가 함께 바뀝니다. `details`는 보조 근거를 펼쳐 보는 목록입니다. 표와 짧은 설명만으로 충분하면 둘 다 생략합니다.
+
+```json
+{
+  "title":"신청 자료의 확인 기준", "style":"minimalism", "length":"standard", "mode":"scroll",
+  "fontChoice":"auto",
+  "sections":[{
+    "title":"누락 여부에 따라 다음 조치가 달라집니다",
+    "scenarios":{"title":"사례를 선택하세요","items":[
+      {"label":"자료 완비","input":"출석과 제출 기록이 모두 있음",
+       "steps":["같은 신청 번호로 기록 연결","기준일과 조건 확인"],"output":"수료 후보로 표시"},
+      {"label":"자료 누락","input":"제출 기록이 비어 있음",
+       "steps":["빈 값과 미제출 확정 구분","담당자 확인 항목 표시"],"output":"보완 확인 대상으로 표시"}
+    ]},
+    "details":[{"title":"빈 값은 미제출 확정이 아닙니다",
+      "body":"기록 지연 또는 연결 누락일 수 있으므로 확인 전까지 상태를 단정하지 않습니다."}]
+  }]
+}
+```
+
+- `scenarios.title`은 선택이며 180자 이하입니다. `items`는 2~8개, 각 사례에 `label`(서로 다른 이름, 80자 이하), `input`과 `output`(각 2,400자 이하), `steps`(1~10개, 각 800자 이하)가 필요합니다.
+- `details`는 최대 12개입니다. 각 항목은 `title`(180자 이하)와 내용이 있는 `body`(6,000자 이하) 또는 `bullets`(최대 20개, 각 1,000자 이하)를 갖습니다.
+- 값은 일반 텍스트이며 HTML과 JavaScript를 실행하지 않습니다. 입력 제한을 넘으면 내용을 자르지 않고 오류로 알립니다.
+- 표시 순서는 기존 본문 → 사례 → 상세 설명 → 출처입니다. `contentOrder`에 이 두 필드를 넣지 않습니다. 핵심 결론과 필수 조건을 상세 펼침 안에만 숨기지 않습니다.
+- 스크립트가 실행되지 않으면 모든 사례를 읽을 수 있고, 인쇄에서는 사례와 상세를 모두 펼칩니다. 선택은 로컬 화면만 바꾸며 네트워크 호출이나 데이터 저장을 하지 않습니다.

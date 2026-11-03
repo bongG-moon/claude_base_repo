@@ -15,6 +15,40 @@
     const slides = [...document.querySelectorAll(options.selector)];
     if (!slides.length || slides.length > 60) fail('슬라이드 선택자로 1~60장을 찾을 수 없습니다.');
     if (slides.some(s => slides.some(other => other !== s && other.contains(s)))) fail('슬라이드 선택자는 중첩되지 않아야 합니다.');
+    if (options.deckMode) {
+      // Explicit deck conversion measures every authored page, independent of
+      // navigation state. This isolated DOM never runs the source scripts.
+      for (const slide of slides) {
+        for (let ancestor=slide.parentElement; ancestor; ancestor=ancestor.parentElement) {
+          ancestor.style.setProperty('transform','none','important');
+          ancestor.style.setProperty('scale','none','important');
+          ancestor.style.setProperty('zoom','1','important');
+        }
+        slide.hidden=false;
+        slide.classList.add('active');
+        if (getComputedStyle(slide).display==='none') fail('deckMode에서도 숨겨진 장입니다. 해당 양식의 활성 장 클래스를 확인하세요.');
+      }
+      warning('발표 제어는 제외하고 active 상태의 모든 장을 정적 변환했습니다. 페이지 전환과 문구 편집 기능은 HTML에만 유지됩니다.');
+    }
+    // Materialize simple absolute pseudo rules so connector lines are not lost.
+    // Text/generated counters and in-flow decorations still require an explicit
+    // authored element; arbitrary CSS is never silently flattened into an image.
+    const pseudoRules=[];
+    for (const slide of slides) for (const node of [slide,...slide.querySelectorAll('*')]) {
+      for (const pseudo of ['::before','::after']) {
+        const css=getComputedStyle(node,pseudo);
+        if (!['""',"''"].includes(css.content) || css.position!=='absolute' || css.display==='none') continue;
+        const key='ppt-pseudo-'+pseudoRules.length;
+        const decoration=document.createElement('span');
+        for (const prop of css) decoration.style.setProperty(prop,css.getPropertyValue(prop));
+        decoration.style.setProperty('content','normal');
+        decoration.style.setProperty('pointer-events','none');
+        node.setAttribute('data-'+key,'');
+        pseudoRules.push(`[data-${key}]${pseudo}{content:none!important}`);
+        node.appendChild(decoration);
+      }
+    }
+    if(pseudoRules.length){const style=document.createElement('style');style.textContent=pseudoRules.join('\n');document.head.appendChild(style);}
     for (const slide of slides) {
       const style = getComputedStyle(slide);
       // Measure the authored layout. Forcing block destroys flex/grid geometry;
@@ -130,9 +164,16 @@
           const rows=[...node.rows].map(r=>[...r.cells]);
           if (!rows.length || rows.some(r=>r.length!==rows[0].length || r.some(c=>c.colSpan!==1 || c.rowSpan!==1))) fail('병합 표는 분리된 셀 또는 명시적 PPT 표로 작성해 주세요.');
           if (rows.some(r=>r.some(c=>c.querySelector('img,svg,table')))) fail('그림/중첩 표가 있는 셀은 별도 개체로 작성해 주세요.');
+          const headerStyle=getComputedStyle(rows[0][0]), bodyStyle=rows[1]?.[0] ? getComputedStyle(rows[1][0]) : style;
+          const cellFill=(cell, fallback) => {for(let n=cell;n&&n!==node.parentElement;n=n.parentElement){const c=rgb(getComputedStyle(n).backgroundColor);if(c.opacity===1)return c.color;}return fallback;};
+          // Collapsed CSS borders are included in the table's outside rectangle
+          // but not equally in each cell box. Normalize measured proportions
+          // to that same rectangle instead of rejecting a sub-pixel border gap.
+          const fitSpans=(values,span)=>{const total=values.reduce((a,b)=>a+b,0);return values.map(v=>v*span/total);};
           push({kind:'table',...box(rect),table:{headers:rows[0].map(c=>c.innerText),rows:rows.slice(1).map(r=>r.map(c=>c.innerText))},
-                columnWidths:rows[0].map(c=>c.getBoundingClientRect().width*scale),rowHeights:[...node.rows].map(r=>r.getBoundingClientRect().height*scale),size:parseFloat(style.fontSize)*scale});
-          warning('HTML 표는 편집 가능한 PPT 표로 변환하며 셀 색상·테두리는 PPT 테마를 사용합니다.');
+                tableStyle:{headerFill:cellFill(rows[0][0],'FFFFFF'),headerText:rgb(headerStyle.color).color,bodyFill:rows[1]?.[0]?cellFill(rows[1][0],'FFFFFF'):'FFFFFF',bodyText:rgb(bodyStyle.color).color,headerBold:parseInt(headerStyle.fontWeight)>=600,fontSize:parseFloat(bodyStyle.fontSize)*scale},
+                columnWidths:fitSpans(rows[0].map(c=>c.getBoundingClientRect().width),rect.width*scale),rowHeights:fitSpans([...node.rows].map(r=>r.getBoundingClientRect().height),rect.height*scale),size:parseFloat(style.fontSize)*scale});
+          warning('HTML 표는 편집 가능한 PPT 표입니다. 대표 머리글/본문 색상과 글꼴 크기는 유지하며 셀별 강조와 복잡한 테두리는 화면에서 대조하세요.');
           return;
         }
         if (node.tagName === 'LI') warning('목록 기호는 텍스트에 직접 포함했는지 확인해 주세요.');

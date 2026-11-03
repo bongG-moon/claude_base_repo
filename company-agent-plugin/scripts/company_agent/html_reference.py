@@ -292,6 +292,15 @@ def review_stage(spec: dict) -> str | None:
     return None if review['confirmed'] else 'template_confirm'
 
 
+def preview_delivery(path: Path) -> dict:
+    """Return a usable local destination, without claiming a browser was opened."""
+    target = path.resolve()
+    return {'previewPath': str(target), 'previewUrl': target.as_uri(),
+            'previewLink': '[양식 미리보기 열기](<' + target.as_posix() + '>)',
+            'previewMessage': '양식 미리보기 파일: ' + str(target) +
+                '\n채팅의 링크로 열거나 파일 탐색기에서 이 HTML을 두 번 클릭하세요. 원본의 완전한 복제가 아닌 정적 스타일 예시입니다.'}
+
+
 def inspect_template(path: Path, output: Path | None = None, *, open_preview: bool = False) -> dict:
     from .business_artifacts import _failure, create_html, open_local_preview, ArtifactError
     try:
@@ -299,7 +308,9 @@ def inspect_template(path: Path, output: Path | None = None, *, open_preview: bo
             raise ArtifactError('preview_output_required', '새 미리보기 파일의 저장 위치를 지정해 주세요.', 'input_required')
         reference = analyze(path)
         result = {'ok': True, 'status': 'template_analyzed', 'reference': reference,
-                  'htmlTemplate': {key: reference[key] for key in ('path','sha256')}}
+                  'htmlTemplate': {key: reference[key] for key in ('path','sha256')},
+                  'previewCreated': False,
+                  'message': '양식 특징만 분석했습니다. 미리보기가 필요하면 새 HTML 저장 경로를 지정해 실행하세요.'}
         if output:
             preview = create_html({'title':'첨부 양식 참고 미리보기', 'subtitle':'가상 예시 · 원본의 완전한 복제 아님',
                 'htmlTemplate':result['htmlTemplate'], 'style':'minimalism','mode':'scroll','length':'short',
@@ -309,11 +320,16 @@ def inspect_template(path: Path, output: Path | None = None, *, open_preview: bo
             if not preview.get('ok'):
                 return preview
             result['outputPath'] = preview['outputPath']
+            result.update(preview_delivery(Path(preview['outputPath'])))
+            result.update(previewCreated=True, message='양식 미리보기를 생성했습니다. previewLink와 previewPath를 사용자에게 보여 주세요.')
             result['templateReview'] = {'templateSha256': reference['sha256'], 'previewPath': preview['outputPath'],
                                         'previewSha256': hashlib.sha256(Path(preview['outputPath']).read_bytes()).hexdigest(),
                                         'confirmed': False}
             if open_preview:
-                result.update(open_local_preview(Path(preview['outputPath'])))
+                opened = open_local_preview(Path(preview['outputPath']))
+                # Keep the actual destination visible even when opening fails.
+                result['previewMessage'] += '\n' + opened.pop('previewMessage', '')
+                result.update(opened)
         return result
     except Exception as exc:
         return _failure(exc)

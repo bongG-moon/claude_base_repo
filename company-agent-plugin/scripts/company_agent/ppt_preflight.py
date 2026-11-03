@@ -4,10 +4,47 @@ from __future__ import annotations
 from .ppt_text import estimate_lines
 
 
+def _diamond_label_crosses(shape, text, size, font):
+    """Estimate each ink line against a diamond, without rewriting the scene.
+
+    A text box may contain substantial blank padding. Only its estimated ink
+    is relevant, including horizontal/vertical alignment and explicit breaks.
+    Font rendering remains a separate visual check; two points of tolerance
+    avoid treating small font-metric differences as confirmed clipping.
+    """
+    line_widths=[]
+    for paragraph in text['text'].split('\n'):
+        count=1 if text.get('wrap') is False else estimate_lines(paragraph,text['w'],size,font)
+        width=sum(1 if ord(c)>255 else .55 for c in paragraph)*size
+        # Wrapped lines can occupy the available width. Do not infer where a
+        # renderer has broken Korean words from the original string alone.
+        line_widths.extend([text['w']]*count if count>1 else [min(text['w'],width)
+                           if text.get('wrap') is not False else width])
+    line_height=size*text.get('lineSpacing',1.15)
+    height=len(line_widths)*line_height
+    spare=max(0,text['h']-height)
+    y=text['y']+(spare/2 if text.get('verticalAlign')=='middle' else
+                 spare if text.get('verticalAlign')=='bottom' else 0)
+    cx,cy=shape['x']+shape['w']/2,shape['y']+shape['h']/2
+    for width in line_widths:
+        left=text['x']+(max(0,text['w']-width)/2 if text.get('align')=='center' else
+                        max(0,text['w']-width) if text.get('align')=='right' else 0)
+        if width:
+            # The diamond's narrowest extent over this line determines the
+            # usable horizontal interval. This catches top-aligned labels too.
+            dy=max(abs(y-cy),abs(y+line_height-cy))
+            half=shape['w']/2*(1-dy/(shape['h']/2))
+            if left<cx-half-2 or left+width>cx+half+2:
+                return True
+        y+=line_height
+    return False
+
+
 def inspect_plan(plan):
     issues=[]
     checked_pairs=0
     arrow_checks=0
+    diamond_checks=0
     truncated=False
     for page_number,page in enumerate(plan['pages'],1):
         # Only inspect explicit arrowed connectors. Decorative lines have no
@@ -50,6 +87,10 @@ def inspect_plan(plan):
         # than treating all box padding as glyphs; visual review still decides.
         chevrons={e.get('group'):e for e in page['elements']
                   if e['kind']=='shape' and e.get('shape')=='chevron' and e.get('group')}
+        diamonds={}
+        for shape_index,shape in enumerate(page['elements']):
+            if shape['kind']=='shape' and shape.get('shape')=='diamond' and shape.get('group'):
+                diamonds.setdefault(shape['group'],[]).append((shape_index,shape))
         small_text=[]
         texts=[]
         for index,e in enumerate(page['elements']):
@@ -59,7 +100,11 @@ def inspect_plan(plan):
             if size < 11 and len(e['text'].strip()) >= 8:
                 small_text.append(index)
             font=e.get('font') or plan['font']
-            height=estimate_lines(e['text'],e['w'],size,font)*size*e.get('lineSpacing',1.15)
+            # Browser-imported text is already split into measured lines and is
+            # emitted without wrapping. Estimating extra wraps here produces
+            # false warnings on nearly every Korean title.
+            lines = len(e['text'].split('\n')) if e.get('wrap') is False else estimate_lines(e['text'],e['w'],size,font)
+            height=lines*size*e.get('lineSpacing',1.15)
             if height>e['h']*1.3+3:
                 issues.append({'slide':page_number,'element':index,'code':'estimated_text_overflow',
                                'message':'글자량과 배치 공간을 확인해 주세요. 자동 축소나 내용 생략은 하지 않았습니다.'})
@@ -80,10 +125,31 @@ def inspect_plan(plan):
                 if left < safe_left-2 or left+width > safe_right+2:
                     issues.append({'slide':page_number,'element':index,'code':'possible_chevron_text_clipping',
                                    'message':'화살표 도형의 오목한 부분이나 끝에 글자가 걸칠 수 있습니다. 실제 초안에서 글자와 배경을 확인해 주세요.'})
+            # A group can contain more than one node. Inspect only a unique
+            # diamond containing this label's centre, never an external edge
+            # label or the last arbitrary shape stored under the group name.
+            candidates=[]
+            if not e.get('allowOverlap'):
+                for shape_index,shape in diamonds.get(e.get('group'),[]):
+                    diamond_checks+=1
+                    if diamond_checks>5000:
+                        truncated=True
+                        break
+                    cx,cy=e['x']+e['w']/2,e['y']+e['h']/2
+                    if shape['x']<=cx<=shape['x']+shape['w'] and shape['y']<=cy<=shape['y']+shape['h']:
+                        candidates.append((shape_index,shape))
+            if truncated:break
+            if len(candidates)==1:
+                shape_index,shape=candidates[0]
+                if _diamond_label_crosses(shape,e,size,font):
+                    issues.append({'slide':page_number,'element':index,'shapeElement':shape_index,
+                                   'code':'possible_diamond_text_clipping',
+                                   'message':'판단 도형의 사선에 글자가 걸칠 수 있습니다. 글자를 도형 중앙에 두고 의미 단위 줄바꿈이나 도형 크기를 조정한 뒤 해당 장을 확인해 주세요.'})
             if not e.get('allowOverlap'):
                 texts.append((index,e['x'],e['y'],width,min(e['h'],height)))
             if len(issues)>=20:
                 return {'status':'advisories','issues':issues[:20],'truncated':True,'visualReview':'not_performed','automaticTextShrinking':False}
+        if truncated:break
         if small_text:
             issues.append({'slide':page_number,'elements':small_text[:8],'code':'small_annotation_text',
                            'message':'11pt보다 작은 설명 또는 주석이 있습니다. 화면에서 읽기 쉬운지 확인해 주세요.'})

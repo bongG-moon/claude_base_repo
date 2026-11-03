@@ -1,4 +1,10 @@
 import copy
+import base64
+import hashlib
+import json
+import re
+import shutil
+import subprocess
 from pathlib import Path
 import sys
 import tempfile
@@ -64,7 +70,14 @@ class ReportTypographyTests(unittest.TestCase):
                 self.assertIn('textarea,h1,h2,h3,svg text)', doc)
                 self.assertNotIn('<link', doc)
                 self.assertTrue(result['offline'])
-                self.assertEqual(result['typography']['availability'], 'not_verified')
+                expected = 'embedded_not_rendered' if choice in ('noto-sans-kr', 'pretendard', 'auto') else 'not_verified'
+                self.assertEqual(result['typography']['availability'], expected)
+                if expected == 'embedded_not_rendered':
+                    raw = base64.b64decode(re.search(r'data:font/woff2;base64,([A-Za-z0-9+/=]+)', doc).group(1))
+                    name, _ = fonts.BUNDLED[result['typography']['family']]
+                    self.assertEqual(raw, (fonts.font_directory() / name).read_bytes())
+                    self.assertIn('font-src data:', doc)
+                    self.assertIn('SIL OPEN FONT LICENSE', doc)
 
     def test_auto_respects_template_or_uses_style(self):
         self.assertEqual(fonts.selection({'fontChoice': 'auto', 'style': 'bento-grid'})['family'], 'Pretendard')
@@ -99,6 +112,67 @@ class ReportTypographyTests(unittest.TestCase):
         self.assertEqual(html_choice_selection(spec, metadata_only=True)['fontName'], '맑은 고딕')
         with self.assertRaises(Exception):
             html_choice_selection({**spec, 'sections': []}, metadata_only=True)
+
+    def test_default_without_font_choice_applies_and_reports_embedded_family(self):
+        for style, family in (('minimalism', 'Noto Sans KR'), ('bento-grid', 'Pretendard')):
+            result = create_html({**self.spec, 'style': style}, self.output.with_name(style + '.html'))
+            self.assertTrue(result['ok'], result)
+            self.assertEqual(family, result['typography']['family'])
+            self.assertEqual('bundled', result['typography']['source'])
+            self.assertFalse(any('PC 설치' in warning for warning in result['warnings']))
+
+    def test_explicit_system_font_remains_system_and_template_stays_intact(self):
+        result = create_html({**self.spec, 'fontChoice': 'pretendard', 'fontSource': 'system'}, self.output)
+        self.assertEqual('system', result['typography']['source'])
+        self.assertNotIn('data:font/woff2', self.output.read_text(encoding='utf-8'))
+        self.assertEqual('', fonts.css({'fontChoice': 'auto', 'referenceCss': 'body{font-family:serif}'}))
+
+    def test_bundled_files_match_provenance_and_portable_copy(self):
+        folder = fonts.font_directory()
+        manifest = json.loads((folder / 'SOURCE.json').read_text(encoding='utf-8'))
+        root = Path(__file__).resolve().parents[1]
+        for row in manifest['fonts']:
+            raw = (folder / row['file']).read_bytes()
+            self.assertEqual(b'wOF2', raw[:4])
+            self.assertEqual(row['sha256'], hashlib.sha256(raw).hexdigest())
+            self.assertEqual(raw, (root / 'standalone-skills/html-report/assets/fonts' / row['file']).read_bytes())
+
+    def test_reference_heading_font_is_preserved_without_an_extra_choice(self):
+        for field in ('referenceStyle', 'themeOverrides'):
+            spec = {field: {'typography': {'headingFont': 'Georgia'}}, 'fontChoiceRequired': True}
+            self.assertEqual('template', fonts.selection(spec)['source'])
+            self.assertEqual('', fonts.css(spec))
+            self.assertEqual([], fonts.missing(spec))
+
+    def test_explicit_bundled_rejects_fonts_not_shipped(self):
+        for choice in ({'fontChoice': 'nanum-square-neo'}, {'fontChoice': 'custom', 'fontName': 'Missing Font'}):
+            result = create_html({**self.spec, **choice, 'fontSource': 'bundled'}, self.output)
+            self.assertEqual('invalid_font', result['code'])
+
+    @unittest.skipUnless(shutil.which('node'), 'Node needed for font preview selection')
+    def test_picker_font_changes_visible_preview_without_replacing_other_choices(self):
+        from company_agent.report_styles import PICKER_JS
+        fixture = r'''
+const vm=require('node:vm'),assert=require('node:assert/strict');
+function element(value='keep'){return {value,options:[{text:'기존 선택 유지'}],selectedIndex:0,handlers:{},dataset:{},attrs:{},style:{setProperty(k,v){this[k]=v}},addEventListener(k,f){this.handlers[k]=f},setAttribute(k,v){this.attrs[k]=v}}}
+const ids={};for(const id of ['length-choice','mode-choice','font-choice','font-name','font-preview-status','choice-result','copy-status','additional-designs','selected-design','copy-choice'])ids[id]=element();
+const previews=['minimalism','bento-grid'].map(style=>{const p=element();p.dataset.style=style;return p});
+const context={document:{getElementById:id=>ids[id],querySelectorAll:s=>s==='.style-preview'?previews:[]},location:{hash:''},window:{addEventListener(){}},navigator:{}};
+'''
+        checks = r'''
+assert.equal(previews[0].dataset.fontPreview,'Noto Sans KR');
+assert.equal(previews[1].dataset.fontPreview,'Pretendard');
+ids['font-choice'].value='pretendard';ids['font-choice'].options=[{text:'Pretendard'}];ids['font-choice'].handlers.change();
+for(const p of previews)assert.equal(p.dataset.fontPreview,'Pretendard');
+assert.ok(previews[0].style['--preview-font'].startsWith('"Pretendard"'));
+assert.equal(ids['mode-choice'].value,'keep');assert.equal(ids['length-choice'].value,'keep');
+ids['font-choice'].value='custom';ids['font-name'].value='맑은 고딕';ids['font-choice'].handlers.change();
+assert.equal(previews[1].dataset.fontPreview,'맑은 고딕');
+assert.ok(ids['font-preview-status'].textContent.includes('대체 글꼴'));
+'''
+        run = subprocess.run(['node', '-e', fixture + '\nvm.runInNewContext(' + json.dumps(PICKER_JS) + ',context);\n' + checks],
+                             capture_output=True, text=True, encoding='utf-8', timeout=15)
+        self.assertEqual(0, run.returncode, run.stderr)
 
 
 if __name__ == '__main__':

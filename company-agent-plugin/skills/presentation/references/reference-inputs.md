@@ -105,3 +105,5 @@ analysis는 개체당 160자·장당 80개까지의 구조 미리보기다. 전�
 `native-layout.md`의 htmlSource 또는 저장된 대표 HTML의 --template 경로를 유지한다.
 PPTX 전용 분석/보호 질문을 적용하지 않는다. 미확인 장의 내용·작은 숫자를 추측하지
 않고 원문·캡처·OCR 전문을 Memory에 저장하지 않는다.
+
+비정상 ZIP 헤더만으로 XML 또는 보안 프로그램의 동작을 단정하지 않습니다. 독립 presentation 배포본은 reference --mode office로 설치된 PowerPoint의 정상 장별 PNG Export를 지원하며, 화면 캡처와는 구분합니다. 원본이나 보안 정책을 변경하지 않으며 이미 열린 사용자 문서는 닫지 않습니다.

@@ -28,3 +28,7 @@ Impeccable은 Apache-2.0으로 공개되어 있습니다. 링크의 최신 버�
 | [edit-native-pptx.md](https://github.com/hugohe3/ppt-master/blob/5e8856be0da8e6bc85c4aa28acc614478f7b7137/skills/ppt-master/workflows/edit-native-pptx.md), [visual-review.md](https://github.com/hugohe3/ppt-master/blob/5e8856be0da8e6bc85c4aa28acc614478f7b7137/skills/ppt-master/references/visual-review.md) | 바꾸지 않은 개체 보존, 고정 개체를 포함한 초안과 확인 범위 표시, 경고를 모아 영향받은 장만 보정 | 전체 round-trip 변환 엔진, 자동 웹 검색과 이미지 생성, 내레이션과 음성 복제, 반복 확인 단계 |
 
 현재 제작기의 추가 다각형은 같은 좌표의 editable freeform이며 원본 프로젝트의 모든 프리셋 조정 핸들을 구현한 것은 아닙니다. 기존 양식의 HTML 투영은 지원 개체와 근사를 구분하며 실제 PowerPoint 렌더링과 동등하다고 주장하지 않습니다. 기존의 한 번의 양식 선택과 HTML 초안 승인 흐름을 유지하고 새 상시 후크나 모델 호출을 추가하지 않습니다.
+
+## 2026-11-03 재검토
+
+[PPT Master routing](https://github.com/hugohe3/ppt-master/blob/main/skills/ppt-master/workflows/routing.md)의 작업별 경로 분리와 기존 개체 보존 원칙, [Huashu deck](https://github.com/alchaincyf/huashu-design/blob/master/references/modules/deck.md)의 완성 HTML 좌표 기반 변환을 참고했습니다. 기존 시각 설계를 단순 카드로 재작성하지 않고 실제 HTML을 측정하며 사용자의 고정 한국어 양식을 별도 자산으로 제공합니다. 원본 구현을 통째로 포함한 것은 아니며 매번 다중 시안/웹 검색/추가 게이트를 도입하지 않습니다. 고정 크기, 한글 줄바꿈, 근거와 비교축, 정보 밀도와 실제 렌더 결과를 중심으로 검토합니다.

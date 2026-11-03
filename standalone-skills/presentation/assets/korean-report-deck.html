@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="description" content="발표자료">
+<title>발표자료 | HTML 발표본</title>
+<style>
+:root{--font:"Malgun Gothic","맑은 고딕","Noto Sans CJK KR","Apple SD Gothic Neo",sans-serif;--ink:#111;--sub:#4a4a4a;--line:#d5d5d5;--panel:#f5f5f5;--dark:#303030;--page-w:1600px;--page-h:900px;--s:1}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;font-family:var(--font);color:var(--ink)}button,textarea{font:inherit}button{cursor:pointer}button:disabled{opacity:.3;cursor:default}button:focus-visible,a:focus-visible{outline:3px solid #555;outline-offset:3px}body{background:#e7e8eb;overflow:hidden}p,h1,h2,h3,h4,blockquote{margin:0}strong,b{font-weight:700}table{border-collapse:collapse;width:100%;table-layout:fixed}svg{display:block}button{color:inherit}
+#workspace{position:absolute;inset:0 0 68px;display:flex;min-width:0}#stage{flex:1;position:relative;min-width:0;min-height:0}#slide-holder{position:absolute;left:50%;top:50%;width:var(--page-w);height:var(--page-h);transform:translate(-50%,-50%) scale(var(--s));transform-origin:center;box-shadow:0 6px 30px #00000020}
+.slide{width:var(--page-w);height:var(--page-h);background:white;position:absolute;left:0;top:0;display:none;overflow:hidden;font-size:22px;line-height:1.42;word-break:keep-all;overflow-wrap:break-word;isolation:isolate}.slide.active{display:block}.slide-header{position:absolute;left:34px;right:48px;top:31px;height:64px;border-bottom:1px solid #d8dee3;display:flex;align-items:flex-start;justify-content:space-between;gap:12px}.slide-header h1{font-size:35px;line-height:1.38;letter-spacing:-.7px;font-weight:700}.kicker{padding-top:16px;color:#757575;font-size:15px;letter-spacing:1.1px;white-space:nowrap}.hero{position:absolute;top:116px;left:54px;right:54px;height:58px;text-align:center;font-size:31px;line-height:1.48;font-weight:700;letter-spacing:-.55px;display:flex;justify-content:center;align-items:center}.slide-body{position:absolute;left:54px;right:54px;top:199px;bottom:116px}.columns{display:grid;gap:50px;align-items:start}.columns.equal{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.columns.ratio-45{grid-template-columns:minmax(0,45fr) minmax(0,55fr)}.columns.ratio-52{grid-template-columns:minmax(0,52fr) minmax(0,48fr)}.columns.ratio-40{grid-template-columns:minmax(0,40fr) minmax(0,60fr)}.columns.ratio-55{grid-template-columns:minmax(0,55fr) minmax(0,45fr)}.column{position:relative;min-width:0;min-height:0}.column+.column::before{content:"";position:absolute;left:-25px;top:0;bottom:0;border-left:1px solid var(--line);min-height:100%}.region-title{font-size:24px;line-height:1.3;font-weight:700;letter-spacing:-.4px;margin-bottom:17px}.region-title.smaller{font-size:22px;margin-bottom:9px}.context-line{font-size:20px;color:var(--sub);line-height:1.38;margin-bottom:10px}.dark{background:var(--dark);color:white}.gray{background:#eee}.down-arrow{font-size:25px;height:19px;line-height:19px;text-align:center;color:#888}.takeaway{position:absolute;left:54px;right:54px;top:805px;height:52px;border:1px solid #dedede;background:#f5f5f5;display:flex;align-items:center;justify-content:center;text-align:center;font-size:23.5px;font-weight:700;padding:7px 16px;letter-spacing:-.25px}.slide footer{position:absolute;left:54px;right:54px;bottom:15px;display:flex;justify-content:space-between;align-items:center;gap:20px;font-size:15.5px;line-height:1.3;color:#666}.slide footer b{font-size:18px;white-space:nowrap;color:#333}.slide footer b span{font-weight:400;color:#999}.eyebrow{display:block;font-size:17px;font-weight:700;color:#666;letter-spacing:.1px;margin-bottom:7px}.soft-note{font-size:21px;line-height:1.5;background:var(--panel);padding:13px 20px;text-align:center;border:1px solid #e5e5e5;border-radius:4px}.soft-note.left{text-align:left}.matrix{font-size:21px;line-height:1.38;border-top:2px solid #555}.matrix thead th{background:#eee;font-weight:700;color:#262626;padding:10px 16px;text-align:left}.matrix tbody td,.matrix tbody th{padding:10px 16px;border-bottom:1px solid #d9d9d9;text-align:left;vertical-align:middle;font-weight:400}.matrix tbody th{font-weight:700;background:#fafafa}.matrix td+td,.matrix th+th{border-left:1px solid #ddd}.matrix tbody td:nth-child(2){border-left:1px solid #ddd}
+.p01-body{display:grid;grid-template-rows:324px 1fr;gap:23px;bottom:119px}.top-comparison{gap:50px}.top-comparison .column+.column::before{bottom:-2px}.top-comparison .region-title{margin-bottom:10px}
+.starting-panel{background:#f3f3f3;padding:12px 18px;border-left:4px solid #444;margin-bottom:14px}.build-step{display:grid;grid-template-columns:42px 175px 1fr;column-gap:12px;align-items:center;min-height:70px;border-bottom:1px solid #ddd}.number{font-size:32px;font-weight:700;color:#999;line-height:1.2}
+.boundary-cards{display:flex;flex-direction:column;gap:14px}.boundary-card{display:flex;gap:21px;border:1px solid #d4d4d4;border-radius:7px;padding:14px 22px;background:#fafafa;min-height:120px}.boundary-no{font-size:31px;line-height:1.25;color:#aaa;font-weight:700}
+.flow-cell{height:34px;display:flex;align-items:center;justify-content:center;text-align:center;border:1px solid #d9d9d9;font-size:21px;border-radius:4px}.flow-cell.dark{border-color:var(--dark);font-weight:700}.problem-flow{margin-top:7px}.flow-break{height:31px;display:flex;align-items:center;justify-content:center;gap:10px;color:#666;font-size:17px}.break-symbol{position:relative;display:inline-block;width:17px;height:27px;background:linear-gradient(#aaa,#aaa) center top/2px 6px no-repeat,linear-gradient(#aaa,#aaa) center bottom/2px 6px no-repeat}
+.continuity-summary{margin-top:12px;padding-top:9px;border-top:1px solid #d5d5d5;text-align:center}.continuity-summary strong{display:block;font-size:20px;line-height:1.4}.continuity-summary p{margin-top:3px;font-size:18px;line-height:1.4;color:#555}
+.agent-diagram{position:relative;padding-top:4px}.agent-user{position:absolute;left:31px;top:26px;display:flex;align-items:center;gap:18px;font-weight:700;font-size:23px}.double-arrow{font-size:30px;color:#929292;font-weight:400}.agent-core{width:330px;height:78px;margin:0 auto;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}.agent-core strong{font-size:26px}.agent-core span{font-size:18px;color:#ddd}.asset-links{width:76%;height:31px;margin:0 auto;display:flex;justify-content:space-between;position:relative}.asset-links::before{content:"";position:absolute;left:0;right:0;top:13px;border-top:2px solid #bababa}.asset-links::after{content:"";position:absolute;left:50%;top:0;height:14px;border-left:2px solid #bababa}.asset-links i{height:18px;margin-top:13px;border-left:2px dashed #aaa}.asset-links i:nth-child(2){border-left-style:solid}.asset-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}.asset-card{background:#fafafa;border:1px dashed #aaa;border-radius:6px;text-align:center;padding:13px 5px 11px;display:flex;flex-direction:column;gap:4px}.asset-card.solid{border-style:solid;background:#eee}.asset-card strong{font-size:22px}.asset-card span{font-size:19px;color:var(--sub)}
+.comparison{font-size:20.5px}.comparison thead th,.comparison tbody td,.comparison tbody th{padding:9px 14px;line-height:1.36}.comparison tbody td:nth-child(3){font-weight:700}
+.expansion-cards{display:flex;flex-direction:column;gap:9px}.expansion-card{display:flex;gap:21px;padding:8px 20px;border:1px solid #d8d8d8;border-radius:6px;background:#fafafa;min-height:108px}.expansion-card .number{font-size:32px;min-width:42px}.expansion-card strong{font-size:23px;line-height:1.25;display:block;margin-bottom:3px}.expansion-card p{font-size:20px;color:#666;line-height:1.30}.expansion-card .result{font-size:21px;line-height:1.3;font-weight:600;color:#222;margin-top:3px}
+.expansion-bottom{font-size:19px;margin-top:13px;padding:10px 12px;background:#eee;text-align:center;font-weight:600}
+.emphasis-line{font-size:21px;font-weight:700;margin-top:9px}
+.phase-cards{display:flex;flex-direction:column;gap:13px}.phase-card{display:flex;gap:24px;padding:10px 22px;background:#fafafa;border:1px solid #d5d5d5;border-radius:7px;min-height:119px}.phase-card .number{font-size:35px;min-width:44px;padding-top:2px}.phase-card strong{font-size:24px;display:block;margin-bottom:5px}.phase-card p{font-size:22px;line-height:1.4;color:#444}
+.reuse-return{display:flex;align-items:center;gap:18px;margin-top:18px;padding:13px 16px;border:1px solid #d5d5d5;background:#f2f2f2}.reuse-return>span{font-size:32px;color:#777}.reuse-return strong{font-size:20px;font-weight:700;line-height:1.4}.reuse-return p{font-size:18.33px;color:#444;line-height:1.4;margin-top:5px}
+.slide.report-style .slide-body{left:48px;right:48px;top:191px;bottom:113px;gap:48px}
+.slide.report-style .region-title{font-size:23.33px;font-weight:700;line-height:30px;letter-spacing:-.4px;margin-bottom:20px}
+.slide.report-style .takeaway{left:48px;right:48px;top:806px;height:44px;background:#f2f2f2;border:1px solid #d5d5d5;color:#111;font-size:23.33px;font-weight:700;line-height:1.3;padding:6px 14px}
+.slide.report-style footer{left:48px;right:48px;top:861px;bottom:auto;height:32px;align-items:flex-end;font-size:15px;line-height:1.2;color:#555}
+.slide.report-style footer b{font-size:15px;font-weight:700}
+.slide footer.page-number-only{position:absolute!important;left:48px!important;right:auto!important;top:auto!important;bottom:15px!important;width:96px!important;height:24px!important;margin:0!important;padding:0!important;display:flex!important;justify-content:flex-start!important;align-items:flex-end!important;gap:0!important;font-size:15px!important;line-height:24px!important;color:#555!important}
+.slide footer.page-number-only b{display:block!important;width:96px!important;height:24px!important;margin:0!important;padding:0!important;font-size:15px!important;line-height:24px!important;font-weight:700!important;white-space:nowrap!important;color:#333!important}
+.slide footer.page-number-only b span{font-size:15px!important;line-height:24px!important;font-weight:400!important;color:#999!important}
+#toolbar{position:absolute;bottom:0;left:0;right:0;min-height:68px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 22px;border-top:1px solid #d0d0d0;background:#fafafa;z-index:50;font-size:13px;color:#444}#toolbar .group{display:flex;align-items:center;gap:8px}#toolbar button{background:#fff;border:1px solid #c8c8c8;border-radius:5px;min-height:34px;padding:5px 10px;white-space:nowrap;font-size:13px}#toolbar button[aria-pressed="true"]{background:#303030;color:#fff;border-color:#303030}#toolbar .nav-numbers{display:flex;gap:4px;padding:0 3px}#toolbar .nav-numbers button{min-width:30px;padding:5px 8px}.nav-separator{width:1px;height:20px;background:#ccc;margin:0 4px}.chrome-title{font-weight:700;color:#333;font-size:14px;white-space:nowrap}.version-badge{border:1px solid #d2d2d2;font-size:11px;padding:3px 7px;border-radius:4px;color:#777;white-space:nowrap}#position{min-width:55px;text-align:center;font-variant-numeric:tabular-nums}.icon-button{font-size:19px!important;width:35px;padding:0!important}.checkbox-label{display:flex;align-items:center;gap:5px;white-space:nowrap}#dirty{color:#666;font-size:12px;min-width:0}.sr-only{position:absolute;left:-10000px;width:1px;height:1px;overflow:hidden}
+#notes-panel{width:360px;background:#fafafa;border-left:1px solid #ccc;display:none;flex:none;overflow:auto;padding:22px 21px;color:#333;font-size:14px;line-height:1.7}body.notes-open #notes-panel{display:block}#notes-panel h2{font-size:17px;margin:0 0 15px}#notes-panel p{margin-bottom:13px}#notes-panel .note-source{font-size:12px;word-break:break-all;color:#777;border-top:1px solid #ddd;padding-top:12px}.note-status{font-size:12px;background:#eee;border-radius:4px;padding:5px 8px;display:inline-block;margin-bottom:15px}#notes-close{float:right;border:0;background:none;font-size:20px;cursor:pointer}
+#overview{position:fixed;inset:0;z-index:100;background:#edededf7;padding:25px 30px;display:none;overflow:auto}#overview.is-open{display:block}.overview-header{max-width:1400px;margin:0 auto 18px;display:flex;align-items:center;justify-content:space-between}.overview-header h2{font-size:23px}.overview-header button{font-size:16px;padding:6px 16px;border:1px solid #bbb;background:#fff;border-radius:5px}#overview-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:22px;max-width:1400px;margin:auto}.thumbnail-button{display:block;text-align:left;border:1px solid #c4c4c4;border-radius:6px;padding:0;background:#fff;overflow:hidden;box-shadow:0 3px 12px #00000008}.thumbnail-button.selected{outline:3px solid #555;outline-offset:3px}.thumb-stage{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;pointer-events:none}.thumb-stage .slide{display:block;transform-origin:top left;position:absolute;pointer-events:none}.thumb-caption{padding:9px 12px;border-top:1px solid #ddd;display:flex;justify-content:space-between;gap:10px;font-size:13px;line-height:1.4}.thumb-caption strong{font-size:12px;white-space:nowrap}
+#toast{position:fixed;left:50%;bottom:83px;transform:translateX(-50%);padding:10px 18px;background:#222;color:#fff;border-radius:7px;font-size:14px;z-index:150;opacity:0;pointer-events:none;transition:opacity .12s;max-width:80vw;text-align:center}#toast.visible{opacity:1}.editing [data-edit]{outline:1px dashed #a0a0a0;outline-offset:3px;cursor:text}.editing [data-edit]:focus{outline:2px solid #555;background-color:#f7f7f780}.editing .dark [data-edit]:focus{background-color:#ffffff18}.editing .slide [contenteditable]{caret-color:#888}#slide-holder.is-edited .slide{transition:none}body.chrome-hidden #toolbar{display:none}body.chrome-hidden #workspace{bottom:0}
+@media(max-width:1250px){#toolbar{padding:9px 10px;gap:6px}.chrome-title{display:none}#toolbar .group{gap:5px}.version-badge{display:none}#toolbar button{padding:5px 7px}}
+@media(max-width:850px){#toolbar{flex-wrap:wrap;justify-content:center;min-height:100px;padding:7px}#workspace{bottom:100px}#toolbar .tools{flex-wrap:wrap;justify-content:center}#notes-panel{position:absolute;right:0;top:0;bottom:0;width:min(350px,90vw);z-index:40;box-shadow:-5px 0 20px #0002}#overview{padding:20px 14px}#overview-grid{grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}.checkbox-label{font-size:12px}#dirty{display:none}}
+@media(max-width:600px){#toolbar .nav-numbers{display:none}#toolbar .tools{max-width:100%}#toolbar{gap:5px}#position{min-width:60px}}
+@media(prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+@media print{@page{size:13.333333in 7.5in;margin:0}html,body{height:auto!important;width:auto!important;overflow:visible!important;background:#fff!important}#toolbar,#overview,#notes-panel,#toast,#status{display:none!important}#workspace,#stage,#slide-holder{position:static!important;display:block!important;inset:auto!important;transform:none!important;width:auto!important;height:auto!important;box-shadow:none!important;overflow:visible!important}.slide{position:relative!important;display:block!important;left:auto!important;top:auto!important;zoom:.8;break-after:page;page-break-after:always;margin:0!important;box-shadow:none!important;-webkit-print-color-adjust:exact;print-color-adjust:exact}.slide:last-child{break-after:auto;page-break-after:auto}.editing [data-edit]{outline:none!important}}
+</style>
+</head>
+<body>
+<main id="workspace">
+  <div id="stage" aria-label="슬라이드 발표 영역">
+    <div id="slide-holder"><div id="slides">
+
+<!-- 각 슬라이드 section을 이 영역에 넣는다 -->
+
+    </div></div>
+  </div>
+  <aside id="notes-panel" aria-label="발표자 메모" aria-hidden="true">
+    <button id="notes-close" title="메모 닫기" aria-label="메모 닫기">×</button>
+    <span class="note-status">발표자 메모 / 화면 본문과 분리</span>
+    <h2 id="note-title"></h2>
+    <div id="notes-content"></div>
+    <p id="note-source" class="note-source"></p>
+  </aside>
+</main>
+<nav id="toolbar" aria-label="발표 제어">
+  <div class="group">
+    <span class="chrome-title">발표자료</span>
+    <span class="version-badge">v1.0</span>
+    <button id="prev" class="icon-button" aria-label="이전 페이지" title="이전 (←)">‹</button>
+    <span id="position">1 / 3</span>
+    <button id="next" class="icon-button" aria-label="다음 페이지" title="다음 (→)">›</button>
+    <div class="nav-numbers" aria-label="페이지 바로가기">
+      <button data-goto="P01" aria-label="1페이지">1</button>
+      <button data-goto="P02" aria-label="2페이지">2</button>
+      <button data-goto="P03" aria-label="3페이지">3</button>
+    </div>
+  </div>
+  <div class="group tools">
+    <button id="overview-toggle" title="전체 보기 (G)">전체 보기</button>
+    <button id="notes-toggle" aria-pressed="false" title="발표 메모 (N)">발표 메모</button>
+    <button id="edit-toggle" aria-pressed="false" title="문구 편집 (E)">문구 편집</button>
+    <button id="save-html" title="편집 내용을 반영한 HTML 저장">수정본 저장</button>
+    <button id="print" title="현재 범위 인쇄">인쇄</button>
+    <button id="fullscreen" title="전체 화면 (F)">전체 화면</button>
+    <button id="help" title="단축키 도움말" aria-label="단축키 도움말">?</button>
+    <span id="dirty" aria-live="polite"></span>
+  </div>
+</nav>
+<div id="overview" role="dialog" aria-modal="true" aria-hidden="true" aria-labelledby="overview-title">
+  <div class="overview-header"><h2 id="overview-title">본문 3장</h2><button id="overview-close">닫기 / Esc</button></div>
+  <div id="overview-grid"></div>
+</div>
+<div id="toast" role="status"></div>
+<div id="status" class="sr-only" aria-live="polite"></div>
+<script id="deck-notes" type="application/json">
+{"P01":{"title":"","html":"","source":""},"P02":{"title":"","html":"","source":""},"P03":{"title":"","html":"","source":""}}
+</script>
+<script>
+(() => {
+  'use strict';
+  const $ = (s, root = document) => root.querySelector(s);
+  const allSlides = Array.from(document.querySelectorAll('#slides > .slide'));
+  const ids = allSlides.map(s => s.dataset.slide);
+  const titles = allSlides.map(s => $('h1', s).textContent.trim());
+  const refreshTitles = () => allSlides.forEach((s, i) => { titles[i] = $('h1', s).textContent.trim(); });
+  const notesData = JSON.parse($('#deck-notes').textContent);
+  const stage = $('#stage');
+  let current = 0, editing = false, dirty = false, toastTimer = null;
+  const filtered = () => allSlides.filter(s => !document.body.classList.contains('main-only') || s.dataset.kind === 'main');
+  const toast = text => {
+    const el = $('#toast'); el.textContent = text; el.classList.add('visible');
+    window.clearTimeout(toastTimer); toastTimer = window.setTimeout(() => el.classList.remove('visible'), 3200);
+  };
+  function fit() {
+    $('#workspace').style.bottom = (document.body.classList.contains('chrome-hidden') ? 0 : $('#toolbar').offsetHeight) + 'px';
+    const r = stage.getBoundingClientRect();
+    const pad = r.width < 700 ? 12 : 32;
+    const s = Math.max(0.04, Math.min((r.width - pad) / 1600, (r.height - pad) / 900));
+    $('#slide-holder').style.setProperty('--s', String(s));
+    if ($('#overview').classList.contains('is-open')) resizeThumbs();
+  }
+  function updateNotes() {
+    refreshTitles();
+    const id = ids[current], data = notesData[id];
+    $('#note-title').textContent = titles[current];
+    $('#notes-content').innerHTML = data && data.html ? data.html : '<p>발표 메모가 없습니다.</p>';
+    $('#note-source').textContent = '기준: ' + (data ? data.source : 'v1.0');
+  }
+  function show(index, writeHash = true) {
+    if (index < 0 || index >= allSlides.length) return;
+    current = index;
+    allSlides.forEach((slide, i) => {
+      slide.classList.toggle('active', i === index);
+      slide.setAttribute('aria-hidden', i === index ? 'false' : 'true');
+    });
+    const list = filtered(), local = list.indexOf(allSlides[index]);
+    $('#position').textContent = `${local + 1} / ${list.length}`;
+    $('#prev').disabled = local <= 0;
+    $('#next').disabled = local >= list.length - 1;
+    document.querySelectorAll('[data-goto]').forEach(btn => {
+      const active = btn.dataset.goto === ids[index];
+      btn.setAttribute('aria-pressed', String(active));
+      active ? btn.setAttribute('aria-current', 'page') : btn.removeAttribute('aria-current');
+    });
+    $('#status').textContent = `${index + 1}페이지. ${titles[index]}`;
+    updateNotes();
+    if (writeHash) { try { history.replaceState(null, '', '#' + ids[index]); } catch (_) {} }
+  }
+  function next(delta) {
+    const visible = filtered(), i = visible.indexOf(allSlides[current]);
+    const target = visible[Math.max(0, Math.min(i + delta, visible.length - 1))];
+    show(allSlides.indexOf(target));
+  }
+  function toggleNotes() {
+    const active = document.body.classList.toggle('notes-open');
+    $('#notes-toggle').setAttribute('aria-pressed', String(active));
+    $('#notes-panel').setAttribute('aria-hidden', String(!active)); fit();
+  }
+  function resizeThumbs() {
+    document.querySelectorAll('.thumb-stage').forEach(el => {
+      const slide = $('.slide', el);
+      if (slide) slide.style.transform = `scale(${el.clientWidth / 1600})`;
+    });
+  }
+  function openOverview() {
+    refreshTitles();
+    const grid = $('#overview-grid'); grid.innerHTML = '';
+    filtered().forEach(slide => {
+      const i = allSlides.indexOf(slide), button = document.createElement('button');
+      button.type = 'button'; button.className = 'thumbnail-button' + (i === current ? ' selected' : '');
+      button.setAttribute('aria-label', `${i+1}페이지 ${titles[i]}로 이동`);
+      const preview = document.createElement('div'); preview.className = 'thumb-stage';
+      const clone = slide.cloneNode(true); clone.classList.add('active'); clone.setAttribute('aria-hidden','true');
+      clone.querySelectorAll('[data-edit]').forEach(n => {n.removeAttribute('contenteditable'); n.removeAttribute('tabindex');});
+      clone.querySelectorAll('[id]').forEach(n => n.removeAttribute('id'));
+      preview.appendChild(clone);
+      const caption = document.createElement('div'); caption.className = 'thumb-caption';
+      const label = document.createElement('span'); label.textContent = titles[i];
+      const count = document.createElement('strong'); count.textContent = `${i+1} / ${allSlides.length}`;
+      caption.append(label,count); button.append(preview,caption);
+      button.addEventListener('click', () => {show(i); closeOverview();}); grid.appendChild(button);
+    });
+    $('#workspace').inert = true; $('#toolbar').inert = true;
+    $('#overview').classList.add('is-open'); $('#overview').setAttribute('aria-hidden','false');
+    resizeThumbs(); $('#overview-close').focus();
+  }
+  function closeOverview() {
+    $('#workspace').inert=false; $('#toolbar').inert=false;
+    $('#overview').classList.remove('is-open'); $('#overview').setAttribute('aria-hidden','true'); $('#overview-toggle').focus();
+  }
+  function toggleEditing() {
+    editing = !editing; document.body.classList.toggle('editing', editing);
+    document.querySelectorAll('#slides [data-edit]').forEach(el => {
+      if (editing) {el.setAttribute('contenteditable','true'); el.setAttribute('spellcheck','false');}
+      else el.removeAttribute('contenteditable');
+    });
+    $('#edit-toggle').setAttribute('aria-pressed', String(editing));
+    $('#edit-toggle').textContent = editing ? '편집 종료' : '문구 편집';
+    toast(editing ? '점선으로 표시된 문구를 클릭해 수정하세요.' : '발표 모드로 돌아왔습니다.');
+  }
+  function downloadHTML() {
+    const root = document.documentElement.cloneNode(true);
+    root.querySelector('body').classList.remove('editing','notes-open','chrome-hidden');
+    root.querySelector('#workspace').removeAttribute('inert'); root.querySelector('#toolbar').removeAttribute('inert');
+    root.querySelectorAll('[contenteditable]').forEach(el => el.removeAttribute('contenteditable'));
+    root.querySelectorAll('#slides > .slide').forEach((el,i) => {el.classList.toggle('active',i===0); el.setAttribute('aria-hidden',i===0?'false':'true');});
+    root.querySelector('#overview').classList.remove('is-open'); root.querySelector('#overview').setAttribute('aria-hidden','true');
+    root.querySelector('#overview-grid').innerHTML = '';
+    root.querySelector('#toast').classList.remove('visible'); root.querySelector('#toast').textContent = '';
+    root.querySelector('#dirty').textContent = '';
+    root.querySelector('#edit-toggle').setAttribute('aria-pressed','false'); root.querySelector('#edit-toggle').textContent = '문구 편집';
+    root.querySelector('#notes-toggle').setAttribute('aria-pressed','false'); root.querySelector('#notes-panel').setAttribute('aria-hidden','true');
+    const blob = new Blob(['<!DOCTYPE html>\n' + root.outerHTML], {type:'text/html;charset=utf-8'});
+    const url = URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download='HTML_Deck_edited.html'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url),5000); dirty=false; $('#dirty').textContent='';
+    toast('수정 내용이 포함된 독립 HTML을 저장했습니다.');
+  }
+  async function toggleFullscreen() {
+    try {if(document.fullscreenElement) await document.exitFullscreen(); else await document.documentElement.requestFullscreen();}
+    catch (_) {toast('전체 화면이 제한될 수 있습니다.');}
+    fit();
+  }
+  $('#prev').addEventListener('click', () => next(-1));
+  $('#next').addEventListener('click', () => next(1));
+  document.querySelectorAll('[data-goto]').forEach(b => b.addEventListener('click', () => show(ids.indexOf(b.dataset.goto))));
+  $('#notes-toggle').addEventListener('click', toggleNotes);
+  $('#notes-close').addEventListener('click', toggleNotes);
+  $('#overview-toggle').addEventListener('click', openOverview);
+  $('#overview-close').addEventListener('click', closeOverview);
+  $('#edit-toggle').addEventListener('click', toggleEditing);
+  $('#save-html').addEventListener('click', downloadHTML);
+  $('#print').addEventListener('click', () => window.print());
+  $('#fullscreen').addEventListener('click', toggleFullscreen);
+  $('#help').addEventListener('click', () => toast('← → 이동 / 1~' + Math.min(9, allSlides.length) + ' 바로가기 / Home 처음 / End 마지막 / G 전체 / N 메모 / E 편집 / F 전체화면 / H 도구숨김'));
+  document.addEventListener('keydown', e => {
+    const typing = e.target.closest('[contenteditable="true"],input,textarea,select');
+    if (e.key === 'Escape') {
+      if ($('#overview').classList.contains('is-open')) closeOverview();
+      else if (editing) { e.target.blur(); toggleEditing(); }
+      else if (document.body.classList.contains('notes-open')) toggleNotes();
+      else if (document.body.classList.contains('chrome-hidden')) { document.body.classList.remove('chrome-hidden'); fit(); }
+      return;
+    }
+    if (typing || e.ctrlKey || e.metaKey || e.altKey || $('#overview').classList.contains('is-open')) return;
+    const k = e.key.toLowerCase();
+    if (['arrowright','pagedown',' '].includes(k)) { e.preventDefault(); next(1); }
+    else if (['arrowleft','pageup'].includes(k)) { e.preventDefault(); next(-1); }
+    else if (k === 'home') { e.preventDefault(); show(0); }
+    else if (k === 'end') { e.preventDefault(); show(allSlides.indexOf(filtered().at(-1))); }
+    else if (/^[1-9]$/.test(k) && Number(k) <= allSlides.length) { e.preventDefault(); show(Number(k) - 1); }
+    else if (k === 'n') toggleNotes();
+    else if (k === 'g') openOverview();
+    else if (k === 'e') toggleEditing();
+    else if (k === 'f') toggleFullscreen();
+    else if (k === 'h') { document.body.classList.toggle('chrome-hidden'); fit(); }
+  });
+  $('#slides').addEventListener('input', e => { if (e.target.closest('[data-edit]')) { dirty = true; $('#dirty').textContent = '미저장 변경'; updateNotes(); } });
+  $('#slides').addEventListener('paste', e => {
+    if (!editing || !e.target.closest('[data-edit]')) return;
+    e.preventDefault();
+    const txt = (e.clipboardData || window.clipboardData).getData('text/plain');
+    const sel = window.getSelection(); if (!sel.rangeCount) return;
+    const range = sel.getRangeAt(0); range.deleteContents();
+    const node = document.createTextNode(txt); range.insertNode(node);
+    range.setStartAfter(node); range.collapse(true);
+    sel.removeAllRanges(); sel.addRange(range);
+    dirty = true; $('#dirty').textContent = '미저장 변경';
+  });
+  let touchStart = null;
+  stage.addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && !editing) touchStart = {x: e.clientX, y: e.clientY}; });
+  stage.addEventListener('pointerup', e => {
+    if (!touchStart) return;
+    const dx = e.clientX - touchStart.x, dy = e.clientY - touchStart.y;
+    touchStart = null;
+    if (Math.abs(dx) > 60 && Math.abs(dx) > Math.abs(dy) * 1.5) next(dx < 0 ? 1 : -1);
+  });
+  window.addEventListener('beforeunload', e => { if (dirty) { e.preventDefault(); e.returnValue = ''; } });
+  window.addEventListener('resize', fit);
+  new ResizeObserver(fit).observe(stage);
+  window.addEventListener('hashchange', () => { const i = ids.indexOf(location.hash.slice(1).toUpperCase()); if (i >= 0) show(i, false); });
+  const initial = ids.indexOf(location.hash.slice(1).toUpperCase());
+  show(initial >= 0 ? initial : 0, false);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit); else fit();
+  window.deck = { show, ids: ids.slice(), fit, get current() { return ids[current]; }, version: '1.0' };
+})();
+</script>
+</body>
+</html>

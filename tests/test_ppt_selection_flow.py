@@ -17,9 +17,11 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'company-agent-plugin/scripts'))
 from company_agent import ppt_html, ppt_workflow, presentation_design
 
-MODULES = ('business_artifacts business_safety content_layout explanation_diagram '
-           'explanation_export html_reference ppt_html ppt_html_import ppt_scene ppt_primitives ppt_text ppt_layouts ppt_template_scene ppt_preflight ppt_workflow ppt_reference reference_style ppt_component_styles '
-           'presentation_design report_design report_facts report_styles report_tables report_typography').split()
+# Stage the same runtime files that the portable ZIP actually ships. A second
+# handwritten list can leave this fixture incomplete after a renderer split.
+RUNTIME_FILES = json.loads(
+    (ROOT / 'scripts/platform_skills/catalog-metadata.json').read_text(encoding='utf-8')
+)['presentation']['packaging']['runtimeModules']
 ISOLATED_PPTX = subprocess.run([sys.executable, '-I', '-B', '-c', 'import pptx'],
                                capture_output=True, timeout=20).returncode == 0
 
@@ -181,7 +183,7 @@ class PortablePptSelectionLifecycleTests(unittest.TestCase):
         self.home.mkdir()
         self.skill = self.root / 'presentation'
         shutil.copytree(ROOT / 'standalone-skills/presentation', self.skill)
-        for name in [*(module + '.py' for module in MODULES), 'ppt_dom_capture.js']:
+        for name in RUNTIME_FILES:
             shutil.copyfile(ROOT / 'company-agent-plugin/scripts/company_agent' / name,
                             self.skill / 'scripts/visual_engine' / name)
         self.env = {key: value for key, value in os.environ.items()
