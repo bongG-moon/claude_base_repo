@@ -1,0 +1,25 @@
+{
+  "title": "표와 차트 예제",
+  "creationMode": "new",
+  "designPreset": "monochrome",
+  "presentationFont": "맑은 고딕",
+  "slides": [
+    {
+      "title": "두 부서의 가상 실적을 비교합니다",
+      "elements": [
+        {"kind": "text", "text": "두 부서의 가상 실적을 비교합니다", "x": 40, "y": 20, "w": 880, "h": 50, "size": 28, "bold": true},
+        {"kind": "table", "x": 40, "y": 100, "w": 400, "h": 180,
+         "table": {"headers": ["부서", "완료", "진행"], "rows": [["생산", "12", "4"], ["품질", "8", "2"]]},
+         "columnWidths": [160, 120, 120], "rowHeights": [60, 60, 60],
+         "tableStyle": {"headerFill": "333333", "headerText": "FFFFFF", "bodyFill": "FFFFFF", "bodyText": "333333", "alternateFill": "EEEEEE", "borderColor": "CCCCCC", "borderWidth": 1, "headerBold": true, "fontSize": 18, "align": "center", "padding": 6}},
+        {"kind": "chart", "x": 490, "y": 100, "w": 420, "h": 210,
+         "chart": {"type": "bar", "categories": ["생산", "품질"], "series": [{"name": "완료", "values": [12, 8]}]}},
+        {"kind": "shape", "shape": "roundRect", "group": "확인항목", "x": 40, "y": 340, "w": 270, "h": 90, "fill": "EEEEEE"},
+        {"kind": "text", "group": "확인항목", "text": "담당자 확인", "x": 60, "y": 365, "w": 230, "h": 40, "size": 20, "bold": true},
+        {"kind": "line", "x": 310, "y": 385, "w": 100, "h": 1, "points": [[0, 0], [100, 0]], "border": "555555", "borderWidth": 2, "endArrow": "triangle"},
+        {"kind": "shape", "shape": "roundRect", "x": 410, "y": 340, "w": 270, "h": 90, "fill": "EEEEEE"},
+        {"kind": "text", "text": "결과 공유", "x": 430, "y": 365, "w": 230, "h": 40, "size": 20, "bold": true}
+      ]
+    }
+  ]
+}

@@ -44,7 +44,9 @@ body/bullets/table/chart/image를 한 번씩 적습니다. 자동 배치가 공�
 
 ## 자유 배치, 카드와 그룹
 
-한 장의 `elements`는 자동 body/bullets/table/chart 배치와 섞지 않습니다. 좌표·크기는 pt입니다.
+한 장의 `elements`는 같은 장의 자동 body/bullets/table/chart 배치와 섞지 않습니다. 다만 **`elements` 목록 안에는** `kind:"table"`과 `kind:"chart"`를 도형·글자·선과 함께 넣을 수 있습니다. 표·차트는 별도 편집 개체로 두고 `group`을 지정하지 않습니다. 실제로 초안과 PPT를 만들 수 있는 최소 예시는 [scene-example.json](scene-example.json)입니다. 좌표·크기는 pt입니다.
+
+표의 `tableStyle`은 `headerFill`, `headerText`, `bodyFill`, `bodyText`, `alternateFill`, `borderColor`에 `#` 없는 6자리 RGB를 쓰고 `borderWidth`(0~6pt), `fontSize`(6~48pt), `align`(left/center/right), `padding`(0~24pt), `headerBold`(true/false)를 지원합니다. 전체 job, 장, 표 개체 순으로 같은 항목을 덮어씁니다. 홀수 본문 행의 `alternateFill` 외 셀별 색·정렬·줄간격은 이 표 스타일에서 지정할 수 없습니다. `lineSpacing`은 별도 text 개체용입니다.
 
 ```json
 {"title":"핵심 현황", "elements":[

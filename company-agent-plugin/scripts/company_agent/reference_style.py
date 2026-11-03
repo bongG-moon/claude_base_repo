@@ -118,10 +118,26 @@ def apply(spec,target):
     colors=profile.get('colors',{})
     typography=profile.get('typography',{})
     spacing=profile.get('spacing',{})
-    names={'surface':'background','text':'text','muted':'muted','primary':'accent','tint':'tint'}
+    names={'text':'text','muted':'muted','primary':'accent','tint':'tint'}
     theme={names[key]:value for key,value in colors.items() if key in names}
     if 'text' in colors:theme['title']=colors['text']
-    if 'background' not in theme and 'bg' in colors:theme['background']=colors['bg']
+    # The page background and panel surface are distinct observations. Prefer
+    # the actual page color; use the surface only when no page color is known.
+    if 'bg' in colors:theme['background']=colors['bg']
+    elif 'surface' in colors:theme['background']=colors['surface']
+    if 'designPreset' not in spec:
+        # With a neutral reference and no explicit preset, do not introduce
+        # unrelated default accent/tint hues when observed colors are available.
+        if 'accent' not in theme:
+            for key in ('text','muted'):
+                if key in colors:
+                    theme['accent']=colors[key]
+                    break
+        if 'tint' not in theme:
+            for key in ('surface','bg'):
+                if key in colors:
+                    theme['tint']=colors[key]
+                    break
     result['presentationTheme']={**theme,**spec.get('presentationTheme',{})}
     font=spec.get('presentationFont') or typography.get('bodyFont') or typography.get('headingFont')
     if font:result['presentationFont']=font
@@ -139,6 +155,11 @@ def apply(spec,target):
     chart={}
     if colors.get('series'):chart['seriesColors']=colors['series']
     elif 'primary' in colors:chart['seriesColors']=[colors['primary']]+([colors['secondary']] if 'secondary' in colors else [])
+    else:
+        # An observed neutral-only reference must not pick up unrelated default
+        # chart colors just because no primary or explicit series was recorded.
+        observed=[colors[key] for key in ('text','muted') if key in colors]
+        if observed:chart['seriesColors']=list(dict.fromkeys(observed))
     if 'border' in colors:chart['gridColor']=colors['border']
     chart.update(profile.get('chart',{}));chart.update(spec.get('chartStyle',{}))
     if chart:result['chartStyle']=chart

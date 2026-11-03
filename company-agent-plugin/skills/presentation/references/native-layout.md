@@ -59,7 +59,8 @@ comparison은 `panels:[{title,body,bullets?}]` 2~3개를 비교합니다. workfl
 
 복잡한 분기, 연결선, 자유 곡선과 한글 부분 강조는 advanced-shapes.md를 필요할 때만 읽는다. 해당 장의 모든 개체를 같은 장면 명세에 담아 HTML 확인 후 PPT로 만들며 기본 카드나 표로만 단순화하지 않는다.
 
-자동 배치 body/table/chart 대신 한 장의 모든 내용을 elements로 작성한다.
+자동 배치 body/table/chart 대신 한 장의 모든 내용을 elements로 작성한다. `elements` 안에는 `kind:"table"`과 `kind:"chart"`를 글자·도형·선과 함께 넣을 수 있으며 표·차트는 그룹 없이 독립 개체로 둔다. 실행 가능한 예시는 [scene-example.json](scene-example.json)이다.
+표의 `tableStyle`은 `headerFill`, `headerText`, `bodyFill`, `bodyText`, `alternateFill`, `borderColor`에 `#` 없는 6자리 RGB를 쓰고 `borderWidth`(0~6pt), `fontSize`(6~48pt), `align`(left/center/right), `padding`(0~24pt), `headerBold`(true/false)를 지원한다. 전체 job, 장, 표 개체 순으로 같은 항목을 덮어쓴다. 홀수 본문 행의 `alternateFill` 외 셀별 색·정렬·줄간격은 이 표 스타일에서 지정할 수 없다. `lineSpacing`은 별도 text 개체용이다.
 제목도 text 개체에 담는다. 단위는 페이지 포인트, 기본 960×540. 입력 순서가 겹침 순서다.
 
 ```json
