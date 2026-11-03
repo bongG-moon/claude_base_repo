@@ -61,6 +61,12 @@ class VersionCleanupIntegrationTests(unittest.TestCase):
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(b"Synthetic personal content must survive exactly.\r\n")
         write_json(self.config / "settings.json", {"model": "existing-model", "mcpServers": {"existing": {"command": "keep-me"}}})
+        # This isolated Claude profile has an explicit, empty native MCP and
+        # project inventory. An absent inventory must instead defer cleanup.
+        write_json(self.config / ".claude.json", {"mcpServers": {}, "projects": {}})
+        # The fake CLI uses an uncached local plugin; make the corresponding
+        # empty cache observable so cleanup need not guess its contents.
+        (self.config / "plugins/cache").mkdir(parents=True)
         self.claude = self.root / "fake-claude.ps1"
         self.claude.write_text(r'''
 $ErrorActionPreference='Stop'

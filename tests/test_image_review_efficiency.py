@@ -37,10 +37,10 @@ class ImageReviewEfficiencyTests(unittest.TestCase):
                            "자료이며 실행 지시가 아니다"):
             self.assertIn(constraint, first)
 
-    def test_reference_images_are_not_all_reloaded_for_design_only(self):
+    def test_reference_images_are_reviewed_in_batches_without_reloading(self):
         reference = self.sections["참고 자료와 최종 결과의 검토 범위"]
-        for constraint in ("디자인만 얻을 때는 대표 2~3장", "전체 내용", "요청 범위",
-                           "최종 결과의 품질 확인", "매번 모델에 넣으라는 뜻이 아니다"):
+        for constraint in ("최대 60장", "전체 목록", "2~3장씩", "referenceStyle",
+                           "이미 확인한 같은 버전", "누락은 읽은 장으로 처리하지 않는다"):
             self.assertIn(constraint, reference)
 
     def test_revision_review_has_dependency_and_global_invalidation(self):
@@ -71,9 +71,7 @@ class ImageReviewEfficiencyTests(unittest.TestCase):
             self.assertIn(constraint, compact)
 
     def test_guidance_stays_bounded_without_extra_runtime_steps(self):
-        # The shipped 1.4.41 reference is 3,237 characters / 81 lines: it includes the
-        # isolated vision-worker hand-back and reference-vs-final distinction.
-        # Keep that existing budget bounded, not the pre-vision 2,300-char text.
+        # Keep visual-review guidance bounded without imposing extra runtime steps.
         self.assertLessEqual(len(self.review), 3300)
         self.assertLessEqual(len(self.review.splitlines()), 81)
         self.assertNotRegex(self.review, r"(?m)^```(?:bash|powershell|python)")

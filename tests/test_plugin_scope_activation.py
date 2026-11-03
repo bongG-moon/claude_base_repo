@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "company-agent-plugin" / "scripts"))
 
 import native_entry
-from company_agent import native_runtime, vision_settings
+from company_agent import native_runtime
 from company_agent.paths import atomic_write_json
 
 PLUGIN_ID = "company-agent@company-agent-local"
@@ -98,23 +98,18 @@ class PluginScopeActivationTests(unittest.TestCase):
                 and key != "COMPANY_AGENT_CWD"}
 
     def test_disabled_project_hooks_are_silent_and_leave_existing_personal_state_untouched(self):
-        config = vision_settings.configure(self.state, "isolated-vision", config_root=self.profile)
+        # Existing user model and agent data may predate this plugin version.
+        atomic_write_json(self.state / "config/vision-model.json", {"model": "user-owned"})
         self.local_enabled(False)
-        agent = {"subagent_type": "company-agent:vision-worker", "prompt": "Read the exact requested image."}
-        managed = {**agent, "subagent_type": config["agent"]}
+        agent = {"subagent_type": "personal-reader", "prompt": "Read the exact requested image."}
         events = [
             ("SessionStart", {**self.identity, "source": "startup"}),
             ("UserPromptSubmit", {**self.identity, "prompt": "이미지 확인해줘"}),
             ("PreToolUse", self.call()),
             ("PreToolUse", self.call(inputs={"file_path": str(self.project / "unopened.pdf")})),
             ("PreToolUse", self.call("Agent", agent)),
-            ("PreToolUse", self.call("Agent", managed)),
-            ("PreToolUse", self.call("Agent", {"prompt": "[company-vision:123] read requested image"})),
-            ("PostToolUseFailure", self.call("Agent", agent, error="Agent type company-agent:vision-worker not found")),
-            ("PostToolUseFailure", self.call("Agent", managed, tool_use_id="native-model-failure", error=(
-                "Agent terminated early due to an API error: not available "
-                "(error type model_not_found, HTTP 404, request id fixture, model sent to the API: isolated-vision)"))),
-            ("PostToolUse", self.call(agent_id="old-child", agent_type=config["agent"],
+            ("PostToolUseFailure", self.call("Agent", agent, error="synthetic failure")),
+            ("PostToolUse", self.call(agent_id="old-child", agent_type="personal-reader",
                                      tool_response={"type": "image", "file": {"type": "image/png", "base64": "AA=="}})),
         ]
         before_files, before_env = self.snapshot(), self.preserved_environment()
@@ -125,7 +120,7 @@ class PluginScopeActivationTests(unittest.TestCase):
                 self.assertEqual(before_env, self.preserved_environment())
         self.assertFalse((self.state / "tmp").exists())
 
-    def test_first_image_while_disabled_creates_no_model_configuration_or_handoff(self):
+    def test_first_image_while_disabled_does_not_change_user_settings_or_create_state(self):
         self.local_enabled(False)
         before = self.snapshot()
         self.assertEqual({}, self.run_entry("PreToolUse", self.call()))
@@ -135,13 +130,12 @@ class PluginScopeActivationTests(unittest.TestCase):
 
     def test_reenable_takes_effect_on_next_hook_without_process_cache(self):
         self.local_enabled(False)
-        self.assertEqual({}, self.run_entry("PreToolUse", self.call()))
+        self.assertFalse(native_runtime.configure_runtime(self.plugin, self.project))
         self.local_enabled(True)
-        result = self.run_entry("PreToolUse", self.call())["hookSpecificOutput"]
-        self.assertEqual("deny", result["permissionDecision"])
-        self.assertIn("이미지 모델 선택", result["permissionDecisionReason"])
         self.assertTrue(native_runtime.configure_runtime(self.plugin, self.project))
+        self.assertEqual({}, self.run_entry("PreToolUse", self.call()))
         self.local_enabled(False)
+        self.assertFalse(native_runtime.configure_runtime(self.plugin, self.project))
         self.assertEqual({}, self.run_entry("PreToolUse", self.call()))
         self.assertFalse(self.state.exists())
 
@@ -149,8 +143,7 @@ class PluginScopeActivationTests(unittest.TestCase):
         self.local_enabled(False)
         self.assertFalse(native_runtime.configure_runtime(self.plugin, self.project))
         self.assertTrue(native_runtime.configure_runtime(self.plugin, self.outside))
-        result = self.run_entry("PreToolUse", self.call(cwd=str(self.outside)))["hookSpecificOutput"]
-        self.assertIn("이미지 모델 선택", result["permissionDecisionReason"])
+        self.assertEqual({}, self.run_entry("PreToolUse", self.call(cwd=str(self.outside))))
         self.assertEqual({}, self.run_entry("PreToolUse", self.call()))
 
     def test_project_true_overrides_user_false_but_local_false_wins(self):
@@ -194,8 +187,7 @@ class PluginScopeActivationTests(unittest.TestCase):
         self.local_enabled(False)
         payload = self.call(inputs={"file_path": str(self.project / "instructions.md")})
         before = self.snapshot()
-        with patch.object(native_entry, "configure_runtime", side_effect=AssertionError("text must remain fast")), \
-                patch.object(vision_settings, "status", side_effect=AssertionError("no model status for text")):
+        with patch.object(native_entry, "configure_runtime", side_effect=AssertionError("text must remain fast")):
             self.assertEqual({}, self.run_entry("PreToolUse", payload))
         self.assertEqual(before, self.snapshot())
 

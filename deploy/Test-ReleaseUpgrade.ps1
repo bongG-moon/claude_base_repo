@@ -87,9 +87,16 @@ try {
     Assert-ReleaseUpgrade ($LASTEXITCODE -eq 0) 'Baseline skill inventory failed'
     $oldInventory = ($oldInventoryText -join [Environment]::NewLine) | ConvertFrom-Json
     $oldHtml = @($oldInventory.skills | Where-Object { $_.source -eq 'company' -and $_.name -eq 'html-report' })
-    Assert-ReleaseUpgrade ($oldHtml.Count -eq 1) 'Baseline must contain the built-in HTML skill being removed'
-    $null = & $PythonCommand -B $oldCli skill prefer --scope default --name html-report --candidate $oldHtml[0].id @oldSkillArgs
-    Assert-ReleaseUpgrade ($LASTEXITCODE -eq 0) 'Baseline removed-skill preference fixture could not be saved'
+    if ($oldHtml.Count -eq 1) {
+        $null = & $PythonCommand -B $oldCli skill prefer --scope default --name html-report --candidate $oldHtml[0].id @oldSkillArgs
+        Assert-ReleaseUpgrade ($LASTEXITCODE -eq 0) 'Baseline removed-skill preference fixture could not be saved'
+    }
+    else {
+        $oldMarkerPath = Join-Path $oldPluginRoot 'resources\core-install.json'
+        Assert-ReleaseUpgrade ($oldHtml.Count -eq 0 -and (Test-Path -LiteralPath $oldMarkerPath -PathType Leaf)) 'Baseline lacks the expected HTML skill or personal harness marker'
+        $oldMarker = Read-CompanyAgentJson -Path $oldMarkerPath
+        Assert-ReleaseUpgrade ($oldMarker.profile -ceq 'personal-harness') 'Baseline without the HTML skill must be a personal harness release'
+    }
     # Real-world synced Office Skills gain another long prefix during backup.
     # Add this after the baseline install so the update exercises that boundary.
     $longSkillRelative = 'skills\synced\aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa_bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb\docx\scripts\office\schemas\ISO-IEC29500-4_2016\dml-spreadsheetDrawing.xsd'
@@ -164,14 +171,19 @@ try {
     # source-byte hash that can never match this intentional adaptation.
     $expectedHooks = Read-CompanyAgentJson -Path (Join-Path $update 'payload\core\plugin\hooks\hooks.json')
     $readGroups = @($expectedHooks.hooks.PreToolUse | Where-Object { $_.matcher -ceq '^Read$' })
-    Assert-ReleaseUpgrade ($readGroups.Count -eq 1 -and $readGroups[0].hooks.Count -eq 1) 'Source must contain one separate Read hook'
     # Claude's registry can point to its cache copy rather than the managed
     # distribution folder; the durable launcher belongs to the latter.
     $installedReleaseRoot = Join-Path $localAppData ('CompanyAgent-Distribution\marketplace\versions\' + $newVersion)
     $readLauncher = Join-Path $installedReleaseRoot 'read-hook.cmd'
-    Assert-ReleaseUpgrade (Test-Path -LiteralPath $readLauncher -PathType Leaf) 'Updated Read launcher is missing'
-    $readGroups[0].hooks[0].command = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::System)) 'cmd.exe'
-    $readGroups[0].hooks[0].args = @('/d', '/v:off', '/s', '/c', 'call', $readLauncher)
+    if ($readGroups.Count -eq 0) {
+        Assert-ReleaseUpgrade (-not (Test-Path -LiteralPath $readLauncher)) 'Read launcher was installed despite no Read hook'
+    }
+    else {
+        Assert-ReleaseUpgrade ($readGroups.Count -eq 1 -and $readGroups[0].hooks.Count -eq 1) 'Source contains ambiguous Read hooks'
+        Assert-ReleaseUpgrade (Test-Path -LiteralPath $readLauncher -PathType Leaf) 'Updated Read launcher is missing'
+        $readGroups[0].hooks[0].command = Join-Path ([Environment]::GetFolderPath([Environment+SpecialFolder]::System)) 'cmd.exe'
+        $readGroups[0].hooks[0].args = @('/d', '/v:off', '/s', '/c', 'call', $readLauncher)
+    }
     $installedHooks = Read-CompanyAgentJson -Path (Join-Path $current[0].installPath 'hooks\hooks.json')
     Assert-ReleaseUpgrade (($expectedHooks | ConvertTo-Json -Depth 100 -Compress) -ceq ($installedHooks | ConvertTo-Json -Depth 100 -Compress)) 'Installed hooks differ beyond the expected Read launcher adaptation'
     foreach ($removed in @('resources\first-work.html', 'resources\manuals\Company-Agent-Guide.html',

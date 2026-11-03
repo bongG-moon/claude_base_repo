@@ -427,7 +427,20 @@ $releaseConfig = Join-Path $releaseRoot 'config'
 $runtimeSelectionPath = Join-Path $releaseRoot 'runtime-selection.json'
 Assert-SetupPathHasNoReparsePoint -Path $runtimeSelectionPath -Name 'Runtime selection'
 $readHookLauncherPath = Join-Path $releaseRoot 'read-hook.cmd'
-Assert-SetupPathHasNoReparsePoint -Path $readHookLauncherPath -Name 'Read hook launcher'
+# A personal-harness release may omit the Read hook entirely. Only provision
+# its mutable launcher when the incoming bundle actually registers that hook
+# and ships its fast-path entrypoint. Legacy releases continue to use it.
+$sourceHookPath = Join-Path $sourcePlugin 'hooks\hooks.json'
+$sourceReadGroups = @()
+if (Test-Path -LiteralPath $sourceHookPath -PathType Leaf) {
+    $sourceHookDocument = Read-CompanyAgentJson -Path $sourceHookPath
+    $sourceHookEvents = Get-SetupPropertyValue -Object $sourceHookDocument -Name 'hooks'
+    $sourceReadGroups = @(@(Get-SetupPropertyValue -Object $sourceHookEvents -Name 'PreToolUse') | Where-Object {
+        [string](Get-SetupPropertyValue -Object $_ -Name 'matcher') -ceq '^Read$'
+    })
+}
+$needsReadHookLauncher = (Test-Path -LiteralPath (Join-Path $sourcePlugin 'scripts\read_hook.py') -PathType Leaf) -and $sourceReadGroups.Count -gt 0
+if ($needsReadHookLauncher) { Assert-SetupPathHasNoReparsePoint -Path $readHookLauncherPath -Name 'Read hook launcher' }
 $payloadRecords = @($manifest.files | Where-Object { $_.path -like 'payload/*' } | Sort-Object path | ForEach-Object { "$($_.path)|$($_.sha256)|$($_.length)" })
 $payloadHash = Get-ScopedHash -Text ($payloadRecords -join "`n")
 $releaseReceipt = Join-Path $releaseRoot 'release.json'
@@ -532,7 +545,10 @@ if (Test-Path -LiteralPath $registrationPath -PathType Leaf) { $oldRegistration 
 $oldRuntimeSelection = $null
 if (Test-Path -LiteralPath $runtimeSelectionPath -PathType Leaf) { $oldRuntimeSelection = Read-SetupHarnessBytes -Path $runtimeSelectionPath }
 $runtimeSelectionChanged = $false
-$readHookSnapshot = New-CompanyAgentReadHookSnapshot -LauncherPath $readHookLauncherPath -BackupPath $backupPath
+$readHookSnapshot = $null
+if ($needsReadHookLauncher) {
+    $readHookSnapshot = New-CompanyAgentReadHookSnapshot -LauncherPath $readHookLauncherPath -BackupPath $backupPath
+}
 $oldSkillPreferences = $null
 $skillPreferencesChanged = $false
 if ($resolvedSkillAction -eq 'PreferIncoming' -and $skillConflicts.Count -gt 0) {
@@ -591,7 +607,9 @@ try {
     Write-CompanyAgentJsonAtomic -Path $runtimeSelectionPath -Value ([pscustomobject]@{
         schemaVersion = 1; coreVersion = [string]$manifest.coreVersion; pythonCommand = $installedPython
     })
-    Set-CompanyAgentReadHookLauncher -Snapshot $readHookSnapshot -PythonCommand $installedPython -PluginRoot $releasePlugin
+    if ($needsReadHookLauncher) {
+        Set-CompanyAgentReadHookLauncher -Snapshot $readHookSnapshot -PythonCommand $installedPython -PluginRoot $releasePlugin
+    }
     Write-CompanyAgentJsonAtomic -Path $marketplaceManifestPath -Value ([pscustomobject]@{
         name = $marketplaceName; owner = [pscustomobject]@{ name = 'Company Agent Platform Team' }
         plugins = @([pscustomobject]@{ name = 'company-agent'; source = ('./versions/' + [string]$manifest.coreVersion + '/plugin'); description = 'Personal context, memory and learning harness for Claude Code' })

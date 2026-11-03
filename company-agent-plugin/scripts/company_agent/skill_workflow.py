@@ -729,9 +729,6 @@ def internal_command(command: str, session_id: str, state: dict, root: Path) -> 
     from .execution_contract import usability_report_command
     if usability_report_command(command, root, (state.get('skillWorkflow') or {}).get('project')):
         return True
-    from .execution_contract import vision_configuration_command
-    if vision_configuration_command(command, root):
-        return True
     args = _trusted_arguments(command)
     if not args or args[:2] not in (["skill", "route"], ["skill", "choose"]):
         return False

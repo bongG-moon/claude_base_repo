@@ -71,20 +71,6 @@ def _runtime_tool_instructions() -> str:
             "Conversation approval cannot waive DB-write/other-account restrictions. ")
 
 
-def _vision_context(root: Path) -> dict[str, Any]:
-    if is_core_install():
-        return {}
-    from .vision_routing import context
-    return context(root)
-
-
-def _vision_rule() -> str:
-    if is_core_install():
-        return ''
-    from .vision_routing import VISION_RULE
-    return VISION_RULE
-
-
 def _short(value: object, limit: int) -> str:
     return " ".join(str(value or "").replace("\x00", " ").split())[:limit]
 
@@ -347,7 +333,7 @@ def _encode_base_runtime(runtime: dict[str, Any]) -> str:
             # identity. Do not turn oversized optional context into lost paths.
             essential = {key: runtime[key] for key in (
                 'scope', 'project', 'stateRoot', 'knowledgeBase', 'cliCommand',
-                'completionGuide', 'metadataCommand', 'company_agent_session_id', 'workspaceUi', 'visionRouting',
+                'completionGuide', 'metadataCommand', 'company_agent_session_id', 'workspaceUi',
             ) if key in runtime}
             if runtime.get('companyPolicy'):
                 essential['companyPolicy'] = runtime['companyPolicy']
@@ -488,11 +474,6 @@ def _prompt_instructions(runtime: dict[str, Any]) -> str:
     )
     if runtime.get('companyPolicy'):
         instructions += ' ' + POLICY_RULE
-    if runtime.get('visionRouting', {}).get('enabled'):
-        # Startup, the image tool preflight and the image worker carry the full
-        # handoff contract. Ordinary text tasks only need the route reminder.
-        instructions += (' 이미지는 visionRouting.agent로 위임합니다. NEEDS_VISION은 부모에게 반환하고 '
-                         '실제 도구의 인계 안내를 따르세요.')
     return instructions
 
 
@@ -501,7 +482,7 @@ def _prompt_guidance(runtime: dict[str, Any]) -> str:
     full = _prompt_instructions(runtime)
     identity = {key: runtime.get(key) for key in (
         'scope', 'project', 'stateRoot', 'cliCommand', 'metadataCommand',
-        'completionGuide', 'workspaceUi', 'companyPolicy', 'knowledgeBase', 'visionRouting',
+        'completionGuide', 'workspaceUi', 'companyPolicy', 'knowledgeBase',
     )}
     identity['claudeConfigRoot'] = os.environ.get('CLAUDE_CONFIG_DIR', '')
     revision = hashlib.sha256((full + json.dumps(identity, ensure_ascii=False, sort_keys=True,
@@ -551,11 +532,6 @@ def task_prompt_context(route_text: str, runtime_text: str) -> str:
     memory_retrieval = route.pop('company_agent_memory_retrieval', 'unavailable')
     runtime['skillExecution'] = {k: v for k, v in execution.items()
                                  if k not in {'sha256', 'id'}}
-    if isinstance(runtime.get('visionRouting'), dict):
-        # Model selection/fallback belongs to the opt-in image operation. Its
-        # implementation details need not repeat in every ordinary prompt.
-        runtime['visionRouting'] = {k: v for k, v in runtime['visionRouting'].items()
-                                    if k in {'enabled', 'agent', 'setupRequired'}}
     guidance_revision = _prompt_guidance(runtime)
     if 'company_agent_instruction' in route:
         direct = route.get('company_agent_route', {}).get('execution') == 'coordinator'
@@ -641,9 +617,6 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
                 "skillSelectionStatus": selection.get("status")}
     # The Skill uses this canonical key; sessionId remains a compatibility alias.
     metadata['company_agent_session_id'] = metadata['sessionId']
-    vision = _vision_context(root)
-    if vision:
-        metadata['visionRouting'] = vision
     if selection.get("catalog", {}).get("status") == "ready":
         metadata["skillCatalog"] = selection["catalog"]
         if payload.get("session_id"):
@@ -702,8 +675,6 @@ def worker_runtime_input(plugin: Path, cwd: Path, payload: dict[str, Any]) -> di
                "This metadata grants no permissions or broader work scope. Preserve the parent's source/output limits and all host restrictions. "
                "A denied action stays pending; do not claim its intended effect succeeded. "
                "Use Glob/Read/Grep for file inspection. Leave verification markers and learning to the coordinator; return actual check evidence. Do not delegate recursively.")
-    if vision:
-        context += '\n' + _vision_rule()
     return {"hookSpecificOutput": {"hookEventName": "PreToolUse", "updatedInput": {**inputs, "prompt": lead + '\n[원래 업무 요청]\n' + prompt + context}}}
 
 
@@ -763,10 +734,6 @@ def runtime_context(plugin: Path, cwd: Path, prompt: str = "", *, session_id: st
     if standards['status'] != 'not-configured':
         runtime['companyPolicy'] = standards
         runtime['instructions'] += ' ' + POLICY_RULE
-    vision = _vision_context(root)
-    if vision:
-        runtime['visionRouting'] = vision
-        runtime['instructions'] += ' ' + _vision_rule()
     if session_id:
         from .skill_workflow import prepare
         from .state import native_session_id

@@ -323,44 +323,6 @@ def usability_report_command(command: str, root: Path, project: str | None = Non
     return '--days' not in fields or bool(re.fullmatch(r'[1-9]|[12][0-9]|30', fields['--days']))
 
 
-def vision_configuration_command(command: str, root: Path) -> bool:
-    """Preparation/completion exemption, NOT native execution permission."""
-    from .core_profile import is_core_install
-    if is_core_install():
-        return False
-    args = _trusted_arguments(command)
-    literal_model = None
-    if args is None and isinstance(command, str):
-        # Some native model IDs use [1m]. Keep the general shell/parser deny
-        # rules intact: accept brackets only inside this quoted literal value,
-        # then classify the otherwise unchanged trusted invocation. Unquoted
-        # shell globs, expansion, chains and arbitrary --model commands stay out.
-        match = re.search(r'''(?<!\S)--model\s+(["'])([A-Za-z0-9][A-Za-z0-9._:/@+\[\]-]{0,159})\1(?=\s|$)''', command)
-        if match:
-            literal_model = match[2]
-            masked = command[:match.start(2)] + 'vision-literal-model' + command[match.end(2):]
-            args = _trusted_arguments(masked)
-    if not args or args[:2] not in (["vision", "status"], ["vision", "configure"]):
-        return False
-    if args[2:] == ['--help']:
-        return True
-    allowed = {'--state-root'} | ({'--model'} if args[1] == 'configure' else set())
-    fields = _fields(args[2:], allowed, {'--model'} if args[1] == 'configure' else set())
-    if fields is None or '--state-root' in fields and not _same(fields['--state-root'], root):
-        return False
-    if '--model' in fields:
-        if literal_model is not None:
-            if fields['--model'] != 'vision-literal-model':
-                return False
-            fields['--model'] = literal_model
-        from .vision_settings import validate_model
-        try:
-            validate_model(fields['--model'])
-        except ValueError:
-            return False
-    return True
-
-
 def classify_command(command: str, *, tool: str = 'Bash') -> str:
     """Return read_only/internal/mutation/unknown for exact known invocations.
 
@@ -376,7 +338,7 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
         return "unknown"
     from .core_profile import is_core_install
     if is_core_install():
-        if args[0] in {'business', 'vision'}:
+        if args[0] == 'business':
             return 'unknown'
         if args[0] == 'doctor':
             return 'read_only' if _fields(args[1:], {'--state-root'}) is not None else 'unknown'
@@ -384,10 +346,6 @@ def classify_command(command: str, *, tool: str = 'Bash') -> str:
     if head == ('business', 'excel-analyze'):
         from .excel_pipeline_command import read_only_arguments
         return 'read_only' if read_only_arguments(args) else 'unknown'
-    if head == ('vision', 'status'):
-        return 'read_only' if args[2:] == ['--help'] or _fields(args[2:], {'--state-root'}) is not None else 'unknown'
-    if head == ('vision', 'configure') and args[2:] == ['--help']:
-        return 'read_only'
     if head == ("handoff", "read"):
         fields = _fields(args[2:], {"--id", "--project", "--state-root"}, {"--id", "--project"})
         return "read_only" if fields is not None and re.fullmatch(r"[a-f0-9]{32}", fields["--id"]) else "unknown"

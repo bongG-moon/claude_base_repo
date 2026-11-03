@@ -20,18 +20,14 @@ $payload = $null
 if ($Mode -eq 'Hook') {
     $payload = [Console]::In.ReadToEnd()
     if ($Event -eq 'PreToolUse') {
-        # Read is new to this matcher only for vision routing. Ordinary text
-        # reads need neither a Python process nor installation/skill discovery.
-        # Mirror vision_routing.IMAGE_SUFFIXES; malformed input uses normal checks.
+        # Native Read handles text and images under its own existing permissions.
+        # The empty response grants no permissions. Malformed input uses normal checks.
         try {
             $readInput = $payload | ConvertFrom-Json
-            if ($readInput.tool_name -ceq 'Read') {
-                $readExtension = [IO.Path]::GetExtension([string]$readInput.tool_input.file_path).ToLowerInvariant()
-                $isImageRead = $readExtension -in @('.png', '.jpg', '.jpeg', '.gif', '.webp', '.pdf')
-                if (-not $isImageRead) {
-                    [Console]::Out.WriteLine('{}')
-                    exit 0
-                }
+            if ($readInput.tool_name -ceq 'Read' -and
+                -not [string]::IsNullOrWhiteSpace([string]$readInput.tool_input.file_path)) {
+                [Console]::Out.WriteLine('{}')
+                exit 0
             }
         } catch { } # No permissions granted on parse failure; normal path decides.
     }

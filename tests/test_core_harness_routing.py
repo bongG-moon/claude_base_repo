@@ -159,7 +159,7 @@ class CoreHarnessRoutingTests(unittest.TestCase):
             'subagent_type': 'personal-vision-worker', 'prompt': '확인', 'model': 'sonnet'}))
         with patch.object(sys, 'stdin', io.StringIO(json.dumps({'tool_name': 'Read',
                   'tool_input': {'file_path': str(self.project / 'image.png')}}))), \
-             patch.object(read_hook, 'fallback', side_effect=AssertionError('core must not invoke vision launcher')), \
+             patch.object(read_hook, 'fallback', side_effect=AssertionError('image must not invoke legacy launcher')), \
              contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(0, read_hook.main())
         self.assertEqual({}, json.loads(output.getvalue()))
@@ -180,7 +180,6 @@ class CoreHarnessRoutingTests(unittest.TestCase):
             self.assertEqual({'behavior': 'allow'} if allowed else None, result, suffix)
         self.assertEqual('read_only', execution_contract.classify_command(self.command('doctor')))
         self.assertEqual('unknown', execution_contract.classify_command(self.command('business excel-analyze --inspect --file input.xlsx')))
-        self.assertFalse(execution_contract.vision_configuration_command(self.command('vision status'), self.state))
 
     def test_core_choice_metadata_cannot_import_engines_or_suspend_completion(self):
         for name, function in (('html', state._is_html_choices_spec_write), ('ppt', state._is_ppt_choices_spec_write)):

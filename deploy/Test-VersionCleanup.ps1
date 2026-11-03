@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param([switch] $KeepArtifacts)
+param([switch] $KeepArtifacts, [switch] $OnlyMcp)
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2.0
@@ -51,10 +51,10 @@ function New-CleanupFixture {
         name = 'company-agent-local'; plugins = @([pscustomobject]@{ name = 'company-agent'; source = './versions/1.5.1/plugin' })
     })
     Write-CompanyAgentJsonAtomic (Join-Path $claude 'settings.json') ([pscustomobject]@{ model = 'existing-model'; mcpServers = [pscustomobject]@{ existing = 'keep' } })
+    Write-CompanyAgentJsonAtomic (Join-Path $claude '.claude.json') ([pscustomobject]@{ mcpServers = [pscustomobject]@{}; projects = [pscustomobject]@{}; oauthToken = 'synthetic-private-token' })
     Write-CompanyAgentJsonAtomic (Join-Path $claude 'plugins\known_marketplaces.json') ([pscustomobject]@{ 'company-agent-local' = [pscustomobject]@{ source = [pscustomobject]@{ source = 'directory'; path = $marketplace }; installLocation = $marketplace } })
     Write-CompanyAgentJsonAtomic (Join-Path $claude 'plugins\installed_plugins.json') ([pscustomobject]@{ version = 2; plugins = [pscustomobject]@{
         'company-agent@company-agent-local' = @([pscustomobject]@{ scope = 'user'; version = '1.5.1'; installPath = (Join-Path $marketplace 'versions\1.5.1\plugin') })
-        'other@external' = @([pscustomobject]@{ scope = 'user'; version = '99'; installPath = (Join-Path $claude 'plugins\cache\other\99') })
     } })
     $release = Join-Path $marketplace 'versions\1.5.1'
     Write-CompanyAgentJsonAtomic (Join-Path $registrations 'user\company-agent-install.json') ([pscustomobject]@{
@@ -66,7 +66,7 @@ function New-CleanupFixture {
     foreach ($relative in @('CompanyAgent\states\user\memory\remember.md', 'CompanyAgent\states\user\knowledge\personal.md',
         'CompanyAgent\states\user\learning\patterns.json', 'CompanyAgent\states\user\skills\my-skill\SKILL.md',
         'CompanyAgent-Backups\prior\backup.txt')) { Write-CompanyAgentUtf8File (Join-Path $local $relative) 'preserve-personal-bytes' }
-    Write-CompanyAgentUtf8File (Join-Path $claude 'plugins\cache\other\99\personal.txt') 'other-plugin-preserved'
+    $null = New-Item -ItemType Directory -Path (Join-Path $claude 'plugins\cache\company-agent-local\company-agent') -Force
     $script:cleanupBlocker = $null; $script:cleanupProbe = $null; $script:cleanupProbeCount = 0
     return $fixture
 }
@@ -116,6 +116,7 @@ function Invoke-CleanupFixture {
 
 $count = 0
 try {
+    if (-not $OnlyMcp) {
     $keep = Invoke-CompanyAgentVersionCleanup -InvokingLocalAppData 'invalid-relative' -ClaudeConfigRoot 'invalid' -CurrentCoreVersion 'invalid'
     Assert-Cleanup ($keep.status -ceq 'kept' -and $script:cleanupProbeCount -eq 0 -and $keep.bytesFreed -eq 0) 'Default Keep performed discovery or mutation.'
     $count++
@@ -133,7 +134,6 @@ try {
     Assert-Cleanup (Test-CompanyAgentCleanupTreeEqual $beforeState (Get-CompanyAgentCleanupTree (Join-Path $f.local 'CompanyAgent\states'))) 'Personal memory/knowledge/learning/skills changed.'
     Assert-Cleanup (Test-CompanyAgentCleanupTreeEqual $beforeBackup (Get-CompanyAgentCleanupTree (Join-Path $f.local 'CompanyAgent-Backups'))) 'Backups changed or new backups appeared.'
     Assert-Cleanup ($beforeSettings -ceq (Get-FileHash -LiteralPath (Join-Path $f.claude 'settings.json')).Hash) 'Model/MCP settings changed.'
-    Assert-Cleanup (Test-Path -LiteralPath (Join-Path $f.claude 'plugins\cache\other\99\personal.txt')) 'Other plugin changed.'
     $count++
 
     foreach ($validMarker in @($true, $false)) {
@@ -191,11 +191,13 @@ try {
             'project' {
                 $record = Read-CompanyAgentJson (Join-Path $f.registrations 'user\company-agent-install.json')
                 $record.scope = 'Project'; $record.projectRoot = Join-Path $f.root 'project'; $record.coreVersion = '1.4.37'
+                $null = New-Item -ItemType Directory -Path $record.projectRoot -Force
                 Write-CompanyAgentJsonAtomic (Join-Path $f.registrations 'projects\0123456789abcdef\company-agent-install.json') $record
             }
             'native-local' {
                 $path = Join-Path $f.claude 'plugins\installed_plugins.json'
                 $document = Read-CompanyAgentJson $path
+                $null = New-Item -ItemType Directory -Path (Join-Path $f.root 'unregistered-project') -Force
                 $document.plugins.'company-agent@company-agent-local' += [pscustomobject]@{ scope = 'local'; version = '1.4.37'; installPath = (Join-Path $old 'plugin'); projectPath = (Join-Path $f.root 'unregistered-project') }
                 Write-CompanyAgentJsonAtomic $path $document
             }
@@ -213,6 +215,10 @@ try {
                 Write-CompanyAgentJsonAtomic (Join-Path $current 'runtime-selection.json') ([pscustomobject]@{ schemaVersion = 1; coreVersion = '1.5.1'; pythonCommand = (Join-Path $old 'plugin\runtime\python\python.exe') })
             }
             'other-plugin-hook' {
+                $inventoryPath = Join-Path $f.claude 'plugins\installed_plugins.json'
+                $inventory = Read-CompanyAgentJson $inventoryPath
+                $inventory.plugins | Add-Member -NotePropertyName 'other@external' -NotePropertyValue @([pscustomobject]@{ scope = 'user'; version = '99'; installPath = (Join-Path $f.claude 'plugins\cache\other\99') })
+                Write-CompanyAgentJsonAtomic $inventoryPath $inventory
                 Write-CompanyAgentJsonAtomic (Join-Path $f.claude 'plugins\cache\other\99\hooks\hooks.json') ([pscustomobject]@{ hooks = [pscustomobject]@{ command = (Join-Path $old 'plugin\runtime\python\python.exe') } })
             }
         }
@@ -220,7 +226,99 @@ try {
         Assert-Cleanup ((Test-Path -LiteralPath $old) -and $report.bytesFreed -eq 0) ($reference + ' reference was ignored.')
         $count++
     }
+    }
 
+    # Claude keeps user/local MCP definitions in its native config and shared
+    # MCP definitions in the project or an ancestor's .mcp.json. These cases
+    # use synthetic project folders and never print MCP environment values.
+    foreach ($reference in @('native-global', 'native-project', 'project-file', 'parent-file', 'cache-path', 'unexpanded-env', 'versions-parent', 'distribution-parent', 'environment-alias', 'script-launcher', 'short-path')) {
+        $f = New-CleanupFixture ('mcp-' + $reference)
+        $old = New-CleanupRelease $f '1.4.37' -Sealed -NativeCache
+        $native = Join-Path $f.claude '.claude.json'
+        $project = Join-Path $f.root 'project\nested'
+        $null = New-Item -ItemType Directory -Path $project -Force
+        $target = Join-Path $old 'plugin\runtime\python\python.exe'
+        if ($reference -eq 'cache-path') { $target = Join-Path $f.claude 'plugins\cache\company-agent-local\company-agent\1.4.37\scripts\tool.py' }
+        if ($reference -eq 'unexpanded-env') { $target = '%LOCALAPPDATA%\CompanyAgent-Distribution\marketplace\versions\1.4.37\plugin\bin\python.exe' }
+        if ($reference -eq 'versions-parent') { $target = '%LOCALAPPDATA%\CompanyAgent-Distribution\marketplace\versions' }
+        if ($reference -eq 'distribution-parent') { $target = '%LOCALAPPDATA%\CompanyAgent-Distribution' }
+        $server = [pscustomobject]@{ command = 'python'; args = @($target); env = [pscustomobject]@{ TOKEN = 'synthetic-private-token' } }
+        if ($reference -eq 'environment-alias') { $server.command = '%MY_MCP_LAUNCHER%'; $server.args = @(); [Environment]::SetEnvironmentVariable('MY_MCP_LAUNCHER', $target, 'Process') }
+        if ($reference -eq 'script-launcher') { $server.command = Join-Path $f.root 'launch.cmd'; $server.args = @(); Write-CompanyAgentUtf8File $server.command ('@echo off' + "`r`n" + '"' + $target + '"') }
+        if ($reference -eq 'short-path') { $server.command = 'C:\PROGRA~1\MCP\launch.exe'; $server.args = @() }
+        $mcp = [pscustomobject]@{ mcpServers = [pscustomobject]@{ fixture = $server } }
+        $projects = New-Object psobject
+        $projectValue = $(if ($reference -eq 'native-project') { $mcp } else { [pscustomobject]@{} })
+        $projects | Add-Member -NotePropertyName $project -NotePropertyValue $projectValue
+        $userServers = $(if ($reference -in @('native-global', 'cache-path', 'unexpanded-env', 'versions-parent', 'distribution-parent', 'environment-alias', 'script-launcher', 'short-path')) { $mcp.mcpServers } else { [pscustomobject]@{} })
+        Write-CompanyAgentJsonAtomic $native ([pscustomobject]@{ mcpServers = $userServers; projects = $projects; oauthToken = 'synthetic-private-token' })
+        if ($reference -eq 'project-file') { Write-CompanyAgentJsonAtomic (Join-Path $project '.mcp.json') $mcp }
+        if ($reference -eq 'parent-file') { Write-CompanyAgentJsonAtomic (Join-Path (Split-Path -Parent $project) '.mcp.json') $mcp }
+        $report = Invoke-CleanupFixture $f
+        if ($reference -eq 'environment-alias') { [Environment]::SetEnvironmentVariable('MY_MCP_LAUNCHER', $null, 'Process') }
+        Assert-Cleanup ((Test-Path -LiteralPath $old) -and $report.bytesFreed -eq 0) ($reference + ' MCP reference was ignored.')
+        Assert-Cleanup ($report.status -in @('deferred', 'partial')) ($reference + ' local MCP did not defer cleanup.')
+        Assert-Cleanup (($report | ConvertTo-Json -Depth 8) -notmatch 'synthetic-private-token') 'MCP credentials leaked into cleanup result.'
+        $count++
+    }
+
+    # Pure remote MCP connections cannot execute a local launcher. Their
+    # presence alone should not prevent cleanup of an otherwise unused version.
+    $f = New-CleanupFixture 'mcp-remote-only'
+    $old = New-CleanupRelease $f '1.4.37' -Sealed
+    Write-CompanyAgentJsonAtomic (Join-Path $f.claude '.claude.json') ([pscustomobject]@{ projects = [pscustomobject]@{}; mcpServers = [pscustomobject]@{ fixture = [pscustomobject]@{ type = 'http'; url = 'https://example.invalid/mcp'; headers = [pscustomobject]@{ Authorization = 'synthetic-private-token' } } } })
+    $report = Invoke-CleanupFixture $f
+    Assert-Cleanup ((-not (Test-Path -LiteralPath $old)) -and $report.bytesFreed -gt 0) 'Remote-only MCP unnecessarily deferred cleanup.'
+    Assert-Cleanup (($report | ConvertTo-Json -Depth 8) -notmatch 'synthetic-private-token') 'Remote MCP credentials leaked into cleanup result.'
+    $count++
+
+    foreach ($invalid in @('missing-native', 'unavailable-project', 'relative-project', 'malformed-mcp', 'invalid-mcp-list', 'deep-mcp', 'new-mcp-race', 'installed-plugin', 'disabled-plugin', 'settings-plugin', 'unregistered-cache', 'marketplace-cache', 'new-plugin-race')) {
+        $f = New-CleanupFixture ('mcp-' + $invalid)
+        $old = New-CleanupRelease $f '1.4.37' -Sealed
+        $native = Join-Path $f.claude '.claude.json'
+        $project = Join-Path $f.root 'project'
+        $null = New-Item -ItemType Directory -Path $project -Force
+        $projectKey = $(if ($invalid -eq 'unavailable-project') { Join-Path $f.root 'unavailable' } elseif ($invalid -eq 'relative-project') { 'relative-project' } else { $project })
+        $projects = New-Object psobject
+        $projects | Add-Member -NotePropertyName $projectKey -NotePropertyValue ([pscustomobject]@{})
+        Write-CompanyAgentJsonAtomic $native ([pscustomobject]@{ mcpServers = [pscustomobject]@{}; projects = $projects; oauthToken = 'synthetic-private-token' })
+        if ($invalid -eq 'missing-native') { Remove-Item -LiteralPath $native -Force }
+        if ($invalid -eq 'malformed-mcp') { Write-CompanyAgentUtf8File (Join-Path $project '.mcp.json') '{"secret":"synthetic-private-token",broken' }
+        if ($invalid -eq 'invalid-mcp-list') { Write-CompanyAgentJsonAtomic (Join-Path $project '.mcp.json') ([pscustomobject]@{ mcpServers = @('unexpected') }) }
+        if ($invalid -eq 'deep-mcp') { Write-CompanyAgentUtf8File (Join-Path $project '.mcp.json') ('{"mcpServers":' + ('{"nested":' * 40) + '"synthetic-private-token"' + ('}' * 40) + '}') }
+        if ($invalid -in @('installed-plugin', 'disabled-plugin')) {
+            $inventoryPath = Join-Path $f.claude 'plugins\installed_plugins.json'
+            $inventory = Read-CompanyAgentJson $inventoryPath
+            $inventory.plugins | Add-Member -NotePropertyName 'example@other' -NotePropertyValue @([pscustomobject]@{ scope = 'user'; installPath = (Join-Path $f.root 'other') })
+            Write-CompanyAgentJsonAtomic $inventoryPath $inventory
+            Write-CompanyAgentUtf8File (Join-Path $f.claude 'plugins\cache\other\99\personal.txt') 'other-plugin-preserved'
+            if ($invalid -eq 'disabled-plugin') { Write-CompanyAgentJsonAtomic (Join-Path $f.claude 'settings.json') ([pscustomobject]@{ enabledPlugins = [pscustomobject]@{ 'example@other' = $false } }) }
+        }
+        if ($invalid -eq 'settings-plugin') { Write-CompanyAgentJsonAtomic (Join-Path $f.claude 'settings.json') ([pscustomobject]@{ enabledPlugins = [pscustomobject]@{ 'unregistered@other' = $true } }) }
+        if ($invalid -eq 'unregistered-cache') { $null = New-Item -ItemType Directory -Force -Path (Join-Path $f.claude 'plugins\cache\other\plugin\1.0.0') }
+        if ($invalid -eq 'marketplace-cache') { $null = New-Item -ItemType Directory -Force -Path (Join-Path $f.claude 'plugins\cache\company-agent-local\other\1.0.0') }
+        if ($invalid -eq 'new-mcp-race') {
+            $racePath = Join-Path $project '.mcp.json'
+            $script:cleanupProbe = {
+                if ($script:cleanupProbeCount -eq 2) {
+                    Write-CompanyAgentJsonAtomic $racePath ([pscustomobject]@{ mcpServers = [pscustomobject]@{ fixture = [pscustomobject]@{ command = (Join-Path $old 'plugin\bin\python.exe') } } })
+                }
+            }
+        }
+        if ($invalid -eq 'new-plugin-race') {
+            $racePath = Join-Path $f.claude 'plugins\cache\new-other\plugin\1.0.0'
+            $script:cleanupProbe = { if ($script:cleanupProbeCount -eq 2) { $null = New-Item -ItemType Directory -Path $racePath -Force } }
+        }
+        $before = Get-CompanyAgentCleanupTree $old
+        $report = Invoke-CleanupFixture $f
+        Assert-Cleanup ((Test-Path -LiteralPath $old) -and $report.bytesFreed -eq 0 -and (Test-CompanyAgentCleanupTreeEqual $before (Get-CompanyAgentCleanupTree $old))) ($invalid + ' MCP uncertainty failed closed.')
+        Assert-Cleanup ($report.status -in @('deferred', 'partial')) ($invalid + ' did not report deferred/partial status.')
+        if ($invalid -in @('installed-plugin', 'disabled-plugin')) { Assert-Cleanup ((Get-Content -LiteralPath (Join-Path $f.claude 'plugins\cache\other\99\personal.txt') -Raw) -eq 'other-plugin-preserved') 'Other plugin changed.' }
+        Assert-Cleanup (($report | ConvertTo-Json -Depth 8) -notmatch 'synthetic-private-token') 'MCP error leaked credentials into cleanup result.'
+        $count++
+    }
+
+    if (-not $OnlyMcp) {
     foreach ($invalid in @('corrupt-registration', 'unknown-scope', 'unknown-registration-file', 'corrupt-inventory', 'process', 'registration-race')) {
         $f = New-CleanupFixture $invalid
         $old = New-CleanupRelease $f '1.4.37' -Sealed
@@ -272,6 +370,7 @@ try {
         # Remove the synthetic stream only so fixture teardown can prove purity.
         Assert-Cleanup ([CompanyAgentCleanupFixtureStreams]::DeleteFileW($streamPath + ':personal-note')) 'Synthetic stream teardown failed.'
         $count++
+    }
     }
 
     [pscustomobject]@{ status = 'passed'; tests = $count; root = $testRoot; realUserDataChanged = $false } | ConvertTo-Json

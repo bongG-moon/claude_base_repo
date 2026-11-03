@@ -1,14 +1,11 @@
-"""Installed Read-only fast path, using the interpreter selected by setup.
+"""Compatibility entry for old Read-hook launchers, using the selected Python.
 
-No document, settings, catalogue or session is read on the ordinary path.
-Routing interventions and malformed input go through the existing launcher,
-including its current runtime-selection and installed-scope checks. Never
-retry after that launcher has run. Keep this entry compatible with old Python
-syntax so an interpreter replaced in place can reach the normal recovery path.
+Valid Read requests leave native permissions unchanged and do no state lookup.
+Malformed input and unsupported Python use the existing launcher only once.
+The current core payload no longer installs or runs this compatibility entry.
 """
 import json
 import os
-import re
 import subprocess
 import sys
 
@@ -45,36 +42,10 @@ def main():
         valid = False
     if not valid:
         return fallback(payload)
-    try:
-        # Also works with an embeddable interpreter's isolated ._pth.
-        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-        from company_agent.core_profile import is_core_install
-        if is_core_install():
-            # Core has no image routing policy. Native Read permissions remain
-            # authoritative for both text and images.
-            print('{}')
-            return 0
-        from company_agent.vision_routing import preflight, _image_read
-        # First-use selection and saved custom models are resolved only in the
-        # installed runtime. Ordinary text reads still have no state lookup.
-        if _image_read(value):
-            agent_type = value.get('agent_type', '')
-            if value.get('agent_id') and isinstance(agent_type, str) and (
-                    agent_type == 'company-agent:vision-worker'
-                    or re.fullmatch(r'company-harness-vision-[a-f0-9]{8}', agent_type)):
-                # The isolated reader is already selected. An empty response
-                # leaves native Read permissions unchanged, without a shell.
-                print('{}')
-                return 0
-            return fallback(payload)
-        result = preflight(value)
-    except Exception:
-        return fallback(payload)
-    if result == {}:
-        # An empty result leaves native permissions intact. This is NOT allow.
-        print("{}")
-        return 0
-    return fallback(payload)
+    # All Read requests use Claude's normal model and permission behavior. This
+    # empty response is not an allow grant. PostToolUse still observes skill reads.
+    print('{}')
+    return 0
 
 
 if __name__ == "__main__":

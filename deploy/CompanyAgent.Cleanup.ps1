@@ -172,6 +172,95 @@ function Get-CompanyAgentCleanupStrings {
     }
 }
 
+function Add-CompanyAgentCleanupMcpProjects {
+    param([string] $Project, [System.Collections.Generic.List[string]] $Files,
+          [System.Collections.Generic.List[string]] $McpFiles)
+    # Native Claude looks for shared .mcp.json files in the project and each
+    # ancestor. A missing/offline project means its references are unknown.
+    try {
+        $cursor = [IO.Path]::GetFullPath((Get-CompanyAgentCleanupFullPath $Project))
+        while ($cursor) {
+            if (-not (Test-Path -LiteralPath $cursor -PathType Container -ErrorAction Stop)) {
+                throw 'MCP project unavailable.'
+            }
+            $candidate = Join-Path $cursor '.mcp.json'
+            $null = Assert-CompanyAgentCleanupPath $candidate
+            $Files.Add($candidate)
+            $McpFiles.Add($candidate)
+            $parent = [IO.Directory]::GetParent($cursor)
+            $cursor = $(if ($null -ne $parent) { $parent.FullName } else { $null })
+        }
+    }
+    catch { throw 'A registered MCP project or its configuration could not be checked; cleanup was deferred.' }
+}
+
+function Add-CompanyAgentCleanupMcpReferences {
+    param([object] $Value, [System.Collections.Generic.List[string]] $Versions,
+          [System.Collections.Generic.List[string]] $ProtectedRoots,
+          [string] $MarketplaceRoot, [string] $ClaudeConfigRoot)
+    # Local MCP launchers can resolve variables, short paths, shell scripts or
+    # arbitrary code to another release. Inspecting their command strings or
+    # scripts cannot prove that deletion is safe. Defer all cleanup whenever
+    # a local or unknown transport exists; do not execute or expose it.
+    if ($null -ne $Value) {
+        if ($Value -isnot [pscustomobject]) { throw 'MCP server inventory is invalid.' }
+        foreach ($serverProperty in $Value.PSObject.Properties) {
+            $server = $serverProperty.Value
+            if ($server -isnot [pscustomobject]) { throw 'MCP server configuration cannot be safely checked.' }
+            $transport = [string](Get-CompanyAgentCleanupProperty $server 'type')
+            $url = [string](Get-CompanyAgentCleanupProperty $server 'url')
+            $allowedFields = @('type', 'url', 'headers')
+            foreach ($field in $server.PSObject.Properties) {
+                if ($field.Name -notin $allowedFields) { throw 'An MCP launcher prevents safe cleanup.' }
+            }
+            if ($transport -notin @('http', 'sse') -or $url -notmatch '^https?://[^\s/]+(?:[/?#]|$)') {
+                throw 'An MCP launcher prevents safe cleanup.'
+            }
+        }
+    }
+    # Extract only version identities, not command lines, environment values,
+    # tokens or server names. This also recognizes %LOCALAPPDATA% and Git Bash
+    # prefixes without expanding or logging any environment variable.
+    $expression = '(?i)(?:CompanyAgent-Distribution[\\/]+marketplace[\\/]+versions|plugins[\\/]+cache[\\/]+company-agent-local[\\/]+company-agent)(?:[\\/]+(?<version>\d+\.\d+\.\d+)(?:[\\/]|$))?'
+    # Bound work on untrusted configuration; unknown/deep structures defer
+    # cleanup rather than recursing indefinitely or logging their contents.
+    $pending = New-Object 'Collections.Generic.Stack[object]'
+    if ($null -ne $Value) { $pending.Push([pscustomobject]@{ node = $Value; depth = 0 }) }
+    $visited = 0
+    while ($pending.Count -gt 0) {
+        $entry = $pending.Pop()
+        $visited++
+        if ($visited -gt 25000 -or $entry.depth -gt 32) { throw 'MCP configuration exceeds safe inspection bounds.' }
+        $node = $entry.node
+        if ($null -eq $node) { continue }
+        if ($node -is [pscustomobject]) {
+            foreach ($property in $node.PSObject.Properties) { $pending.Push([pscustomobject]@{ node = $property.Value; depth = $entry.depth + 1 }) }
+            continue
+        }
+        if ($node -is [System.Collections.IEnumerable] -and $node -isnot [string]) {
+            foreach ($child in $node) { $pending.Push([pscustomobject]@{ node = $child; depth = $entry.depth + 1 }) }
+            continue
+        }
+        if ($node -isnot [string]) { continue }
+        $text = [string]$node
+        $patternMatches = [regex]::Matches([string]$text, $expression)
+        if ($patternMatches.Count -eq 0 -and [string]$text -match '(?i)CompanyAgent-Distribution') {
+            # The MCP might join a general distribution folder and version at
+            # runtime. If its target is not explicit, preserve all releases.
+            $ProtectedRoots.Add((Join-Path $MarketplaceRoot 'versions'))
+        }
+        foreach ($match in $patternMatches) {
+            if ($match.Groups['version'].Success) { $Versions.Add($match.Groups['version'].Value) }
+            elseif ($match.Value -match '(?i)^CompanyAgent-Distribution') {
+                # A parent directory in an environment value can be combined
+                # with a version elsewhere. Preserve all releases in that case.
+                $ProtectedRoots.Add((Join-Path $MarketplaceRoot 'versions'))
+            }
+            else { $ProtectedRoots.Add((Join-Path $ClaudeConfigRoot 'plugins\cache\company-agent-local\company-agent')) }
+        }
+    }
+}
+
 function Get-CompanyAgentCleanupReferences {
     param([string] $LocalRoot, [string] $ClaudeConfigRoot, [string] $CurrentCoreVersion, [string[]] $ProtectedPaths)
     $marketplace = Join-Path $LocalRoot 'CompanyAgent-Distribution\marketplace'
@@ -183,6 +272,8 @@ function Get-CompanyAgentCleanupReferences {
     $versions.Add($CurrentCoreVersion)
     foreach ($protected in $ProtectedPaths) { if ($protected) { $protectedRoots.Add((Get-CompanyAgentCleanupFullPath $protected)) } }
     $files = New-Object 'Collections.Generic.List[string]'
+    $mcpFiles = New-Object 'Collections.Generic.List[string]'
+    $nativeConfigs = New-Object 'Collections.Generic.List[string]'
     # Any unknown registration file/layout prevents guessing about hidden scopes.
     $registrationTree = Get-CompanyAgentCleanupTree $registrations
     foreach ($directory in $registrationTree.directories) {
@@ -199,6 +290,16 @@ function Get-CompanyAgentCleanupReferences {
             [string](Get-CompanyAgentCleanupProperty $registration 'coreVersion') -notmatch '^\d+\.\d+\.\d+$' -or
             $scope -notin @('User', 'Project') -or ($scope -eq 'User') -ne ($record.path -like 'user/*')) { throw 'Invalid scope registration.' }
         if ((Get-CompanyAgentCleanupFullPath ([string]$registration.claudeConfigRoot)) -ine $ClaudeConfigRoot) { throw 'Another Claude profile shares these versions.' }
+        $configOverride = Get-CompanyAgentCleanupProperty $registration 'claudeConfigDirOverride'
+        if ($configOverride -is [bool]) {
+            $nativeConfigs.Add($(if ($configOverride) { Join-Path $ClaudeConfigRoot '.claude.json' } else { Join-Path (Split-Path -Parent $ClaudeConfigRoot) '.claude.json' }))
+        }
+        else {
+            # Old registration formats do not say which native config Claude
+            # uses. Inspect both known locations rather than guessing.
+            $nativeConfigs.Add((Join-Path $ClaudeConfigRoot '.claude.json'))
+            $nativeConfigs.Add((Join-Path (Split-Path -Parent $ClaudeConfigRoot) '.claude.json'))
+        }
         $versions.Add([string]$registration.coreVersion)
         foreach ($name in @('userStateRoot', 'knowledgeBaseRoot', 'managedConfigPath', 'pythonCommand')) {
             $strings.Add((Get-CompanyAgentCleanupFullPath ([string](Get-CompanyAgentCleanupProperty $registration $name))))
@@ -210,6 +311,7 @@ function Get-CompanyAgentCleanupReferences {
             $protectedRoots.Add($project)
             $files.Add((Join-Path $project '.claude\settings.json'))
             $files.Add((Join-Path $project '.claude\settings.local.json'))
+            Add-CompanyAgentCleanupMcpProjects -Project $project -Files $files -McpFiles $mcpFiles
         }
     }
     foreach ($relative in @('settings.json', 'settings.local.json', 'plugins\installed_plugins.json', 'plugins\known_marketplaces.json')) {
@@ -225,6 +327,23 @@ function Get-CompanyAgentCleanupReferences {
     $null = Assert-CompanyAgentCleanupPath $inventoryPath
     $inventory = Read-CompanyAgentJson $inventoryPath
     if ((Get-CompanyAgentCleanupProperty $inventory 'version') -ne 2 -or (Get-CompanyAgentCleanupProperty $inventory 'plugins') -isnot [pscustomobject]) { throw 'Unknown Claude plugin inventory.' }
+    # Any other installed plugin may supply its own MCP server, including a
+    # currently disabled plugin. Its launchers are outside our inventory and
+    # may indirectly use an old runtime. Likewise, an unregistered cache entry
+    # cannot be proven unused. Fail closed without inspecting plugin contents.
+    foreach ($plugin in $inventory.plugins.PSObject.Properties) {
+        if ($plugin.Name -cne 'company-agent@company-agent-local') { throw 'Another plugin prevents safe cleanup.' }
+    }
+    $pluginCache = Assert-CompanyAgentCleanupPath (Join-Path $ClaudeConfigRoot 'plugins\cache')
+    if (-not (Test-Path -LiteralPath $pluginCache -PathType Container)) { throw 'Plugin cache cannot be checked.' }
+    foreach ($marketplaceCache in @(Get-ChildItem -LiteralPath $pluginCache -Force -ErrorAction Stop)) {
+        $null = Assert-CompanyAgentCleanupPath $marketplaceCache.FullName $pluginCache
+        if (-not $marketplaceCache.PSIsContainer -or $marketplaceCache.Name -cne 'company-agent-local') { throw 'Another plugin cache prevents safe cleanup.' }
+        foreach ($cachedPlugin in @(Get-ChildItem -LiteralPath $marketplaceCache.FullName -Force -ErrorAction Stop)) {
+            $null = Assert-CompanyAgentCleanupPath $cachedPlugin.FullName $pluginCache
+            if (-not $cachedPlugin.PSIsContainer -or $cachedPlugin.Name -cne 'company-agent') { throw 'Another plugin cache prevents safe cleanup.' }
+        }
+    }
     $entries = @(Get-CompanyAgentCleanupProperty $inventory.plugins 'company-agent@company-agent-local')
     if ($entries.Count -eq 0 -or $null -eq $entries[0]) { throw 'Current Company Agent registration is missing.' }
     $currentFound = $false
@@ -244,6 +363,7 @@ function Get-CompanyAgentCleanupReferences {
             $protectedRoots.Add($projectPath)
             $files.Add((Join-Path $projectPath '.claude\settings.json'))
             $files.Add((Join-Path $projectPath '.claude\settings.local.json'))
+            Add-CompanyAgentCleanupMcpProjects -Project $projectPath -Files $files -McpFiles $mcpFiles
         }
     }
     if (-not $currentFound) { throw 'The new version is not registered in Claude.' }
@@ -261,6 +381,35 @@ function Get-CompanyAgentCleanupReferences {
     if ($marketplaceDocument.name -cne 'company-agent-local' -or $pluginEntries.Count -ne 1 -or
         [string]$pluginEntries[0].source -notmatch '^\./versions/(\d+\.\d+\.\d+)/plugin$') { throw 'Unknown marketplace source.' }
     $versions.Add($Matches[1])
+    $nativeExpected = @{}
+    $nativeFound = 0
+    foreach ($config in @($nativeConfigs | Sort-Object -Unique)) {
+        try {
+            $null = Assert-CompanyAgentCleanupPath $config
+            $files.Add($config)
+            $mcpFiles.Add($config)
+            if (-not (Test-Path -LiteralPath $config)) { $nativeExpected[$config] = 'missing'; continue }
+            $item = Get-Item -LiteralPath $config -Force -ErrorAction Stop
+            if ($item.PSIsContainer -or $item.Length -gt 16777216) { throw 'Invalid native config.' }
+            $before = (Get-FileHash -LiteralPath $config -Algorithm SHA256 -ErrorAction Stop).Hash
+            $native = Read-CompanyAgentJson $config
+            if ($native -isnot [pscustomobject]) { throw 'Invalid native config.' }
+            $projects = Get-CompanyAgentCleanupProperty $native 'projects'
+            if ($null -ne $projects -and $projects -isnot [pscustomobject]) { throw 'Unknown project inventory.' }
+            if ($null -ne $projects) {
+                foreach ($projectEntry in $projects.PSObject.Properties) {
+                    if ($projectEntry.Value -isnot [pscustomobject]) { throw 'Unknown project settings.' }
+                    Add-CompanyAgentCleanupMcpProjects -Project $projectEntry.Name -Files $files -McpFiles $mcpFiles
+                }
+            }
+            $after = (Get-FileHash -LiteralPath $config -Algorithm SHA256 -ErrorAction Stop).Hash
+            if ($before -cne $after) { throw 'Native config changed.' }
+            $nativeExpected[$config] = $after
+            $nativeFound++
+        }
+        catch { throw 'Claude MCP or project configuration could not be checked; cleanup was deferred.' }
+    }
+    if ($nativeFound -eq 0) { throw 'Claude MCP or project configuration could not be checked; cleanup was deferred.' }
     $snapshot = New-Object 'Collections.Generic.List[string]'
     $seen = @{}
     for ($index = 0; $index -lt $files.Count; $index++) {
@@ -270,9 +419,47 @@ function Get-CompanyAgentCleanupReferences {
         if ($seen.Count -gt 10000) { throw 'Reference inventory exceeds its safe bound.' }
         $null = Assert-CompanyAgentCleanupPath $file
         if (Test-Path -LiteralPath $file -PathType Leaf) {
-            $value = Read-CompanyAgentJson $file
-            $snapshot.Add($file + '|' + (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash)
-            foreach ($text in @(Get-CompanyAgentCleanupStrings $value)) { $strings.Add($text) }
+            try {
+                if ($file -in $mcpFiles -and (Get-Item -LiteralPath $file -Force -ErrorAction Stop).Length -gt 16777216) { throw 'MCP config is too large.' }
+                $fileHash = (Get-FileHash -LiteralPath $file -Algorithm SHA256 -ErrorAction Stop).Hash
+                if ($nativeExpected.ContainsKey($file) -and $nativeExpected[$file] -cne $fileHash) { throw 'Native config changed.' }
+                $value = Read-CompanyAgentJson $file
+                if ($file -in $mcpFiles -and $value -isnot [pscustomobject]) { throw 'MCP config is invalid.' }
+                if ($file -in $mcpFiles) {
+                    if ((Get-FileHash -LiteralPath $file -Algorithm SHA256 -ErrorAction Stop).Hash -cne $fileHash) { throw 'MCP config changed.' }
+                    # Ignore OAuth, histories, tokens and unrelated native
+                    # metadata. Project entries can contain their own MCP map.
+                    $mcpServers = Get-CompanyAgentCleanupProperty $value 'mcpServers'
+                    if ($null -ne $mcpServers -and $mcpServers -isnot [pscustomobject]) { throw 'MCP server inventory is invalid.' }
+                    Add-CompanyAgentCleanupMcpReferences -Value $mcpServers -Versions $versions -ProtectedRoots $protectedRoots -MarketplaceRoot $marketplace -ClaudeConfigRoot $ClaudeConfigRoot
+                    $nativeProjects = Get-CompanyAgentCleanupProperty $value 'projects'
+                    if ($null -ne $nativeProjects) {
+                        if ($nativeProjects -isnot [pscustomobject]) { throw 'MCP project inventory is invalid.' }
+                        foreach ($entry in $nativeProjects.PSObject.Properties) {
+                            $projectServers = Get-CompanyAgentCleanupProperty $entry.Value 'mcpServers'
+                            if ($null -ne $projectServers -and $projectServers -isnot [pscustomobject]) { throw 'MCP project server inventory is invalid.' }
+                            Add-CompanyAgentCleanupMcpReferences -Value $projectServers -Versions $versions -ProtectedRoots $protectedRoots -MarketplaceRoot $marketplace -ClaudeConfigRoot $ClaudeConfigRoot
+                        }
+                    }
+                }
+                else {
+                    if ($file -match '[\\/]settings(?:\.local)?\.json$') {
+                        $enabledPlugins = Get-CompanyAgentCleanupProperty $value 'enabledPlugins'
+                        if ($null -ne $enabledPlugins) {
+                            if ($enabledPlugins -isnot [pscustomobject]) { throw 'Plugin settings cannot be checked.' }
+                            foreach ($configuredPlugin in $enabledPlugins.PSObject.Properties) {
+                                if ($configuredPlugin.Name -cne 'company-agent@company-agent-local') { throw 'Another configured plugin prevents safe cleanup.' }
+                            }
+                        }
+                    }
+                    foreach ($text in @(Get-CompanyAgentCleanupStrings $value)) { $strings.Add($text) }
+                }
+                $snapshot.Add($file + '|' + $fileHash)
+            }
+            catch {
+                if ($file -in $mcpFiles) { throw 'Claude MCP configuration could not be checked; cleanup was deferred.' }
+                throw
+            }
             $runtimePath = [string](Get-CompanyAgentCleanupProperty $value 'runtimeSelectionPath')
             if ($runtimePath) { $files.Add((Get-CompanyAgentCleanupFullPath $runtimePath)) }
             if ($file -match '[\\/]state[\\/](current|previous)\.json$') {
@@ -282,7 +469,10 @@ function Get-CompanyAgentCleanupReferences {
             }
         }
         elseif (Test-Path -LiteralPath $file) { throw 'A reference file is not a regular file.' }
-        else { $snapshot.Add($file + '|missing') }
+        else {
+            if ($nativeExpected.ContainsKey($file) -and $nativeExpected[$file] -cne 'missing') { throw 'Claude MCP configuration changed; cleanup was deferred.' }
+            $snapshot.Add($file + '|missing')
+        }
     }
     $snapshot.Add(($registrationTree | ConvertTo-Json -Depth 30 -Compress))
     return [pscustomobject]@{ hash = Get-CompanyAgentCleanupHash (@($snapshot | Sort-Object) -join "`n"); strings = $strings.ToArray(); protectedPaths = $protectedRoots.ToArray(); versions = @($versions | Sort-Object -Unique) }

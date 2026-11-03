@@ -1,6 +1,6 @@
 {
   "name": "company-agent",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "description": "Personal context and learning harness for Claude Code. Task-specific tools are installed separately.",
   "author": {
     "name": "Company Agent Platform Team"

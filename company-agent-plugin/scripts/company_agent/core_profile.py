@@ -7,22 +7,24 @@ from pathlib import Path
 
 
 _MARKER = Path(__file__).resolve().parents[2] / 'resources' / 'core-install.json'
+_FULL_RUNTIME = Path(__file__).resolve().with_name('business.py')
 
 
 @lru_cache(maxsize=1)
 def is_core_install() -> bool:
-    """Only an explicit valid personal-harness payload selects the core profile.
+    """Detect the core profile without changing personal configuration.
 
-    An absent marker keeps the complete source checkout and legacy payloads
-    compatible. The marker is installed code metadata, never a user preference
-    or a signal to change existing personal skills, agents or MCP settings.
+    The explicitly marked core wins. If its marker is missing or corrupt, the
+    absence of the optional full runtime keeps the incomplete payload in the
+    safe core mode. A complete source checkout without a marker remains full.
     """
     try:
         with _MARKER.open('rb') as stream:
             raw = stream.read(4097)
-        if len(raw) > 4096:
-            return False
-        value = json.loads(raw.decode('utf-8-sig'))
-        return isinstance(value, dict) and value.get('profile') == 'personal-harness'
+        if len(raw) <= 4096:
+            value = json.loads(raw.decode('utf-8-sig'))
+            if isinstance(value, dict) and value.get('profile') == 'personal-harness':
+                return True
     except (OSError, ValueError, UnicodeError):
-        return False
+        pass
+    return not _FULL_RUNTIME.is_file()
