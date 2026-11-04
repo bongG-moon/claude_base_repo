@@ -5,6 +5,9 @@ description: Windows 폴더 정리 계획을 먼저 보여주고 승인 후 파�
 
 # 파일 정리
 
+새 산출물은 `<업무폴더>/file-organizer/outputs/`, 작업용 입력과 임시 파일은 `file-organizer/.work/`에 모읍니다. 사용자 지정 경로와 기존 원본의 편집 위치를 우선하며 폴더 선택을 별도로 묻지 않습니다.
+정리 대상 파일의 실제 이동 위치는 승인된 계획대로 유지합니다.
+
 이미 정한 대상과 범위를 재사용합니다. 아래 명령은 제공된 `cliCommand` 문자열 뒤에
 붙이고 실제 `stateRoot`를 사용합니다. 보호 자료 제한이 있을 때만
 [business-protection.md](../company-agent/references/business-protection.md)를 읽습니다.

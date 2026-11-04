@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(ROOT / 'scripts/query_skills'))
@@ -24,6 +25,8 @@ class QueryInputValidationTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=base)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        working = patch.object(Path, "cwd", return_value=self.root)
+        working.start(); self.addCleanup(working.stop)
         self.store = Store(self.root / 'personal')
         self.store.save_profile({'id': 'lake', 'name': 'Data Lake', 'engine': 'datalake'}, dict(SECRETS))
         self.spec = {'name': '장비 할당 현황', 'sql': 'SELECT value FROM lake_catalog.mes.records WHERE id>=:record_id',

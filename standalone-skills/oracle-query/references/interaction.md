@@ -4,7 +4,7 @@
 
 ## 명세를 만들고 한 번 등록
 
-사용자가 준 SQL과 원하는 이름을 작은 `.query-work/register.json`에 담습니다. 연결, 테이블과 열 이름은 실제 확인한 값을 쓰고 예시를 운영 정보로 간주하지 않습니다. 임의로 기간과 조건을 채우거나 SQL에 값을 문자열로 붙이지 않습니다.
+사용자가 준 SQL과 원하는 이름을 작은 `oracle-query/.work/register.json`에 담습니다. 연결, 테이블과 열 이름은 실제 확인한 값을 쓰고 예시를 운영 정보로 간주하지 않습니다. 임의로 기간과 조건을 채우거나 SQL에 값을 문자열로 붙이지 않습니다.
 
 ```json
 {
@@ -31,7 +31,7 @@
 위 예시는 사용자가 기간과 공정을 변수로 지정한 경우입니다. 종료일은 `미만` 경계입니다. 상대 날짜는 현재 날짜와 요청의 시간대에 맞춰 계산하며 모호할 때만 묻습니다. Datalake에서는 SQL의 테이블 경로가 대상을 정하므로 별도 DB를 등록하지 않습니다.
 
 ```text
-python -X utf8 -B "<스킬 절대경로>/scripts/query.py" queries register --spec "<업무 폴더>/.query-work/register.json" --param start_date=2026-10-01 --param end_date=2026-11-01 --param process=WB
+python -X utf8 -B "<스킬 절대경로>/scripts/query.py" queries register --spec "<업무 폴더>/oracle-query/.work/register.json" --param start_date=2026-10-01 --param end_date=2026-11-01 --param process=WB
 ```
 
 `--param "이름=공백 있는 값"`을 반복하면 PowerShell에서도 인용 오류를 줄일 수 있습니다. 목록이나 null 등 복잡한 값만 `--params <UTF-8 JSON 파일>`로 전달하고 두 입력 방식을 섞지 않습니다. 조건이 없으면 생략하며 빠진 필수 조건만 한 번 확인합니다. `queries review`를 등록 전에 매번 추가하지 않습니다.

@@ -64,7 +64,10 @@ class FakeLakeTransport:
         return self.stack.__exit__(*args)
 
     def selects(self):
-        return [entry for entry in self.sql_calls if entry[0].startswith('SELECT')]
+        return [entry for entry in self.sql_calls if entry[0].startswith('SELECT') and not entry[0].startswith('SELECT COUNT(*) FROM (')]
+
+    def counts(self):
+        return [entry for entry in self.sql_calls if entry[0].startswith('SELECT COUNT(*) FROM (')]
 
     def explains(self):
         return [entry for entry in self.sql_calls if entry[0].startswith('EXPLAIN COSTS')]
@@ -95,7 +98,8 @@ class FakeLakeCursor:
         elif sql.startswith('SELECT'):
             limits = re.findall(r'\bLIMIT\s+(\d+)', sql, re.I)
             count = min(self.transport.row_count, int(limits[-1])) if limits else self.transport.row_count
-            self.rows = ((self.transport.value if self.transport.value is not None else i,) for i in range(count))
+            self.rows = iter([(count,)]) if sql.startswith('SELECT COUNT(*) FROM (') else ((self.transport.value if self.transport.value is not None else i,) for i in range(count))
+    def fetchone(self): return next(self.rows, None)
     def fetchmany(self, count): return list(itertools.islice(self.rows, count))
     def close(self): self.closed = True
 
@@ -143,7 +147,8 @@ class LakeWorkflowTests(unittest.TestCase):
         if legacy:
             metadata.pop('engine')
             metadata.pop('createdAt')
-            metadata.pop('dataSha256')
+            # Legacy engine/age metadata can still be cleaned when the original
+            # content hash exists. Hash-less legacy data is retained separately.
             os.utime(folder / 'data.jsonl', (stamp-1, stamp-1))
         else:
             metadata['createdAt'] = stamp

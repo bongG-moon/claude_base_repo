@@ -178,12 +178,51 @@ def reference_style_css(overrides):
     return '\n' + root + '{' + ';'.join(declarations) + '}\n' + '\n'.join(rules)
 
 
+def _format_choices(pending, spec):
+    """Attach only unanswered choices to the current question, with no I/O."""
+    from . import report_typography
+    missing = [key for key in ('length', 'mode') if key not in spec]
+    missing += report_typography.missing(spec)
+    pending.setdefault('missing', []).extend(missing)
+    if 'length' in missing:
+        pending['lengthOptions'] = ['핵심', '보통', '상세']
+    if 'mode' in missing:
+        pending['viewOptions'] = ['스크롤', '페이지 넘김', '둘 다']
+    if 'fontChoice' in missing:
+        pending['fontOptions'] = [{'value': key, 'name': name, 'description': description}
+                                  for key, name, description in report_typography.OPTIONS]
+        if spec.get('htmlTemplate') or report_typography.has_reference_font(spec):
+            for option in pending['fontOptions']:
+                if option['value'] == 'auto':
+                    option.update(name='첨부 양식의 글꼴 따라가기',
+                                  description='확인한 참고 글꼴을 유지합니다. 확인 불가하면 선택한 디자인의 기본 글꼴을 사용합니다.')
+        pending['fontInstruction'] = ('기존 글꼴 유지 / 첨부 글꼴 따라가기 / 다른 글꼴(직접 입력 포함) 중 아직 정하지 않은 것만 '
+                                      '이번 질문에 함께 묻습니다. 명시한 글꼴과 이미 받은 답은 다시 묻지 않습니다.')
+    if 'fontName' in missing:
+        pending['fontInstruction'] = '사용할 글꼴 이름만 알려 주세요. 파일·설치·인터넷 연결은 별도 요청 없이 추가하지 않습니다.'
+    prompt = [pending.get('selectionPrompt') or pending.get('message', '')]
+    for field, label in (('lengthOptions', '분량'), ('viewOptions', '보기')):
+        if field in pending:
+            prompt.append(label + ': ' + ' / '.join(pending[field]))
+    if 'fontOptions' in pending:
+        prompt.append('글꼴: ' + ' / '.join(row['name'] for row in pending['fontOptions']))
+    if 'fontName' in missing:
+        prompt.append('직접 사용할 글꼴 이름을 알려 주세요.')
+    pending['selectionPrompt'] = '\n'.join(prompt)
+    pending['choiceRequired'] = True
+    pending['waitForUser'] = True
+    pending['selectionInstruction'] = (pending.get('selectionInstruction', '') + ' '
+        '이번 응답에서 missing의 항목만 한 번에 묻고 답을 기다리세요. 이미 정한 항목은 유지합니다. '
+        '선택을 받기 위해 같은 명령이나 전체 스키마를 다시 읽지 않습니다.').strip()
+    return pending
+
+
 def choices(spec):
     from pathlib import Path
     from . import report_typography
     spec = reference_choices(spec)
-    # Expose ONLY the current step. Length/view questions must not be bundled
-    # with the initial design question or an unresolved additional-design menu.
+    # One grouped question replaces design -> format -> font round trips.
+    # Template upload/inspection still happens before an actual preview exists.
     pending = {'ok': False, 'status': 'input_required', 'code': 'report_choices_required',
                'preservedChoices': {key: spec[key] for key in ('style','referencePreset','referenceStyle','themeOverrides','length','mode','htmlTemplate','templateReview', *report_typography.FIELDS) if key in spec}}
     if spec.get('designMenu') == 'template' or 'htmlTemplate' in spec:
@@ -205,10 +244,11 @@ def choices(spec):
             if stage == 'template_confirm':
                 # review_stage has already verified this generated file and hash.
                 pending.update(preview_delivery(Path(spec['templateReview']['previewPath'])))
+                _format_choices(pending, spec)
             return pending
     elif 'style' not in spec and not spec.get('referenceStyle'):
         pending.update(missing=['style'], stage='design',
-                       message='디자인만 먼저 선택해 주세요. 확정 전에는 분량·보기 방식을 묻지 않습니다.')
+                       message='처음 사용할 디자인과 아직 정하지 않은 분량, 보기 방식, 글꼴을 함께 선택해 주세요.')
         if spec.get('designMenu') == 'additional':
             pending.update(stage='design_detail',
                            message='선택 대기 중입니다. 번호나 이름을 입력해 주세요. 예: 4번 글래스모피즘. 미리보기를 원하면 미리보기라고 입력해 주세요.',
@@ -230,24 +270,14 @@ def choices(spec):
             pending['selectionInput'] = 'chat-number-or-name'
             pending['selectionInstruction'] = '일곱 항목과 설명을 채팅에 한 번에 보여주고 번호나 이름을 받으세요. 질문 도구의 항목 제한에 맞춰 여러 질문으로 나누지 마세요.'
             pending['waitForUser'] = True
-        return pending
+        return _format_choices(pending, spec)
     missing = [key for key in ('length','mode') if key not in spec]
     missing += report_typography.missing(spec)
     if not missing:
         return None
-    pending.update(stage='format', missing=missing,
-                   message='아직 정하지 않은 분량·보기 방식·글꼴만 선택해 주세요.')
-    if 'length' in missing:
-        pending['lengthOptions']=['핵심','보통','상세']
-    if 'mode' in missing:
-        pending['viewOptions']=['스크롤','페이지 넘김','둘 다']
-    if 'fontChoice' in missing:
-        pending['fontOptions'] = [{'value': key, 'name': name, 'description': description}
-                                  for key, name, description in report_typography.OPTIONS]
-        pending['fontInstruction'] = '다섯 항목을 채팅에 한 번에 보여 주세요. 번호·이름·직접 입력을 받으며, 이미 정한 글꼴은 다시 묻지 않습니다.'
-    if 'fontName' in missing:
-        pending['fontInstruction'] = '사용할 글꼴 이름만 알려 주세요. 파일·설치·인터넷 연결은 별도 요청 없이 추가하지 않습니다.'
-    return pending
+    pending.update(stage='format', missing=[],
+                   message='아직 정하지 않은 분량, 보기 방식, 글꼴만 함께 선택해 주세요.')
+    return _format_choices(pending, spec)
 
 
 PICKER_JS = r'''"use strict";

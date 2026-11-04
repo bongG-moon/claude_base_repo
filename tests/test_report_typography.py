@@ -137,12 +137,15 @@ class ReportTypographyTests(unittest.TestCase):
             self.assertEqual(row['sha256'], hashlib.sha256(raw).hexdigest())
             self.assertEqual(raw, (root / 'standalone-skills/html-report/assets/fonts' / row['file']).read_bytes())
 
-    def test_reference_heading_font_is_preserved_without_an_extra_choice(self):
+    def test_reference_font_is_not_a_user_choice_until_auto_is_selected(self):
         for field in ('referenceStyle', 'themeOverrides'):
             spec = {field: {'typography': {'headingFont': 'Georgia'}}, 'fontChoiceRequired': True}
             self.assertEqual('template', fonts.selection(spec)['source'])
             self.assertEqual('', fonts.css(spec))
+            self.assertEqual(['fontChoice'], fonts.missing(spec))
+            spec['fontChoice'] = 'auto'
             self.assertEqual([], fonts.missing(spec))
+            self.assertEqual('', fonts.css(spec))
 
     def test_explicit_bundled_rejects_fonts_not_shipped(self):
         for choice in ({'fontChoice': 'nanum-square-neo'}, {'fontChoice': 'custom', 'fontName': 'Missing Font'}):

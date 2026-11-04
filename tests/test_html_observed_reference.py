@@ -117,7 +117,7 @@ class HtmlObservedReferenceTests(unittest.TestCase):
         self.assertIn('data-style="editorial"', source)
 
     def test_choices_keep_reference_and_skip_reasking_design_or_known_font(self):
-        spec = {'referenceStyle':self.profile,'length':'detailed','mode':'both','fontChoiceRequired':True}
+        spec = {'referenceStyle':self.profile,'length':'detailed','mode':'both','fontChoiceRequired':True,'fontChoice':'auto'}
         ready = artifacts.html_choices(spec)
         self.assertTrue(ready['ok'], ready)
         self.assertEqual(self.profile['evidence'], ready['selection']['referenceStyle']['evidence'])

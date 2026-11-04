@@ -5,6 +5,8 @@ description: Claude·Codex 사용 기록의 업무 흐름을 설명한다. 전�
 
 # 업무 맥락 모아 보기
 
+새 산출물은 `<업무폴더>/work-context-catalog/outputs/`, 작업용 입력과 임시 파일은 `work-context-catalog/.work/`에 모읍니다. 사용자 지정 경로와 기존 원본의 편집 위치를 우선하며 폴더 선택을 별도로 묻지 않습니다.
+
 현재 사용자의 기록에서 재사용할 업무와 지식을 정리합니다. Python 3.11 표준
 라이브러리로 실행하며 하네스, 추가 모델 호출, 상시 수집 후크가 필요하지 않습니다.
 
@@ -15,7 +17,7 @@ description: Claude·Codex 사용 기록의 업무 흐름을 설명한다. 전�
 질문을 반복하지 않습니다. `<스킬 폴더>`는 지금 읽은 SKILL.md의 실제 폴더입니다.
 
 ```text
-python -X utf8 "<스킬 폴더>/scripts/work_catalog.py" --root "<업무 폴더>" --output "<새 결과 폴더>"
+python -X utf8 "<스킬 폴더>/scripts/work_catalog.py" --root "<업무 폴더>" --output "<업무폴더>/work-context-catalog/outputs/<작업명>"
 ```
 
 - 여러 업무 폴더는 `--root`를 반복합니다. 기존 결과는 덮어쓰지 않습니다.
@@ -32,7 +34,7 @@ python -X utf8 "<스킬 폴더>/scripts/work_catalog.py" --root "<업무 폴더>
 추가로 탐색하지 않습니다. 각자가 승인한 범위에서 내보낸 자료만 합칩니다.
 
 ```text
-python -X utf8 "<스킬 폴더>/scripts/work_catalog.py" --catalog "<A/catalog.json>" --catalog "<B/catalog.json>" --output "<새 종합 결과 폴더>"
+python -X utf8 "<스킬 폴더>/scripts/work_catalog.py" --catalog "<A/catalog.json>" --catalog "<B/catalog.json>" --output "<업무폴더>/work-context-catalog/outputs/<종합작업명>"
 ```
 
 ## 결과를 읽는 순서

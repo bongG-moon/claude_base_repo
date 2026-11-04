@@ -14,6 +14,15 @@ from .inputs import InputError, read_cli_params
 from .credentials import CredentialSetupRequired, CredentialInputUnavailable
 
 
+SKILL_FOLDERS = {'oracle': 'oracle-query', 'datalake': 'datalake-query',
+                 'ehub': 'ehub-query', 'demo': 'data-query-demo'}
+
+
+def output_directory(engine, requested=None):
+    """명시한 경로는 유지하고, 기본 결과만 업무 폴더의 스킬별 영역에 둡니다."""
+    return requested if requested is not None else Path.cwd() / SKILL_FOLDERS[engine] / 'outputs'
+
+
 def parser(engine):
     p = argparse.ArgumentParser(description='인증정보를 한 번 설정하고 테이블 경로의 데이터와 저장 쿼리를 조회합니다.' if engine == 'datalake' else '연결과 쿼리를 저장하고 필요한 조건으로 조회합니다. 데이터 행은 출력하지 않습니다.')
     p.add_argument('--state-root', type=Path)
@@ -76,13 +85,13 @@ def parser(engine):
     run.add_argument('--plan',required=True)
     run.add_argument('--confirm',action='store_true')
     run.add_argument('--allow-large',action='store_true')
-    run.add_argument('--output-dir', type=Path, help='승인한 조회 결과를 전달할 CSV 폴더')
+    run.add_argument('--output-dir', type=Path, help='CSV 폴더. 생략하면 현재 업무 폴더/<스킬 이름>/outputs')
     direct = commands.add_parser('execute', help='명확히 요청한 일반 조회를 한 번에 준비하고 실행')
     direct.add_argument('--id', required=True, type=int)
     direct.add_argument('--params', help='목록 등 복잡한 조건의 JSON 파일 경로')
     direct.add_argument('--param', action='append', help='조건 이름=값. 예: --param fac_id=CJPKG')
     direct.add_argument('--confirm', action='store_true', help='기존 호환 인자. 일반 execute에는 추가 승인 불필요')
-    direct.add_argument('--output-dir', type=Path, help='사용자에게 전달할 CSV 폴더. 내부 실행 기록과 분리')
+    direct.add_argument('--output-dir', type=Path, help='CSV 폴더. 생략하면 현재 업무 폴더/<스킬 이름>/outputs')
     direct.add_argument('--max-rows', type=int)
     direct.add_argument('--max-bytes', type=int)
     direct.add_argument('--timeout', type=int)
@@ -173,13 +182,13 @@ def execute(engine, args):
         if args.command == 'plan':
             return core.plan(store,engine,args.id,read_cli_params(args.params, args.param),options)
         result = core.execute(store, engine, args.id, read_cli_params(args.params, args.param), options, confirmed=True)
-        if args.output_dir and result.get('dataAvailable'):
-            result = core.deliver_csv(store, result, args.output_dir)
+        if result.get('dataAvailable'):
+            result = core.deliver_csv(store, result, output_directory(engine, args.output_dir))
         return result
     if args.command == 'run':
         result = core.run(store,engine,args.plan,confirmed=args.confirm,allow_large=args.allow_large)
-        if args.output_dir and result.get('dataAvailable'):
-            result = core.deliver_csv(store, result, args.output_dir)
+        if result.get('dataAvailable'):
+            result = core.deliver_csv(store, result, output_directory(engine, args.output_dir))
         return result
     if args.command == 'result':
         return dict(core.result_info(store,args.id), retrievalMode='saved_result', isFreshQuery=False,

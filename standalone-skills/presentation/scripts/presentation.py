@@ -19,6 +19,24 @@ if hasattr(sys.stdout, 'reconfigure'):
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
+def output_path(path, artifacts, *, intermediate=False):
+    """기본 파일명은 스킬 결과 폴더에, 사용자가 지정한 경로는 그대로 둡니다."""
+    if path is None:
+        return path
+    target = path
+    if not path.is_absolute() and path.parent == Path('.') and not path.exists():
+        work = Path.cwd()
+        if work.name in {'.work', 'outputs'} and work.parent.name == 'presentation':
+            work = work.parent
+        if work.name != 'presentation':
+            work /= 'presentation'
+        target = work / ('.work' if intermediate else 'outputs') / path
+    checked = artifacts.safe_path(target)
+    artifacts._reject_reparse(checked)
+    checked.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="HTML 초안 → 편집 가능한 PPT")
     sub = parser.add_subparsers(dest="command", required=True)
@@ -45,6 +63,8 @@ def main(argv=None):
         print(json.dumps({"ok": False, "code": "incomplete_package", "message": "렌더링 파일이 없습니다. SKILL.md만 복사하지 말고 배포 ZIP 전체를 사용해 주세요."}, ensure_ascii=False))
         return 2
     try:
+        if hasattr(args, 'output'):
+            args.output = output_path(args.output, artifacts, intermediate=args.command == 'reference')
         if args.command == "gallery":
             result = ppt_html.create_design_gallery(args.output)
         elif args.command == "reference":

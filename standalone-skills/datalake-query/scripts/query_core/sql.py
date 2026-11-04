@@ -27,6 +27,14 @@ _RESERVED = {'select', 'from', 'where', 'order', 'group', 'having', 'union', 'li
 _DANGEROUS_FUNCTIONS = {'load_file', 'sleep', 'benchmark', 'sys_eval', 'sys_exec',
                         'nextval', 'setval', 'next_value_for', 'pg_read_file',
                         'pg_read_binary_file', 'pg_ls_dir', 'readfile', 'writefile'}
+# sqlglot 28.5 represents these documented Oracle scalar/analytic functions as
+# Anonymous. Only unquoted, unqualified calls are built-ins here; app.fn and
+# quoted identifiers still require review. This is not a database permission.
+# https://docs.oracle.com/en/database/oracle/oracle-database/19/sqlqr/SQL-Functions.html
+_ORACLE_ANONYMOUS_BUILTINS = {
+    'REGEXP_SUBSTR', 'RATIO_TO_REPORT', 'SUBSTRB', 'LENGTHB', 'NCHR',
+    'TO_SINGLE_BYTE', 'TO_MULTI_BYTE',
+}
 
 
 @contextmanager
@@ -215,6 +223,77 @@ def _restrictive_predicate(node: exp.Expression | None) -> bool:
     return any(isinstance(part, exp.Column) for part in node.walk())
 
 
+def _join_constraints(node: exp.Expression | None, aliases: set[str]) -> set[tuple[frozenset[str], exp.Expression]]:
+    """Only comparisons guaranteed by this boolean expression connect sources."""
+    if node is None:
+        return set()
+    if isinstance(node, (exp.Where, exp.Paren)):
+        return _join_constraints(node.this, aliases)
+    if isinstance(node, (exp.And, exp.Or)):
+        left = _join_constraints(node.this, aliases)
+        right = _join_constraints(node.expression, aliases)
+        return left | right if isinstance(node, exp.And) else left & right
+    if not isinstance(node, (exp.EQ, exp.NEQ, exp.GT, exp.GTE, exp.LT, exp.LTE, exp.NullSafeEQ)):
+        return set()
+
+    def source_names(side):
+        # A correlated/nested SELECT cannot establish a local join edge.
+        if any(isinstance(part, exp.Query) for part in side.walk()):
+            return set()
+        columns = list(side.find_all(exp.Column))
+        if not columns or any(not col.table or col.table.casefold() not in aliases for col in columns):
+            return set()
+        return {col.table.casefold() for col in columns}
+
+    left, right = source_names(node.this), source_names(node.expression)
+    if len(left) == len(right) == 1 and left != right:
+        # Retain the predicate for OR intersection: a.id=b.id OR a.id<>b.id
+        # must not turn a tautology into an apparent join condition.
+        return {(frozenset(left | right), node)}
+    return set()
+
+
+def _has_unconnected_join(select: exp.Select, source_names: list[str]) -> bool:
+    """Recognize Oracle comma/WHERE joins without rewriting the user's SQL."""
+    joins = select.args.get('joins') or []
+    if not joins:
+        return False
+    aliases = {name.casefold() for name in source_names}
+    if len(aliases) < 2 or len(aliases) != len(source_names):
+        return True  # Missing or case-ambiguous aliases are not inferred.
+    constraints = _join_constraints(select.args.get('where'), aliases)
+    for join in joins:
+        constraints |= _join_constraints(join.args.get('on'), aliases)
+    edges = {edge for edge, _ in constraints}
+
+    def connected(names):
+        if not names:
+            return False
+        reached = {next(iter(names))}
+        while True:
+            expanded = reached | set().union(*(edge for edge in edges if edge & reached))
+            if expanded == reached:
+                return names <= reached
+            reached = expanded
+
+    preceding = {source_names[0].casefold()}
+    for join in joins:
+        current = join.this.alias_or_name.casefold()
+        # USING connects to the already connected left side. It cannot excuse
+        # a disconnected comma-join group without actual column metadata.
+        if join.args.get('using') and current in aliases and connected(preceding):
+            edges.add(frozenset({current, next(iter(preceding))}))
+        preceding.add(current)
+    return not connected(aliases)
+
+
+def _unknown_function(node: exp.Anonymous, engine: str) -> bool:
+    return not (dialect(engine) == 'oracle'
+                and isinstance(node.this, str)
+                and node.name.upper() in _ORACLE_ANONYMOUS_BUILTINS
+                and not isinstance(node.parent, exp.Dot))
+
+
 def analyze_sql(sql: str, engine: str) -> dict:
     """넓은 조회는 거절 대신 사용자 확인 대상으로 분류한다."""
     tree = _tree(sql, engine)
@@ -222,11 +301,12 @@ def analyze_sql(sql: str, engine: str) -> dict:
     advisories = []
     candidates = []
     try:
-        scopes = [(scope.expression, [source for _, source in scope.selected_sources.values()])
+        scopes = [(scope.expression, [source for _, source in scope.selected_sources.values()],
+                   list(scope.selected_sources))
                   for scope in traverse_scope(tree) if isinstance(scope.expression, exp.Select)]
     except Exception:
         raise ValueError('조회에 같은 이름의 테이블 별칭이 겹치지 않는지 확인해 주세요.') from None
-    for select, sources in scopes:
+    for select, sources, source_names in scopes:
         # 조건이 있는 CTE/하위 조회를 읽는 외부 SELECT에 조건을 다시 요구하지 않는다.
         # 실제 원본 테이블을 읽는 각 내부 범위는 별도로 검사한다.
         has_real_source = any(isinstance(source, exp.Table) and source.name.casefold() != 'dual'
@@ -237,9 +317,8 @@ def analyze_sql(sql: str, engine: str) -> dict:
         has_column_condition = _restrictive_predicate(where)
         if has_real_source and not has_column_condition:
             risks.append('조회 조건이 없는 데이터 범위가 있습니다.')
-        for join in select.args.get('joins') or []:
-            if str(join.args.get('kind', '')).upper() == 'CROSS' or not (join.args.get('on') or join.args.get('using')):
-                risks.append('결합 조건이 없는 조인이 있습니다.')
+        if _has_unconnected_join(select, source_names):
+            risks.append('결합 조건이 없는 조인이 있습니다.')
         if has_any_source and (select.args.get('group') or any(isinstance(n, exp.AggFunc) for n in select.walk())):
             advisories.append('집계는 반환 건수가 적어도 많은 원본을 읽을 수 있습니다.')
         if has_any_source and select.args.get('order'):
@@ -253,7 +332,7 @@ def analyze_sql(sql: str, engine: str) -> dict:
     for node in tree.find_all(exp.Offset):
         if isinstance(node.expression, exp.Literal) and int(node.expression.this) > 10_000:
             risks.append('건너뛰는 행이 많아 조회 비용이 커질 수 있습니다.')
-    if any(isinstance(n, exp.Anonymous) for n in tree.walk()):
+    if any(_unknown_function(n, engine) for n in tree.find_all(exp.Anonymous)):
         risks.append('사용자 함수의 동작은 DB의 조회 전용 권한으로도 확인해야 합니다.')
     if any(node.args.get('recursive') for node in tree.find_all(exp.With)):
         risks.append('재귀 조회의 반복 범위와 종료 조건을 확인해야 합니다.')

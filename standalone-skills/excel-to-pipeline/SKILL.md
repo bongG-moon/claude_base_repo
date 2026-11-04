@@ -5,6 +5,8 @@ description: xlsx/xlsm의 여러 시트·표·수식과 내장 VBA를 분석해 
 
 # 엑셀 구조를 Python 처리로 옮기기
 
+새 산출물은 `<업무폴더>/excel-to-pipeline/outputs/`, 작업용 입력과 임시 파일은 `excel-to-pipeline/.work/`에 모읍니다. 사용자 지정 경로와 기존 원본의 편집 위치를 우선하며 폴더 선택을 별도로 묻지 않습니다.
+
 하네스 없이 사용하는 독립 스킬입니다. 설정, 후크, MCP를 등록하지 않습니다.
 
 ## 실행
@@ -13,7 +15,7 @@ description: xlsx/xlsm의 여러 시트·표·수식과 내장 VBA를 분석해 
 있으면 준비 질문이나 설치 점검을 반복하지 않고 다음 명령을 실행합니다.
 
 ```text
-python -X utf8 "<스킬 폴더>/scripts/excel_pipeline.py" "<입력.xlsx 또는 입력.xlsm>" --output "<새 결과 폴더>"
+python -X utf8 "<스킬 폴더>/scripts/excel_pipeline.py" "<입력.xlsx 또는 입력.xlsm>" --output "<업무폴더>/excel-to-pipeline/outputs/<작업명>"
 ```
 
 구조 확인만 요청하면 `--output` 대신 `--context-only`로 파일 없이 요약합니다.

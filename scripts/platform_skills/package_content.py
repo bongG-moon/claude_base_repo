@@ -75,7 +75,11 @@ def source_files(slug, info, tree):
             text = selected[p][1].decode('utf-8-sig')
             refs = re.findall(r'\]\(([^)]+)\)', text)
             markdown_refs = set(refs)
-            refs += re.findall(r'`([^`\n]+)`', text)
+            # Shared legal/provenance text mentions repository paths as history,
+            # not runtime dependencies. Keep its bytes and explicit links, while
+            # avoiding unrelated skill files from illustrative backtick paths.
+            if p != 'THIRD_PARTY_NOTICES.md' and not p.startswith('licenses/'):
+                refs += re.findall(r'`([^`\n]+)`', text)
             for ref in refs:
                 ref = ref.split('#')[0].strip().strip('<>')
                 if not ref or '://' in ref or '<' in ref or re.search(r'\s', ref):

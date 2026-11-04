@@ -87,10 +87,11 @@ class QueryFlowTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,'이미'):
             self.run_plan(enlarged,allow_large=True)
 
-    def test_wide_date_window_can_be_approved(self):
+    def test_wide_date_window_with_exact_small_count_runs_without_approval(self):
         proposal = self.plan(values=dict(self.values,start_date='2026-01-01'))
-        self.assertTrue(proposal['requiresLargeApproval'])
-        self.assertTrue(self.run_plan(proposal,allow_large=True)['complete'])
+        self.assertLess(proposal['exactCount'], core.DEFAULTS['max_rows'])
+        self.assertFalse(proposal['requiresLargeApproval'])
+        self.assertTrue(self.run_plan(proposal)['complete'])
 
     def test_confirm_missing_does_not_consume_plan(self):
         proposal = self.plan()

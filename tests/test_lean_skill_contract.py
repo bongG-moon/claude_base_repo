@@ -70,7 +70,14 @@ class LeanSkillContractTests(unittest.TestCase):
                 text = self.read(f"{name}/SKILL.md")
                 self.assertLessEqual(len(text), limit)
                 self.assertNotIn('Read `../company-agent/references/business-protection.md` first', text)
-                self.assertIn('cliCommand', text)
+                if name == 'presentation':
+                    # New authoring is a standalone HTML builder. The old
+                    # harness discovery command is only a legacy workflow.
+                    self.assertIn('scripts/slides.py', text)
+                    self.assertIn('한 화면에 한 장', text)
+                    self.assertNotIn('cliCommand', text)
+                else:
+                    self.assertIn('cliCommand', text)
         for path in SKILLS.glob('*/SKILL.md'):
             self.assertLessEqual(len(path.read_text(encoding='utf-8').splitlines()), 180, path)
             self.assertLessEqual(len(path.read_text(encoding='utf-8')), 6500, path)

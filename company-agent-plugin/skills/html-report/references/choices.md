@@ -4,7 +4,7 @@
 
 ## 디자인이 아직 없을 때
 
-다음 일곱 항목을 한 번에 보여주고 번호나 이름을 받습니다. 질문만 할 때 명령이나 빈 JSON은 필요 없습니다.
+다음 일곱 항목과 빠진 분량, 보기, 글꼴을 같은 응답에서 한 번에 보여주고 답을 기다립니다. 질문만 할 때 명령이나 빈 JSON은 필요 없습니다.
 
 1. 깔끔한 업무형 (`minimalism`)
 2. 지표 중심형 (`bento-grid`)
@@ -16,7 +16,9 @@
 
 `레퍼런스 1`은 메뉴 1번이 아닙니다. 5~7은 `referencePreset:reference-1/2/3`이며 지정 스타일이 없을 때만 editorial/bento-grid/minimalism을 적용합니다. 이후 스타일 질문은 반복하지 않습니다.
 
-디자인이 정해지면 빠진 분량(핵심/보통/상세), 보기(스크롤/페이지/둘 다), 글꼴을 함께 묻습니다. 글꼴은 Noto Sans KR(`noto-sans-kr`), Pretendard(`pretendard`), 나눔스퀘어 네오(`nanum-square-neo`), 디자인에 맞게 알아서(`auto`), 직접 입력(`custom`과 `fontName`) 다섯 항목입니다. 이미 받은 답은 유지하고 새 작업의 `fontChoiceRequired:true`를 설정합니다. 승인한 참고 글꼴 유지도 `auto`입니다. `알아서/추천대로/질문 없이`는 빠진 값만 SKILL.md의 기본값으로 채우며 질문을 추가하지 않습니다.
+빠진 분량(핵심/보통/상세), 보기(스크롤/페이지/둘 다), 글꼴을 디자인과 함께 묻습니다. 글꼴은 Noto Sans KR(`noto-sans-kr`), Pretendard(`pretendard`), 나눔스퀘어 네오(`nanum-square-neo`), 디자인에 맞게 알아서(`auto`), 직접 입력(`custom`과 `fontName`) 다섯 항목입니다. 이미 받은 답은 유지하고 새 작업의 `fontChoiceRequired:true`를 설정합니다. `알아서/추천대로/질문 없이`는 빠진 값만 SKILL.md의 기본값으로 채우며 질문을 추가하지 않습니다.
+
+첨부 양식은 미리보기 확인과 같은 질문에서 “기존에 정한 글꼴 유지 / 첨부 글꼴 따라가기 / 다른 글꼴” 중 미정인 것만 받습니다. 기존 글꼴 유지는 해당 `fontChoice`와 `fontName`을 보존하고, 첨부 글꼴 따라가기는 `fontChoice:auto`로 기록합니다. `auto`는 참고가 있을 때 참고 글꼴, 없을 때 디자인별 기본 글꼴입니다. 현재 요청에서 글꼴을 이미 명시했으면 다시 묻지 않습니다. 색감, 표, 배치 등 다른 참고 특징은 유지합니다.
 
 ## 추가 디자인을 골랐고 특정 스타일은 아직 없을 때
 
@@ -49,13 +51,13 @@ CLI와 Workspace 모두 아래 목록을 채팅에 한 번에 보여주고 답�
 
 생성 직후 반환된 `previewLink`를 채팅에 표시하고 `previewPath`도 함께 안내합니다. 링크가 열리지 않으면 파일 탐색기에서 해당 HTML을 두 번 클릭하도록 알려 줍니다. “미리보기를 만들었습니다”만 말하고 위치를 생략하지 않습니다. `previewCreated:false`이면 분석만 수행한 것이며 미리보기를 만들었다고 하지 않습니다. 자동 열기를 요청했더라도 실제 창 표시를 확인한 것으로 설명하지 않습니다.
 
-참고 파일은 10MiB 미만(10,485,760바이트 미만)입니다. 도우미의 `layoutHints` 목차·카드·단계 목록 단서도 새 내용에 맞게 검토합니다. 이는 태그와 이름에서 얻은 힌트이며 화면과 같다는 증거는 아닙니다. 원본 HTML 전체를 모델에 읽어 넣지 않고 외부 자원이나 원본 스크립트를 실행하지 않습니다. 결과는 색과 글꼴 등의 정적 특징을 보여주는 가상 내용 미리보기이며 원본 DOM이나 픽셀 복제가 아닙니다. `이 느낌으로 진행 / 바꾸고 싶은 부분 입력 / 다른 양식 첨부`를 묻고 실제 확인한 답을 기다립니다. 반환된 htmlTemplate, templateReview와 해시를 그대로 전체 job에 합치며 해당 미리보기 승인 뒤에만 `templateReview.confirmed:true`로 둡니다. 이후 빠진 분량, 방식, 글꼴만 확인하고 같은 workFile로 제작합니다. 해시를 만들거나 원본 HTML을 Memory에 저장하지 않습니다.
+참고 파일은 10MiB 미만(10,485,760바이트 미만)입니다. 도우미의 `layoutHints`는 정적 구조의 단서이며 실제 화면 확인과 구분합니다. 원본 HTML 전체를 모델에 읽어 넣거나 외부 자원, 원본 스크립트를 실행하지 않습니다. 결과는 정적 특징을 보여주는 가상 내용 미리보기이며 원본 복제가 아닙니다. `이 느낌으로 진행 / 바꾸고 싶은 부분 / 다른 양식`과 아직 빠진 분량, 보기, 글꼴 선택을 같은 질문에서 받습니다. 반환된 htmlTemplate, templateReview와 해시를 같은 job에 합치고 실제 승인 뒤에만 `templateReview.confirmed:true`로 둡니다. 이미 답한 항목은 반복하지 않습니다. 해시를 만들거나 원문을 Memory에 저장하지 않습니다.
 
 ## 선택 도우미가 필요한 경우
 
 런타임 cliCommand 뒤에 `business html-choices [--spec "<choices.json>"] --state-root "<stateRoot>"`를 붙입니다. 알려진 선택이 없으면 --spec을 생략합니다. 있다면 `<stateRoot>/tmp/html-choices-<short-id>.json`에 designMenu/style/referencePreset/length/mode, fontChoiceRequired/fontChoice/fontName/fontSource와 해당 htmlTemplate/templateReview만 넣습니다. 본문과 원자료는 전체 job에 둡니다.
 
-예를 들어 `{"designMenu":"additional","length":"detailed","mode":"scroll"}`은 스타일만 빠진 상태입니다. 반환한 stage/missing과 preservedChoices를 따릅니다. input_required는 실패가 아닌 선택 대기입니다. stage는 design → design_detail(추가 디자인만) → format → ready이며 양식은 template_attach → template_preview → template_confirm 단계를 먼저 거칩니다. 도우미 출력을 읽으면 같은 선택을 위해 본문, 목록, 소스 코드를 다시 탐색하지 않습니다.
+예를 들어 `{"designMenu":"additional","length":"detailed","mode":"scroll","fontChoice":"auto"}`는 스타일만 빠진 상태입니다. `missing`의 항목을 현재 질문에 함께 넣고 `preservedChoices`는 유지합니다. input_required는 실패가 아닌 선택 대기입니다. 디자인이나 추가 디자인 질문에서 분량, 보기, 글꼴도 함께 답할 수 있으며 양식은 실제 미리보기 확인에 이 항목을 합칩니다. 모든 값이 있으면 ready입니다. 같은 선택을 위해 본문, 목록, 소스 코드를 다시 탐색하지 않습니다.
 # 기본 글꼴과 미리보기
 
 기존 선택과 참고 양식이 우선입니다. 별도 지정이 없는 설명형은 Noto Sans KR, 지표형은

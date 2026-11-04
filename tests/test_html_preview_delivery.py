@@ -62,7 +62,7 @@ class HtmlPreviewDeliveryTests(unittest.TestCase):
                               cwd=self.root, env=env, capture_output=True, text=True, encoding='utf-8', timeout=30)
         self.assertEqual(0, proc.returncode, proc.stderr + proc.stdout)
         result = json.loads(proc.stdout)
-        path = self.root / output
+        path = self.root / 'html-report/.work' / output
         self.assertTrue(result['previewCreated'])
         self.assertEqual(path.resolve().as_uri(), result['previewUrl'])
         self.assertIn('%23', result['previewUrl'])

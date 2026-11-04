@@ -1,6 +1,6 @@
 """Metadata-only result review and explicit, snapshot-bound local cleanup.
 
-Listing never opens JSONL/CSV data. Preparing and confirming a deletion streams
+Listing and preparing a deletion never open JSONL/CSV data. Confirmation streams
 bytes only to verify ownership/change hashes; it never parses or returns rows.
 Database profiles, SQL, credentials, external exports and unknown files are not
 cleanup targets. No maintenance runs implicitly from query planning/execution.
@@ -208,6 +208,8 @@ def _scan(store, engine, *, now, current_result_id=None):
                 files = _managed_files(folder, metadata)
                 eligible = now - created >= STALE_SECONDS
                 reason = None if eligible else 'recent'
+                if 'data.jsonl' in files and not re.fullmatch(r'[a-f0-9]{64}', str(metadata.get('dataSha256', ''))):
+                    eligible, reason = False, 'legacy_hash_missing'
                 total_bytes = sum(v['size'] for v in files.values())
             except (OSError, ValueError):
                 eligible, reason, total_bytes = False, 'unverified_files', 0
@@ -258,6 +260,37 @@ def _snapshot(store, result_id):
     return {'resultId':result_id, 'files':files}
 
 
+def _review_snapshot(store, result_id):
+    """Bind the review to file identities and existing receipts, without data I/O."""
+    folder, metadata, _, _ = _metadata(store, result_id)
+    expected = _managed_files(folder, metadata)
+    if 'data.jsonl' in expected and not metadata.get('dataSha256'):
+        raise ValueError('원본 확인 기록이 없는 이전 결과는 보존합니다.')
+    hashes = {'metadata.json': _hash(folder / 'metadata.json')['sha256']}
+    if metadata.get('dataSha256'):
+        hashes['data.jsonl'] = metadata['dataSha256']
+    hashes.update({item['path']: item['sha256'] for item in metadata.get('managedExports', [])})
+    if any(not isinstance(value, str) or not re.fullmatch(r'[a-f0-9]{64}', value) for value in hashes.values()):
+        raise ValueError('결과 원본의 확인 기록이 올바르지 않아 보존합니다.')
+    for item in metadata.get('managedExports', []):
+        if expected[item['path']]['size'] != item['bytes']:
+            raise ValueError('내보낸 파일이 변경되어 보존합니다.')
+    if expected != _managed_files(folder, metadata):
+        raise ValueError('정리 준비 중 파일이 바뀌었습니다. 다시 확인해 주세요.')
+    return {'resultId':result_id,
+            'files':{name:dict(state, **({'sha256':hashes[name]} if name in hashes else {}))
+                     for name, state in expected.items()}}
+
+
+def _matches_review(review, current):
+    if review['resultId'] != current['resultId'] or review['files'].keys() != current['files'].keys():
+        return False
+    # Version 1 plans already contain full hashes, while version 2 plans bind
+    # data to the original receipt and metadata to its reviewed content hash.
+    return all(all(current['files'][name].get(key) == value for key, value in state.items())
+               for name, state in review['files'].items())
+
+
 def prepare_cleanup(store, engine, result_ids, *, current_result_id=None, now=None):
     now = _now(now)
     if not isinstance(result_ids, (list, tuple)) or not 1 <= len(result_ids) <= 100:
@@ -269,8 +302,8 @@ def prepare_cleanup(store, engine, result_ids, *, current_result_id=None, now=No
     eligible = {item['resultId'] for item in records if item['cleanupEligible']}
     if not set(ids) <= eligible:
         raise ValueError('현재 결과, 24시간 이내 결과 또는 확인되지 않은 파일은 삭제 목록에 넣지 않습니다.')
-    snapshots = [_snapshot(store, value) for value in ids]
-    body = {'schemaVersion':1, 'engine':engine, 'rootHash':fingerprint(str(safe_path(store.root))),
+    snapshots = [_review_snapshot(store, value) for value in ids]
+    body = {'schemaVersion':2, 'engine':engine, 'rootHash':fingerprint(str(safe_path(store.root))),
             'createdAt':now, 'nonce':uuid.uuid4().hex, 'currentResultId':current_result_id, 'snapshots':snapshots}
     # The reviewed ID is content-bound, so editing the plan cannot silently
     # substitute additional result IDs while retaining the user's approval.
@@ -293,7 +326,7 @@ def delete_cleanup(store, engine, plan_id, *, confirmed=False, now=None):
     plan_id = _id(plan_id)
     folder = safe_path(store.root / 'result-cleanup-plans')
     body = read_json(folder / (plan_id + '.json'), limit=8 * 1024 * 1024)
-    if (fingerprint(body)[:32] != plan_id or body.get('schemaVersion') != 1 or body.get('engine') != engine or
+    if (fingerprint(body)[:32] != plan_id or body.get('schemaVersion') not in (1, 2) or body.get('engine') != engine or
             body.get('rootHash') != fingerprint(str(safe_path(store.root))) or
             not 0 <= now - _now(body.get('createdAt')) <= PLAN_SECONDS):
         raise ValueError('정리 준비가 바뀌었거나 15분이 지났습니다. 목록을 다시 확인해 주세요.')
@@ -315,8 +348,13 @@ def delete_cleanup(store, engine, plan_id, *, confirmed=False, now=None):
             current, _ = _scan(store, engine, now=now, current_result_id=body.get('currentResultId'))
             if result_id not in {item['resultId'] for item in current if item['cleanupEligible']}:
                 raise ValueError('현재 사용 중이거나 다시 확인이 필요한 결과입니다.')
-            if _snapshot(store, result_id) != snapshot:
+            # Reject cheap identity/receipt changes before reading large files.
+            if body['schemaVersion'] == 2 and _review_snapshot(store, result_id) != snapshot:
                 raise ValueError('확인 후 파일이 변경되어 보존합니다.')
+            current_snapshot = _snapshot(store, result_id)
+            if not _matches_review(snapshot, current_snapshot):
+                raise ValueError('확인 후 파일이 변경되어 보존합니다.')
+            snapshot = current_snapshot
             result_folder = _folder(store, result_id)
             # Metadata is last. Never recurse into or remove newly introduced
             # directories/files; they remain available after a partial failure.

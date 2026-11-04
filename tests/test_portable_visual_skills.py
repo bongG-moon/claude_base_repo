@@ -31,10 +31,16 @@ class PortableVisualTests(unittest.TestCase):
         self.assertIn('edit-toggle', text)
         self.assertIn('id="deck-save"', text)
 
-    def test_html_entrypoint_minimum_example_runs_without_extra_planning_commands(self):
+    def test_html_entrypoint_waits_once_then_builds_with_received_choices(self):
         entry = (ROOT / 'standalone-skills/html-report/SKILL.md').read_text(encoding='utf-8')
         spec = json.loads(re.search(r'```json\n(.*?)\n```', entry, re.S).group(1))
         target = self.root / 'entry-example.html'
+        response = self.run_cli('html-report', 'build', '--spec', self.write_spec(spec), '--output', target)
+        self.assertEqual('input_required', response['status'])
+        self.assertEqual(['style', 'length', 'mode', 'fontChoice'], response['missing'])
+        self.assertFalse(target.exists())
+        # Same build consumes the actual choices; no extra planning command.
+        spec.update(style='editorial', length='standard', mode='scroll', fontChoice='pretendard')
         response = self.run_cli('html-report', 'build', '--spec', self.write_spec(spec), '--output', target)
         self.assertTrue(response['ok'], response)
         self.assertTrue(target.is_file())
@@ -126,6 +132,7 @@ class PortableVisualTests(unittest.TestCase):
 
     def test_html_offline_font_and_calculation(self):
         job = self.write_spec({"title": "교육 신청 현황", "fontChoice": "noto-sans-kr", "fontSource": "system",
+            "style": "minimalism", "length": "standard", "mode": "scroll",
             "facts": [{"id": "total", "op": "sum", "inputs": [{"table": [0, 0, 1]}, {"table": [0, 1, 1]}]}],
             "sections": [{"title": "신청 {{fact:total}}명", "table": {"headers": ["부서", "인원"], "rows": [["생산", 12], ["품질", 8]]},
                           "body": "가상 자료", "contentOrder": ["table", "body"]}]})
@@ -151,8 +158,10 @@ class PortableVisualTests(unittest.TestCase):
         job = self.write_spec(spec)
         result = self.run_cli('html-report','build','--spec',job,'--output',self.root/'out.html')
         self.assertEqual('template_confirm',result['stage'])
+        self.assertEqual(['templateReview.confirmed','length','mode','fontChoice'],result['missing'])
         self.assertFalse((self.root/'out.html').exists())
         spec['templateReview']['confirmed'] = True
+        spec.update(length='standard', mode='scroll', fontChoice='auto')
         job = self.write_spec(spec)
         self.assertTrue(self.run_cli('html-report','build','--spec',job,'--output',self.root/'out.html')['ok'])
 

@@ -93,7 +93,7 @@ def profile(spec, width=960, height=540):
         raise LayoutError('정보 밀도는 presentation 또는 reading으로 지정해 주세요.')
     font = spec.get('presentationFont', 'Malgun Gothic')
     result = {'titleSize':30., 'bodySize':18. if density == 'presentation' else 16.,
-              'emphasisSize':36., 'annotationSize':10., 'tableSize':16., 'titleFont':font,
+              'emphasisSize':36., 'annotationSize':11., 'tableSize':16., 'titleFont':font,
               'bodyFont':font, 'margin':width*.05, 'gap':width*.025, 'density':density}
     result.update(raw)
     for key, low, high in (('titleSize', 16, 60), ('bodySize', 10, 32),
@@ -255,19 +255,29 @@ def compose(row, number, width, height, palette, font, profile):
             text(body,margin,top,usable,bh)
             top+=bh+gap
         cw=(usable-gap*(len(panels)-1))/len(panels)
-        for index,panel in enumerate(panels):
+        measured=[]
+        for panel in panels:
             if not isinstance(panel,dict) or set(panel)-{'title','body','bullets'}:
                 raise LayoutError('비교 항목의 제목과 본문을 객체로 지정해 주세요.')
             label=_string(panel.get('title',''),'비교 제목',100)
             content=_prose(panel)
             if not label or not content:
                 raise LayoutError('비교 항목에는 제목과 확인할 내용이 필요합니다.')
+            th=lines(label,cw-32,p['bodySize'])*p['bodySize']*1.22+4
+            # Native Korean font ascent and paragraph leading need slightly
+            # more room than CSS line-height, especially in compact boxes.
+            ch=lines(content,cw-32,p['bodySize'])*p['bodySize']*1.36+4
+            measured.append((label,content,th,ch))
+        panel_h=max(th+ch+48 for _,_,th,ch in measured)
+        if panel_h>bottom-top:
+            raise LayoutError(f'{number}장 panels의 설명이 비교 영역보다 많습니다. 원본 의미를 유지해 비교 대상을 장으로 나누어 주세요.')
+        panel_top=top+(bottom-top-panel_h)/2
+        for index,(label,content,th,ch) in enumerate(measured):
             x=margin+index*(cw+gap)
             group=f'compare-{number}-{index+1}'
-            shape(x,top,cw,bottom-top,'tint',group=group)
-            th=lines(label,cw-32,p['bodySize'])*p['bodySize']*1.22+4
-            text(label,x+16,top+16,cw-32,th,p['bodySize'],'title',True,group=group)
-            text(content,x+16,top+th+32,cw-32,bottom-top-th-48,p['bodySize'],group=group)
+            shape(x,panel_top,cw,panel_h,'tint',group=group)
+            text(label,x+16,panel_top+16,cw-32,th,p['bodySize'],'title',True,group=group)
+            text(content,x+16,panel_top+th+32,cw-32,ch,p['bodySize'],group=group)
     elif role == 'workflow':
         flow=row.get('workflow')
         if not isinstance(flow,dict) or set(flow)-{'nodes','edges'}:
@@ -465,8 +475,8 @@ def compose(row, number, width, height, palette, font, profile):
         top+=28
         row_h=(bottom-top)/len(parsed)
         if row_h<35:raise LayoutError('일정 설명을 읽기 좋은 크기로 담기 어렵습니다. 장을 나누어 주세요.')
-        text(start.isoformat(),axis_x-22,top-28,110,22,p['annotationSize'],'muted')
-        text(end.isoformat(),axis_x+axis_w-88,top-28,110,22,p['annotationSize'],'muted',align='right')
+        text(start.isoformat(),axis_x,top-28,110,22,p['annotationSize'],'muted')
+        text(end.isoformat(),axis_x+axis_w-110,top-28,110,22,p['annotationSize'],'muted',align='right')
         for index,(day,label,detail) in enumerate(parsed):
             y=top+index*row_h
             shape(margin,y,usable,row_h-3,'tint' if index%2==0 else 'background')
@@ -476,14 +486,18 @@ def compose(row, number, width, height, palette, font, profile):
             ratio=((day-start).days/(end-start).days) if end>start else .5
             x=axis_x+axis_w*ratio
             shape(x-5,y+row_h/2-5,10,10,'accent',kind='ellipse')
-            text(day.isoformat(),x-42,y+row_h/2-24,84,20,p['annotationSize'],'muted',align='center')
+            # End-point dates must stay inside the axis column. Centering the
+            # first date over its marker used to intrude into a wrapped Korean
+            # milestone description in the adjacent column.
+            date_x=max(axis_x,min(x-42,axis_x+axis_w-84))
+            text(day.isoformat(),date_x,y+row_h/2-24,84,20,p['annotationSize'],'muted',align='center')
     elif role == 'detail':
         table=row.get('table')
         if not isinstance(table,dict) or not isinstance(table.get('headers'),list) or not table['headers']:
             raise LayoutError('상세 표 장에는 table.headers와 table.rows가 필요합니다.')
         rows=[table['headers'],*table.get('rows',[])]
-        if len(rows)>18 or any(not isinstance(r,list) or len(r)!=len(rows[0]) for r in rows):
-            raise LayoutError('상세 표는 열 수가 같은 17개 이하 데이터 행으로 나누어 주세요.')
+        if any(not isinstance(r,list) or len(r)!=len(rows[0]) for r in rows):
+            raise LayoutError('상세 표의 table.rows는 table.headers와 같은 열 수여야 합니다.')
         rows=[[_string(v,'표 내용',2000) for v in r] for r in rows]
         if body:
             bh=lines(body,usable,p['bodySize'])*p['bodySize']*1.22+4
@@ -495,14 +509,20 @@ def compose(row, number, width, height, palette, font, profile):
         widths=[usable*w/sum(weights) for w in weights]
         heights=[max(32,max(lines(v,max(1,widths[j]-2*padding),size) for j,v in enumerate(r))*size*1.22+2*padding) for r in rows]
         if sum(heights)>bottom-top:
-            raise LayoutError('상세 표를 읽기 좋은 크기로 담기 어렵습니다. 행이나 장을 나누어 주세요.')
+            from .presentation_design import TableFitError
+            raise TableFitError(number,heights,bottom-top)
         elements.append(dict(kind='table',x=margin,y=top,w=usable,h=sum(heights),size=size,
                              table={'headers':rows[0],'rows':rows[1:]},columnWidths=widths,rowHeights=heights))
     else: # closing
         if not body:raise LayoutError('결론 장에는 확인된 결론이나 다음 행동을 지정해 주세요.')
-        shape(margin,top,usable,bottom-top,'tint')
-        shape(margin,top,usable,5,'accent')
-        text(body,margin+gap,top+gap,usable-2*gap,bottom-top-2*gap,p['bodySize'],'title',True)
+        content_h=lines(body,usable-2*gap,p['bodySize'])*p['bodySize']*1.36+4
+        box_h=content_h+2*gap
+        if box_h>bottom-top:
+            raise LayoutError(f'{number}장 결론의 글자가 영역보다 많습니다. 의미를 보존해 장을 나누어 주세요.')
+        box_top=top+(bottom-top-box_h)/2
+        shape(margin,box_top,usable,box_h,'tint')
+        shape(margin,box_top,usable,5,'accent')
+        text(body,margin+gap,box_top+gap,usable-2*gap,content_h,p['bodySize'],'title',True)
     takeaway=_string(row.get('takeaway',''),'요점',160)
     if takeaway:
         # Preserve a separate takeaway rather than silently mixing it into the

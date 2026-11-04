@@ -1,0 +1,5 @@
+# Validated package versions for the rendered-HTML export route.
+# Python 3.11+; a separately available local Chromium/Chrome/Edge is required.
+playwright==1.60.0
+python-pptx==1.0.2
+Pillow==13.0.0

@@ -23,6 +23,8 @@ class EasyQueryTests(unittest.TestCase):
         folder=ROOT / '.smoke/query-easy-tests'; folder.mkdir(parents=True, exist_ok=True)
         self.temp=tempfile.TemporaryDirectory(dir=folder); self.addCleanup(self.temp.cleanup)
         self.root=Path(self.temp.name)
+        working = patch.object(Path, "cwd", return_value=self.root)
+        working.start(); self.addCleanup(working.stop)
         self.store=Store(self.root/'state',demo=True); core.demo_init(self.store)
         self.spec={'name':'고정 조건', 'profile':'production',
                    'sql':"SELECT * FROM production_records WHERE process='WB'",'parameters':{}}
@@ -128,6 +130,6 @@ class EasyQueryTests(unittest.TestCase):
         runner.write_text('import sys\nsys.path.insert(0,'+repr(str(ROOT/'scripts/query_skills'))+')\nfrom query_core.cli import main\nraise SystemExit(main("demo"))\n',encoding='utf-8')
         quote=lambda p: "'"+str(p).replace("'","''")+"'"
         command='& '+quote(sys.executable)+' -X utf8 -B '+quote(runner)+' --state-root '+quote(self.store.root)+' execute --id 1 --param start_date=2026-10-01 --param end_date=2026-11-01 --param process=WB'
-        done=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-Command',command],capture_output=True,encoding='utf-8',timeout=30)
+        done=subprocess.run(['powershell.exe','-NoLogo','-NoProfile','-Command',command],capture_output=True,encoding='utf-8',timeout=30,cwd=self.root)
         self.assertEqual(done.returncode,0,done.stderr)
         result=json.loads(done.stdout); self.assertEqual(result['savedRows'],1)

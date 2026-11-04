@@ -26,6 +26,8 @@ class SDKCliDiscoveryTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=parent)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        working = patch.object(Path, "cwd", return_value=self.root)
+        working.start(); self.addCleanup(working.stop)
         self.store = Store(self.root / 'state')
         self.profile = {'id': 'lake_test', 'name': '테스트 데이터', 'engine': 'datalake', 'lake_type': 'prod'}
         self.store.save_profile(self.profile, dict(SECRETS))

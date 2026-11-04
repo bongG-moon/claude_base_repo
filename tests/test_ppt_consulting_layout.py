@@ -93,11 +93,11 @@ class ConsultingLayoutTests(unittest.TestCase):
         with self.assertRaises(artifacts.ArtifactError):
             self.prepared({'layout':'summary','title':title*3,'body':'보존해야 하는 본문'})
 
-    def test_dense_summary_and_table_fail_without_truncation(self):
+    def test_unfit_summary_and_single_cell_fail_without_truncation(self):
         for row in (
                 {'layout':'summary','title':'확인','body':'긴 설명입니다. '*120},
                 {'layout':'evidence','title':'확인','table':{'headers':['항목','설명'],
-                    'rows':[['대상','매우 긴 한글 설명을 읽기 좋은 크기로 유지합니다. '*5] for _ in range(7)]}}):
+                    'rows':[['대상','매우 긴 한글 설명을 읽기 좋은 크기로 유지합니다. '*30] for _ in range(7)]}}):
             with self.assertRaises(artifacts.ArtifactError):
                 self.prepared(row)
 

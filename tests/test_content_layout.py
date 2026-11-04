@@ -197,14 +197,14 @@ class ContentLayoutTests(unittest.TestCase):
             self.assertNotIn(marker,json.dumps(cleaned))
         self.assertEqual('PRIVATE_TITLE',original['pages'][0]['elements'][0]['chart']['title'])
 
-    def test_dense_order_fails_before_any_export_no_silent_side_by_side(self):
-        self.row['table']['rows'] = [['항목',str(n)] for n in range(10)]
+    def test_overfull_single_cell_fails_before_export_without_silent_side_by_side(self):
+        self.row['table']['rows'] = [['항목','보존해야 하는 설명 '*100] for _ in range(10)]
         with patch.object(artifacts,'_office',side_effect=AssertionError('must not run')), \
              patch.object(artifacts,'_python_ppt',side_effect=AssertionError('must not run')):
             result = artifacts.create_ppt(self.spec,self.root/'dense.pptx')
         self.assertFalse(result['ok'])
         self.assertEqual('ppt_design_invalid',result['code'])
-        self.assertIn('본문 순서',result['message'])
+        self.assertIn('원본 행이나 값을 삭제하지',result['message'])
         self.assertFalse((self.root/'dense.pptx').exists())
 
     def test_explicit_order_not_silently_ignored_in_import_or_preserve(self):

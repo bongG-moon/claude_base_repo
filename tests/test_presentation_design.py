@@ -62,11 +62,15 @@ class PresentationDesignTests(unittest.TestCase):
                     self.assertLessEqual(e['x']+e['w'], w)
                     self.assertLessEqual(e['y']+e['h'], h)
 
-    def test_korean_dense_cells_rejected_without_small_fonts(self):
+    def test_korean_dense_tables_paginate_without_small_fonts_or_lost_cells(self):
         spec = {'title': '표', 'slides': [{'title': '상세', 'table': {'headers': ['대상', '상세 설명'],
                 'rows': [['항목', '설명이매우길어서여러줄이됩니다'*5] for _ in range(7)]}}]}
-        with self.assertRaises(design.DesignError):
-            self.prepared(spec)
+        data,_ = self.prepared(spec)
+        self.assertGreater(len(data['sections']),1)
+        self.assertEqual(spec['slides'][0]['table']['rows'],
+                         [r for s in data['sections'] for r in s['table']['rows']])
+        self.assertTrue(all(e.get('size',16)>=16 for page in data['presentationPlan']['pages']
+                            for e in page['elements'] if e['kind']=='table'))
 
     def test_too_long_title_rejected_without_truncation(self):
         spec = self.spec()

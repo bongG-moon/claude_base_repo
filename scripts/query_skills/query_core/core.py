@@ -8,6 +8,7 @@ import decimal
 import hashlib
 import json
 import re
+import sqlite3
 from pathlib import Path
 import time
 import threading
@@ -18,6 +19,19 @@ from .store import Store, atomic_json, fingerprint, read_json, safe_path
 DEFAULTS = {'max_rows':10_000, 'max_bytes':20*1024*1024, 'timeout':30}
 # 큰 조회도 명시적 동의 후 이 실행기의 유한한 상한 안에서 처리합니다.
 CEILINGS = {'max_rows':1_000_000, 'max_bytes':512*1024*1024, 'timeout':1800}
+SIZE_EVIDENCE_SECONDS = 7 * 24 * 60 * 60
+BEHAVIOR_RISK = '사용자 함수의 동작은 DB의 조회 전용 권한으로도 확인해야 합니다.'
+COUNTABLE_SIZE_RISKS = {
+    '조회 조건이 없는 데이터 범위가 있습니다.',
+    '건너뛰는 행이 많아 조회 비용이 커질 수 있습니다.',
+    '입력한 날짜 사이가 31일을 넘습니다. 긴 기간 조회인지 확인해 주세요.',
+}
+REPEATABLE_SIZE_RISKS = {
+    '조회 조건이 없는 데이터 범위가 있습니다.',
+    '건너뛰는 행이 많아 조회 비용이 커질 수 있습니다.',
+    '입력한 날짜 사이가 31일을 넘습니다. 긴 기간 조회인지 확인해 주세요.',
+    '결합 조건이 없는 조인이 있습니다.',
+}
 
 
 def default_limits(engine='demo'):
@@ -59,6 +73,93 @@ def _prepared(store, engine, query_id, values):
     return query, profile, binds, analysis
 
 
+def _prepared_again(store, engine, query_id, values, prepared):
+    """Reuse parsing only within one call after rechecking mutable definitions."""
+    if prepared is None:
+        return _prepared(store, engine, query_id, values)
+    query, profile, binds, analysis = prepared
+    current_query = store.query(query_id, engine)
+    current_profile = store.profile(current_query['profile'])
+    if fingerprint(current_query) != fingerprint(query) or fingerprint(current_profile) != fingerprint(profile):
+        raise ValueError('SQL이나 연결 설정이 바뀌었습니다. 바뀐 조건으로 다시 준비해 주세요.')
+    return current_query, current_profile, binds, analysis
+
+
+def _size_evidence_key(body):
+    return fingerprint({key:body[key] for key in ('engine', 'queryHash', 'profileHash',
+                        'connectionHash', 'params', 'limits')})
+
+
+def _request_identity(engine, query, profile, secrets, values, selected):
+    return {'queryId':query['id'], 'queryHash':fingerprint(query), 'profileHash':fingerprint(profile),
+            'connectionHash':fingerprint(secrets), 'engine':engine, 'params':values, 'limits':selected}
+
+
+def _small_complete(metadata, defaults):
+    if metadata.get('status') != 'complete' or metadata.get('complete') is not True:
+        return False
+    for key, field in (('max_rows', 'savedRows'), ('max_bytes', 'dataBytes'), ('timeout', 'elapsedMs')):
+        value = metadata.get(field)
+        if type(value) is not int or value < 0:
+            return False
+        maximum = defaults[key]
+        if maximum is not None and value >= maximum * (1000 if key == 'timeout' else 1):
+            return False
+    return True
+
+
+def _previous_small_query(store, body):
+    risks = set(body['risks'])
+    if not risks:
+        return None
+    defaults = default_limits(body['engine'])
+    if any(defaults[k] is not None and body['limits'][k] > defaults[k] for k in defaults):
+        return None
+    with store.connect() as conn:
+        row = conn.execute('SELECT body, checked FROM query_size_evidence WHERE id=?',
+                           (_size_evidence_key(body),)).fetchone()
+    if row is None or not 0 <= time.time() - row['checked'] <= SIZE_EVIDENCE_SECONDS:
+        return None
+    try:
+        evidence = json.loads(row['body'])
+    except (TypeError, ValueError):
+        return None
+    if (not risks <= REPEATABLE_SIZE_RISKS | {BEHAVIOR_RISK}
+            or evidence.get('riskDigest') != fingerprint(body['risks'])
+            or (BEHAVIOR_RISK in risks and evidence.get('behaviorApproved') is not True)):
+        _forget_size_evidence(store, body)
+        return None
+    return evidence if _small_complete(evidence, defaults) else None
+
+
+def _forget_size_evidence(store, proposal):
+    if proposal.get('risks') == []:
+        return  # Ordinary queries never create approval evidence.
+    with store.connect() as conn:
+        conn.execute('DELETE FROM query_size_evidence WHERE id=?', (_size_evidence_key(proposal),))
+
+
+def _remember_size_evidence(store, proposal, metadata, *, behavior_approved=False):
+    # Store only bounded proof of a completed query, never rows or credentials.
+    if (not proposal['risks'] or not set(proposal['risks']) <= REPEATABLE_SIZE_RISKS | {BEHAVIOR_RISK}
+            or (BEHAVIOR_RISK in proposal['risks'] and not behavior_approved)
+            or not _small_complete(metadata, default_limits(proposal['engine']))):
+        return
+    evidence = {key:metadata[key] for key in ('status', 'complete', 'savedRows', 'dataBytes', 'elapsedMs', 'resultId')}
+    evidence['riskDigest'] = fingerprint(proposal['risks'])
+    if BEHAVIOR_RISK in proposal['risks']:
+        evidence['behaviorApproved'] = True
+    try:
+        with store.connect() as conn:
+            now = time.time()
+            conn.execute('DELETE FROM query_size_evidence WHERE checked < ?', (now-SIZE_EVIDENCE_SECONDS,))
+            conn.execute('INSERT OR REPLACE INTO query_size_evidence VALUES (?,?,?)',
+                         (_size_evidence_key(proposal), json.dumps(evidence), now))
+    except (OSError, sqlite3.Error):
+        # An optional performance receipt must not turn a saved result into a failure.
+        pass
+
+
 @contextmanager
 def _using_backend(profile, secrets, *, demo, timeout_seconds, reuse=None):
     """명시적인 한 번의 조회에서만 같은 연결을 쓰고 설정 변경은 거부합니다."""
@@ -80,31 +181,47 @@ def execute(store: Store, engine, query_id, values, options=None, *, confirmed=F
     if not isinstance(values, dict):
         raise ValueError('조회 조건은 이름과 값으로 입력해 주세요.')
     selected = limits(options, engine)
-    _, profile, _, _ = _prepared(store, engine, query_id, values)
+    prepared = _prepared(store, engine, query_id, values)
+    query, profile, _, _ = prepared
     secrets = store.secrets(profile['id'])
-    with _using_backend(profile, secrets, demo=store.demo, timeout_seconds=selected['timeout']) as backend:
-        reuse = (backend, fingerprint({'profile': profile, 'secrets': secrets, 'demo': store.demo}))
-        proposal = plan(store, engine, query_id, values, options, _reuse=reuse)
-        if proposal['requiresLargeApproval'] or proposal['conditionsTruncated']:
-            # 승인 대기 중 연결을 보관하지 않습니다. 이후 같은 계획을 run으로 실행합니다.
-            return dict(proposal, executed=False,
-                        nextStep='표시한 범위 또는 전체 조건을 확인한 뒤 같은 준비 번호로 실행하세요.')
-        return run(store, engine, proposal['planId'], confirmed=True, _reuse=reuse)
+    identity = _request_identity(engine, query, profile, secrets, values, selected)
+    deadline = time.monotonic() + selected['timeout'] if selected['timeout'] is not None else None
+    try:
+        with _using_backend(profile, secrets, demo=store.demo, timeout_seconds=selected['timeout']) as backend:
+            reuse = (backend, fingerprint({'profile': profile, 'secrets': secrets, 'demo': store.demo}))
+            proposal = plan(store, engine, query_id, values, options, _reuse=reuse,
+                            _prepared_context=prepared, _secrets=secrets)
+            if proposal['requiresLargeApproval'] or proposal['conditionsTruncated']:
+                # 승인 대기 중 연결을 보관하지 않습니다. 이후 같은 계획을 run으로 실행합니다.
+                return dict(proposal, executed=False,
+                            nextStep='표시한 범위 또는 전체 조건을 확인한 뒤 같은 준비 번호로 실행하세요.')
+            return run(store, engine, proposal['planId'], confirmed=True, _reuse=reuse,
+                       _prepared_context=prepared, _execution_deadline=deadline)
+    except Exception:
+        # Opening a backend can fail before plan/run has consumed the proof.
+        _forget_size_evidence(store, identity)
+        raise
 
 
-def plan(store: Store, engine, query_id, values, options=None, *, _reuse=None):
+def plan(store: Store, engine, query_id, values, options=None, *, _reuse=None, _prepared_context=None, _secrets=None):
     if not isinstance(values, dict):
         raise ValueError('조회 조건은 이름과 값으로 입력해 주세요.')
     selected = limits(options, engine)
     if engine == 'datalake' and not store.demo and selected['timeout'] is not None:
         raise ValueError('현재 lakes SDK에는 조회 취소와 시간 제한을 전달하는 규격이 확인되지 않았습니다. Datalake의 --timeout 지정을 생략해 주세요.')
     defaults = default_limits(engine)
-    query, profile, binds, analysis = _prepared(store, engine, query_id, values)
+    query, profile, binds, analysis = _prepared_context if _prepared_context is not None else _prepared(store, engine, query_id, values)
     # 연결 검사/추정은 이 명시적 조회 요청에서만 수행합니다. 등록과 목록은 접속하지 않습니다.
-    connection_secrets = store.secrets(profile['id'])
-    with _using_backend(profile, connection_secrets, demo=store.demo,
-                        timeout_seconds=10 if selected['timeout'] is None else min(selected['timeout'], 10), reuse=_reuse) as backend:
-        observation = backend.inspect(query['sql'], binds)
+    connection_secrets = store.secrets(profile['id']) if _secrets is None else _secrets
+    identity = _request_identity(engine, query, profile, connection_secrets, values, selected)
+    try:
+        with _using_backend(profile, connection_secrets, demo=store.demo,
+                            timeout_seconds=10 if selected['timeout'] is None else min(selected['timeout'], 10), reuse=_reuse) as backend:
+            observation = backend.inspect(query['sql'], binds)
+    except Exception:
+        # E-HUB authenticates during inspection; never retain its earlier proof.
+        _forget_size_evidence(store, identity)
+        raise
     exact = observation.get('exact_count')
     estimated = observation.get('estimated_rows')
     for value in (exact, estimated):
@@ -123,11 +240,50 @@ def plan(store: Store, engine, query_id, values, options=None, *, _reuse=None):
     if any(defaults[k] is not None and selected[k] > defaults[k] for k in selected):
         risks.append('기본 한도를 확대하는 조회입니다.')
     risks = list(dict.fromkeys(risks))
-    body = {'queryId':query['id'], 'queryHash':fingerprint(query), 'profileHash':fingerprint(profile),
-            'connectionHash':fingerprint(connection_secrets),
-            'engine':engine, 'params':values, 'limits':selected, 'createdAt':time.time(),
+    body = {**identity, 'createdAt':time.time(),
             'requiresLargeApproval':bool(risks), 'risks':risks,
             'knownOverLimit': exact is not None and exact > selected['max_rows']}
+    previous = _previous_small_query(store, body)
+    if previous is not None:
+        body['requiresLargeApproval'] = False
+        body['sizeEvidenceResultId'] = previous['resultId']
+        body['behaviorApprovalReused'] = previous.get('behaviorApproved') is True
+    elif (exact is not None and exact <= selected['max_rows'] and risks
+          and set(risks) <= COUNTABLE_SIZE_RISKS
+          and not any(defaults[k] is not None and selected[k] > defaults[k] for k in selected)):
+        # 이미 받은 정확한 건수가 작은데 다시 묻거나 COUNT하지 않습니다.
+        # 함수/무조건 조인/큰 실행계획 등 별도 위험에는 이 판단을 쓰지 않습니다.
+        body['requiresLargeApproval'] = False
+    elif (engine in {'oracle', 'ehub'} and not store.demo and risks
+          and set(risks) <= COUNTABLE_SIZE_RISKS and selected['max_rows'] == defaults['max_rows']
+          and not any(defaults[k] is not None and selected[k] > defaults[k] for k in selected)):
+        # A normal lookup never pays for COUNT. Only an unresolved size warning
+        # gets a bounded probe, and unknown behavior/joins never execute here.
+        from .adapters import AdapterError
+        with _using_backend(profile, connection_secrets, demo=False,
+                            timeout_seconds=selected['timeout'], reuse=_reuse) as backend:
+            probe = getattr(backend, 'count_bounded', None)
+            if probe is not None:
+                try:
+                    observed = probe(query['sql'], binds, limit=selected['max_rows'],
+                                     timeout_seconds=min(2, selected['timeout']))
+                except AdapterError as error:
+                    _forget_size_evidence(store, body)
+                    if error.code != 'count_timeout':
+                        raise
+                    body['sizeProbe'] = {'status': 'timeout', 'seconds': min(2, selected['timeout'])}
+                else:
+                    count, cap = observed.get('count'), observed.get('cap')
+                    if (type(count) is not int or type(cap) is not int or cap != selected['max_rows'] + 1
+                            or not 0 <= count <= cap or observed.get('complete') is not (count < cap)):
+                        raise ValueError('조회 건수 확인 응답을 신뢰할 수 없습니다.')
+                    body['sizeProbe'] = dict(observed, status='complete' if count < cap else 'over_limit')
+                    body['requiresLargeApproval'] = count >= cap
+                    body['knownOverLimit'] = count >= cap
+                    if count < cap:
+                        exact = count
+                    else:
+                        risks.append(f"최소 {cap:,}행으로 기본 한도를 넘습니다. 필요한 범위나 허용할 행 수를 확인해 주세요.")
     plan_id = store.save_plan(body)
     # 조건은 사용자가 입력한 범위만 표시합니다. 데이터 행/전체 실행계획은 내보내지 않습니다.
     conditions = json.loads(json.dumps(binds, ensure_ascii=False, default=str))
@@ -143,7 +299,9 @@ def plan(store: Store, engine, query_id, values, options=None, *, _reuse=None):
             'queryName':query['name'], 'sourceName':profile['name'], 'conditions':conditions,
             'conditionsTruncated':truncated, 'conditionReviewFile':str(condition_file) if condition_file else None,
             'exactCount':exact, 'estimatedRows':estimated, 'limits':selected,
-            'requiresLargeApproval':bool(risks), 'risks':risks,
+            'requiresLargeApproval':body['requiresLargeApproval'], 'risks':risks,
+            'sizeEvidenceReused':previous is not None,
+            'sizeProbe':body.get('sizeProbe'),
             'notes':observation.get('notes', []) + analysis.get('advisories', []),
             'demo':store.demo, 'dataRowsReturned':0,
             'nextStep':'조건과 확대 범위를 사용자에게 한 번 확인한 뒤 이 준비 번호로 실행하세요.'}
@@ -164,16 +322,22 @@ def _cell(value):
     raise ValueError('자동 저장하지 않는 자료형이 있습니다. 필요한 일반 컬럼만 선택해 주세요.')
 
 
-def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False, _reuse=None):
+def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False, _reuse=None,
+        _prepared_context=None, _execution_deadline=None):
     if not confirmed:
         raise ValueError('조회 조건을 사용자에게 먼저 확인해 주세요.')
     proposal = store.get_plan(plan_id)
     proposal['planId'] = plan_id
     if proposal['engine'] != engine or time.time() - proposal['createdAt'] > 900:
         raise ValueError('조회 준비가 다른 스킬에 속하거나 15분이 지났습니다. 다시 준비해 주세요.')
-    query, profile, binds, _ = _prepared(store, engine, proposal['queryId'], proposal['params'])
+    query, profile, binds, _ = _prepared_again(store, engine, proposal['queryId'], proposal['params'], _prepared_context)
     if fingerprint(query) != proposal['queryHash'] or fingerprint(profile) != proposal['profileHash']:
         raise ValueError('SQL이나 연결 설정이 바뀌었습니다. 바뀐 조건으로 다시 준비해 주세요.')
+    if proposal.get('sizeEvidenceResultId') and not allow_large and _previous_small_query(store, proposal) is None:
+        return {'ok':False, 'status':'large_query_approval_required', 'planId':plan_id,
+                'sourceName':profile['name'], 'limits':proposal['limits'],
+                'message':'이전의 작은 완료 결과 근거가 만료되거나 바뀌었습니다. 표시한 조회 범위를 확인해 주세요.',
+                'dataRowsReturned':0}
     if proposal['requiresLargeApproval'] and not allow_large:
         return {'ok':False, 'status':'large_query_approval_required', 'planId':plan_id,
                 'sourceName':profile['name'], 'limits':proposal['limits'],
@@ -182,11 +346,20 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False, _r
         return {'ok':False, 'status':'larger_limit_required', 'planId':plan_id,
                 'message':'사용자가 허용한 행 수로 한도를 확대해 새 조회를 준비해 주세요. 아직 실행하지 않았습니다.', 'dataRowsReturned':0}
     selected = limits(proposal['limits'], engine)
+    remaining = selected['timeout']
+    if _execution_deadline is not None:
+        remaining = min(remaining, _execution_deadline - time.monotonic())
+        if remaining <= 0:
+            from .adapters import AdapterError
+            raise AdapterError('query_timeout', '조회 준비 중 제한 시간이 지났습니다. 본 조회는 실행하지 않았습니다.')
     secrets = store.secrets(profile['id'])
     if fingerprint(secrets) != proposal['connectionHash']:
         raise ValueError('접속 정보가 바뀌었습니다. 변경된 연결로 다시 준비해 주세요.')
     # 같은 준비 번호가 동시에 실행되거나 재시도로 중복 조회되지 않게 먼저 소비합니다.
     store.claim_plan(plan_id)
+    # Failure, interruption or a newly partial result must not retain an older
+    # small-success receipt for the same request.
+    _forget_size_evidence(store, proposal)
     result_id = uuid.uuid4().hex
     folder = safe_path(store.root / 'results' / result_id)
     folder.mkdir(parents=True, exist_ok=False)
@@ -207,15 +380,15 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False, _r
     status = 'complete'
     reason = None
     try:
-        with _using_backend(profile, secrets, demo=store.demo, timeout_seconds=selected['timeout'], reuse=_reuse) as backend:
-            with backend.execute(query['sql'], binds, limit=selected['max_rows'], timeout_seconds=selected['timeout']) as result:
+        with _using_backend(profile, secrets, demo=store.demo, timeout_seconds=remaining, reuse=_reuse) as backend:
+            with backend.execute(query['sql'], binds, limit=selected['max_rows'], timeout_seconds=remaining) as result:
                 columns, rows = result
                 columns = list(columns)
                 if not all(isinstance(c,str) and len(c) <= 256 for c in columns) or len(columns) > 500:
                     raise ValueError('조회 컬럼이 너무 많거나 형식이 맞지 않습니다.')
                 with data.open('xb') as out:
                     for row in rows:
-                        if selected['timeout'] is not None and time.monotonic() - start > selected['timeout']:
+                        if remaining is not None and time.monotonic() - start > remaining:
                             status, reason = 'partial', 'time_limit'
                             break
                         if count >= selected['max_rows']:
@@ -259,6 +432,8 @@ def run(store: Store, engine, plan_id, *, confirmed=False, allow_large=False, _r
                 'message':('조회는 오류 없이 끝났지만 지정한 조건의 데이터는 0건입니다.' if count==0 else '조회 결과를 로컬에 저장했습니다.') if status=='complete' else '일부 데이터만 저장했습니다. 전체 결과로 해석하지 말고 범위 또는 한도를 다시 지정해 주세요.',
                 'dataRowsReturned':0})
     atomic_json(folder / 'metadata.json', metadata)
+    _remember_size_evidence(store, proposal, metadata,
+                            behavior_approved=allow_large or proposal.get('behaviorApprovalReused') is True)
     _record_links(store, engine, proposal, metadata)
     return receipt(metadata)
 
@@ -301,6 +476,9 @@ def load_result_rows(result_file):
 
 
 def export_csv(store, result_id, output):
+    import os
+    import stat
+
     info = result_info(store, result_id)
     if info.get('status') == 'failed':
         raise ValueError('실패한 조회에는 내보낼 데이터가 없습니다.')
@@ -314,15 +492,53 @@ def export_csv(store, result_id, output):
     def spreadsheet_safe(v):
         # Excel이 문자열을 수식으로 실행하지 않게 표시용 CSV에서만 보호합니다.
         return "'"+v if isinstance(v,str) and (v.lstrip().startswith(('=','+','-','@')) or v.startswith(('\t','\r'))) else v
-    with output.open('x', newline='', encoding='utf-8-sig') as out:
-        writer = csv.writer(out)
-        writer.writerow([spreadsheet_safe(v) for v in metadata['columns']])
-        for row in load_result_rows(metadata['dataFile']):
-            writer.writerow([spreadsheet_safe(v) for v in row])
+    created_identity = None
+    exported_rows = 0
+    source_digest = hashlib.sha256()
+    try:
+        with output.open('x', newline='', encoding='utf-8-sig') as out:
+            created = os.fstat(out.fileno())
+            created_identity = (created.st_dev, created.st_ino)
+            writer = csv.writer(out)
+            writer.writerow([spreadsheet_safe(v) for v in metadata['columns']])
+            # 기존 JSONL→CSV 한 번의 읽기에서 행, 열과 원본 해시를 확인합니다.
+            # 셀 안 줄바꿈은 행이 아니므로 CSV의 물리적 줄 수를 세지 않습니다.
+            with safe_path(metadata['dataFile']).open('rb') as source:
+                for line in source:
+                    source_digest.update(line)
+                    row = json.loads(line)
+                    if not isinstance(row, list) or len(row) != len(metadata['columns']):
+                        raise ValueError('저장 결과의 열 수가 조회 기록과 다릅니다. 같은 조회를 자동 반복하지 마세요.')
+                    writer.writerow([spreadsheet_safe(v) for v in row])
+                    exported_rows += 1
+            if exported_rows != metadata['savedRows']:
+                raise ValueError('저장 결과의 행 수가 조회 기록과 다릅니다. 같은 조회를 자동 반복하지 마세요.')
+            expected_hash = metadata.get('dataSha256')
+            if expected_hash and source_digest.hexdigest() != expected_hash:
+                raise ValueError('저장 결과가 조회 이후 변경됐습니다. 같은 조회를 자동 반복하지 마세요.')
+            out.flush()
+            expected_bytes = out.buffer.tell()
+        saved = safe_path(output).stat()
+        if ((saved.st_dev, saved.st_ino) != created_identity or saved.st_size != expected_bytes):
+            raise ValueError('CSV 저장 완료를 확인하지 못했습니다. 기존 결과 ID로 내보내기를 다시 하세요.')
+    except Exception:
+        # exclusive-create로 이번 호출이 만든 동일 파일만 정리합니다.
+        # 이미 있던 사용자 파일이나 이후 다른 파일로 교체된 경로는 보존합니다.
+        if created_identity is not None:
+            try:
+                current = safe_path(output).lstat()
+                if (stat.S_ISREG(current.st_mode) and current.st_nlink == 1
+                        and (current.st_dev, current.st_ino) == created_identity):
+                    output.unlink()
+            except (ValueError, OSError):
+                pass
+        raise
     if output.parent == managed_exports:
         from .results import register_export
         register_export(store, result_id, output)
     return {'ok':True, 'filePath':str(output), 'savedRows':metadata['savedRows'],
+            'exportedRows':exported_rows, 'outputBytes':saved.st_size,
+            'deliveryVerification':'verified', 'verificationScope':'csv-file-only',
             'complete':metadata['complete'], 'format':'csv', 'dataRowsReturned':0,
             'message':'CSV는 Excel용 수식 문자열 보호를 적용했습니다. 원본 값은 JSONL에 유지됩니다.'}
 
@@ -344,6 +560,9 @@ def deliver_csv(store, result, directory):
         return dict(result, exportStatus='failed',
                     exportMessage='조회는 끝났지만 전달용 CSV 저장에 실패했습니다. 기존 결과 ID로 내보내기를 다시 하세요. 같은 조회를 반복하지 마세요.')
     return dict(result, outputFile=exported['filePath'], exportStatus='complete',
+                outputBytes=exported['outputBytes'], exportedRows=exported['exportedRows'],
+                deliveryVerification=exported['deliveryVerification'],
+                verificationScope=exported['verificationScope'],
                 exportMessage=exported['message'])
 
 

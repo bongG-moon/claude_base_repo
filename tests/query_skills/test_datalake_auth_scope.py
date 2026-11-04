@@ -22,6 +22,8 @@ class DatalakeAuthScopeTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=base)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        working = patch.object(Path, "cwd", return_value=self.root)
+        working.start(); self.addCleanup(working.stop)
         self.store = Store(self.root / 'personal')
         self.profile = {'id': 'existing_lake', 'name': '기존 인증 별칭', 'engine': 'datalake', 'lake_type': 'prod'}
         self.store.save_profile(self.profile, dict(SECRETS))

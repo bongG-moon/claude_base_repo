@@ -780,7 +780,7 @@ def main(argv=None):
         parser.add_argument('--max-session-' + option, type=int, default=LIMITS[key], dest=key)
     parser.add_argument('--max-catalog-bytes', type=int, default=LIMITS['catalog_bytes'], dest='catalog_bytes')
     parser.add_argument('--include-intents', action='store_true')
-    parser.add_argument('--output', required=True)
+    parser.add_argument('--output', help='새 결과 폴더. 생략하면 work-context-catalog/outputs 아래에 생성')
     args = parser.parse_args(argv)
     local_collection = bool(args.root or args.profile_root or args.state_root) or not args.catalog
     automatic = local_collection and args.include_sessions and not args.no_auto_sessions and not args.profile_root
@@ -791,10 +791,15 @@ def main(argv=None):
     keys = ('session_files', 'session_bytes', 'line_bytes', 'session_events', 'session_entries', 'catalog_bytes')
     if any(getattr(args, key) <= 0 for key in keys):
         parser.error('수집 상한은 1 이상의 정수로 지정하세요.')
-    output = Path(args.output).absolute()
+    output = (Path(args.output).absolute() if args.output else
+              Path.cwd() / 'work-context-catalog' / 'outputs' /
+              datetime.now().strftime('run-%Y%m%d-%H%M%S-%f'))
     if output.exists() or output.is_symlink():
         parser.error('기존 결과는 덮어쓰지 않습니다. 새 결과 폴더를 지정하세요.')
-    no_links(output.parent)
+    for ancestor in (output.parent, *output.parent.parents):
+        if ancestor.exists() or ancestor.is_symlink():
+            no_links(ancestor)
+            break
     collector = Collector({key: getattr(args, key) for key in keys}, include_sessions=args.include_sessions, include_intents=args.include_intents)
     for scope, roots in (('project', args.root), ('profile', args.profile_root), ('state', args.state_root)):
         for root in roots:
@@ -806,7 +811,7 @@ def main(argv=None):
     result = collector.result()
     page = render(result)
     markdown = render_markdown(result)
-    output.mkdir()
+    output.mkdir(parents=True)
     (output / 'catalog.json').write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding='utf-8')
     (output / '업무현황.html').write_text(page, encoding='utf-8')
     (output / '업무자산.md').write_text(markdown, encoding='utf-8', newline='\n')

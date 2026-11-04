@@ -16,7 +16,7 @@ from company_agent import business_artifacts as artifacts, ppt_html, ppt_workflo
 class PptHtmlTests(unittest.TestCase):
     def test_layout_errors_explain_unsupported_page_role_and_profile(self):
         chart = {'type':'column', 'categories':['가'], 'series':[{'name':'실적','values':[1]}]}
-        cases = [({'slides':[{'title':'상세','pageRole':'detail','chart':chart}]}, 'chart'),
+        cases = [({'slides':[{'title':'상세','pageRole':'unknown','chart':chart}]}, 'pageRole'),
                  ({'presentationProfile':{'emphasisSize':17},'slides':[{'title':'표지','body':'내용'}]}, 'emphasisSize')]
         for i,(spec, expected) in enumerate(cases):
             result = ppt_html.create_draft(spec, self.root / f'layout-error-{i}.html', require_choices=False)
@@ -81,8 +81,17 @@ class PptHtmlTests(unittest.TestCase):
         result = ppt_html.save_template(self.spec,saved)
         self.assertTrue(result['ok'],result)
         document = saved.read_text(encoding='utf-8')
-        for private in ('비공개','481','145','175','210','draft.html',str(self.root)):
+        for private in ('비공개','481','draft.html',str(self.root)):
             self.assertNotIn(private, document)
+        # Numeric coordinates/CSS fractions may contain the same digit sequence;
+        # assert that actual chart/table/text values never retain the source.
+        reader=ppt_html._TemplateReader(ppt_html.SCENE_ID);reader.feed(document)
+        scene=json.loads(reader.payloads[0])
+        for page in scene['pages']:
+            for e in page['elements']:
+                values=json.dumps({k:e[k] for k in ('text','table','chart') if k in e},ensure_ascii=False)
+                for private in ('145','175','210'):
+                    self.assertNotIn(private,values)
         self.assertFalse(result['businessContentStored'])
         self.assertFalse(result['referenceImagesStored'])
         meta = ppt_html.read_template(saved)

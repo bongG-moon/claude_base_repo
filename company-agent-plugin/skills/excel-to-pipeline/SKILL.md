@@ -5,6 +5,8 @@ description: XLSX/XLSM 엑셀의 여러 표·시트·수식과 내장 VBA를 분
 
 # 엑셀 업무를 재사용 가능한 Python 처리로
 
+새 산출물은 `<업무폴더>/excel-to-pipeline/outputs/`, 작업용 입력과 임시 파일은 `excel-to-pipeline/.work/`에 모읍니다. 사용자 지정 경로와 기존 원본의 편집 위치를 우선하며 폴더 선택을 별도로 묻지 않습니다.
+
 ## 실행
 
 입력과 결과 위치를 이미 알면 추가 준비 질문 없이 실행합니다. 후크가 제공한
@@ -12,7 +14,7 @@ description: XLSX/XLSM 엑셀의 여러 표·시트·수식과 내장 VBA를 분
 JSON 키를 명령으로 실행하거나 세션 ID, 설치 경로를 검색하지 않습니다.
 
 ```text
-business excel-analyze --file "<입력.xlsx 또는 입력.xlsm>" --output "<새 결과 폴더>"
+business excel-analyze --file "<입력.xlsx 또는 입력.xlsm>" --output "<업무폴더>/excel-to-pipeline/outputs/<작업명>"
 ```
 
 구조 확인만 요청하면 `--output` 대신 `--context-only`로 파일 없이 요약합니다.

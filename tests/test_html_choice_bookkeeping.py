@@ -111,6 +111,14 @@ class HtmlChoiceBookkeepingTests(unittest.TestCase):
         from company_agent.state import _html_choice_wait
         event = self.wait_event()
         self.assertTrue(_html_choice_wait(event, self.root))
+        for missing in (['style'], ['style', 'length', 'mode', 'fontChoice']):
+            response = json.loads(event['tool_response']['stdout'])
+            response['missing'] = missing
+            self.assertTrue(_html_choice_wait({**event, 'tool_response': {'stdout': json.dumps(response)}}, self.root))
+        for missing in ([], ['length'], ['style', 'unrelated'], ['style', {}], ['style', 'style']):
+            response = json.loads(event['tool_response']['stdout'])
+            response['missing'] = missing
+            self.assertFalse(_html_choice_wait({**event, 'tool_response': {'stdout': json.dumps(response)}}, self.root))
         cases = [
             {**event, 'agent_id': 'child'},
             {**event, 'hook_event_name': 'PostToolUseFailure'},

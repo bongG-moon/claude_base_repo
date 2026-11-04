@@ -10,6 +10,28 @@ import sys
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
+def output_path(path, *, intermediate=False):
+    """단순 새 파일명만 스킬 폴더에 정리하고 지정 경로와 기존 파일은 보존합니다."""
+    if path.is_absolute() or path.parent != Path('.') or path.exists():
+        return path
+    work = Path.cwd()
+    if work.name in {'.work', 'outputs'} and work.parent.name == 'html-report':
+        work = work.parent
+    if work.name != 'html-report':
+        work /= 'html-report'
+    return work / ('.work' if intermediate else 'outputs') / path.name
+
+
+def prepare_output(path, artifacts, *, intermediate=False):
+    target = output_path(path, intermediate=intermediate)
+    if target != path:
+        # Validate the local destination before creating the default folders.
+        target = artifacts.safe_path(target)
+        artifacts._reject_reparse(target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
 def main(argv=None):
     # Claude Code's Windows shell consumes tool output as UTF-8 even when
     # Python inherits a legacy console code page. Keep the JSON readable in
@@ -32,7 +54,8 @@ def main(argv=None):
         return 2
     try:
         if args.command == "reference":
-            result = html_reference.inspect_template(args.file, args.preview, open_preview=False)
+            preview = prepare_output(args.preview, artifacts, intermediate=True) if args.preview else None
+            result = html_reference.inspect_template(args.file, preview, open_preview=False)
         else:
             # JSON은 실행 코드가 아니라 보고서 내용입니다. 크기를 먼저 제한합니다.
             if args.spec.stat().st_size > 4 * 1024 * 1024:
@@ -40,13 +63,21 @@ def main(argv=None):
             spec = json.loads(args.spec.read_text(encoding="utf-8-sig"))
             if not isinstance(spec, dict):
                 raise ValueError("내용 파일은 JSON 객체여야 합니다.")
-            result = artifacts.create_html(spec, args.output, require_choices=False)
+            # 새 작업은 기본값으로 디자인/분량을 정한 척하지 않습니다.
+            # 사용자가 이미 고른 값 또는 자동 선택을 맡긴 값은 job에 보존하며,
+            # 빠진 조건만 같은 응답에서 한 번에 돌려줍니다. 별도 사전 명령은 없습니다.
+            spec.setdefault('fontChoiceRequired', True)
+            result = artifacts.html_choices(spec)
+            if result.get('ok'):
+                result = artifacts.create_html(spec, prepare_output(args.output, artifacts), require_choices=True)
+    except artifacts.ArtifactError as exc:
+        result = artifacts._failure(exc)
     except (OSError, ValueError) as exc:
         result = {"ok": False, "code": "invalid_input", "message": str(exc)}
     print(json.dumps(result, ensure_ascii=False, indent=2))
-    # Missing template preview/confirmation is a normal conversation pause,
-    # rather than a shell failure. A changed or invalid file remains an error.
-    waiting = result.get("status") == "input_required" and result.get("stage") in {"template_attach", "template_preview", "template_confirm"}
+    # Choices and template confirmation are normal conversation pauses. They
+    # must not look like command failures that invite an identical retry.
+    waiting = result.get("status") == "input_required" and result.get("code") == "report_choices_required"
     return 0 if result.get("ok") or waiting else 1
 
 

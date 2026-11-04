@@ -140,6 +140,53 @@ class PackageUnitTests(unittest.TestCase):
         self.assertEqual(files['skills/shared/reference.md'][1], b'unchanged\r\n')
         self.assertEqual(links, [{'from': 'skills/demo/SKILL.md', 'to': 'skills/shared/reference.md'}])
 
+    def test_shared_provenance_backticks_do_not_add_unrelated_skill_files(self):
+        tree = self.files()
+        notice = b'Reviewed `skills/unrelated/history.md`. [License](licenses/source.md)\r\n'
+        license_text = b'Copyright unchanged. Source `../skills/unrelated/legal-history.md`.\r\n'
+        tree.update({
+            'company-agent-plugin/THIRD_PARTY_NOTICES.md': notice,
+            'company-agent-plugin/licenses/source.md': license_text,
+            'company-agent-plugin/skills/unrelated/history.md': b'not a runtime dependency',
+            'company-agent-plugin/skills/unrelated/legal-history.md': b'not a runtime dependency',
+        })
+        selected, links = export.source_files('demo', self.metadata()['demo'], tree)
+        self.assertEqual(selected['THIRD_PARTY_NOTICES.md'][1], notice)
+        self.assertEqual(selected['licenses/source.md'][1], license_text)
+        self.assertFalse(any(path.startswith('skills/unrelated/') for path in selected))
+        self.assertEqual(links, [{'from': 'THIRD_PARTY_NOTICES.md', 'to': 'licenses/source.md'}])
+
+    def test_legal_markdown_links_and_instruction_backticks_keep_dependencies(self):
+        tree = self.files()
+        tree['company-agent-plugin/skills/demo/SKILL.md'] += b'\n`../shared/instruction.md`\n'
+        tree.update({
+            'company-agent-plugin/THIRD_PARTY_NOTICES.md': b'[Source note](skills/shared/source.md)',
+            'company-agent-plugin/licenses/source.md': b'[Appendix](../skills/shared/appendix.md)',
+            'company-agent-plugin/skills/shared/source.md': b'original source note',
+            'company-agent-plugin/skills/shared/appendix.md': b'original legal appendix',
+            'company-agent-plugin/skills/shared/instruction.md': b'Use `next.md` when needed.',
+            'company-agent-plugin/skills/shared/next.md': b'nested instruction',
+        })
+        selected, links = export.source_files('demo', self.metadata()['demo'], tree)
+        for name in ('source', 'appendix', 'instruction', 'next'):
+            path = 'skills/shared/' + name + '.md'
+            self.assertEqual(selected[path][1], tree['company-agent-plugin/' + path])
+        self.assertIn({'from': 'licenses/source.md', 'to': 'skills/shared/appendix.md'}, links)
+        self.assertIn({'from': 'skills/shared/instruction.md', 'to': 'skills/shared/next.md'}, links)
+
+    def test_current_oracle_package_keeps_runtime_and_legal_sources_only(self):
+        metadata = json.loads((ROOT / 'scripts/platform_skills/catalog-metadata.json').read_text(encoding='utf-8'))
+        tree = export.snapshot(ROOT, metadata)
+        selected, _ = export.source_files('oracle-query', metadata['oracle-query'], tree)
+        self.assertNotIn('skills/website-rebuild/references/sources.md', selected)
+        for path in ('skills/oracle-query/SKILL.md', 'skills/oracle-query/scripts/query.py',
+                     'skills/oracle-query/references/interaction.md',
+                     'skills/oracle-query/references/usage.md', 'skills/oracle-query/references/workflows.md',
+                     'THIRD_PARTY_NOTICES.md', 'licenses/frontend-design-Apache-2.0.txt'):
+            self.assertIn(path, selected)
+            source, raw = selected[path]
+            self.assertEqual(raw, tree[source])
+
     def test_missing_explicit_dependency_rejected(self):
         meta = self.metadata()['demo']; meta['packaging'] = {'includeAdditionalPaths': ['skills/missing/info.md']}
         with self.assertRaisesRegex(ValueError, 'Missing dependency'):
@@ -180,6 +227,16 @@ class PackageUnitTests(unittest.TestCase):
             return real(p, *a, **kw)
         with patch.object(Path, 'lstat', lstat), self.assertRaisesRegex(ValueError, '재분석'):
             export.no_links(path)
+
+    def test_pinned_vendored_files_preserve_original_crlf_bytes(self):
+        for name in ('standalone-skills/demo/assets/vendor/lib/bundle.js',
+                     'company-agent-plugin/skills/demo/assets/vendor/lib/LICENSE',
+                     'standalone-skills/demo/upstream/scripts/engine.py'):
+            path = self.root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            original = b'original bytes\r\nwith pinned hash\r\n'
+            path.write_bytes(original)
+            self.assertEqual(export.package_source_bytes(path), original)
 
     def test_standard_missing_is_not_fallback_to_old_copy(self):
         with self.assertRaises(ValueError):
@@ -315,7 +372,7 @@ class ActualPackageTests(unittest.TestCase):
                     self.assertNotIn('Company', manifest['name'])
                     self.assertGreater(len(manifest['workflow']['steps']), 0)
                     source = json.loads(z.read('PACKAGE_SOURCE.json'))
-                    self.assertEqual(source['textNormalization'], 'utf8-crlf-to-lf')
+                    self.assertEqual(source['textNormalization'], 'utf8-crlf-to-lf-except-vendored-originals')
                     for name, original in source['files'].items():
                         self.assertEqual(z.read(name), export.package_source_bytes(ROOT / original['repoPath']))
                     self.assertEqual(z.read('install_scope.py'), export.package_source_bytes(export.DEFAULT_STANDARD / 'scripts/install_scope.py'))

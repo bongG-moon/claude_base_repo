@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+from datetime import datetime
 import hashlib
 import json
 import os
@@ -188,18 +189,31 @@ def execute(data: dict, output: Path, *, undo=False) -> dict:
     return result
 
 
-def main() -> int:
+def default_record(kind: str) -> Path:
+    # 자료의 이동 위치는 바꾸지 않고 이 스킬의 계획과 기록만 한곳에 둡니다.
+    area = '.work' if kind == 'plan' else 'outputs'
+    target = Path.cwd() / 'file-organizer' / area / (kind + '-' + datetime.now().strftime('%Y%m%d-%H%M%S-%f') + '.json')
+    checked(target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return target
+
+
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
-    p = sub.add_parser("plan"); p.add_argument("--folder", type=Path, required=True); p.add_argument("--output", type=Path, required=True)
-    p = sub.add_parser("apply"); p.add_argument("--plan", type=Path, required=True); p.add_argument("--receipt", type=Path, required=True)
+    p = sub.add_parser("plan"); p.add_argument("--folder", type=Path, required=True); p.add_argument("--output", type=Path)
+    p = sub.add_parser("apply"); p.add_argument("--plan", type=Path, required=True); p.add_argument("--receipt", type=Path)
     p = sub.add_parser("undo"); p.add_argument("--receipt", type=Path, required=True); p.add_argument("--output", type=Path, required=True)
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
     try:
         if args.command == "plan":
+            args.output = args.output or default_record('plan')
             result = plan(args.folder); save_new(args.output, result)
+            result['recordPath'] = str(args.output)
         elif args.command == "apply":
+            args.receipt = args.receipt or default_record('receipt')
             result = execute(load(args.plan), args.receipt)
+            result['recordPath'] = str(args.receipt)
         else:
             result = execute(load(args.receipt), args.output, undo=True)
         print(json.dumps(result, ensure_ascii=False))

@@ -201,9 +201,12 @@ class ResultLifecycleTests(unittest.TestCase):
         os.utime(folder / 'metadata.json', (stamp, stamp))
         before = store.db.read_bytes()
         with patch.object(store, 'secrets', side_effect=AssertionError('no credentials')), patch('socket.socket', side_effect=AssertionError('no network')):
-            summary = results.list_candidates(store, 'oracle', now=self.now)
+            summary = results.list_results(store, 'oracle', now=self.now)
         self.assertEqual(summary['count'], 1)
         self.assertTrue(summary['results'][0]['timeApproximate'])
+        self.assertFalse(summary['results'][0]['cleanupEligible'])
+        self.assertEqual(summary['results'][0]['retainedReason'], 'legacy_hash_missing')
+        self.assertEqual(results.list_candidates(store, 'oracle', now=self.now)['count'], 0)
         self.assertEqual(results.list_candidates(store, 'ehub', now=self.now)['count'], 0)
         self.assertEqual(before, store.db.read_bytes())
         metadata['queryHash'] = 'changed'
@@ -214,10 +217,9 @@ class ResultLifecycleTests(unittest.TestCase):
         metadata['queryHash'] = 'query-fixture-hash'
         atomic_json(folder / 'metadata.json', metadata)
         os.utime(folder / 'metadata.json', (stamp, stamp))
-        plan = results.prepare_cleanup(store, 'oracle', [result_id], now=self.now)
-        report = results.delete_cleanup(store, 'oracle', plan['planId'], confirmed=True, now=self.now+1)
-        self.assertEqual(report['deletedIds'], [result_id])
-        self.assertFalse(folder.exists())
+        with self.assertRaises(ValueError):
+            results.prepare_cleanup(store, 'oracle', [result_id], now=self.now)
+        self.assertTrue(folder.exists())
         self.assertEqual(before, store.db.read_bytes())
 
     def test_failed_results_can_be_cleaned_without_data_and_other_engine_is_preserved(self):

@@ -125,8 +125,8 @@ class ReportThemeExamplesTests(unittest.TestCase):
                 self.assertEqual(2, sum(attrs.get('data-report-table') == 'interactive' for _, attrs in tags))
                 # These controls are progressively created by the bundled table
                 # controller; all 48 rows remain in the initial HTML without JS.
-                for label in ('표 안에서 검색', '필터 열 선택', '필터 값 선택', '검색 결과 CSV', '전체 CSV', '한 페이지에 표시할 행 수'):
-                    self.assertIn(label, document)
+                for label in ('표 안에서 검색', '필터 열 선택', '필터 값 선택', '표시 열', '현재 조건 CSV', '전체 CSV', '한 페이지에 표시할 행 수'):
+                    self.assertTrue(label in document, f'{style}: missing table control {label}')
                 self.assertIn('가상 자료', document)
                 self.assertIn('data-view="scroll"', document)
 

@@ -67,7 +67,7 @@ class ReportStylesTests(unittest.TestCase):
             self.assertIn(f'{i}. {row[1]}',pending['selectionPrompt'])
         self.assertNotIn('1~4',pending['selectionPrompt'])
         self.assertNotIn('5~8',pending['selectionPrompt'])
-        self.assertEqual(['style'],pending['missing'])
+        self.assertEqual(['style','mode'],pending['missing'])
         self.assertEqual({'length':'detailed'},pending['preservedChoices'])
 
     def test_initial_options_preserve_existing_and_add_three_references(self):
@@ -76,23 +76,23 @@ class ReportStylesTests(unittest.TestCase):
         self.assertEqual('추가 디자인(미리보기)',result['initialDesignOptions'][2])
         self.assertEqual('HTML 양식 직접 첨부',result['initialDesignOptions'][3])
         self.assertNotIn('뉴모피즘',json.dumps(result,ensure_ascii=False))
-        self.assertEqual(['style'],result['missing'])
+        self.assertEqual(['style','length','mode'],result['missing'])
         self.assertEqual('design',result['stage'])
-        self.assertNotIn('lengthOptions',result)
-        self.assertNotIn('viewOptions',result)
+        self.assertIn('lengthOptions',result)
+        self.assertIn('viewOptions',result)
 
-    def test_sequence_resolves_extra_design_before_format(self):
+    def test_extra_design_combines_missing_format_and_preserves_partial_answers(self):
         spec={}
         self.assertEqual('design',artifacts.html_choices(spec)['stage'])
         spec['designMenu']='additional'
         result=artifacts.html_choices(spec)
         self.assertEqual('design_detail',result['stage'])
-        self.assertEqual(['style'],result['missing'])
+        self.assertEqual(['style','length','mode'],result['missing'])
         self.assertEqual([row[0] for row in styles.STYLES],[row['style'] for row in result['designOptions']])
         self.assertEqual(10,len(result['designOptions']))
         self.assertTrue(result['previewOptional'])
-        self.assertNotIn('lengthOptions',result)
-        self.assertNotIn('viewOptions',result)
+        self.assertIn('lengthOptions',result)
+        self.assertIn('viewOptions',result)
         spec['style']='neumorphism'
         result=artifacts.html_choices(spec)
         self.assertEqual('format',result['stage'])
@@ -150,12 +150,12 @@ class ReportStylesTests(unittest.TestCase):
                 self.assertEqual(stage,result['stage'])
                 self.assertFalse(state.exists())
 
-    def test_generation_gate_exposes_design_detail_before_unknown_format(self):
+    def test_generation_gate_combines_design_detail_and_unknown_format(self):
         with tempfile.TemporaryDirectory() as t:
             target=Path(t)/'not-created.html'
             result=artifacts.create_html({'designMenu':'additional','sections':[{}]},target,require_choices=True)
             self.assertEqual('design_detail',result['stage'])
-            self.assertEqual(['style'],result['missing'])
+            self.assertEqual(['style','length','mode'],result['missing'])
             self.assertFalse(target.exists())
 
     def test_only_missing_choices_are_requested(self):

@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; img-src data:; font-src &#x27;self&#x27; file: data:; style-src &#x27;unsafe-inline&#x27;; script-src &#x27;sha256-li534VAl7okG+IslJ7AixoTHdWKuYxoVgma6eUtu2y0=&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;"><title>월간 운영 리뷰</title><style>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="Content-Security-Policy" content="default-src &#x27;none&#x27;; img-src data:; font-src &#x27;self&#x27; file: data:; style-src &#x27;unsafe-inline&#x27;; script-src &#x27;sha256-B4VErzLBG39KJJAkLHIZKK73TiCzPIR+N8dSuMJVFvY=&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;"><title>월간 운영 리뷰</title><style>
 /* Bundled font license: Noto Sans KR
 Copyright 2014-2021 Adobe (http://www.adobe.com/), with Reserved Font Name 'Source'
 
@@ -465,19 +465,29 @@ body[data-motion=subtle] .report-masthead button{transition:background-color 120
 .report-data-table .table-wrap{margin:0;max-height:560px;overscroll-behavior:contain;scrollbar-gutter:stable}
 .report-data-table table{border-collapse:separate;border-spacing:0;margin:0}
 .report-data-table thead th{position:sticky;top:0;z-index:1;background:var(--paper);box-shadow:0 1px var(--line);color:var(--ink)}
-.report-data-table :is(td,th){min-width:7rem;max-width:28rem;padding:12px 16px;word-break:keep-all;overflow-wrap:anywhere;white-space:pre-line;line-height:1.6}
+.report-data-table :is(td,th){min-width:7rem;max-width:28rem;padding:12px 16px;word-break:keep-all;overflow-wrap:anywhere;white-space:pre-line;line-height:1.5}
 @media screen{.report-data-table td:is([data-column-kind="id"],[data-column-kind="date"],[data-column-kind="period"]){white-space:nowrap;word-break:normal;overflow-wrap:normal;min-width:9ch}}
 .report-data-table tbody tr:hover{background:var(--bg)}
 .report-data-table caption{text-align:left;font-weight:650;padding:12px 16px;color:var(--ink)}
 .table-tools,.table-footer{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:14px 16px;background:var(--paper)}
 .table-tools{border-bottom:1px solid var(--line)}.table-footer{border-top:1px solid var(--line)}
 .table-search-group,.table-actions,.table-pages{display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-width:0}
-.table-search-group{flex:1}.table-search-group label{font-size:13px;color:var(--muted)}
+.table-search-group{flex:1}.table-search-group label{font-size:12px;color:var(--muted)}
 .report-data-table :is(button,input,select){font:inherit;font-size:14px;line-height:1.4;min-height:44px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--paper);padding:9px 12px;max-width:100%}
 .report-data-table input[type=search]{width:min(260px,100%);min-width:0}.report-data-table select{max-width:180px}
 .report-data-table button:hover:not(:disabled){background:var(--bg);border-color:var(--accent)}
 .report-data-table button:disabled{cursor:default;opacity:.45}.report-data-table .table-sort{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;min-height:44px;padding:0;border:0;background:none;font-weight:650}
-.table-sort-indicator{color:var(--muted);font-size:12px}.table-count,.table-page-label,.table-empty-source{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums}.table-count{margin:0}.table-empty-source{margin:16px}
+.table-sort-indicator{color:var(--muted);font-size:12px}.table-count,.table-page-label,.table-empty-source{font-size:12px;line-height:1.5;color:var(--muted);font-variant-numeric:tabular-nums}.table-count{margin:0}.table-empty-source{margin:16px}
+.report-data-table .table-status{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg)}
+.table-scope-hint{font-size:12px;line-height:1.5;color:var(--muted)}
+.report-data-table .table-download-primary{background:var(--ink);color:var(--paper);border-color:var(--ink);font-weight:700}
+.report-data-table .table-download-primary:hover:not(:disabled){background:var(--ink);color:var(--paper);opacity:.85}
+.report-data-table .table-columns-toggle[aria-expanded=true]{border-color:var(--accent);background:var(--bg)}
+.table-column-panel{padding:12px 16px;border-bottom:1px solid var(--line);background:var(--paper)}
+.table-column-panel-header{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;margin-bottom:8px}
+.table-column-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:4px 16px;max-height:240px;overflow:auto}
+.table-column-options label{display:flex;align-items:center;gap:8px;min-height:44px;font-size:14px;line-height:1.5;word-break:keep-all;overflow-wrap:anywhere}
+.report-data-table input[type=checkbox]{width:16px;height:16px;min-height:16px;padding:0;flex:none;accent-color:var(--accent)}
 body[data-style][data-reference-style] .report-data-table{border-color:var(--table-border,var(--line));border-width:var(--table-border-width,1px);background:var(--table-body-fill,var(--paper))}
 body[data-style][data-reference-style] .report-data-table :is(td,th){border-bottom:var(--table-border-width,1px) solid var(--table-border,var(--line));font-size:var(--table-font-size,14px);padding:var(--table-padding,12px);text-align:var(--table-align,left)}
 body[data-style][data-reference-style] .report-data-table thead th{background:var(--table-head-fill,var(--head-fill));color:var(--table-head-text,var(--ink));font-weight:var(--table-head-weight,700);box-shadow:0 1px var(--table-border,var(--line))}
@@ -487,7 +497,7 @@ body[data-style][data-reference-style] .report-data-table .table-sort{color:inhe
 body[data-style][data-reference-style] .report-data-table td.numeric{text-align:var(--table-align,right)}
 .report-data-table :is(button,input,select):focus-visible{outline:3px solid var(--accent);outline-offset:2px}.report-data-table .table-no-match{text-align:center;padding:36px 16px;color:var(--muted)}
 @media(max-width:760px){.table-tools,.table-footer{align-items:flex-start;padding:12px;gap:10px}.table-search-group{flex-basis:100%}.report-data-table input[type=search]{width:100%;flex-basis:100%;font-size:16px}.table-actions{width:100%}.table-actions button{flex:1}.table-footer{flex-direction:column}.report-data-table :is(td,th){padding:10px 12px}.table-pages{width:100%;justify-content:space-between}}
-@media print{.report-data-table{overflow:visible;border-color:#bbb;break-inside:auto}.report-data-table .table-wrap{overflow:visible;max-height:none}.report-data-table table{min-width:0;width:100%;table-layout:fixed}.report-data-table thead{display:table-header-group}.report-data-table thead th{position:static}.report-data-table :is(td,th){min-width:0;max-width:none;font-size:10px;padding:6px}.table-tools,.table-pages{display:none!important}.table-footer{padding:6px}.report-data-table .table-sort{padding:0;min-height:0;font-size:inherit}.table-sort-indicator{display:none}}
+@media print{.report-data-table{overflow:visible;border-color:#bbb;break-inside:auto}.report-data-table .table-wrap{overflow:visible;max-height:none}.report-data-table table{min-width:0;width:100%;table-layout:fixed}.report-data-table thead{display:table-header-group}.report-data-table thead th{position:static}.report-data-table :is(td,th){min-width:0;max-width:none;font-size:10px;padding:6px}.table-tools,.table-pages,.table-column-panel,.table-scope-hint{display:none!important}.table-footer{padding:6px}.report-data-table .table-sort{padding:0;min-height:0;font-size:inherit}.table-sort-indicator{display:none}}
 
 
 .report-scenarios,.report-explanation-details{min-width:0;margin-top:28px;grid-column:1/-1}
@@ -577,20 +587,31 @@ function reportTableRows(rows, state) {
 function reportTableCanFilter(values,rowCount) {
   return values.size>1&&values.size<rowCount&&values.size<=30&&[...values].every(v=>v.length<=80);
 }
-function reportTableCsv(headers, rows) {
+function reportTableCsv(headers, rows, columns=null) {
+  const selected=columns===null?headers.map((_,i)=>i):columns;
   function cell(value,kind){let text=String(value);if(kind!=='number'&&/^[\s\uFEFF]*[=+\-@]/u.test(text))text="'"+text;
     return '"'+text.replaceAll('"','""')+'"';}
-  return '\uFEFF'+[headers.map(v=>cell(v,'text')).join(','),...rows.map(row=>row.values.map((v,i)=>cell(row.kinds[i]==='number'?(row.numbers?.[i]??v):v,row.kinds[i])).join(','))].join('\r\n');
+  return '\uFEFF'+[selected.map(i=>cell(headers[i],'text')).join(','),...rows.map(row=>selected.map(i=>cell(row.kinds[i]==='number'?(row.numbers?.[i]??row.values[i]):row.values[i],row.kinds[i])).join(','))].join('\r\n');
 }
 
 document.querySelectorAll('[data-report-table="interactive"]').forEach((root,tableIndex)=>{
  const table=root.querySelector('table'),body=table.tBodies[0],headerCells=[...table.tHead.rows[0].cells];
  const headers=headerCells.map(c=>c.textContent), rows=[...body.rows].map((node,index)=>({node,index,values:[...node.cells].map(c=>c.textContent),kinds:[...node.cells].map(c=>c.dataset.kind||'text'),numbers:[...node.cells].map(c=>c.dataset.number??null)}));
  if(!rows.length)return;
- const state={query:'',filterColumn:-1,filterValue:null,sortColumn:-1,direction:1,page:0,size:25};
+ const state={query:'',filterColumn:-1,filterValue:null,sortColumn:-1,direction:1,page:0,size:25,hiddenColumns:new Set()};
  const make=(tag,text,cls)=>{const el=document.createElement(tag);if(text)el.textContent=text;if(cls)el.className=cls;return el};
  const button=(text,action,cls)=>{const el=make('button',text,cls);el.type='button';el.addEventListener('click',action);return el};
  const tools=make('div','','table-tools'),actions=make('div','','table-actions'),footer=make('div','','table-footer'),count=make('p','','table-count');count.setAttribute('aria-live','polite');
+ const status=make('div','','table-status'),scope=make('span','현재 조건 CSV: 검색 결과 전체 행과 표시한 열','table-scope-hint');status.append(count,scope);
+ const visibleColumns=()=>headers.map((_,i)=>i).filter(i=>!state.hiddenColumns.has(i));
+ const columnPanel=make('div','','table-column-panel');columnPanel.id='report-table-columns-'+tableIndex;columnPanel.hidden=true;
+ const columnButton=button('표시 열',()=>{columnPanel.hidden=!columnPanel.hidden;columnButton.setAttribute('aria-expanded',String(!columnPanel.hidden))},'table-columns-toggle');
+ columnButton.setAttribute('aria-controls',columnPanel.id);columnButton.setAttribute('aria-expanded','false');
+ const columnOptions=make('div','','table-column-options'),columnInputs=[];
+ headers.forEach((h,col)=>{const label=make('label'),input=make('input');input.type='checkbox';input.checked=true;
+   input.addEventListener('change',()=>{input.checked?state.hiddenColumns.delete(col):state.hiddenColumns.add(col);if(state.hiddenColumns.size===headers.length){state.hiddenColumns.delete(col);input.checked=true}draw()});
+   label.append(input,make('span',h));columnOptions.append(label);columnInputs.push(input)});
+ const columnPanelHeader=make('div','','table-column-panel-header');columnPanelHeader.append(make('strong','표시할 열 선택'),button('모든 열 표시',()=>{state.hiddenColumns.clear();draw()}));columnPanel.append(columnPanelHeader,columnOptions);
  let found=rows,search,filterColumn,filterValue;
  const pages=make('div','','table-pages'),pageLabel=make('span','','table-page-label');
  const previous=button('이전',()=>{state.page--;draw()}),next=button('다음',()=>{state.page++;draw()});
@@ -598,17 +619,24 @@ document.querySelectorAll('[data-report-table="interactive"]').forEach((root,tab
  [25,50,100].forEach(n=>{const o=make('option',n+'행씩');o.value=String(n);size.append(o)});
  size.addEventListener('change',()=>{state.size=Number(size.value);state.page=0;draw()});pages.append(size,previous,pageLabel,next);
  function draw(printing=false){found=reportTableRows(rows,state);const totalPages=Math.max(1,Math.ceil(found.length/state.size));state.page=Math.max(0,Math.min(state.page,totalPages-1));
-   const visible=printing?found:found.slice(state.page*state.size,(state.page+1)*state.size);body.replaceChildren(...visible.map(r=>r.node));
-   if(!found.length){const tr=make('tr'),td=make('td','조건에 맞는 데이터가 없습니다. 검색어나 필터를 바꾸어 주세요.','table-no-match');td.colSpan=headers.length;tr.append(td);body.append(tr)}
-   count.textContent='전체 '+rows.length.toLocaleString('ko-KR')+'건 중 '+found.length.toLocaleString('ko-KR')+'건'+(found.length?' / '+(printing?'인쇄: 검색 결과 전체':(state.page*state.size+1)+'–'+Math.min(found.length,(state.page+1)*state.size)+'건 표시'):'');
+   const selectedColumns=visibleColumns(),visible=printing?found:found.slice(state.page*state.size,(state.page+1)*state.size);body.replaceChildren(...visible.map(r=>r.node));
+   headerCells.forEach((c,i)=>{c.hidden=state.hiddenColumns.has(i);columnInputs[i].checked=!c.hidden;columnInputs[i].disabled=!c.hidden&&selectedColumns.length===1});
+   visible.forEach(r=>[...r.node.cells].forEach((c,i)=>{c.hidden=state.hiddenColumns.has(i)}));table.style.setProperty('--columns',selectedColumns.length);
+   columnButton.textContent='표시 열 '+selectedColumns.length+'/'+headers.length;
+   if(!found.length){const tr=make('tr'),td=make('td','조건에 맞는 데이터가 없습니다. 검색어나 필터를 바꾸어 주세요.','table-no-match');td.colSpan=selectedColumns.length;tr.append(td);body.append(tr)}
+   count.textContent='전체 '+rows.length.toLocaleString('ko-KR')+'건 중 '+found.length.toLocaleString('ko-KR')+'건'+(found.length?' / '+(printing?'인쇄: 검색 결과 전체':(state.page*state.size+1)+'–'+Math.min(found.length,(state.page+1)*state.size)+'건 표시'):'')+' / '+selectedColumns.length+'개 열'+(state.sortColumn>=0?' / '+headers[state.sortColumn]+(state.direction===1?' 오름차순':' 내림차순'):'');
    previous.disabled=state.page===0;next.disabled=state.page>=totalPages-1;pageLabel.textContent=(state.page+1)+' / '+totalPages;pages.hidden=rows.length<=25;currentDownload.disabled=!found.length;
+   reset.disabled=!state.query&&state.filterColumn<0&&state.sortColumn<0&&!state.hiddenColumns.size;
    root.querySelector('.table-wrap').scrollTop=0;
  }
- function download(selected,label){const blob=new Blob([reportTableCsv(headers,selected)],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
+ function download(selected,label,columns=null){const blob=new Blob([reportTableCsv(headers,selected,columns)],{type:'text/csv;charset=utf-8'}),url=URL.createObjectURL(blob),a=document.createElement('a');
    a.href=url;a.download='보고서-표-'+(tableIndex+1)+'-'+label+'.csv';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000);}
- const currentDownload=button(rows.length>12?'검색 결과 CSV':'데이터 CSV',()=>download(found,'검색결과'));
- actions.append(currentDownload);
- if(rows.length>12){
+ const currentDownload=button('현재 조건 CSV',()=>download(found,'검색결과',visibleColumns()),'table-download-primary');
+ currentDownload.title='현재 페이지뿐 아니라 검색과 필터에 맞는 모든 행, 현재 표시한 열을 저장합니다.';
+ const allDownload=button('전체 CSV',()=>download(rows,'전체'));allDownload.title='이 보고서에 포함된 전체 행과 모든 열을 저장합니다.';
+ const reset=button('초기화',()=>{state.query='';state.filterColumn=-1;state.filterValue=null;state.sortColumn=-1;state.page=0;state.hiddenColumns.clear();search.value='';filterColumn.value='-1';filterValue.hidden=true;headerCells.forEach(c=>c.removeAttribute('aria-sort'));headerCells.forEach(c=>{const indicator=c.querySelector('.table-sort-indicator');if(indicator)indicator.textContent='↕'});draw()});
+ actions.append(columnButton,reset,currentDownload,allDownload);
+ {
    const group=make('div','','table-search-group');search=make('input');search.type='search';search.placeholder='표 안에서 검색';search.setAttribute('aria-label','표 안에서 검색');search.addEventListener('input',()=>{state.query=search.value;state.page=0;draw()});
    filterColumn=make('select');filterColumn.setAttribute('aria-label','필터 열 선택');let option=make('option','필터 열 선택');option.value='-1';filterColumn.append(option);
    headers.forEach((h,i)=>{const values=new Set(rows.map(r=>r.values[i]));if(reportTableCanFilter(values,rows.length)){const o=make('option',h);o.value=String(i);filterColumn.append(o)}});
@@ -617,14 +645,12 @@ document.querySelectorAll('[data-report-table="interactive"]').forEach((root,tab
      if(state.filterColumn>=0){[...new Set(rows.map(r=>r.values[state.filterColumn]))].sort((a,b)=>a.localeCompare(b,'ko-KR',{numeric:true})).forEach((v,i)=>{const o=make('option',v||'(빈 값)');o.value=String(i);o.dataset.filterValue=v;filterValue.append(o)})}
      filterValue.hidden=state.filterColumn<0;draw();});
    filterValue.addEventListener('change',()=>{state.filterValue=filterValue.value===''?null:filterValue.selectedOptions[0].dataset.filterValue;state.page=0;draw()});
-   const reset=button('초기화',()=>{state.query='';state.filterColumn=-1;state.filterValue=null;state.sortColumn=-1;state.page=0;search.value='';filterColumn.value='-1';filterValue.hidden=true;headerCells.forEach(c=>c.removeAttribute('aria-sort'));headerCells.forEach(c=>{const indicator=c.querySelector('.table-sort-indicator');if(indicator)indicator.textContent='↕'});draw()});
-   group.append(search);if(filterColumn.options.length>1)group.append(filterColumn,filterValue);group.append(reset);tools.append(group);
-   actions.append(button('전체 CSV',()=>download(rows,'전체')));
+   const searchLabel=make('label','검색');search.id='report-table-search-'+tableIndex;searchLabel.htmlFor=search.id;group.append(searchLabel,search);if(filterColumn.options.length>1)group.append(filterColumn,filterValue);tools.append(group);
  }
  headerCells.forEach((cell,col)=>{const title=headers[col],sort=button('',()=>{state.direction=state.sortColumn===col?-state.direction:1;state.sortColumn=col;state.page=0;
    headerCells.forEach((c,i)=>{c.removeAttribute('aria-sort');const indicator=c.querySelector('.table-sort-indicator');if(indicator)indicator.textContent=i===col?(state.direction===1?'↑':'↓'):'↕'});cell.setAttribute('aria-sort',state.direction===1?'ascending':'descending');draw()},'table-sort');
    sort.setAttribute('aria-label',title+' 정렬');sort.append(make('span',title),make('span','↕','table-sort-indicator'));cell.replaceChildren(sort)});
- tools.append(actions);footer.append(count,pages);root.prepend(tools);root.append(footer);draw();
+ tools.append(actions);footer.append(pages);root.prepend(tools,columnPanel,status);root.append(footer);draw();footer.hidden=rows.length<=25;
  window.addEventListener('beforeprint',()=>draw(true));window.addEventListener('afterprint',()=>draw());
 });
 })();

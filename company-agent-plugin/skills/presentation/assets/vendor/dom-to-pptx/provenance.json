@@ -1,0 +1,19 @@
+{
+  "name": "dom-to-pptx",
+  "version": "2.1.2",
+  "license": "MIT",
+  "repository": "https://github.com/atharva9167j/dom-to-pptx",
+  "registryMetadataUrl": "https://registry.npmjs.org/dom-to-pptx/2.1.2",
+  "tarballUrl": "https://registry.npmjs.org/dom-to-pptx/-/dom-to-pptx-2.1.2.tgz",
+  "tarballIntegrity": "sha512-ZWd1prnmPEX2eyF/k84BtO+HydvVOC0Vzlw/6mxI57uAjgfoXNqN3Wz0EDjwdiEXHXw0nkN6VyxcMwXtu/YZUg==",
+  "tarballIntegrityVerified": true,
+  "archiveSha256": "66ae93ecb8b5980e0d32b5636459c16d45c8441fd629159584113f1ff1fa91cd",
+  "bundlePathInPackage": "dist/dom-to-pptx.bundle.js",
+  "bundleSha256": "df8fca27232864a4ad01d7ad8a5be1e867ab26b9562a3e5e66c8429b644256d4",
+  "bundleBytes": 3770692,
+  "licenseSha256": "31cff124c5b3a0c79eda6d153fef27e24dfef3d7385bce039a27b0d143ca27d1",
+  "modifications": "None. Official npm browser bundle and LICENSE copied byte-for-byte, including bundled copyright notices.",
+  "gitHead": null,
+  "sourceMapping": "npm metadata has no gitHead. No exact correspondence to a Git commit is claimed.",
+  "runtime": "Only the browser bundle is used. Upstream Node/Puppeteer bootstrap and automatic browser installation paths are not used."
+}

@@ -164,7 +164,7 @@ class WorkflowRoutingTests(unittest.TestCase):
                          'edges':[{'from':'a','to':'b','label':'조건 일치'}]}}
         elements=self.page(row,width=720);self.assert_clear(row,elements)
         self.assertTrue(all(e['x']+e['w']<=720 for e in elements))
-        self.assertEqual(10,next(e['size'] for e in elements if e.get('text')=='조건 일치'))
+        self.assertEqual(11,next(e['size'] for e in elements if e.get('text')=='조건 일치'))
 
 
 if __name__=='__main__':

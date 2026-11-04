@@ -468,6 +468,7 @@ def create_draft(spec, output, template=None, *, require_choices=True):
                 'htmlReady':True,'pptxOptional':True,
                 'editability':{'text':True,'tableCells':True,'layout':'authoring-spec','chartData':'authoring-spec'},
                 'slides':len(data['sections']),'outline':[row['title'] for row in data['sections']],
+                **({'pagination':data['slidePagination']} if 'slidePagination' in data else {}),
                 'engine':'offline-html','offline':True,'officeStarted':False,
                 'contentLayoutValidation':layout_check,
                 'scenePreflight':preflight,

@@ -26,6 +26,10 @@
 - 각 장은 `title`과 필요한 `body`, `bullets`, `table`, `chart`, `image`, `source`를 담습니다. `chart`는 `type`(column/bar/line/pie), `categories`, `series:[{name,values}]`입니다. 12항목, 4계열을 넘으면 의미를 보존해 나눕니다. 이미지는 `image:{"path":"그림.png","alt":"설명"}`입니다.
 - `pageRole`: cover / key-message / comparison / workflow / timeline / detail / closing. 실제 자료에 필요한 역할만 씁니다. 비교 패널, 흐름의 nodes/edges, 일정과 서식 프로필은 아래 상세 명세에서 해당 절을 확인합니다. 자동 배치가 공간을 넘으면 장이나 내용을 나누고 몰래 글자를 축소하지 않습니다.
 
+`pageRole`은 전달 목적이며 표나 차트를 금지하지 않습니다. `layout`을 명시하면 일반 표/차트/이미지는 그 배치를 우선하고, 명시하지 않으면 실제 자료에 맞춰 구성합니다. `chart`와 `table`을 함께 넣어도 역할을 지우지 않습니다. `workflow`, `milestones`, `panels`는 관계 자료이므로 해당 역할을 사용하며 자유 배치와 섞어 내용을 숨기지 않습니다.
+
+표는 고정 10행 제한 대신 글자 크기와 셀 높이를 측정합니다. 넘치는 행은 원본 순서대로 이어지는 장에 자동 분할하며 `pagination`의 실제 장수를 함께 안내합니다. 행 병합, 삭제나 글자 축소로 맞추지 않습니다. 한 셀 자체가 한 장보다 크면 오류에 표시된 셀 내용을 별도 장에 나눕니다. 기본 주석은 11pt이며 참고 양식의 명시 크기는 유지합니다.
+
 ## 요청한 경우에만 확장
 
 | 필요한 기능 | 읽을 위치 |

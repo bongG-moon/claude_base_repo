@@ -1,4 +1,5 @@
 """Independent query distribution tests; no profiles, SQL servers or installation."""
+import csv
 import importlib.util
 import json
 from pathlib import Path
@@ -216,11 +217,29 @@ class ActualQueryZipTests(unittest.TestCase):
         self.assertEqual(result['dataRowsReturned'],0)
         self.assertNotIn('LOT006',json.dumps(result))
         self.assertTrue(Path(result['dataFile']).is_file())
+        delivered = Path(result['outputFile'])
+        self.assertEqual(delivered.parent, self.root / 'data-query-demo' / 'outputs')
+        self.assertEqual(delivered.suffix, '.csv')
+        self.assertTrue(delivered.is_file())
+        self.assertEqual(result['exportStatus'], 'complete')
+        self.assertEqual(result['deliveryVerification'], 'verified')
+        self.assertEqual(result['verificationScope'], 'csv-file-only')
+        self.assertEqual(result['outputBytes'], delivered.stat().st_size)
+        with delivered.open(encoding='utf-8-sig', newline='') as stream:
+            rows = list(csv.reader(stream))
+        self.assertEqual(len(rows)-1, result['exportedRows'])
+        self.assertEqual(result['exportedRows'], result['savedRows'])
+        self.assertTrue(all(len(row) == result['columnCount'] for row in rows))
+        self.assertEqual(list(self.root.glob('*.csv')), [])
+        self.assertTrue(Path(result['dataFile']).is_relative_to(self.root / 'data-query-demo-state'))
         stored = self.command(script,'result','--id',result['resultId'])
         self.assertFalse(stored.pop('isFreshQuery'))
         self.assertEqual(stored.pop('retrievalMode'), 'saved_result')
         self.assertEqual(stored.pop('reusePermission'), 'not_granted')
-        self.assertEqual(stored, result)
+        delivery_fields = {'outputFile', 'exportStatus', 'outputBytes', 'exportedRows',
+                           'deliveryVerification', 'verificationScope', 'exportMessage'}
+        self.assertEqual(set(result) - set(stored), delivery_fields)
+        self.assertEqual(stored, {key:value for key,value in result.items() if key not in delivery_fields})
         exported = self.command(script,'export-csv','--id',result['resultId'],'--output',str(self.root/'result.csv'))
         self.assertTrue(exported['complete'])
 

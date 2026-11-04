@@ -10,10 +10,18 @@ import math
 import re
 import unicodedata
 from . import report_facts
+from .ppt_layouts import LayoutError
 
 
 class DesignError(ValueError):
     pass
+
+
+class TableFitError(DesignError, LayoutError):
+    """A measured table overflow that can be resolved without deleting data."""
+    def __init__(self, number, heights, available):
+        super().__init__(f'{number}장 table.rows를 현재 영역에 담기 어렵습니다. 원본 행을 유지해 이어지는 장으로 나눕니다.')
+        self.number, self.heights, self.available = number, heights, available
 
 
 def _text(value, limit=200):
@@ -56,6 +64,10 @@ def prepare(spec, data):
         for field in ('pageRole','workflow','milestones','panels'):
             if field in raw:
                 row[field] = deepcopy(raw[field])
+        if 'pageRole' in row:
+            from .ppt_layouts import ROLES
+            if row['pageRole'] not in ROLES:
+                raise DesignError('pageRole은 '+', '.join(ROLES)+' 중 선택해 주세요.')
         semantic = [field for field in ('workflow','milestones','panels') if field in raw]
         if semantic:
             if ('elements' in raw or 'contentOrder' in row or raw.get('imageLayout')=='full-slide'):
@@ -106,6 +118,7 @@ def prepare(spec, data):
         if row['imageFit'] not in ('contain','cover','stretch'):
             raise DesignError('이미지 맞춤은 contain, cover, stretch입니다.')
         row['layout'] = raw.get('layout', 'auto')
+        row['layoutExplicit'] = raw.get('layout', 'auto') != 'auto'
         if (composition == 'content-led' and 'layout' not in raw and 'contentOrder' not in row
                 and 'elements' not in row and row.get('imageLayout') != 'full-slide'):
             visuals = [key for key in ('chart', 'table', 'image') if row.get(key)]
@@ -213,6 +226,10 @@ def _vertical(row, number, x, y, width, bottom, elements, text, profile=None):
         specs.append(entry)
     required = sum(e['h'] for e in specs) + gap*(len(specs)-1)
     if required > bottom-y+.01:
+        table=next((e for e in specs if e['name']=='table'),None)
+        if table is not None:
+            available=bottom-y-(required-table['h'])
+            raise TableFitError(number,table['rowHeights'],available)
         raise DesignError(f'{number}장에 요청한 본문 순서를 읽기 좋은 크기로 담을 수 없습니다. 설명을 줄이거나 장을 나눌지 확인해 주세요. 옆 배치·글자 축소로 바꾸지 않았습니다.')
     flexible = sum(e['name'] in ('chart','image') for e in specs)
     extra = (bottom-y-required)/flexible if flexible else 0.
@@ -270,11 +287,15 @@ def _structured(row, number, width, height, elements, text, profile=None):
     bottom = height-margin if profile else height-48
     body_size = profile['bodySize'] if profile else 18
     title_size = profile['titleSize'] if profile else 30
-    annotation_size = profile['annotationSize'] if profile else 10
+    annotation_size = profile['annotationSize'] if profile else 11
     table_size = profile['tableSize'] if profile else 16
     table_style = {'fontSize':table_size, **row.get('tableStyle', {})} if profile else row.get('tableStyle')
     section_gap = gap if profile else 20
     layout = row['layout']
+    # A role describes the message, not a whitelist of permitted evidence.
+    # Two exhibits plus an explanation use the existing comparison geometry.
+    if sum(bool(row.get(k)) for k in ('chart','table','image')) == 2:
+        layout = 'comparison'
     annotation_h = max(22, annotation_size*1.27+4) if profile else 22
     page_number_w = max(30,annotation_size*2+12) if profile else 30
     text(row.get('eyebrow', ''), margin, margin if profile else 12, usable, annotation_h if profile else 20, 11, 'muted')
@@ -285,8 +306,8 @@ def _structured(row, number, width, height, elements, text, profile=None):
     title_h = title_lines*title_size*1.27+4
     text(row['title'], margin, title_y, usable, title_h, 30, 'title', True)
     top = title_y+title_h+section_gap
-    text(row.get('source', ''), margin, height-31, usable-page_number_w-15, annotation_h, 10, 'muted')
-    text(f'{number:02d}', width-margin-page_number_w, height-31, page_number_w, annotation_h, 10, 'muted')
+    text(row.get('source', ''), margin, height-31, usable-page_number_w-15, annotation_h, 11, 'muted')
+    text(f'{number:02d}', width-margin-page_number_w, height-31, page_number_w, annotation_h, 11, 'muted')
     takeaway = row.get('takeaway', '')
     if takeaway:
         takeaway_h = _lines(takeaway, usable, body_size)*body_size*1.27+4
@@ -324,7 +345,7 @@ def _structured(row, number, width, height, elements, text, profile=None):
         if kind == 'table':
             widths, heights = _table_metrics(row['table'], w, table_style)
             if sum(heights) > h:
-                raise DesignError(f'{number}장 표를 읽기 좋은 크기로 담을 수 없습니다. 행·열을 나누어 주세요.')
+                raise TableFitError(number, heights, h)
             e.update(h=sum(heights), columnWidths=widths, rowHeights=heights, size=table_size)
         elif kind == 'chart':
             title = row['chart'].get('title', '')
@@ -397,6 +418,76 @@ def _structured(row, number, width, height, elements, text, profile=None):
 
 
 def plan(data, width=960., height=540.):
+    """Keep every table cell; paginate measured overflow locally, without LLM retries."""
+    try:
+        return _plan(data,width,height)
+    except TableFitError:
+        pass
+    from copy import deepcopy
+    working = dict(data)
+    working['sections'] = deepcopy(data['sections'])
+    for index,row in enumerate(working['sections'],1):
+        row.setdefault('_sourceSlide',index)
+        row.setdefault('_sourceTitle',row['title'])
+        row.setdefault('_tableStart',0)
+    input_count = len(working['sections'])
+    for _ in range(60):
+        try:
+            result = _plan(working,width,height)
+            break
+        except TableFitError as exc:
+            row = working['sections'][exc.number-1]
+            rows = row['table']['rows']
+            # One tall cell cannot be fixed by hiding text or shrinking fonts.
+            header = exc.heights[0]
+            if len(rows)<2 or any(header+h>exc.available+.01 for h in exc.heights[1:]):
+                raise DesignError(f'{exc.number}장 table.rows의 한 행이 본문 공간보다 높습니다. '
+                                  '해당 셀을 의미 단위로 별도 장에 옮겨 주세요. 원본 행이나 값을 삭제하지 마세요.') from None
+            groups,group,used = [],[],header
+            for index,h in enumerate(exc.heights[1:]):
+                if group and used+h>exc.available+.01:
+                    groups.append(group);group=[];used=header
+                group.append(index);used+=h
+            if group:groups.append(group)
+            # Avoid a full page followed by an isolated leftover row. Balance
+            # contiguous chunks where their measured heights still fit.
+            balanced=[]; offset=0
+            for remaining_groups in range(len(groups),0,-1):
+                size=math.ceil((len(rows)-offset)/remaining_groups)
+                while size>1 and header+sum(exc.heights[offset+1:offset+size+1])>exc.available+.01:
+                    size-=1
+                balanced.append(list(range(offset,offset+size))); offset+=size
+            if offset==len(rows) and all(header+sum(exc.heights[i+1] for i in part)<=exc.available+.01 for part in balanced):
+                groups=balanced
+            if len(working['sections'])+len(groups)-1>60:
+                raise DesignError('표를 보존하면 60장을 넘습니다. 원본 행을 지우지 말고 발표본을 나누어 주세요.') from None
+            parts=[]
+            for group in groups:
+                part=deepcopy(row)
+                part['table']['rows']=[rows[i] for i in group]
+                if 'cellKinds' in part['table']:
+                    part['table']['cellKinds']=[row['table']['cellKinds'][i] for i in group]
+                part['_tableStart']=row['_tableStart']+group[0]
+                parts.append(part)
+            working['sections'][exc.number-1:exc.number]=parts
+            grouped={}
+            for part in working['sections']:
+                grouped.setdefault(part['_sourceSlide'],[]).append(part)
+            for group in grouped.values():
+                for index,part in enumerate(group,1):
+                    part['title']=part['_sourceTitle']+(f' ({index}/{len(group)})' if len(group)>1 else '')
+    else:
+        raise DesignError('표 분할 한도를 확인해 주세요. 원본 내용은 변경하지 않았습니다.')
+    if len(working['sections']) != input_count:
+        data['sections']=working['sections']
+        data['slidePagination']={'inputSlides':input_count,'outputSlides':len(working['sections']),
+            'preservedAllRows':True,'pages':[{'slide':i,'sourceSlide':r['_sourceSlide'],
+                'firstDataRow':r['_tableStart']+1,'lastDataRow':r['_tableStart']+len(r['table']['rows'])}
+                for i,r in enumerate(working['sections'],1) if 'table' in r]}
+    return result
+
+
+def _plan(data, width=960., height=540.):
     from .ppt_component_styles import inherit as component_styles
     if not (600 <= width <= 1800 and 400 <= height <= 1100 and 1.25 <= width / height <= 2.1):
         raise DesignError("이 양식의 화면 비율은 자동 배치를 지원하지 않습니다. 4:3 또는 16:9 양식을 선택해 주세요.")
@@ -430,7 +521,14 @@ def plan(data, width=960., height=540.):
                          wrap=True,align='left',lineSpacing=1.15)
             elements.append(e)
 
-        if row.get('pageRole') and 'contentOrder' not in row:
+        semantic = any(row.get(k) for k in ('workflow','milestones','panels'))
+        visual_kinds = [k for k in ('chart','table','image') if row.get(k)]
+        role = row.get('pageRole')
+        # Preserve topology-bearing role data; flat evidence uses the mature
+        # structured layouts even when its semantic pageRole differs.
+        use_structured = not semantic and bool(role) and (
+            row.get('layoutExplicit') or bool(visual_kinds) and not (role=='detail' and visual_kinds==['table']))
+        if role and 'contentOrder' not in row and not use_structured:
             from .ppt_layouts import compose
             from .ppt_scene import elements as validate_elements
             page = compose(row,number,width,height,data['presentationTheme'],
@@ -440,6 +538,9 @@ def plan(data, width=960., height=540.):
                 pages.append(page)
                 continue
 
+        if use_structured and row.get('layout','auto')=='auto':
+            row = {**row,'layout':('comparison' if len(visual_kinds)>1 else
+                                  'actions' if visual_kinds==['table'] else 'evidence' if visual_kinds else 'summary')}
         if row.get('layout', 'auto') != 'auto' and 'contentOrder' not in row:
             _structured(row, number, width, height, elements, text, profile)
             for e in elements:
@@ -466,8 +567,8 @@ def plan(data, width=960., height=540.):
             text(row.get('eyebrow', ''), margin, 12, usable, 20, 11, 'muted')
             text(row['title'], margin, 37, usable, 48, 30, 'title', True)
             text(row.get('takeaway', ''), margin, 91, usable, 30, 17, 'text')
-            text(row.get('source', ''), margin, height-31, usable-45, 22, 10, 'muted')
-            text(f'{number:02d}', right-30, height-31, 30, 22, 10, 'muted')
+            text(row.get('source', ''), margin, height-31, usable-45, 22, 11, 'muted')
+            text(f'{number:02d}', right-30, height-31, 30, 22, 11, 'muted')
             top = 139.
         if row.get('kpis') and profile:
             top = _profile_kpis(row,margin,top,usable,elements,text,profile)
@@ -514,7 +615,7 @@ def plan(data, width=960., height=540.):
                 table_style = {'fontSize':table_size, **row.get('tableStyle', {})} if profile else row.get('tableStyle')
                 widths, heights = _table_metrics(table, w, table_style)
                 if sum(heights) > h:
-                    raise DesignError(f"{number}장 표를 읽기 좋은 크기로 담을 수 없습니다. 행·열을 나누어 주세요.")
+                    raise TableFitError(number, heights, h)
                 element.update(h=sum(heights), columnWidths=widths, rowHeights=heights, size=table_size)
             elif kind == 'chart':
                 if h < 180 or w < 260:

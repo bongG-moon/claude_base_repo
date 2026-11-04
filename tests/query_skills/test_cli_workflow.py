@@ -21,6 +21,8 @@ class QueryCliWorkflowTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(dir=parent)
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
+        working = patch.object(Path, "cwd", return_value=self.root)
+        working.start(); self.addCleanup(working.stop)
         self.store = Store(self.root / 'state', demo=True)
         core.demo_init(self.store)
         self.params = self.root / 'params.json'

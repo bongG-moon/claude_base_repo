@@ -394,21 +394,21 @@ def html_designs(output: Path | None = None, *, open_preview: bool = False) -> d
 
 def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = False, template_preview: bool = False) -> dict[str, Any]:
     try:
-        output = _target(output, ".html")
-        data = _normalize(spec, html_tables=True)
         if require_choices or spec.get('fontChoiceRequired'):
-            from .report_styles import choices
-            pending = choices(spec)
-            if pending:
+            # Resolve all missing choices before loading content or image files.
+            # This is the existing build call, not an extra verification pass.
+            pending = html_choices(spec)
+            if not pending.get('ok'):
                 return pending
         elif not template_preview and ('htmlTemplate' in spec or spec.get('designMenu') == 'template'):
-            # The independent builder skips optional design questions, but a
-            # selected reference still needs its own preview and confirmation.
-            # Do not ask unrelated length/font questions on this direct path.
+            # Legacy programmatic calls may omit choices. A selected reference
+            # still needs its preview and confirmation on that direct path.
             from .report_styles import choices
             pending = choices(spec)
             if pending and pending.get('stage') in ('template_attach', 'template_preview', 'template_confirm'):
                 return pending
+        output = _target(output, ".html")
+        data = _normalize(spec, html_tables=True)
         reference = None
         if spec.get('htmlTemplate') is not None:
             from .html_reference import analyze, theme_css
@@ -638,12 +638,13 @@ def _windows_powershell() -> str | None:
 
 
 def _fit_preflight(data: dict[str, Any]) -> None:
-    for row in data["sections"]:
-        count = sum(bool(row.get(k)) for k in ("body", "bullets", "table", "chart", "image"))
-        if count > 3 or len(row["title"]) > 90 or len(row["body"]) > 900 or len(row["bullets"]) > 8 or any(len(v) > 160 for v in row["bullets"]):
-            raise ArtifactError("slide_too_dense", "한 슬라이드의 내용이 많습니다. 제목·본문을 줄이거나 여러 장으로 나누어 주세요.")
-        if "table" in row and (len(row["table"]["rows"]) > 10 or len(row["table"]["headers"]) > 8 or any(len(v) > 100 for r in row["table"]["rows"] for v in r)):
-            raise ArtifactError("slide_table_too_dense", "PPT 표는 10행·8열 이하로 나누고 긴 셀 내용을 줄여 주세요.")
+    # Shape-aware composition measures the actual font and available space.
+    # A fixed ten-row gate made authors delete facts even when the table fit.
+    # Keep the bounded input checks in _normalize; measured table overflows are
+    # paginated by presentation_design without extra model calls or questions.
+    for number, row in enumerate(data["sections"], 1):
+        if len(row["title"]) > 90 or len(row["body"]) > 900 or len(row["bullets"]) > 8 or any(len(v) > 160 for v in row["bullets"]):
+            raise ArtifactError("slide_too_dense", f"{number}장 제목 또는 설명이 많습니다. 원본 수치와 행은 유지하고 의미 단위로 장을 나누어 주세요.")
 
 
 def _python_ppt(data: dict[str, Any], draft: Path, template: Path | None) -> dict[str, Any]:

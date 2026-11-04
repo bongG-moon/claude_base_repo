@@ -64,8 +64,13 @@ class DesignSkillContracts(unittest.TestCase):
                     with self.subTest(path=str(path), command=variant):
                         args = parser.parse_args(shlex.split(variant))
                         checked.add(args.business_action)
+        # New presentation entry uses a standalone HTML builder, not the old
+        # business ppt dispatch. Legacy choice references still have to parse.
         self.assertTrue({'artifact-start', 'artifact-publish', 'html', 'html-choices',
-                         'html-template', 'ppt', 'ppt-choices', 'ppt-design-preview'} <= checked)
+                         'html-template', 'ppt-choices'} <= checked)
+        entry = paths[1].read_text(encoding='utf-8')
+        self.assertIn('scripts/slides.py', entry)
+        self.assertIn('build --source', entry)
 
 
 if __name__ == '__main__':

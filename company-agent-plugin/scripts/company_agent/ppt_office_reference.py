@@ -9,11 +9,26 @@ from .business_safety import safe_path
 from .ppt_reference import _selection
 
 
+_PERMISSION_CHECK = r'''
+  # Some Office installations cannot expose this optional getter. Its absence
+  # is not an affirmative permission grant; normal Open/Export still decide.
+  $permission=@{status='unknown';enabled=$null}
+  try {
+    $enabled=$deck.Permission.Enabled
+    if ($enabled -is [bool]) { $permission=@{status='reported';enabled=$enabled} }
+  } catch {
+    $permission=@{status='unknown';enabled=$null}
+  }
+  if ($permission.enabled -eq $true) { throw 'reference_permission_restricted' }
+'''
+
+
 _SCRIPT = r'''
 param([string]$RequestPath)
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=New-Object Text.UTF8Encoding($false)
 $app=$null; $deck=$null; $security=$null
+$permission=@{status='not_checked';enabled=$null}
 $answer=@{ok=$false;status='unknown';code='office_reference_failed';message='PowerPoint 열기 또는 이미지 내보내기를 완료하지 못했습니다. 보호 설정은 변경하지 않았습니다.'}
 try {
   $r=Get-Content -LiteralPath $RequestPath -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -25,7 +40,7 @@ try {
   $security=$app.AutomationSecurity
   $app.AutomationSecurity=3
   $deck=$app.Presentations.Open([string]$r.file,-1,0,0)
-  if ($deck.Permission.Enabled) { throw 'reference_permission_restricted' }
+__PERMISSION_CHECK__
   $numbers=@($r.slides)
   if ($numbers.Count -eq 0) {
     if ($deck.Slides.Count -gt 60) { throw 'reference_range_required' }
@@ -49,8 +64,9 @@ try {
     [void][Runtime.InteropServices.Marshal]::ReleaseComObject($app)
   }
 }
+$answer.permission=$permission
 $answer | ConvertTo-Json -Depth 5 -Compress
-'''
+'''.replace('__PERMISSION_CHECK__', _PERMISSION_CHECK)
 
 
 def render_reference(source, output, slides=None):
@@ -84,6 +100,7 @@ def render_reference(source, output, slides=None):
             if process.returncode != 0 or not process.stdout.strip():
                 raise ArtifactError('office_runner_unavailable', 'PowerPoint 실행 도우미를 시작하지 못했습니다. Windows 스크립트 실행 정책과 허용된 실행 환경을 확인해 주세요. 설정은 변경하지 않았습니다.', 'unavailable')
             result = json.loads(process.stdout.decode('utf-8-sig'))
+            permission = result.get('permission', {'status':'unknown', 'enabled':None})
             if not result.get('ok'):
                 messages = {
                     'source_already_open':'선택한 파일이 이미 PowerPoint에 열려 있습니다. 사용자의 문서는 닫지 않았습니다. 현재 창에서 허용된 화면 캡처를 사용하세요.',
@@ -98,7 +115,8 @@ def render_reference(source, output, slides=None):
                         if code=='powerpoint_unavailable' else 'unknown')
                 return {'ok':False, 'status':status, 'code':code,
                         'message':messages.get(result.get('code'),'PowerPoint 정상 열기 또는 이미지 내보내기를 완료하지 못했습니다. 보호 설정 변경이나 대체 추출을 하지 않았습니다.'),
-                        'rendered':False,'sourcePreserved':True,'retryAllowed':False}
+                        'rendered':False,'sourcePreserved':True,'retryAllowed':False,
+                        'permission':permission}
             numbers = result.get('slides')
             if (not isinstance(numbers,list) or not numbers or len(numbers)>60
                     or len(numbers)!=len(set(numbers)) or any(type(n) is not int or not 1<=n<=10000 for n in numbers)
@@ -115,6 +133,7 @@ def render_reference(source, output, slides=None):
                     'sourcePath':str(source),'outputPath':str(output),'slideCount':result.get('slideCount'),
                     'previews':[{'slide':n,'path':str(output/f'slide-{n:03d}.png')} for n in numbers],
                     'visualReview':'not_performed','captured':False,'method':'powerpoint-native-export',
+                    'permission':permission,
                     'message':'PowerPoint의 정상 내보내기로 장별 이미지를 만들었습니다. 이 이미지를 2~3장씩 읽어 스타일을 확인하세요. 화면 캡처나 실제 내용 검토를 완료했다는 뜻은 아닙니다.'}
     except subprocess.TimeoutExpired:
         return {'ok':False,'status':'unknown','code':'office_reference_timeout','rendered':False,

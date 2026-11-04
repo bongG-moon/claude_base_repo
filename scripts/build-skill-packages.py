@@ -27,7 +27,7 @@ SKIP = {'__pycache__', '.git', '.venv', 'node_modules', 'tests', '.pytest_cache'
 TEXT_SUFFIXES = {'.md', '.py', '.js', '.json', '.html', '.txt', '.css', '.ps1',
                  '.cmd', '.bas', '.cls', '.sh', '.toml', '.yaml', '.yml'}
 TEXT_NAMES = {'LICENSE', 'SOURCE_LICENSE', 'COPYING', 'NOTICE'}
-TEXT_NORMALIZATION = 'utf8-crlf-to-lf'
+TEXT_NORMALIZATION = 'utf8-crlf-to-lf-except-vendored-originals'
 
 
 def package_source_bytes(path):
@@ -38,6 +38,12 @@ def package_source_bytes(path):
     """
     path = no_links(path)
     raw = path.read_bytes()
+    # Pinned third-party files are verified byte-for-byte by their runtime and
+    # provenance. Normalizing a JS bundle's CRLF breaks that integrity check.
+    parts = path.parts
+    for marker in ('standalone-skills', 'company-agent-plugin'):
+        if marker in parts and {'vendor', 'upstream'} & set(parts[parts.index(marker) + 1:]):
+            return raw
     if path.suffix.lower() in TEXT_SUFFIXES or path.name.upper() in TEXT_NAMES:
         try:
             raw.decode('utf-8')

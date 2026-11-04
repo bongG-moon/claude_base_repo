@@ -1,6 +1,6 @@
 # Python 연속 조회와 작은 미리보기
 
-이 문서는 A의 조회 결과를 B의 조건으로 쓰거나 행을 조금만 확인할 때 읽습니다. 일반 조회마다 읽거나 별도 후크로 실행하지 않습니다. 사용자는 원하는 업무를 말하고 스킬이 명세와 작은 조건 파일을 준비합니다.
+이 문서는 A의 조회 결과를 B의 조건으로 쓰거나 행을 조금만 확인할 때 읽습니다. 일반 조회마다 읽거나 별도 후크로 실행하지 않습니다. 사용자는 원하는 업무를 말하고 스킬이 명세와 작은 조건 파일을 `ehub-query/.work/`에 준비합니다. 후처리 Python도 이 안에 두고 전달할 CSV나 HTML은 `ehub-query/outputs/`에 저장합니다. 경로는 현재 업무 폴더 기준이며 사용자가 지정한 경로는 그대로 따릅니다.
 
 ## A 결과로 B 조회하기
 
@@ -34,7 +34,7 @@
 A는 위의 조건을 받는 쿼리여야 하며, B의 `equipment_ids`는 목록 자료형으로 등록합니다. 예를 들어 해당 조건 정의는 `{"equipment_ids":{"type":"list[text]","required":true}}`이고 SQL에는 `WHERE equipment_id IN (:equipment_ids)`를 사용합니다. Datalake에서는 쿼리의 실제 `lake_catalog.스키마.테이블` 경로가 조회 대상을 정합니다. 이 명세에 DB 접속 주소를 다시 등록하지 않습니다.
 
 ```text
-python -X utf8 -B scripts/query.py workflow --spec <연속 조회 명세 JSON> --confirm
+python -X utf8 -B "<현재 스킬 절대경로>/scripts/query.py" workflow --spec <연속 조회 명세 JSON> --confirm
 ```
 
 `source.params`와 `target.params`는 JSON 객체입니다. CLI `--params`에 파일과 인라인 JSON을 쓰는 것과 구분합니다. B의 다른 고정 조건은 `target.params`에 넣고 `toParameter`에는 A에서 만든 값만 전달합니다. 각 단계의 `options`에는 필요한 조회 한도를 지정할 수 있으며 한도 확대와 넓은 기간은 기존 승인 절차를 따릅니다.
@@ -54,8 +54,8 @@ python -X utf8 -B scripts/query.py workflow --spec <연속 조회 명세 JSON> -
 A 또는 B가 승인 대기로 멈추면 응답의 `workflowId`와 그 단계의 `planId`를 보존합니다. 새 `workflow --spec`을 실행하면 A를 다시 조회하므로 같은 작업을 이어갈 때는 `--resume`을 사용합니다.
 
 ```text
-python -X utf8 -B scripts/query.py run --plan <반환된 단계 계획 ID> --confirm --allow-large
-python -X utf8 -B scripts/query.py workflow --resume <반환된 workflowId> --confirm
+python -X utf8 -B "<현재 스킬 절대경로>/scripts/query.py" run --plan <반환된 단계 계획 ID> --confirm --allow-large
+python -X utf8 -B "<현재 스킬 절대경로>/scripts/query.py" workflow --resume <반환된 workflowId> --confirm
 ```
 
 실제 허락을 받은 같은 계획만 실행합니다. 큰 조회가 아니라 전체 조건 검토만 필요한 계획이면 `--allow-large`를 생략합니다. A 승인 뒤 `run`을 완료했다면 `--resume`은 그 A 결과에서 B로 이어가며 A를 다시 조회하지 않습니다. B 승인 뒤 실행까지 완료했다면 같은 흐름의 `--resume`은 완료 기록을 반환하고 B를 중복 실행하지 않습니다. 아직 계획을 실행하지 않았다면 승인 대기 상태를 그대로 알립니다.
@@ -73,8 +73,8 @@ python -X utf8 -B scripts/query.py workflow --resume <반환된 workflowId> --co
 기본 조회와 연속 조회 응답에는 원문 행을 반환하지 않습니다. 사용자가 표의 일부나 값 예시를 요청한 때만 다음을 사용합니다.
 
 ```text
-python -X utf8 -B scripts/query.py preview --id <결과 ID> --rows 5
-python -X utf8 -B scripts/query.py preview --id <결과 ID> --rows 10 --columns equipment_id status
+python -X utf8 -B "<현재 스킬 절대경로>/scripts/query.py" preview --id <결과 ID> --rows 5
+python -X utf8 -B "<현재 스킬 절대경로>/scripts/query.py" preview --id <결과 ID> --rows 10 --columns equipment_id status
 ```
 
 기본 5행, 최대 20행, 최대 40개 열이며 열 이름과 행을 합쳐 8,000자 안에서 반환합니다. 긴 셀과 넘치는 부분은 잘랐음을 표시하고 원본 파일은 그대로 둡니다. 저장 행 수와 표시한 행 수를 구분하며 미리보기 행을 전체 결과로 설명하지 않습니다. 실패한 조회의 부분 파일을 정상 미리보기로 보여주지 않습니다.

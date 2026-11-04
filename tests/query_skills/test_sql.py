@@ -78,6 +78,24 @@ class SQLTests(unittest.TestCase):
         risks = analyze_sql('SELECT business_fn(:item) FROM dual', 'oracle')['riskReasons']
         self.assertTrue(any('함수' in reason for reason in risks))
 
+    def test_documented_oracle_anonymous_builtins_are_not_user_functions(self):
+        calls = ["REGEXP_SUBSTR(t.name, '[A-Z]+')", 'RATIO_TO_REPORT(t.qty) OVER ()',
+                 'SUBSTRB(t.name, 1, 2)', 'LENGTHB(t.name)', 'NCHR(t.code)',
+                 'TO_SINGLE_BYTE(t.name)', 'TO_MULTI_BYTE(t.name)']
+        for call in calls:
+            with self.subTest(call=call):
+                report = analyze_sql(f'SELECT {call} FROM t WHERE t.id=:key', 'oracle')
+                self.assertEqual([], report['riskReasons'])
+
+    def test_qualified_quoted_and_other_dialect_functions_still_require_review(self):
+        cases = [('SELECT app.REGEXP_SUBSTR(t.name, :pattern) FROM t WHERE t.id=:key', 'oracle'),
+                 ('SELECT app.NVL(t.qty, 0) FROM t WHERE t.id=:key', 'oracle'),
+                 ('SELECT "REGEXP_SUBSTR"(t.name, :pattern) FROM t WHERE t.id=:key', 'oracle'),
+                 ('SELECT RATIO_TO_REPORT(t.qty) FROM t WHERE t.id=:key', 'demo')]
+        for sql, engine in cases:
+            with self.subTest(sql=sql, engine=engine):
+                self.assertTrue(any('함수' in reason for reason in analyze_sql(sql, engine)['riskReasons']))
+
     def test_errors_and_parser_warnings_do_not_leak_sql(self):
         marker = 'PRIVATE_QUERY_CONTENT'
         stream = io.StringIO()
@@ -108,6 +126,45 @@ class SQLTests(unittest.TestCase):
         for sql, expected in cases:
             with self.subTest(sql=sql):
                 self.assertTrue(any(expected in reason for reason in analyze_sql(sql, 'datalake')['riskReasons']))
+
+    def test_where_equijoins_and_legacy_oracle_outer_joins_are_connected(self):
+        queries = [
+            'SELECT * FROM a,b WHERE a.id=b.id AND a.fac=:fac',
+            'SELECT * FROM a x,b y WHERE x.id=y.id(+) AND x.fac=:fac',
+            'SELECT * FROM a,b,c WHERE a.id=c.id AND b.id=c.id AND a.fac=:fac',
+            'SELECT * FROM a CROSS JOIN b WHERE a.id=b.id AND a.fac=:fac',
+            'SELECT * FROM a JOIN b ON a.id=b.id, c WHERE b.id=c.id AND a.fac=:fac',
+            'SELECT * FROM a,b WHERE (a.id=b.id AND a.kind=1) OR (a.id=b.id AND b.kind=2)',
+            'WITH filtered AS (SELECT * FROM a WHERE a.fac=:fac) SELECT * FROM filtered f,b WHERE f.id=b.id',
+        ]
+        for sql in queries:
+            with self.subTest(sql=sql):
+                self.assertFalse(any('조인' in reason for reason in analyze_sql(sql, 'oracle')['riskReasons']))
+
+    def test_join_graph_does_not_accept_filters_or_nested_predicates_as_local_joins(self):
+        queries = [
+            'SELECT * FROM a,b WHERE a.fac=:fac AND b.fac=:fac',
+            'SELECT * FROM a,b,c WHERE a.id=b.id AND a.fac=:fac',
+            'SELECT * FROM a,b,c,d WHERE a.id=b.id AND c.id=d.id',
+            'SELECT * FROM a,b WHERE a.id=b.id OR a.fac=:fac',
+            'SELECT * FROM a,b WHERE a.id=b.id OR a.id<>b.id',
+            'SELECT * FROM a,b WHERE a.id>=b.id OR a.id<b.id',
+            'SELECT * FROM a JOIN b ON 1=1 WHERE a.fac=:fac',
+            'SELECT * FROM a,b WHERE EXISTS (SELECT 1 FROM c WHERE a.id=b.id AND c.id=a.id)',
+            'SELECT * FROM a,b WHERE id=id AND a.fac=:fac',
+            'SELECT * FROM a "X",b "x" WHERE "X".id="x".id',
+        ]
+        for sql in queries:
+            with self.subTest(sql=sql):
+                self.assertTrue(any('조인' in reason for reason in analyze_sql(sql, 'oracle')['riskReasons']))
+
+    def test_using_connects_only_an_already_connected_left_group(self):
+        for sql in ('SELECT * FROM a JOIN b USING(id) WHERE a.fac=:fac',
+                    'SELECT * FROM a JOIN b USING(id) JOIN c USING(id) WHERE a.fac=:fac'):
+            with self.subTest(sql=sql):
+                self.assertFalse(any('조인' in reason for reason in analyze_sql(sql, 'oracle')['riskReasons']))
+        sql = 'SELECT * FROM a,b JOIN c USING(id) WHERE a.fac=:fac'
+        self.assertTrue(any('조인' in reason for reason in analyze_sql(sql, 'oracle')['riskReasons']))
 
     def test_filtered_ordinary_order_and_aggregation_do_not_require_large_approval(self):
         for sql, expected in [('SELECT * FROM t WHERE day=:day_value ORDER BY day', '정렬'),

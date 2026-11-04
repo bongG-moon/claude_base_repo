@@ -1,3 +1,7 @@
 # Keep generated offline readers identical to their verified release assets.
 docs/Company-Agent-사용자-안내서.html -text
 company-agent-plugin/resources/manuals/Company-Agent-사용자-안내서.html -text
+# Preserve pinned third-party hashes across Windows and Linux checkouts.
+standalone-skills/**/assets/vendor/** -text -whitespace
+company-agent-plugin/skills/**/assets/vendor/** -text -whitespace
+standalone-skills/**/upstream/** -text -whitespace

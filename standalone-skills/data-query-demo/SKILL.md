@@ -10,21 +10,21 @@ description: "실제 계정 없이 Oracle, Datalake와 E-HUB 조회 흐름을 �
 ## 기본 흐름
 
 1. 처음 연습할 때만 `demo-init`을 실행합니다. 인증정보를 받거나 운영 설정창을 열지 않습니다.
-2. 쿼리 번호와 필수 조건이 정해졌으면 아래 `execute` 한 번으로 새로 조회하고 CSV를 전달합니다. 모르는 항목만 확인하며 일반 조회에 목록 재탐색, 별도 `plan`, 승인 질문이나 전체 COUNT를 추가하지 않습니다.
+2. 쿼리 번호와 조건이 정해졌으면 아래 `execute` 한 번으로 새로 조회하고 CSV를 전달합니다. 사용자가 바꾸지 않은 등록 기본값은 그대로 사용합니다. 필요한 조건을 이미 알면 `queries show`를 반복하지 않으며 모르는 필수 항목만 확인합니다. 일반 조회에 별도 `plan`, 승인 질문이나 COUNT 명령을 추가하지 않습니다. 규모 확인은 실행기가 처리합니다.
 
 ```text
-python -X utf8 -B "<현재 스킬 절대경로>/scripts/query.py" execute --id 1 --param process=WB --output-dir "<업무 폴더>/outputs"
+python -X utf8 -B "<현재 스킬 절대경로>/scripts/query.py" execute --id 1 --param process=WB
 ```
 
-조건 이름과 값은 실제 쿼리에 맞춥니다. PowerShell에서는 `--param "이름=공백 있는 값"`을 반복하고, 목록이나 null만 `--params <UTF-8 JSON 파일>`로 전달합니다. 조건이 없으면 생략합니다.
+결과는 현재 업무 폴더의 `data-query-demo/outputs/`에 자동 저장합니다. 사용자가 다른 위치를 지정했을 때만 `--output-dir`로 따릅니다. 조건 이름과 값은 실제 쿼리에 맞춥니다. PowerShell에서는 `--param "이름=공백 있는 값"`을 반복하고, 목록이나 null만 `--params <UTF-8 JSON 파일>`로 전달합니다. 조건이 없으면 생략합니다.
 
-3. `outputFile` 링크, 조회 시각, 행 수와 완전성을 알려 줍니다. 정상 0건과 오류를 구분해 오류 코드와 가린 이유를 전달합니다. CSV 저장만 실패하면 결과 ID로 재내보내기하며 DB를 다시 조회하지 않습니다.
+3. `sourceName`(등록한 DB 이름), `outputFile` 링크, 조회 시각, 행 수와 완전성을 짧게 전달하고 완료합니다. `deliveryVerification: verified`는 실행기가 CSV 저장을 확인한 결과이므로 같은 파일의 존재 확인, 전체 줄 수 재계산, 별도 `session verify`를 추가하지 않습니다. 부분 결과를 전체 완료로 표시하지 않으며 오류와 정상 0건을 구분합니다. CSV 저장만 실패하면 결과 ID로 재내보내기하고 DB를 다시 조회하지 않습니다.
 
 ## 필요한 경우에만
 
 - **SQL 등록/수정:** [등록 안내](references/interaction.md). 고정 조건 후보가 있으면 변수로 쓸 항목을 한 번 선택받고 등록합니다. 최대 10행 시험은 자동 수행하며 저장만 요청하면 `--save-only`를 사용합니다.
 - **인증/목록/정리:** [관리와 예외](references/usage.md)의 해당 항목만 읽습니다. 실제 인증정보 없이 연습합니다. 설정 초기화나 관리가 필요할 때만 참고합니다.
-- **승인 대기:** `executed: false`이면 실행되지 않았습니다. 반환된 위험이나 긴 조건을 확인받은 동일 계획만 `run --plan <ID> --confirm`으로 이어가며, `requiresLargeApproval`일 때만 `--allow-large`를 추가합니다. 변경된 조건이나 만료된 계획에는 허락을 재사용하지 않습니다.
+- **승인이 필요한 경우만:** `executed: false`이면 미실행입니다. 대기 상태만 먼저 설명하고 멈추지 말고, 필요한 위험과 범위를 질문 도구로 바로 한 번 물으세요. 받은 답변의 동일 계획만 `run --plan <ID> --confirm`으로 이어가며 `requiresLargeApproval`일 때만 `--allow-large`를 추가합니다. 실제 도구 권한이나 만료된 계획의 승인을 임의로 대신하지 않습니다.
 - **A 결과로 B 조회/집계/미리보기:** [Python 후속 처리](references/workflows.md). 행 전체를 대화에 읽지 않습니다. 요청한 미리보기만 기본 5행, 최대 20행과 8,000자로 제한합니다.
 
-새 조회는 과거 결과를 임의 재사용하지 않습니다. 사용자가 지정한 결과의 후속 분석만 그 파일을 씁니다. 결과 CSV는 `outputs/`, 필요한 입력 명세는 `.query-work/`에 두며 인증정보와 내부 기록은 기존 개인 저장소를 유지합니다.
+새 조회는 과거 결과를 임의 재사용하지 않습니다. 사용자가 지정한 결과의 후속 분석만 그 파일을 씁니다. 결과 CSV는 `data-query-demo/outputs/`, 필요한 입력 명세는 `data-query-demo/.work/`에 두며 인증정보와 내부 기록은 기존 개인 저장소를 유지합니다.

@@ -181,12 +181,15 @@ class BusinessArtifactTests(unittest.TestCase):
             self.assertFalse(result["ok"], result)
             self.assertEqual("blocked", result["status"])
 
-    def test_encrypted_and_invalid_files_have_no_alternative_reader(self):
+    def test_nonzip_files_report_unknown_without_guessing_protection(self):
         path = self.root / "encrypted.pptx"
         path.write_bytes(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1PRIVATE")
         self.assertEqual("protected_or_unsupported", artifacts.inspect_template(path)["code"])
         path.write_bytes(b"not a presentation")
-        self.assertEqual("protected_or_invalid", artifacts.inspect_template(path)["code"])
+        result = artifacts.inspect_template(path)
+        self.assertEqual("protected_or_unsupported", result["code"])
+        self.assertFalse(result['ok'])
+        self.assertEqual('unknown', result['status'])
 
     def test_external_template_relationships_refuse_generation(self):
         path = self.fixture(extras={"ppt/_rels/presentation.xml.rels": f'<Relationships xmlns="{artifacts.R}"><Relationship Id="rId1" TargetMode="External" Target="https://example.invalid/private"/></Relationships>'})

@@ -655,6 +655,9 @@ def publish(result, output, emit_project=True, sample_rows=5, context_chars=1200
     output = Path(output).absolute()
     if output.exists() or output.is_symlink():
         raise InputError("결과 폴더가 이미 있습니다. 기존 자료 보호를 위해 새 폴더를 지정해 주세요.")
+    for ancestor in output.parents:
+        if ancestor.is_symlink() or (ancestor.exists() and getattr(ancestor.lstat(), 'st_file_attributes', 0) & 0x400):
+            raise InputError("결과 경로의 연결 폴더는 사용하지 않습니다. 실제 업무 폴더를 지정해 주세요.")
     context = build_model_context(result, sample_rows=sample_rows, max_chars=context_chars)
     if layout not in {"compact", "detailed"}:
         raise InputError("지원하지 않는 결과 구성입니다.")
@@ -721,7 +724,7 @@ def publish(result, output, emit_project=True, sample_rows=5, context_chars=1200
 def main(argv=None, customize=None, emit_project=True):
     parser = argparse.ArgumentParser(description="Excel 구조를 표와 Python 재실행 프로젝트로 분해합니다.")
     parser.add_argument("source", help="원본 xlsx/xlsm 경로")
-    parser.add_argument("--output", help="새 결과 폴더")
+    parser.add_argument("--output", help="새 결과 폴더. 생략하면 excel-to-pipeline/outputs 아래에 생성")
     parser.add_argument("--inspect", action="store_true", help="요약만 확인, 파일 생성 안 함")
     parser.add_argument("--plan", help="확인한 표 범위/헤더 JSON (선택)")
     parser.add_argument("--target", action="append", default=[], help="남길 결과 표 ID 또는 시트!A1:D20. 여러 번 지정 가능")
@@ -748,7 +751,8 @@ def main(argv=None, customize=None, emit_project=True):
     if args.context_only and (args.output or args.inspect):
         parser.error("--context-only는 --output/--inspect와 함께 사용하지 않습니다.")
     if not args.inspect and not args.context_only and not args.output:
-        parser.error("--output 또는 --inspect가 필요합니다.")
+        args.output = str(Path.cwd() / "excel-to-pipeline" / "outputs" /
+                          dt.datetime.now().strftime("run-%Y%m%d-%H%M%S-%f"))
     try:
         if args.output and (Path(args.output).exists() or Path(args.output).is_symlink()):
             raise InputError("결과 폴더가 이미 있습니다. 새 폴더를 지정해 주세요.")
@@ -767,6 +771,7 @@ def main(argv=None, customize=None, emit_project=True):
         if not args.inspect:
             publish(result, args.output, emit_project, args.sample_rows, args.context_chars,
                     layout=args.layout, diagnostics=args.diagnostics)
+            result["summary"]["outputPath"] = str(Path(args.output).absolute())
         print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
         return 0
     except (InputError, OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError) as error:

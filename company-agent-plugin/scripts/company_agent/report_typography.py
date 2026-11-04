@@ -70,8 +70,8 @@ def missing(spec):
     if spec.get('fontChoice') == 'custom' and not spec.get('fontName'):
         return ['fontName']
     if spec.get('fontChoiceRequired') and 'fontChoice' not in spec:
-        if has_reference_font(spec):
-            return []
+        # A reference reveals a font; it does not choose whether that font or
+        # the user's usual font should be used. Explicit auto preserves it.
         # Existing explicit Google selection already names its font.
         return [] if spec.get('fontSource') == 'google' else ['fontChoice']
     return []

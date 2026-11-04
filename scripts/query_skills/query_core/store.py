@@ -86,6 +86,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS queries(id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL, profile TEXT NOT NULL, body TEXT NOT NULL, updated REAL NOT NULL);
                 CREATE TABLE IF NOT EXISTS plans(id TEXT PRIMARY KEY, body TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0);
+                CREATE TABLE IF NOT EXISTS query_size_evidence(id TEXT PRIMARY KEY, body TEXT NOT NULL, checked REAL NOT NULL);
             ''')
         ignore = self.root / '.gitignore'
         if not ignore.exists():

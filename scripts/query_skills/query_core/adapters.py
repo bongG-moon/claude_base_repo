@@ -239,6 +239,58 @@ class OracleBackend:
         return {'estimated_rows': None, 'exact_count': None,
                 'notes': ['Oracle 사전 건수는 미확인입니다. 전체 COUNT와 계획 테이블 기록은 자동 실행하지 않습니다.']}
 
+    def count_bounded(self, sql, params, *, limit, timeout_seconds):
+        """규모만 불명확한 조회를 짧게 센다. 포화 건수는 전체 건수가 아니다.
+
+        호출자는 미확인 함수나 실제 무조건 조인 등 별도 위험을 먼저 제외한다.
+        연결 제한 시간은 기존 설정을 쓰며 2초 상한은 COUNT 구간에 적용한다.
+        """
+        maximum = _limit(limit)
+        if maximum > 50_000:
+            raise AdapterError('invalid_limit', '자동 규모 확인은 기본 50,000행 범위에서만 사용합니다.')
+        cap = maximum + 1
+        seconds = _seconds(timeout_seconds, 2)
+        bounded, binds = _sql(sql, params, 'oracle', cap)
+        statement = 'SELECT COUNT(*) FROM (' + bounded + ') qs_count'
+        started = time.monotonic()
+        conn, cursor = self._connect(), None
+        expired = threading.Event()
+        rollback_attempted = False
+        try:
+            conn.call_timeout = max(1, int(seconds * 1000))
+            with _deadline(seconds, conn.cancel) as (end, expired):
+                cursor = conn.cursor()
+                cursor.arraysize = 1
+                cursor.execute('SET TRANSACTION READ ONLY')
+                cursor.execute(statement, binds)
+                row = cursor.fetchone()
+                if expired.is_set() or time.monotonic() >= end:
+                    raise AdapterError('count_timeout', '짧은 사전 건수 확인 시간이 지났습니다. 전체 조회는 실행하지 않았습니다.',
+                                       error_details(None, stage='timeout', engine='oracle'))
+                if (not isinstance(row, (tuple, list)) or len(row) != 1
+                        or type(row[0]) is not int or not 0 <= row[0] <= cap):
+                    raise AdapterError('count_result', '사전 건수 응답을 확인할 수 없습니다. 0건이나 작은 조회로 간주하지 않습니다.')
+                count = row[0]
+            # 다음 조회의 SET TRANSACTION이 첫 문장이 되도록 끝내되,
+            # 연결 자체는 유지해 인증과 연결 준비를 반복하지 않는다.
+            rollback_attempted = True
+            conn.rollback()
+            return {'count': count, 'cap': cap, 'complete': count < cap,
+                    'elapsedMs': round((time.monotonic() - started) * 1000)}
+        except AdapterError:
+            raise
+        except Exception as exc:
+            details = error_details(exc, stage='query', secrets=self.secrets, params=params, engine='oracle')
+            if expired.is_set() or details.get('errorCode') in {'ORA-01013', 'DPY-4024', 'DPI-1067'}:
+                raise _error('count_timeout', '짧은 사전 건수 확인 시간이 지나 취소를 요청했습니다. 전체 조회는 실행하지 않았습니다.',
+                             exc, stage='timeout', secrets=self.secrets, params=params, engine='oracle') from None
+            raise _error('db_query', '사전 건수 조회를 마치지 못했습니다. SQL, 조건과 조회 권한을 확인해 주세요.',
+                         exc, secrets=self.secrets, params=params, engine='oracle') from None
+        finally:
+            _close(cursor)
+            if not rollback_attempted:
+                _close(conn, 'rollback')
+
     @contextmanager
     def execute(self, sql, params, *, limit, timeout_seconds):
         count = _limit(limit) + 1
@@ -455,6 +507,46 @@ class LakeBackend:
                          secrets=self.secrets, params=params, engine='starrocks') from None
         finally:
             _close(cursor)
+
+    def count_bounded(self, sql, params, *, limit, timeout_seconds):
+        """E-HUB의 규모 경고에만 2초/50,001행 이내 확인을 적용합니다."""
+        if self.profile.get('engine') != 'ehub':
+            raise AdapterError('unsupported_probe', '이 연결에는 자동 사전 건수 조회를 적용하지 않습니다.')
+        maximum = _limit(limit)
+        if maximum > 50_000:
+            raise AdapterError('invalid_limit', '자동 규모 확인은 기본 50,000행 범위에서만 사용합니다.')
+        cap, seconds = maximum + 1, _seconds(timeout_seconds, 2)
+        bounded, binds = _sql(sql, params, 'starrocks', cap)
+        conn, cursor = self._connect(), None
+        started, expired = time.monotonic(), threading.Event()
+        try:
+            conn.read_timeout = conn.write_timeout = max(1, math.ceil(seconds))
+            with _deadline(seconds, conn.close) as (end, expired):
+                cursor = conn.cursor()
+                cursor.execute('SET query_timeout = ' + str(max(1, math.ceil(seconds))))
+                cursor.execute('SELECT COUNT(*) FROM (' + bounded + ') qs_count', binds)
+                row = cursor.fetchone()
+                if expired.is_set() or time.monotonic() >= end:
+                    raise AdapterError('count_timeout', '짧은 사전 건수 확인 시간이 지났습니다. 전체 조회는 실행하지 않았습니다.')
+                if (not isinstance(row, (tuple, list)) or len(row) != 1
+                        or type(row[0]) is not int or not 0 <= row[0] <= cap):
+                    raise AdapterError('count_result', '사전 건수 응답을 확인할 수 없습니다. 0건이나 작은 조회로 간주하지 않습니다.')
+                count = row[0]
+            return {'count': count, 'cap': cap, 'complete': count < cap,
+                    'elapsedMs': round((time.monotonic() - started) * 1000)}
+        except AdapterError:
+            raise
+        except Exception as exc:
+            if expired.is_set() or time.monotonic() - started >= seconds:
+                raise _error('count_timeout', '짧은 사전 건수 확인 시간이 지나 연결 종료를 요청했습니다. 전체 조회는 실행하지 않았습니다.',
+                             exc, stage='timeout', secrets=self.secrets, params=params, engine='starrocks') from None
+            raise _error('db_query', '사전 건수 조회를 마치지 못했습니다. SQL, 조건과 조회 권한을 확인해 주세요.',
+                         exc, secrets=self.secrets, params=params, engine='starrocks') from None
+        finally:
+            _close(cursor)
+            if expired.is_set():
+                _close(conn)
+                self.connection = None
 
     @contextmanager
     def execute(self, sql, params, *, limit, timeout_seconds):

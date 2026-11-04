@@ -15,7 +15,7 @@
     "requirements-vba.txt": "b8321e50ef03b0709f77d0b0459ad585e4ce35bf0e9b412af7cec8f4271a0c44",
     "requirements.txt": "9bba605fd7b6ea23038de15e5a1ae6714b3d3fb14ed2d6e6bedbfb0665ca2122",
     "scripts/compact_project.py": "7a1ca2e7905bf6d6bec7523567f48f5fa6adb8a881b6b44232149094c195b591",
-    "scripts/excel_pipeline.py": "2d92630ff16183ec8c80eb0dc1f19c1530a3409c898e81f3fec8511ef2836eeb",
+    "scripts/excel_pipeline.py": "89e77480e423c167dfacbaf0fdfffa87930be7aaca9697eb95f4bac5a396ac3e",
     "scripts/formula_engine.py": "2d50e351d3903a7849e3177c7fa47a72169e69fa4e75540227dd157936fe7bbd",
     "scripts/migration_contract.py": "7838b40d93c2468beecc721b77a7932b402ea41f4b6ec5c6c71b5d422b8bcbd6",
     "scripts/model_context.py": "43150b2b54f66b553ed17a7ec2cf99f693ad0c5af97f0b747b088c6bb7068665",

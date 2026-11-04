@@ -1,0 +1,116 @@
+{
+  "upstreamName": "Huashu Design",
+  "author": "alchaincyf (花叔 / 花生)",
+  "repository": "https://github.com/alchaincyf/huashu-design",
+  "commit": "b2460b031c33ff32d2bf3b97263527daa231e4de",
+  "license": "MIT",
+  "licenseFile": "LICENSE",
+  "sourceArchiveSha256": "957b269d5d0f045eae2d48bf3ffd950f55b1ea5e19bf5fa9fd1d06bb3f6325c7",
+  "scope": "Korean presentation-focused subset; not the complete upstream skill or an official upstream release",
+  "runtimeImports": [
+    "Python standard library",
+    "Pillow",
+    "python-pptx",
+    "playwright.async_api"
+  ],
+  "runtimeRelativeImports": [],
+  "localAdapter": "../scripts/export_pptx.py uses original JS, Builder, verify_text without editing the upstream file",
+  "excluded": [
+    "XHS and PolyForm Shield sticker assets",
+    "image/font/music libraries",
+    "cloud integrations",
+    "capabilities/profile discovery",
+    "personal learning and design-ledger scripts",
+    "installation hooks",
+    "automatic update checks",
+    "node_modules",
+    "tests",
+    "generated artifacts",
+    "Python environments",
+    "alternate Node/PDF/video export routes"
+  ],
+  "archiveInstructionScope": "Original markdown bytes are retained as .md.txt archives for attribution and audit; sourcePath records the original path. Its omitted cross-domain paths are not the active workflow; follow the Korean entry and references.",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sourcePath": "LICENSE",
+      "bytes": 1086,
+      "sha256": "6d6a2a9caf2e6d2b76974050427053b2892d8aa4c33fd168ce63a537fcee9d96",
+      "gitBlobSha1": "ed67368a2a79ed7be97b2a4852330cdac5b8b12a",
+      "purpose": "MIT copyright and license notice",
+      "modified": false
+    },
+    {
+      "path": "SKILL.md.txt",
+      "sourcePath": "SKILL.md",
+      "bytes": 16840,
+      "sha256": "a6c9beaa87d182b93792d3d0e7a212b9af28d54d89d7e1784c323b7a5cf479f7",
+      "gitBlobSha1": "fa3139d14e2bc3d80d060e38e553d15c2dea7de9",
+      "purpose": "Unmodified original entry retained as provenance, not active instructions",
+      "modified": false
+    },
+    {
+      "path": "scripts/pptx_from_rendered.py",
+      "sourcePath": "scripts/pptx_from_rendered.py",
+      "bytes": 29623,
+      "sha256": "9c81eac40cafcbd0c213267a0c37419c7fe16811a4da9aa7e3b9bc707aa50315",
+      "gitBlobSha1": "1e04de08b17d558146826df80e64e192a94f9c59",
+      "purpose": "Unmodified rendered-HTML PPTX engine used by adapter",
+      "modified": false
+    },
+    {
+      "path": "assets/deck_index.html",
+      "sourcePath": "assets/deck_index.html",
+      "bytes": 21320,
+      "sha256": "83d63a9ed531fb4f4a7b47c23c13024cb0b1831ab4883fc902bda351724c6820",
+      "gitBlobSha1": "62e4773738ff16393a2a50f55b5e0da844b38ca9",
+      "purpose": "Unmodified optional multi-file HTML presentation shell",
+      "modified": false
+    },
+    {
+      "path": "references/modules/deck.md.txt",
+      "sourcePath": "references/modules/deck.md",
+      "bytes": 4394,
+      "sha256": "40841180c49b73230261c1f9ad53f2cb273c553bab1879d5abecf0914996c5fd",
+      "gitBlobSha1": "d22e65f74392b5f1ccc0c1cadeb06dc33069b579",
+      "purpose": "Original deck-specific workflow",
+      "modified": false
+    },
+    {
+      "path": "references/pptx-from-rendered-html.md.txt",
+      "sourcePath": "references/pptx-from-rendered-html.md",
+      "bytes": 10415,
+      "sha256": "19d51068ca2377eec60b7261cbc450c98cce51f1584f0a1c7857575c1fed1b0d",
+      "gitBlobSha1": "4dd19b3865f676996b7a3b95840e4cbb8d446820",
+      "purpose": "Original rendered-HTML route description",
+      "modified": false
+    },
+    {
+      "path": "references/slide-decks.md.txt",
+      "sourcePath": "references/slide-decks.md",
+      "bytes": 36181,
+      "sha256": "f7c67305f9f169c6ce86bb35ddf5fd0b95bd543822f7aa0e27f0f66bbd95ac05",
+      "gitBlobSha1": "c0c5d9b993e3cdd2dbb294f054619f293e4e98af",
+      "purpose": "Original authoring and architecture reference, historic alternatives retained",
+      "modified": false
+    },
+    {
+      "path": "references/workflow.md.txt",
+      "sourcePath": "references/workflow.md",
+      "bytes": 10921,
+      "sha256": "b10d3e6702deffef717fbfc10851e9517fa274d4179967f60fc6ca0c0203648e",
+      "gitBlobSha1": "b437756ce839891f98b05642babe93f8da2e3882",
+      "purpose": "Original design process reference",
+      "modified": false
+    },
+    {
+      "path": "references/design-context.md.txt",
+      "sourcePath": "references/design-context.md",
+      "bytes": 6704,
+      "sha256": "93a7e6be5f6cb29076d3651747d5033701362ddd03283b1ddf11b105757430b6",
+      "gitBlobSha1": "12adeb06d8834e0c9ba934a62b95330c39d33cd2",
+      "purpose": "Original reference observation process",
+      "modified": false
+    }
+  ]
+}
