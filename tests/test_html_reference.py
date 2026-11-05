@@ -142,6 +142,61 @@ class HtmlReferenceTests(unittest.TestCase):
         self.assertEqual({}, result['tokens'])
         self.assertIn('전체 CSS 계산이 아닙니다', ''.join(result['warnings']))
 
+    def test_matching_body_class_overrides_root_palette_and_resolves_background(self):
+        self.template.write_text('''<html><style>
+        :root {--paper:#f5f6ee;--ink:#172d26;--accent:#286a46}
+        body {background:var(--paper);color:var(--ink)}
+        body.aside {--paper:#f8f5ef;--ink:#242e3d;--accent:#345be6}
+        body.other {--accent:#ff0000}
+        @media print {body.aside {--accent:#000000}}
+        </style><body class="aside">자료</body></html>''',encoding='utf-8')
+        tokens = reference.analyze(self.template)['tokens']
+        self.assertEqual('#345be6', tokens['accent'])
+        self.assertEqual('#f8f5ef', tokens['paper'])
+        self.assertEqual('#f8f5ef', tokens['bg'])
+        self.assertEqual('#242e3d', tokens['ink'])
+        self.assertIn('--accent:#345be6', reference.theme_css({'tokens':tokens}))
+
+    def test_body_scope_wins_inheritance_but_unmatched_or_complex_selectors_do_not(self):
+        self.template.write_text('''<html><style>
+        body.aside{--accent:#345be6} body{--ink:#111111}
+        :root{--accent:#286a46;--ink:#999999}
+        body.other{--accent:#ff0000} body.aside:hover{--accent:#000000}
+        body .aside{--accent:#ffffff}
+        </style><body class="aside">자료</body></html>''',encoding='utf-8')
+        tokens = reference.analyze(self.template)['tokens']
+        self.assertEqual('#345be6', tokens['accent'])
+        self.assertEqual('#111111', tokens['ink'])
+
+    def test_attached_navigation_is_generated_from_new_sections_without_importing_script(self):
+        self.template.write_text('''<html><style>:root{--accent:#345be6}</style>
+        <body><nav>원본 비공개 메뉴</nav><script>secretScript()</script></body></html>''',encoding='utf-8')
+        preview = reference.inspect_template(self.template, self.root/'nav-preview.html')
+        spec = {'htmlTemplate': preview['htmlTemplate'], 'templateReview': {**preview['templateReview'],'confirmed':True},
+                'fontChoice':'custom','fontName':'맑은 고딕','sections':[{'title':'새 근거'},{'title':'새 결과'}]}
+        output = self.root/'nav-result.html'
+        result = artifacts.create_html(spec, output)
+        self.assertTrue(result['ok'],result)
+        html = output.read_text(encoding='utf-8')
+        self.assertIn('class="attached-reference-toc"',html)
+        self.assertIn('href="#section-1">새 근거',html)
+        self.assertNotIn('secretScript()',html)
+        self.assertNotIn('원본 비공개 메뉴',html)
+        self.assertEqual('맑은 고딕',result['typography']['family'])
+        self.assertIn('font-family:"맑은 고딕"',html)
+
+    def test_explicit_pretendard_overrides_attached_html_font(self):
+        preview = reference.inspect_template(self.template, self.root/'font-preview.html')
+        spec = {'htmlTemplate':preview['htmlTemplate'], 'templateReview':{**preview['templateReview'],'confirmed':True},
+                'fontChoice':'pretendard','sections':[{'title':'선택한 글꼴'}]}
+        out = self.root/'font-result.html'
+        result = artifacts.create_html(spec, out)
+        self.assertTrue(result['ok'], result)
+        self.assertEqual(('Pretendard','bundled'), (result['typography']['family'],result['typography']['source']))
+        rendered = out.read_text(encoding='utf-8')
+        self.assertIn('@font-face{font-family:"Pretendard"',rendered)
+        self.assertIn('font-family:"Pretendard","Noto Sans KR"',rendered)
+
     def test_changed_template_stops_publication_and_existing_output_is_preserved(self):
         preview = reference.inspect_template(self.template, self.root/'original-preview.html')
         selected = preview['htmlTemplate']

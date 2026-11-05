@@ -66,7 +66,8 @@ class ReportDesignTests(unittest.TestCase):
                 text=output.read_text(encoding="utf-8")
                 svg=re.search(r"<svg\b.*?</svg>",text,re.S).group()
                 root=ET.fromstring(svg)
-                self.assertEqual(root.attrib["role"],"img")
+                # Interactive charts expose a group with focusable data points.
+                self.assertEqual(root.attrib["role"],"group")
                 self.assertIn("530", text)
                 self.assertIn('<details class="chart-values">',text)
                 self.assertIn("polyline" if kind=="line" else "path" if kind=="pie" else "rect",svg)

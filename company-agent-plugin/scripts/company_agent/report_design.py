@@ -19,7 +19,18 @@ def svg_chart(chart: dict, index: int, appearance: dict | None = None) -> str:
     if kind == 'pie':
         width = 410
     title = f"chart-title-{index}"
-    parts.append(f'<svg class="report-chart" data-chart-type="{esc(kind)}" viewBox="0 0 {width} {height}" role="img" aria-labelledby="{title}" xmlns="http://www.w3.org/2000/svg"><title id="{title}">{esc(chart.get("title") or "지표 비교")} — 수치는 아래 원자료에서 확인</title>')
+    point_count = 0
+
+    def point(label, mark):
+        # 값은 HTML 속성과 대체 텍스트로만 전달합니다. 실행 코드로 끼워 넣지 않습니다.
+        nonlocal point_count
+        tab = '0' if point_count == 0 else '-1'
+        point_count += 1
+        return (f'<g class="chart-point" tabindex="{tab}" role="button" '
+                f'aria-label="{esc(label)}" data-chart-label="{esc(label)}">'
+                f'<title>{esc(label)}</title>{mark}</g>')
+
+    parts.append(f'<svg class="report-chart" data-chart-type="{esc(kind)}" viewBox="0 0 {width} {height}" role="group" aria-labelledby="{title}" aria-describedby="chart-help-{index}" xmlns="http://www.w3.org/2000/svg"><title id="{title}">{esc(chart.get("title") or "지표 비교")} — 수치는 아래 원자료에서 확인</title>')
     values = [v for s in series for v in s["values"]]
     low, high = min(0, min(values)), max(0, max(values))
     if high == low:
@@ -31,14 +42,14 @@ def svg_chart(chart: dict, index: int, appearance: dict | None = None) -> str:
             if value == 0:
                 continue
             delta = value / total * math.tau
-            label = esc(f"{categories[i]}: {value:g} ({value / total * 100:.1f}%)")
+            label = f"{categories[i]} / {series[0]['name']}: {value} ({value / total * 100:.1f}%)"
             color = PALETTE[i % len(PALETTE)]
             if delta >= math.tau - 1e-10:
-                parts.append(f'<circle cx="205" cy="172" r="125" fill="{color}"><title>{label}</title></circle>')
+                parts.append(point(label, f'<circle class="chart-mark" cx="205" cy="172" r="125" fill="{color}"/>'))
             else:
                 x1, y1 = 205 + 125 * math.cos(angle), 172 + 125 * math.sin(angle)
                 x2, y2 = 205 + 125 * math.cos(angle + delta), 172 + 125 * math.sin(angle + delta)
-                parts.append(f'<path d="M205,172 L{x1:.3f},{y1:.3f} A125,125 0 {int(delta > math.pi)},1 {x2:.3f},{y2:.3f} Z" fill="{color}" stroke="white" stroke-width="2"><title>{label}</title></path>')
+                parts.append(point(label, f'<path class="chart-mark" d="M205,172 L{x1:.3f},{y1:.3f} A125,125 0 {int(delta > math.pi)},1 {x2:.3f},{y2:.3f} Z" fill="{color}" stroke="white" stroke-width="2"/>'))
             angle += delta
         parts.append('<circle cx="205" cy="172" r="72" fill="var(--paper)"/>')
         parts.append(f'<text x="205" y="174" text-anchor="middle" class="chart-total">{total:g}</text><text x="205" y="200" text-anchor="middle">합계</text>')
@@ -54,7 +65,9 @@ def svg_chart(chart: dict, index: int, appearance: dict | None = None) -> str:
             for j, serie in enumerate(series):
                 value = serie["values"][i]
                 bar_h = max(2, (band - 10) / len(series))
-                parts.append(f'<rect x="{min(x(0),x(value)):.3f}" y="{30+i*band+j*bar_h:.3f}" width="{abs(x(value)-x(0)):.3f}" height="{bar_h-1:.3f}" rx="2" fill="{PALETTE[j]}"><title>{esc(category)} · {esc(serie["name"])}: {value:g}</title></rect>')
+                label = f'{category} / {serie["name"]}: {value}'
+                parts.append(point(label, f'<rect class="chart-hit" x="{min(x(0),x(value)):.3f}" y="{30+i*band+j*bar_h:.3f}" width="{max(8,abs(x(value)-x(0))):.3f}" height="{max(12,bar_h-1):.3f}" fill="transparent"/>'
+                                   f'<rect class="chart-mark" x="{min(x(0),x(value)):.3f}" y="{30+i*band+j*bar_h:.3f}" width="{abs(x(value)-x(0)):.3f}" height="{bar_h-1:.3f}" rx="2" fill="{PALETTE[j]}"/>'))
     else:
         y = lambda v: 285 - (v - low) / (high - low) * 245
         for tick in range(5):
@@ -70,20 +83,24 @@ def svg_chart(chart: dict, index: int, appearance: dict | None = None) -> str:
             points = []
             for i, value in enumerate(serie["values"]):
                 cx, cy = 80 + (i + .5) * band, y(value)
-                label = esc(f'{categories[i]} · {serie["name"]}: {value:g}')
+                label = f'{categories[i]} / {serie["name"]}: {value}'
                 if kind == "line":
                     points.append(f"{cx:.3f},{cy:.3f}")
                     marker = appearance.get('marker', 'circle')
                     if marker == 'square':
-                        parts.append(f'<rect x="{cx-4:.3f}" y="{cy-4:.3f}" width="8" height="8" fill="{PALETTE[j]}"><title>{label}</title></rect>')
+                        mark = f'<rect class="chart-mark" x="{cx-4:.3f}" y="{cy-4:.3f}" width="8" height="8" fill="{PALETTE[j]}"/>'
                     elif marker == 'diamond':
-                        parts.append(f'<path d="M{cx:.3f},{cy-5:.3f} l5,5 -5,5 -5,-5 Z" fill="{PALETTE[j]}"><title>{label}</title></path>')
+                        mark = f'<path class="chart-mark" d="M{cx:.3f},{cy-5:.3f} l5,5 -5,5 -5,-5 Z" fill="{PALETTE[j]}"/>'
                     elif marker != 'none':
-                        parts.append(f'<circle cx="{cx:.3f}" cy="{cy:.3f}" r="4" fill="{PALETTE[j]}"><title>{label}</title></circle>')
+                        mark = f'<circle class="chart-mark" cx="{cx:.3f}" cy="{cy:.3f}" r="4" fill="{PALETTE[j]}"/>'
+                    else:
+                        mark = ''
+                    parts.append(point(label, f'<circle class="chart-hit" cx="{cx:.3f}" cy="{cy:.3f}" r="14" fill="transparent"/>' + mark))
                 else:
                     bar_w = band * .68 / len(series)
                     bx = cx - band * .34 + j * bar_w
-                    parts.append(f'<rect x="{bx:.3f}" y="{min(cy,y(0)):.3f}" width="{bar_w*.85:.3f}" height="{abs(cy-y(0)):.3f}" rx="3" fill="{PALETTE[j]}"><title>{label}</title></rect>')
+                    parts.append(point(label, f'<rect class="chart-hit" x="{bx:.3f}" y="{min(cy,y(0))-4:.3f}" width="{bar_w*.85:.3f}" height="{max(8,abs(cy-y(0))+4):.3f}" fill="transparent"/>'
+                                       f'<rect class="chart-mark" x="{bx:.3f}" y="{min(cy,y(0)):.3f}" width="{bar_w*.85:.3f}" height="{abs(cy-y(0)):.3f}" rx="3" fill="{PALETTE[j]}"/>'))
                 if len(categories) <= 6 and len(series) <= 2:
                     tx = cx if kind == "line" else bx + bar_w * .425
                     ty = cy - 9 if value >= 0 else cy + 18
@@ -95,7 +112,91 @@ def svg_chart(chart: dict, index: int, appearance: dict | None = None) -> str:
         legend = ''.join(f'<span><i style="background:{PALETTE[j]}"></i>{esc(categories[j])} · {value / total * 100:.1f}%</span>' for j, value in enumerate(values))
     else:
         legend = ''.join(f'<span><i style="background:{PALETTE[j]}"></i>{esc(s["name"])}</span>' for j, s in enumerate(series))
-    return '<figure class="chart-frame"><figcaption>'+esc(chart.get('title') or '지표 비교')+'</figcaption>'+''.join(parts)+f'<div class="legend">{legend}</div></figure>'
+    return ('<figure class="chart-frame"><figcaption>'+esc(chart.get('title') or '지표 비교')+'</figcaption>'
+            '<div class="chart-viewport">'+''.join(parts)+'</div><p class="chart-pan-hint">좌우로 밀어 전체 항목을 확인하세요.</p>'+f'<div class="legend">{legend}</div>'
+            f'<p class="chart-help" id="chart-help-{index}">항목에 마우스를 올리거나 누르면 수치가 표시됩니다. 키보드는 Tab 후 방향키로 이동합니다.</p>'
+            f'<div class="chart-tooltip" id="chart-tooltip-{index}" role="tooltip" hidden></div></figure>')
+
+
+CHART_CSS = """
+/* Charts stay subordinate to section titles; a wide panel does not magnify axes. */
+body[data-style] .chart-frame{padding:16px 18px;margin:18px 0 10px}
+body[data-style] .chart-frame figcaption{font-size:14px;line-height:1.5;margin-bottom:12px}
+.chart-viewport{max-width:100%;min-width:0;overflow:auto;overscroll-behavior:contain}
+body[data-style] .report-chart{max-width:800px;min-width:0;margin-inline:auto}
+body[data-style] .report-chart[data-chart-type=pie]{max-width:360px}
+.report-chart text{font-size:calc(12px / var(--chart-scale,1));pointer-events:none}
+.report-chart .chart-value{font-size:calc(12px / var(--chart-scale,1))}
+.report-chart .chart-total{font-size:calc(24px / var(--chart-scale,1))}
+.report-chart polyline{pointer-events:none}
+.chart-point{cursor:pointer;outline:none}.chart-point.is-dimmed{opacity:.42}
+@media screen{.chart-point:is(.is-active,:focus-visible) .chart-mark{stroke:var(--ink);stroke-width:2;vector-effect:non-scaling-stroke}.chart-point:focus-visible .chart-hit{stroke:var(--ink);stroke-dasharray:3 3;stroke-width:2;vector-effect:non-scaling-stroke}}
+.chart-tooltip{position:fixed;z-index:1000;pointer-events:none;max-width:min(320px,calc(100vw - 24px));padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--ink);color:var(--paper);box-shadow:0 5px 18px #0002;font-size:14px;line-height:1.5;font-weight:600;word-break:keep-all;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
+.chart-tooltip[hidden]{display:none!important}.chart-help{font-size:12px;line-height:1.5;color:var(--muted);margin:10px 0 0}
+.chart-pan-hint{display:none;margin:8px 0;font-size:12px;line-height:1.5;color:var(--muted)}.chart-frame.is-scrollable .chart-pan-hint{display:block}
+body[data-style] .legend{font-size:12px;gap:8px 16px;line-height:1.5}
+@media(max-width:760px){body[data-style] .chart-frame{padding:14px 12px;overflow:visible}body[data-style] .report-chart:not([data-chart-type=pie]){min-width:600px}.chart-help{font-size:12px}.chart-tooltip{font-size:14px}}
+@media print{.chart-tooltip,.chart-help,.chart-pan-hint{display:none!important}.chart-viewport{overflow:visible}.chart-point.is-dimmed{opacity:1}body[data-style] .report-chart{min-width:0;max-height:320px}}
+"""
+
+
+CHART_JS = r"""
+/* One local controller per chart. No requests, timers or model calls. */
+(() => {
+  document.querySelectorAll('.chart-frame').forEach(frame => {
+    const svg=frame.querySelector('.report-chart'),tip=frame.querySelector('.chart-tooltip');
+    const points=Array.from(frame.querySelectorAll('.chart-point'));
+    if(!svg||!tip||!points.length)return;
+    let active=null,pinned=false;
+    const closest=target => target instanceof Element ? target.closest('.chart-point') : null;
+    function hide(){
+      points.forEach(point=>{point.classList.remove('is-active','is-dimmed');point.removeAttribute('aria-describedby');});
+      tip.hidden=true;active=null;pinned=false;
+    }
+    function show(point,event){
+      if(!point||!svg.contains(point))return;
+      active=point;tip.textContent=point.dataset.chartLabel;tip.hidden=false;
+      points.forEach(item=>{item.classList.toggle('is-active',item===point);item.classList.toggle('is-dimmed',item!==point);item.removeAttribute('aria-describedby');});
+      point.setAttribute('aria-describedby',tip.id);
+      const r=point.getBoundingClientRect(),t=tip.getBoundingClientRect();
+      const x=event&&Number.isFinite(event.clientX)?event.clientX:r.left+r.width/2;
+      const y=event&&Number.isFinite(event.clientY)?event.clientY:r.top;
+      tip.style.left=Math.max(12,Math.min(x+12,innerWidth-t.width-12))+'px';
+      tip.style.top=Math.max(12,Math.min(y-t.height-12,innerHeight-t.height-12))+'px';
+    }
+    // Native SVG titles remain a no-JavaScript fallback. Avoid two simultaneous tooltips.
+    points.forEach(point=>point.querySelector('title')?.remove());
+    svg.addEventListener('pointerover',event=>{if(!pinned&&event.pointerType!=='touch')show(closest(event.target),event);});
+    svg.addEventListener('pointermove',event=>{if(!pinned&&active&&event.pointerType!=='touch')show(active,event);});
+    svg.addEventListener('pointerleave',()=>{if(!pinned&&!svg.contains(document.activeElement))hide();});
+    svg.addEventListener('focusin',event=>show(closest(event.target)));
+    svg.addEventListener('focusout',event=>{if(!svg.contains(event.relatedTarget))hide();});
+    svg.addEventListener('click',event=>{
+      const point=closest(event.target);if(!point)return;
+      if(pinned&&active===point){hide();return;}
+      points.forEach(item=>item.tabIndex=item===point?0:-1);pinned=true;show(point,event);
+    });
+    svg.addEventListener('keydown',event=>{
+      const point=closest(event.target);if(!point)return;
+      const index=points.indexOf(point);let next=index;
+      if(['ArrowRight','ArrowDown'].includes(event.key))next=(index+1)%points.length;
+      else if(['ArrowLeft','ArrowUp'].includes(event.key))next=(index+points.length-1)%points.length;
+      else if(event.key==='Home')next=0;
+      else if(event.key==='End')next=points.length-1;
+      else if(event.key==='Escape'){event.preventDefault();event.stopPropagation();hide();return;}
+      else if(['Enter',' '].includes(event.key)){event.preventDefault();event.stopPropagation();pinned=!pinned;pinned?show(point):hide();return;}
+      else return;
+      event.preventDefault();event.stopPropagation();pinned=false;
+      points.forEach((item,i)=>item.tabIndex=i===next?0:-1);points[next].focus();
+    });
+    document.addEventListener('pointerdown',event=>{if(!frame.contains(event.target))hide();});
+    document.addEventListener('scroll',()=>{if(active)show(active);},true);
+    const size=()=>{const width=svg.getBoundingClientRect().width,box=svg.viewBox.baseVal.width,viewport=frame.querySelector('.chart-viewport');if(width&&box)svg.style.setProperty('--chart-scale',String(width/box));frame.classList.toggle('is-scrollable',viewport.scrollWidth>viewport.clientWidth+1);if(active)show(active);};
+    if(window.ResizeObserver)new ResizeObserver(size).observe(svg);else window.addEventListener('resize',size);
+    size();
+  });
+})();
+"""
 
 
 CSS = """
@@ -243,7 +344,15 @@ def _bento_wide_sections(rows: list[dict]) -> set[int]:
 
 def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     from .report_styles import CSS as theme_css
-    base_css = base_css + '\n' + CSS + '\n' + theme_css + '\n' + INTERFACE_CSS + '\n' + data.get('referenceCss', '')
+    base_css = base_css + '\n' + CSS + '\n' + theme_css + '\n' + INTERFACE_CSS
+    if any(row.get('chart') for row in data['sections']):
+        base_css += '\n' + CHART_CSS
+        script += '\n' + CHART_JS
+    base_css += '\n' + data.get('referenceCss', '')
+    if data.get('referenceCss'):
+        # A reference's long Korean cover heading must not be confined to the
+        # narrow built-in 19ch cover. Explicit observed title sizes still win.
+        base_css += '\nbody[data-reference-style] .layout-cover h2{font-size:clamp(32px,4vw,56px);max-width:30ch;letter-spacing:-.03em}'
     if any(row.get('table') or row.get('chart') for row in data['sections']):
         from .report_tables import CSS as table_css, JS as table_js
         base_css += '\n' + table_css
@@ -251,6 +360,9 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     if data.get('referencePreset'):
         base_css += '\n' + REFERENCE_CSS
         script += '\n' + REFERENCE_JS
+    elif data.get('referenceNavigation'):
+        base_css += '''\n.attached-reference-navigation{max-width:1240px;margin:0 auto;padding:4px 40px 12px}.attached-reference-toc{display:flex;flex-wrap:nowrap;gap:18px;overflow-x:auto;scrollbar-width:thin}.attached-reference-toc a{flex:none;display:block;line-height:44px;max-width:240px;color:var(--muted);text-decoration:none;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.attached-reference-toc a:hover,.attached-reference-toc a:focus-visible{color:var(--accent);text-decoration:underline}.attached-reference-hint{display:block;margin:2px 0 0;color:var(--muted);font-size:12px}.attached-reference-hint[hidden]{display:none}body[data-view=slides] .attached-reference-navigation{display:none}@media(max-width:760px){.attached-reference-navigation{padding:4px 16px 8px}}@media print{.attached-reference-navigation{display:none}}'''
+        script += '''\n(()=>{const n=document.querySelector('.attached-reference-toc'),h=document.querySelector('.attached-reference-hint');if(!n||!h)return;const update=()=>{h.hidden=n.scrollWidth<=n.clientWidth+1};n.addEventListener('focusin',e=>{const a=e.target;if(!a.matches('a'))return;requestAnimationFrame(()=>{const x=n.getBoundingClientRect(),y=a.getBoundingClientRect();if(y.left<x.left)n.scrollLeft+=y.left-x.left-4;else if(y.right>x.right)n.scrollLeft+=y.right-x.right+4})});window.addEventListener('resize',update);update()})();'''
     has_interactions = any(row.get('scenarios') or row.get('details') for row in data['sections'])
     if has_interactions:
         from . import report_interactions
@@ -354,4 +466,7 @@ def render(data: dict, base_css: str, script: str, table_renderer) -> str:
     if data.get('referencePreset') == 'reference-2' and data['mode'] != 'slides' and len(data['sections']) > 1:
         toc = '<nav class="reference-toc" aria-label="보고서 목차">' + ''.join(
             f'<a href="#section-{i}">{i}. {esc(row["title"] or "내용")}</a>' for i, row in enumerate(data['sections'], 1)) + '</nav>'
+    elif data.get('referenceNavigation') and data['mode'] != 'slides' and len(data['sections']) > 1:
+        toc = '<div class="attached-reference-navigation"><nav class="attached-reference-toc" aria-label="보고서 목차">' + ''.join(
+            f'<a href="#section-{i}">{esc(row["title"] or "내용")}</a>' for i, row in enumerate(data['sections'], 1)) + '</nav><span class="attached-reference-hint" aria-hidden="true">← 목차를 좌우로 이동할 수 있습니다 →</span></div>'
     return ('<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+f'<meta http-equiv="Content-Security-Policy" content="{esc(csp)}"><title>{esc(data["title"])}</title>{font_link}<style>{base_css}</style></head>'+f'<body data-style="{data["style"]}"{reference_attr} data-view="{view}" data-length="{data["length"]}" data-motion="{data.get("motion", "subtle")}"><header class="report-masthead"><div><div class="report-name">{esc(data["title"])}</div><p class="subtitle">{esc(data["subtitle"])}</p></div><nav aria-label="보고서 보기">{toggle}<button id="print" type="button">인쇄 / PDF 저장</button><span class="slide-controls"><button id="previous" type="button">이전</button> <span id="slide-count" aria-live="polite"></span> <button id="next" type="button">다음</button></span></nav></header>{toc}<main class="report-main">'+''.join(sections)+'</main><footer>'+footer+'</footer><script>'+script+'</script></body></html>')

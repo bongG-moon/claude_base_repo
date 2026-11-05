@@ -69,6 +69,7 @@ def workbook_from_result(result):
 
 def select_result(result, targets):
     """Build a NEW analysis containing only requested outputs + literal/formula deps."""
+    from excel_pipeline import MAX_CELLS
     from project_builder import make_rules
     from project_runtime import calculate_data
     if not targets:
@@ -119,7 +120,7 @@ def select_result(result, targets):
                     if dep not in needed:
                         needed.add(dep)
                         queue.append(dep)
-            if len(needed) > 250000:
+            if len(needed) > MAX_CELLS:
                 raise ValueError("필요한 셀 수가 분석 한도를 넘습니다. 축소하지 않았습니다.")
         # Include physically empty references as explicit None inputs.
         for sheet, address in needed:

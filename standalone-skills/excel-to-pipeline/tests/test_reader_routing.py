@@ -104,6 +104,16 @@ class ReaderRoutingTests(unittest.TestCase):
         self.assertEqual(result["input_evidence"]["selection_reason"], "non_ooxml_candidate_not_drm_proof")
         self.assertEqual(result["input_evidence"]["drm_status"], "not_determined")
 
+    def test_printable_document_safer_header_reads_intact_via_excel_once(self):
+        source = self.folder / "protected.xlsx"
+        source.write_bytes(b"<DOCUMENT SAFER V2010 R5>" + b" "*700 + b"\x80\x00synthetic")
+        before = source.read_bytes()
+        result = pipeline.analyze(source)
+        self.native.load_via_excel.assert_called_once_with(source.resolve(), timeout=90)
+        self.assertEqual(result["input_evidence"]["selection_reason"], "document_safer_header_excel_read_candidate")
+        self.assertEqual(result["input_evidence"]["drm_status"], "not_determined")
+        self.assertEqual(source.read_bytes(), before)
+
     def test_explicit_openpyxl_keeps_ordinary_reader(self):
         result = pipeline.analyze(self.fixture, reader="openpyxl")
         self.assertEqual(result["summary"]["reader"], "openpyxl")

@@ -170,6 +170,8 @@ def register(subparsers: Any) -> None:
             destination.add_argument('--context-only', action='store_true', help='제한된 모델용 요약만, 파일 생성 없음.')
             command.add_argument('--plan')
             command.add_argument('--target', action='append', default=[], help='남길 결과 표 ID 또는 시트!A1:D20')
+            command.add_argument('--xlsx-copy', action='store_true', help='데이터와 수식을 새 XLSX 사본에도 보존')
+            command.add_argument('--copy-target', action='append', default=[], help='XLSX 사본에 남길 결과 표 ID 또는 시트!A1:D20')
             command.add_argument('--layout', choices=('compact', 'detailed'), default='compact')
             command.add_argument('--diagnostics', action='store_true', help='셀별 상세 진단도 보관')
             command.add_argument('--reader', choices=('auto', 'openpyxl', 'xlwings'), default='auto')

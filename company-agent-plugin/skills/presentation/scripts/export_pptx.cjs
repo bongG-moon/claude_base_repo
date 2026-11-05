@@ -54,7 +54,8 @@ function argumentsFor(argv) {
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === '--help' || arg === '-h') { options.help = true; continue; }
-    if (['--input', '--output', '--browser', '--node-modules', '--timeout'].includes(arg)) {
+    if (arg === '--audit-only') { options.auditOnly = true; continue; }
+    if (['--input', '--output', '--browser', '--node-modules', '--timeout', '--screenshots'].includes(arg)) {
       if (!argv[i + 1] || argv[i + 1].startsWith('--')) fail('invalid_arguments', `${arg} 값이 필요합니다.`);
       options[arg.slice(2)] = argv[++i];
     } else if (!arg.startsWith('-') && !options.input) options.input = arg;
@@ -115,7 +116,9 @@ async function run(options) {
   } catch (error) { if (error instanceof ExportError) throw error; fail('input_not_found', '입력 HTML 파일을 읽을 수 없습니다.', error.code); }
   if (input === output) fail('source_output_conflict', '원본 HTML과 출력 경로는 달라야 합니다.');
   if (path.extname(output).toLowerCase() !== '.pptx') fail('invalid_output', '출력 확장자는 .pptx여야 합니다.');
-  if (fs.existsSync(output)) fail('output_exists', '기존 출력은 덮어쓰지 않습니다. 새 --output 경로를 지정하세요.', output);
+  if (!options.auditOnly && fs.existsSync(output)) fail('output_exists', '기존 출력은 덮어쓰지 않습니다. 새 --output 경로를 지정하세요.', output);
+  const screenshots = options.screenshots ? path.resolve(options.screenshots) : null;
+  if (screenshots && (!options.auditOnly || fs.existsSync(screenshots))) fail('invalid_screenshot_directory', '화면 검사 시에만 기존에 없는 --screenshots 폴더를 지정하세요.');
   if (!fs.existsSync(BUNDLE)) fail('bundle_missing', '배포된 dom-to-pptx browser bundle이 없습니다.');
   const bundleBytes = fs.readFileSync(BUNDLE);
   if (sha256(bundleBytes) !== BUNDLE_SHA256) fail('bundle_integrity_failed', '동봉 변환 라이브러리의 SHA-256이 고정 버전과 다릅니다.');
@@ -226,10 +229,10 @@ async function run(options) {
     if (result.slideSizes.some(size => Math.abs(size.width - dimensions.width) > 1 || Math.abs(size.height - dimensions.height) > 1)) fail('inconsistent_slide_dimensions', '모든 슬라이드의 실제 크기가 같아야 하며 선언한 크기와 일치해야 합니다. 원본 크기를 강제로 바꾸지 않습니다.', { dimensions, slides: result.slideSizes });
     if (result.blockedRequests.length || result.pageErrors.length) fail('static_render_failed', '정적 HTML에 차단된 요청 또는 렌더 오류가 있습니다.', { blockedRequests: result.blockedRequests, pageErrors: result.pageErrors });
     // Measure the original static layout once. Do not alter author text, fonts, widths or heights.
-    const measured = await page.evaluate(() => {
+    const measured = await page.evaluate(({ auditOnly }) => {
       const normalize = text => text.replace(/\s+/g, ' ').trim();
       return Array.from(document.querySelectorAll('main#deck > section.slide')).map((slide, index) => {
-        const bounds = slide.getBoundingClientRect(), candidates = [], overflow = [];
+        const bounds = slide.getBoundingClientRect(), candidates = [], overflow = [], htmlTexts = [], unhandledMultiline = [];
         for (const element of slide.querySelectorAll('*')) {
           if (!(element instanceof HTMLElement) || element.closest('svg,aside.notes,.speaker-notes') || (element.closest('[data-notes]') && element.closest('[data-notes]') !== slide)) continue;
           const text = normalize(element.textContent || ''); if (!text || text.length > 160) continue;
@@ -242,9 +245,13 @@ async function run(options) {
             for (const rect of range.getClientRects()) if (rect.width > .1 && rect.height > .1) rects.push({ x: rect.left - bounds.left, y: rect.top - bounds.top, width: rect.width, height: rect.height });
           }
           if (!rects.length) continue;
+          if ((element.hasAttribute('data-edit') || /^(H[1-6]|P|TD|TH|LI)$/.test(element.tagName)) && !element.querySelector('[data-edit]')) {
+            for (const r of rects) htmlTexts.push({text, left:r.x+bounds.left, top:r.y+bounds.top, right:r.x+r.width+bounds.left, bottom:r.y+r.height+bounds.top});
+          }
           const outside = rects.some(r => r.x < -1 || r.y < -1 || r.x + r.width > bounds.width + 1 || r.y + r.height > bounds.height + 1);
           const clipped = (element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 2) || (element.clientHeight > 0 && element.scrollHeight > element.clientHeight + 2);
-          if (outside || clipped) { if (overflow.length < 20) overflow.push({ tag: element.tagName.toLowerCase(), id: element.id || null, text: text.slice(0, 80), outsideSlide: outside, elementOverflow: clipped }); continue; }
+          if (outside || clipped) { if (overflow.length < 20) overflow.push({ tag: element.tagName.toLowerCase(), id: element.id || null, text: text.slice(0, 80), outsideSlide: outside, elementOverflow: clipped }); }
+          if (outside) continue;
           if (element.closest('table') || style.writingMode !== 'horizontal-tb') continue;
           const lines = [];
           for (const rect of rects.sort((a, b) => a.y - b.y)) {
@@ -252,13 +259,111 @@ async function run(options) {
             if (line) { line.top = Math.min(line.top, rect.y); line.bottom = Math.max(line.bottom, rect.y + rect.height); }
             else lines.push({ top: rect.y, bottom: rect.y + rect.height });
           }
-          if (lines.length !== 1) continue;
-          candidates.push({ text, elementX: box.left - bounds.left, elementY: box.top - bounds.top, x: Math.min(...rects.map(r => r.x)), y: Math.min(...rects.map(r => r.y)), width: Math.max(...rects.map(r => r.x + r.width)) - Math.min(...rects.map(r => r.x)), height: lines[0].bottom - lines[0].top, fontSize: parseFloat(style.fontSize) });
+          // Capture browser line boundaries only when all inline text is exact
+          // and uses supported, same-sized inline styling; do not guess whitespace.
+          const textWalker=document.createTreeWalker(element,NodeFilter.SHOW_TEXT), nodes=[];
+          for(let node=textWalker.nextNode();node;node=textWalker.nextNode()) nodes.push(node);
+          const raw=nodes.map(n=>n.textContent).join('');
+          let lineBreakOffsets=[];
+          const explicitBreaks=element.querySelectorAll('br').length;
+          const safeInline=Array.from(element.querySelectorAll('*')).every(n=>n.tagName==='BR' || (['STRONG','B','EM','I','SPAN','U','S'].includes(n.tagName) && Math.abs(parseFloat(getComputedStyle(n).fontSize)-parseFloat(style.fontSize))<.5));
+          if (lines.length > 1 && nodes.length && raw === text && !/\s{2,}/.test(text) && safeInline) {
+            let lastTop=null, globalOffset=0;
+            for (const node of nodes) {
+              for (let offset=0;offset<node.textContent.length;) {
+                const width=node.textContent.codePointAt(offset)>0xffff?2:1;
+                const charRange=document.createRange(); charRange.setStart(node,offset); charRange.setEnd(node,offset+width);
+                const r=charRange.getBoundingClientRect();
+                if (r.width && r.height && node.textContent.slice(offset,offset+width).trim()) {
+                  if (lastTop!==null && r.top>lastTop+Math.max(2,parseFloat(style.fontSize)*.3)) lineBreakOffsets.push(globalOffset+offset);
+                  lastTop=r.top;
+                }
+                offset+=width;
+              }
+              globalOffset+=node.textContent.length;
+            }
+          }
+          if (lines.length !== 1 && !lineBreakOffsets.length && !explicitBreaks) {
+            if (element.hasAttribute('data-edit') && !element.querySelector('br') && unhandledMultiline.length<20)
+              unhandledMultiline.push(text.slice(0,120));
+            continue;
+          }
+          candidates.push({ text, lineBreakOffsets, explicitBreaks, clipped, lineHeight:parseFloat(style.lineHeight)||null, elementX: box.left - bounds.left, elementY: box.top - bounds.top, x: Math.min(...rects.map(r => r.x)), y: Math.min(...rects.map(r => r.y)), width: Math.max(...rects.map(r => r.x + r.width)) - Math.min(...rects.map(r => r.x)), height: lines[0].bottom - lines[0].top, fontSize: parseFloat(style.fontSize) });
+          // Some converters emit each explicit <br> line as its own text shape.
+          // Record only text nodes that have exactly one observed line.
+          if (explicitBreaks) for (const node of nodes) {
+            const content=normalize(node.textContent||''); if(!content) continue;
+            const range=document.createRange();range.selectNodeContents(node);
+            const pieces=Array.from(range.getClientRects()).filter(r=>r.width>.1&&r.height>.1);
+            if(pieces.length!==1) continue;
+            const r=pieces[0];
+            candidates.push({text:content,lineBreakOffsets:[],explicitBreaks:0,clipped:false,lineHeight:parseFloat(style.lineHeight)||null,
+              elementX:r.left-bounds.left,elementY:r.top-bounds.top,x:r.left-bounds.left,y:r.top-bounds.top,width:r.width,height:r.height,fontSize:parseFloat(style.fontSize)});
+          }
         }
-        return { slide: index + 1, candidates, overflow, scrollOverflow: slide.scrollWidth > slide.clientWidth + 2 || slide.scrollHeight > slide.clientHeight + 2 };
+        // SVG text/connector intersections are invisible to ordinary DOM scroll checks.
+        // This is a review hint, not a proof of a visual defect.
+        const svgIntersections = [];
+        for (const svg of auditOnly ? slide.querySelectorAll('svg') : []) {
+          const texts = Array.from(svg.querySelectorAll('text')).filter(t => (t.textContent || '').trim()).map(t => ({node:t,text:normalize(t.textContent),box:t.getBoundingClientRect()}));
+          for (const t of htmlTexts) texts.push({node:null,text:t.text,box:t});
+          const lines = Array.from(svg.querySelectorAll('path,line,polyline')).slice(0, 500);
+          for (const textNode of texts.slice(0, 300)) {
+            const tb = textNode.box;
+            if (tb.right <= tb.left || tb.bottom <= tb.top) continue;
+            for (const line of lines) {
+              const style = getComputedStyle(line);
+              if (style.stroke === 'none' || style.strokeWidth === '0px' || !line.getTotalLength) continue;
+              try {
+                const length = line.getTotalLength(), matrix = line.getScreenCTM();
+                if (!matrix || !Number.isFinite(length) || length <= 0) continue;
+                const count = Math.max(2, Math.min(100, Math.ceil(length / 3)));
+                let hit = false;
+                for (let n = 0; n <= count; n++) {
+                  const p = line.getPointAtLength(length * n / count), point = new DOMPoint(p.x,p.y).matrixTransform(matrix);
+                  if (point.x > tb.left + 1 && point.x < tb.right - 1 && point.y > tb.top + 1 && point.y < tb.bottom - 1) { hit = true; break; }
+                }
+                if (hit) { svgIntersections.push({text:textNode.text.slice(0,80), tag:line.tagName.toLowerCase()}); break; }
+              } catch (_) { /* unsupported SVG geometry is checked visually */ }
+            }
+            if (svgIntersections.length >= 20) break;
+          }
+        }
+        const textIntersections = [];
+        for (let i=0; auditOnly && i<htmlTexts.length && textIntersections.length<20; i++) for (let j=i+1; j<htmlTexts.length && textIntersections.length<20; j++) {
+          const a=htmlTexts[i], b=htmlTexts[j];
+          if (a.text === b.text) continue;
+          if (Math.min(a.right,b.right)-Math.max(a.left,b.left)>2 && Math.min(a.bottom,b.bottom)-Math.max(a.top,b.top)>2)
+            textIntersections.push([a.text.slice(0,60),b.text.slice(0,60)]);
+        }
+        const tables = Array.from(slide.querySelectorAll('table')).map(table => {
+          const tb=table.getBoundingClientRect();
+          return { x:tb.left-bounds.left, y:tb.top-bounds.top, width:tb.width, height:tb.height,
+            rows:Array.from(table.rows).map(row => ({height:row.getBoundingClientRect().height,
+              cells:Array.from(row.cells).map(cell => {const cs=getComputedStyle(cell), cb=cell.getBoundingClientRect();
+                return {width:cb.width,colSpan:cell.colSpan,rowSpan:cell.rowSpan,
+                  left:parseFloat(cs.paddingLeft)||0,right:parseFloat(cs.paddingRight)||0,
+                  top:parseFloat(cs.paddingTop)||0,bottom:parseFloat(cs.paddingBottom)||0};})}))};
+        });
+        return { slide: index + 1, candidates, tables, unhandledMultiline, overflow, svgIntersections, textIntersections, scrollOverflow: slide.scrollWidth > slide.clientWidth + 2 || slide.scrollHeight > slide.clientHeight + 2 };
       });
-    });
-    result.layoutWarnings = measured.filter(m => m.overflow.length || m.scrollOverflow).map(m => ({ slide: m.slide, code: 'source_layout_overflow', scrollOverflow: m.scrollOverflow, examples: m.overflow, action: 'Reported only; original content and layout were not changed.' }));
+    }, {auditOnly: !!options.auditOnly});
+    result.layoutWarnings = measured.filter(m => m.overflow.length || m.scrollOverflow || m.svgIntersections.length || m.textIntersections.length).map(m => ({ slide: m.slide, code: (m.overflow.length || m.scrollOverflow) ? 'source_layout_overflow' : 'source_layout_collision', scrollOverflow: m.scrollOverflow, examples: m.overflow, svgIntersections: m.svgIntersections, textIntersections: m.textIntersections, action: 'Possible issues; visually inspect. Original content and layout were not changed.' }));
+    if (options.auditOnly) {
+      result.screenshots = [];
+      if (screenshots) {
+        fs.mkdirSync(screenshots, { recursive: false });
+        const slides = page.locator('main#deck > section.slide');
+        for (let i = 0; i < result.slideCount; i++) {
+          const file = path.join(screenshots, `slide-${String(i + 1).padStart(2, '0')}.png`);
+          await slides.nth(i).screenshot({path: file, animations:'disabled'});
+          result.screenshots.push(file);
+        }
+      }
+      result.status = 'ok'; result.stage = 'audit_complete';
+      result.authoredScriptsExecuted = false; result.browserDownloaded = false;
+      return result;
+    }
     result.stage = 'library_load';
     await page.addScriptTag({ content: bundleBytes.toString('utf8') });
     if (!await page.evaluate(() => typeof window.domToPptx?.exportToPptx === 'function')) fail('library_load_failed', '동봉 라이브러리 API가 초기화되지 않았습니다.');
@@ -281,32 +386,121 @@ async function run(options) {
     const entries = readZip(bytes), slideEntries = entries.filter(entry => /^ppt\/slides\/slide\d+\.xml$/.test(entry.name));
     const corrected = await page.evaluate(({ slides, measured }) => {
       const a = 'http://schemas.openxmlformats.org/drawingml/2006/main', p = 'http://schemas.openxmlformats.org/presentationml/2006/main';
-      const normalize = text => text.replace(/\s+/g, ' ').trim(), patches = [], changes = [];
+      const normalize = text => text.replace(/\s+/g, ' ').trim(), patches = [], changes = [], textSkipped = [], tableChanges = [], tableSkipped = [];
       for (const entry of slides) {
         const number = Number(entry.name.match(/slide(\d+)\.xml$/)[1]), measurements = measured[number - 1]?.candidates || [];
         const xml = new DOMParser().parseFromString(entry.xml, 'application/xml');
         if (xml.querySelector('parsererror')) throw Error('Generated slide XML could not be parsed');
         let changed = false;
+        const sourceTables=measured[number-1]?.tables || [], usedTables=new Set();
+        for (const frame of xml.getElementsByTagNameNS(p,'graphicFrame')) {
+          const table=frame.getElementsByTagNameNS(a,'tbl')[0], transform=frame.getElementsByTagNameNS(p,'xfrm')[0];
+          if (!table || !transform) continue;
+          const off=transform.getElementsByTagNameNS(a,'off')[0]; if(!off) continue;
+          const x=Number(off.getAttribute('x'))/9525,y=Number(off.getAttribute('y'))/9525;
+          const ranked=sourceTables.map((t,i)=>({...t,index:i,distance:Math.hypot(t.x-x,t.y-y)})).filter(t=>!usedTables.has(t.index)).sort((a,b)=>a.distance-b.distance);
+          const match=ranked[0];
+          const rows=Array.from(table.children).filter(n=>n.localName==='tr');
+          const grid=Array.from(table.getElementsByTagNameNS(a,'gridCol'));
+          if (!match || match.distance>5 || rows.length!==match.rows.length || !rows.length ||
+              match.rows.some((r,i)=>r.cells.length!==Array.from(rows[i].children).filter(n=>n.localName==='tc').length || r.cells.some(c=>c.colSpan!==1 || c.rowSpan!==1)) ||
+              grid.length!==match.rows[0].cells.length || match.rows.some(r=>r.height<=0)) {
+            if (match && match.distance<=5) usedTables.add(match.index);
+            tableSkipped.push({slide:number,reason:'ambiguous table position, spans, rows or columns; no geometry changed'}); continue;
+          }
+          usedTables.add(match.index);
+          for (let i=0;i<grid.length;i++) grid[i].setAttribute('w',String(Math.max(1,Math.round(match.rows[0].cells[i].width*9525))));
+          for (let i=0;i<rows.length;i++) {
+            rows[i].setAttribute('h',String(Math.max(1,Math.round(match.rows[i].height*9525))));
+            const cells=Array.from(rows[i].children).filter(n=>n.localName==='tc');
+            for(let j=0;j<cells.length;j++) {
+              const props=Array.from(cells[j].children).find(n=>n.localName==='tcPr'); if(!props) continue;
+              const padding=match.rows[i].cells[j];
+              for(const [attribute,key] of [['marL','left'],['marR','right'],['marT','top'],['marB','bottom']])
+                props.setAttribute(attribute,String(Math.max(0,Math.round(padding[key]*9525))));
+            }
+          }
+          changed=true; tableChanges.push({slide:number,rows:rows.length,columns:grid.length,matchedDistancePx:Math.round(match.distance*100)/100});
+        }
+        sourceTables.forEach((_,index) => {
+          if (!usedTables.has(index)) tableSkipped.push({slide:number,reason:'source HTML table was not matched to an editable PPTX table'});
+        });
         for (const shape of xml.getElementsByTagNameNS(p, 'sp')) {
           if (shape.parentElement?.localName === 'grpSp') continue; // Group coordinates require a separate transform mapping.
           const body = Array.from(shape.children).find(n => n.localName === 'txBody'); if (!body) continue;
-          if (body.getElementsByTagNameNS(a, 'br').length || body.getElementsByTagNameNS(a, 'p').length !== 1) continue;
+          if (body.getElementsByTagNameNS(a, 'br').length) continue;
+          const paragraphs=Array.from(body.getElementsByTagNameNS(a,'p'));
           const text = normalize(Array.from(body.getElementsByTagNameNS(a, 't')).map(n => n.textContent).join('')); if (!text) continue;
           const properties = body.getElementsByTagNameNS(a, 'bodyPr')[0], transform = shape.getElementsByTagNameNS(a, 'xfrm')[0];
-          if (!properties || !transform || transform.hasAttribute('rot') || properties.getAttribute('wrap') === 'none' || (properties.hasAttribute('vert') && properties.getAttribute('vert') !== 'horz')) continue;
+          if (!properties || !transform || transform.hasAttribute('rot') || (properties.hasAttribute('vert') && properties.getAttribute('vert') !== 'horz')) continue;
+          const alreadyNoWrap=properties.getAttribute('wrap')==='none';
           const off = transform.getElementsByTagNameNS(a, 'off')[0]; if (!off) continue;
           const x = Number(off.getAttribute('x')) / 9525, y = Number(off.getAttribute('y')) / 9525;
           const matches = measurements.filter(m => m.text === text).map(m => ({ ...m, distance: Math.min(Math.hypot(m.x - x, m.y - y), Math.hypot(m.elementX - x, m.elementY - y)) })).sort((m, n) => m.distance - n.distance);
           const match = matches[0]; if (!match || match.distance > Math.max(4, match.fontSize * .8)) continue;
-          // Preserve a measured single line without enlarging or shrinking any shape or font.
+          let spacingChanged=false;
+          if (paragraphs.length===1) {
+            const para=paragraphs[0], spacing=para.getElementsByTagNameNS(a,'spcPts')[0];
+            const sizes=Array.from(para.getElementsByTagNameNS(a,'rPr')).map(n=>Number(n.getAttribute('sz'))).filter(Number.isFinite);
+            const largest=Math.max(0,...sizes), expected=Math.round((match.lineHeight||0)*75);
+            if (spacing && largest && Number(spacing.getAttribute('val'))<largest && expected>=largest && expected<=30000) {
+              spacing.setAttribute('val',String(expected)); spacingChanged=true; changed=true;
+              changes.push({slide:number,shapeId:shape.getElementsByTagNameNS(p,'cNvPr')[0]?.getAttribute('id'),text:text.slice(0,160),change:'match browser line height for mixed text sizes',matchedDistancePx:Math.round(match.distance*100)/100});
+            }
+          }
+          if(match.clipped || alreadyNoWrap) continue; // Never suppress wrapping of a visibly clipped source element.
+          if (paragraphs.length !== 1) {
+            if (match.explicitBreaks && paragraphs.length===match.explicitBreaks+1) {
+              properties.setAttribute('wrap','none');changed=true;
+              changes.push({slide:number,shapeId:shape.getElementsByTagNameNS(p,'cNvPr')[0]?.getAttribute('id'),text:text.slice(0,160),change:'preserve explicit browser breaks without rewrap',matchedDistancePx:Math.round(match.distance*100)/100});
+            } else textSkipped.push({slide:number,text:text.slice(0,120),reason:'multiple PPT paragraphs could not be matched to source breaks'});
+            continue;
+          }
+          // Split text runs only when their exact concatenation matches the DOM.
+          // Clone each original run so bold/color and other formatting survive.
+          if (match.lineBreakOffsets?.length) {
+            const para=body.getElementsByTagNameNS(a,'p')[0];
+            const runs=Array.from(para.children).filter(n=>n.localName==='r');
+            const values=runs.map(run=>Array.from(run.getElementsByTagNameNS(a,'t')));
+            if (!runs.length || values.some(v=>v.length!==1) || values.map(v=>v[0].textContent).join('')!==match.text || Array.from(para.children).some(n=>!['pPr','r','endParaRPr'].includes(n.localName))) {
+              textSkipped.push({slide:number,text:match.text.slice(0,120),reason:'PPT text run structure is ambiguous; formatting left unchanged'}); continue;
+            }
+            const breaks=new Set(match.lineBreakOffsets); let offset=0;
+            for (let n=0;n<runs.length;n++) {
+              const run=runs[n], value=values[n][0].textContent, fragment=xml.createDocumentFragment();
+              let segment=0;
+              for (let i=0;i<value.length;i++) if(breaks.has(offset+i)) {
+                if(i>segment) {
+                  const part=run.cloneNode(true), t=part.getElementsByTagNameNS(a,'t')[0]; t.textContent=value.slice(segment,i);
+                  t.setAttributeNS('http://www.w3.org/XML/1998/namespace','xml:space','preserve');fragment.appendChild(part);
+                }
+                fragment.appendChild(xml.createElementNS(a,'a:br'));segment=i;
+              }
+              if(segment<value.length) {
+                const part=run.cloneNode(true), t=part.getElementsByTagNameNS(a,'t')[0]; t.textContent=value.slice(segment);
+                t.setAttributeNS('http://www.w3.org/XML/1998/namespace','xml:space','preserve');fragment.appendChild(part);
+              }
+              para.insertBefore(fragment,run);para.removeChild(run);offset+=value.length;
+            }
+          }
           properties.setAttribute('wrap', 'none'); changed = true;
-          changes.push({ slide: number, shapeId: shape.getElementsByTagNameNS(p, 'cNvPr')[0]?.getAttribute('id'), text: text.slice(0, 160), change: 'wrap=square to wrap=none', matchedDistancePx: Math.round(match.distance * 100) / 100 });
+          changes.push({ slide: number, shapeId: shape.getElementsByTagNameNS(p, 'cNvPr')[0]?.getAttribute('id'), text: text.slice(0, 160), change: match.lineBreakOffsets?.length ? 'preserve browser line breaks and disable rewrap' : 'wrap=square to wrap=none', matchedDistancePx: Math.round(match.distance * 100) / 100 });
         }
         if (changed) patches.push({ name: entry.name, xml: new XMLSerializer().serializeToString(xml) });
       }
-      return { patches, changes };
+      return { patches, changes, textSkipped, tableChanges, tableSkipped };
     }, { slides: slideEntries.map(entry => ({ name: entry.name, xml: zipText(entry) })), measured });
-    result.textLinePreservation = { method: 'OOXML nowrap only for text measured as one visible line in the source, matched by slide/text/position. Shape bounds, source DOM, explicit line breaks and font sizes are unchanged.', changed: corrected.changes.length, changes: corrected.changes };
+    const textSkipped = corrected.textSkipped.concat(measured.flatMap(m=>m.unhandledMultiline.map(text=>({slide:m.slide,text,reason:'complex source text cannot be safely matched; formatting left unchanged'}))));
+    result.textLinePreservation = { method: 'OOXML nowrap for measured single lines; exact matching plain and inline-styled multiline text keeps measured browser breaks and original text-run formatting. Complex structures, shape bounds and font sizes are unchanged.', changed: corrected.changes.length, changes: corrected.changes, skipped:textSkipped.slice(0,50), skippedCount:textSkipped.length };
+    if (textSkipped.length) {
+      result.limitations.push('일부 여러 줄 복합 서식은 줄바꿈을 자동 보정하지 않았습니다. 해당 장의 실제 PPT 화면을 확인하세요.');
+      for (const skipped of textSkipped.slice(0,20)) result.layoutWarnings.push({slide:skipped.slide,code:'multiline_text_unverified',text:skipped.text,action:'원문과 서식을 유지했습니다. 실제 PPT 화면을 확인하세요.'});
+    }
+    result.tableGeometry = {method:'Native table row/column dimensions and cell padding are matched to browser pixels for unmerged tables only.', changed:corrected.tableChanges, skipped:corrected.tableSkipped};
+    if (corrected.tableSkipped.length) {
+      result.limitations.push('일부 표는 병합 셀 또는 불명확한 위치로 브라우저 표 크기를 자동 반영하지 못했습니다. 해당 장의 실제 PPT 화면을 확인하세요.');
+      for (const skipped of corrected.tableSkipped) result.layoutWarnings.push({slide:skipped.slide,code:'table_geometry_unverified',action:'실제 PPT 화면에서 표와 글자 잘림을 확인하세요.',reason:skipped.reason});
+    }
     if (corrected.patches.length) bytes = writeZip(entries, new Map(corrected.patches.map(patch => [patch.name, patch.xml])));
     result.stage = 'write';
     fs.mkdirSync(path.dirname(output), { recursive: true });
@@ -329,7 +523,7 @@ async function main() {
   try {
     const options = argumentsFor(process.argv.slice(2));
     if (options.help) {
-      console.log(JSON.stringify({ usage: 'node export_pptx.cjs --input saved.html [--output presentation/outputs/발표본.pptx] [--browser /path/to/chrome] [--node-modules /existing/node_modules] [--timeout 120000]', requirements: ['Node.js 18+', 'Existing playwright or playwright-core', 'Existing Chrome, Edge or Chromium'], installs: false, sourceScripts: 'removed', assets: 'embedded data URLs only; relative and network resources rejected', overwrite: false }, null, 2));
+      console.log(JSON.stringify({ usage: 'node export_pptx.cjs --input saved.html [--output 발표본.pptx | --audit-only --screenshots 새폴더] [--browser /path/to/chrome] [--node-modules /existing/node_modules] [--timeout 120000]', requirements: ['Node.js 18+', 'Existing playwright or playwright-core', 'Existing Chrome, Edge or Chromium'], installs: false, sourceScripts: 'removed', assets: 'embedded data URLs only; relative and network resources rejected', overwrite: false }, null, 2));
       return;
     }
     const result = await run(options); console.log(JSON.stringify(result, null, 2));

@@ -84,15 +84,15 @@
       "slug": "excel-to-pipeline",
       "file": "excel-to-pipeline.zip",
       "name": "엑셀 업무를 Python 처리로",
-      "description": "XLSX와 XLSM의 표와 수식, 접근 가능한 VBA를 분석해 재실행할 수 있는 Python 처리와 업무 흐름 설명서를 만듭니다. Excel 계산과 매크로의 완전 자동 변환은 아닙니다.",
+      "description": "XLSX와 XLSM의 표, 수식과 접근 가능한 VBA를 분석해 재실행 가능한 Python 처리와 업무 흐름 설명서를 만듭니다. 요청하면 필요한 데이터와 선행 수식만 새 XLSX로 보존합니다. 모든 Excel 함수와 매크로의 자동 변환을 보장하지 않습니다.",
       "packageId": "excel-to-pipeline",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "excel-to-pipeline",
-      "sha256": "c51425c3a4bd2ee4a3b4c2be821da7c8d748a894b2448a582995a7148c5caf3d",
-      "size": 5503050,
-      "files": 42
+      "sha256": "e0c1c784e93a6339c6b0b651b7914e9609a966b81e43cea04daa22b234005771",
+      "size": 5516591,
+      "files": 44
     },
     {
       "slug": "file-organizer",
@@ -112,14 +112,14 @@
       "slug": "html-report",
       "file": "html-report.zip",
       "name": "오프라인 HTML 업무 보고서",
-      "description": "정리한 내용을 HTML 보고서로 만듭니다. 갤러리에서 실제 사례를 참고한 10가지 디자인과 3가지 구성을 비교하고, 글꼴과 조건을 골라 채팅에 전달합니다. 기존 양식을 참고하고 표 탐색과 다운로드까지 제공합니다.",
+      "description": "정리한 내용을 HTML 보고서로 만듭니다. 갤러리의 10가지 디자인과 3가지 구성에서 글꼴과 조건을 고릅니다. 선택한 양식으로 표 검색, 정렬, 다운로드와 차트 툴팁을 제공하고 제목, 본문, 표와 축의 크기를 구분합니다.",
       "packageId": "html-report",
       "runtimeRequired": false,
       "type": "Skill",
       "legacyAlias": false,
       "installName": "html-report",
-      "sha256": "884ec702aa15282dfedf64e237b173b146d8b222b89ab5dbc06425f06a8cfcd3",
-      "size": 6578016,
+      "sha256": "3cbaa5027b39e88a49b3afbc04a6b073b96338439796c80e5aac4f3b96f03f47",
+      "size": 6606968,
       "files": 78
     },
     {
@@ -202,9 +202,23 @@
       "type": "Skill",
       "legacyAlias": false,
       "installName": "presentation",
-      "sha256": "741af4c9c1e6e94abf8c210f44230c201584d491044e6c4808d683b66298dba9",
-      "size": 3411267,
+      "sha256": "7127f7b5da72d29f01fb76acc05fad709b6a739d5b9f50217e7e65ec964d34c0",
+      "size": 3420961,
       "files": 76
+    },
+    {
+      "slug": "web-api-discovery",
+      "file": "web-api-discovery.zip",
+      "name": "웹 데이터 조회 절차 만들기",
+      "description": "사용이 허용된 웹사이트에서 필요한 데이터 조회 방법을 찾고 재사용할 Python 코드를 만듭니다. 연결된 브라우저의 네트워크 관찰 기능이나 공식 API 문서를 활용합니다.",
+      "packageId": "web-api-discovery",
+      "runtimeRequired": false,
+      "type": "Skill",
+      "legacyAlias": false,
+      "installName": "web-api-discovery",
+      "sha256": "3c554965130ec29c2cbd3bc67d5061415a56f23bf3eff2d378e75c43bd163d98",
+      "size": 30254,
+      "files": 12
     },
     {
       "slug": "web-interface",
@@ -314,24 +328,25 @@
     }
   ],
   "managedFiles": {
-    "SHA256SUMS.txt": "41cece5e72a2c2707223897e89cea72a7b1a5f8df5bbc61a101951a0dd6e2acc",
+    "SHA256SUMS.txt": "41b5357d87134537acc4e934520e2223591cee1dbc2c9f679cce07d974cabc07",
     "asset-factory.zip": "82e131cb4e6811e74c59925156146650a56cac8a43612e0bf9652a99825f9a09",
     "data-query-demo.zip": "4112d62eefc04fc2f4e4f57dab292fc4eb7ffa1d245700729ec21f68f6dc5df3",
     "datalake-query.zip": "0eeff676f1a4c02d075b9f905f7a5d11b734818eaae50aa618055d3c780ca9ca",
     "ehub-query.zip": "537d5226ea366e95d293ee8d9815de29cec40ee79b41bb75968f757a1ada6e71",
-    "excel-to-pipeline.zip": "c51425c3a4bd2ee4a3b4c2be821da7c8d748a894b2448a582995a7148c5caf3d",
+    "excel-to-pipeline.zip": "e0c1c784e93a6339c6b0b651b7914e9609a966b81e43cea04daa22b234005771",
     "file-organizer.zip": "43b7b8699f01f6dbdd7719565026595df03c4e065957ee5d56b09f981266877b",
-    "html-report.zip": "884ec702aa15282dfedf64e237b173b146d8b222b89ab5dbc06425f06a8cfcd3",
+    "html-report.zip": "3cbaa5027b39e88a49b3afbc04a6b073b96338439796c80e5aac4f3b96f03f47",
     "huashu-presentation.zip": "6dbda2e5d8b550372ae5533211d67b6dc9039868d9e6ab1480b7f6575840b6d1",
     "karpathy-guidelines.zip": "d152b9bb22c3f1bd5f0abfa1d06d66e9a8d9c3aaa78d1cf5494a06591488dc9e",
     "manufacturing-oracle-mcp-0.1.0-20261024.zip": "9346392ff9a429fc401898e59bc57effd796376d12811f0ef19cf2a452b3229f",
     "oracle-query.zip": "4cf788a9b9d6e07c9e4b03445d1e259a722e164a2da00fb113c7f472ed73a4f5",
     "personal-knowledge.zip": "248086d8e5db0d024ee24a5f75e32968585b21f7836e19ff176559ad49e9a16c",
     "personal-memory.zip": "0380341b55136f9221fc5f5da0f9e1953602b60679bb140b5394bf1626b56a59",
-    "presentation.zip": "741af4c9c1e6e94abf8c210f44230c201584d491044e6c4808d683b66298dba9",
+    "presentation.zip": "7127f7b5da72d29f01fb76acc05fad709b6a739d5b9f50217e7e65ec964d34c0",
+    "web-api-discovery.zip": "3c554965130ec29c2cbd3bc67d5061415a56f23bf3eff2d378e75c43bd163d98",
     "web-interface.zip": "2e17997d761bdc4da8e300bb11613639690e76ff5cdaa71e682c0293c8de9dd1",
     "website-rebuild.zip": "d0bf5d21b75468348a34f5057d1464461ae2bbce9cbf2c589ad7d89c2b6f12b2",
     "work-context-catalog.zip": "843937e85ba58762d528e0f147ed569103b9f8f4acf7c2e1ebcddbd2501a2417",
-    "등록_설치_안내.html": "f63bef13cf476130521744f90edb1c64541dc6c48bbd76eb857c68d14a6440df"
+    "등록_설치_안내.html": "0d3aefd81935e6efcaf4a1a8252330ae894385ba45a1c25d839d18eae00dbba9"
   }
 }

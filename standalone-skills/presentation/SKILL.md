@@ -11,7 +11,7 @@ description: PPT와 한국어 프레젠테이션 슬라이드를 제작합니다
 
 1. **내용과 방향**: 목적, 청중, 분량과 이미 정한 디자인을 이어받습니다. 참고 자료가 있으면 [스타일 관찰](references/style-transfer.md)부터 합니다. 참고와 디자인 지정이 모두 없을 때만 `업무 보고형 / 에디토리얼형 / 기술 설명형 / 알아서 구성 / 직접 지정`을 한 번 제시하고 분량과 폰트도 같은 질문에 묶습니다. `알아서`는 바로 제작합니다.
 2. **자유 HTML 작성**: [작성 규약](references/free-html.md)을 읽고 장마다 `결론 / 근거 / 시각 구조`를 한 줄로 잡은 뒤 `presentation/.work/deck-source.html`에 전체 HTML을 작성합니다. 별도 계획서나 승인 단계를 추가하지 않습니다. 비교, 분기와 순서에 맞게 HTML/CSS와 인라인 SVG를 구성합니다. 문구에는 `data-edit`, 이동/크기 변경할 묶음에는 `data-object`를 붙입니다.
-3. **편집기 결합과 전달**: `python "스킬폴더/scripts/slides.py" build --source "presentation/.work/deck-source.html" --output "presentation/outputs/발표본.html"`을 실행합니다. 가능한 도구로 모든 장의 실제 화면과 대표 편집/저장 동작을 한 번 확인한 뒤 링크를 전달합니다. 수정 뒤에는 영향받는 부분만 확인하며 화면 확인 불가는 구조 검사와 구분합니다.
+3. **편집기 결합과 전달**: `python "스킬폴더/scripts/slides.py" build --source "presentation/.work/deck-source.html" --output "presentation/outputs/발표본.html"`을 실행합니다. 브라우저가 있으면 [화면 검사](references/free-html.md#화면-검사)를 한 번 실행하여 모든 장의 화면과 잘림·겹침 후보를 봅니다. 발견된 문제는 저작 소스를 고친 뒤 새 파일로 빌드하고 영향받은 장만 재확인합니다. 화면 확인 불가는 구조 검사와 구분합니다.
 
 발표 화면은 **한 화면에 한 장**이며 이전/다음 버튼, 좌우 방향키와 페이지 번호로 넘깁니다. 세로 스크롤 문서로 전달하지 않습니다. 전체 장표는 별도 보기로 열고 인쇄에는 모든 장을 포함합니다.
 

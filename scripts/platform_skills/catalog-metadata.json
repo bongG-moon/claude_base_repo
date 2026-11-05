@@ -1,7 +1,7 @@
 {
   "excel-to-pipeline": {
     "displayName": "엑셀 업무를 Python 처리로",
-    "desc": "XLSX와 XLSM의 표와 수식, 접근 가능한 VBA를 분석해 재실행할 수 있는 Python 처리와 업무 흐름 설명서를 만듭니다. Excel 계산과 매크로의 완전 자동 변환은 아닙니다.",
+    "desc": "XLSX와 XLSM의 표, 수식과 접근 가능한 VBA를 분석해 재실행 가능한 Python 처리와 업무 흐름 설명서를 만듭니다. 요청하면 필요한 데이터와 선행 수식만 새 XLSX로 보존합니다. 모든 Excel 함수와 매크로의 자동 변환을 보장하지 않습니다.",
     "workTags": [
       "엑셀 분석",
       "반복 전처리",
@@ -23,11 +23,11 @@
         },
         {
           "title": "표, 수식, VBA 구조 분석",
-          "description": "원본을 읽어 표와 수식 관계를 추출하고, 접근 가능한 매크로 원문을 색인합니다. 모호한 표 경계와 미지원 항목은 구분합니다."
+          "description": "일반 파일은 직접 읽고 필요한 파일만 Excel로 블록 단위 읽습니다. 시트별 실제 범위, 수식 원문과 오류값을 구분해 요약하며, 표 경계와 미지원 항목을 표시합니다."
         },
         {
           "title": "Python 처리와 설명서 생성",
-          "description": "입력 DATA와 계산 PROCESS를 나누고 기간값을 날짜와 구분해 보존합니다. 실행 진입점, 추출 표, 업무흐름 HTML을 한 결과 폴더에 만듭니다."
+          "description": "입력 DATA와 계산 PROCESS, 실행 진입점과 업무흐름 HTML을 한 결과 폴더에 만듭니다. XLSX도 필요하면 같은 분석에서 결과 범위와 선행 데이터, 수식만 새 사본으로 보존합니다."
         },
         {
           "title": "결과와 재사용 범위 확인",
@@ -113,11 +113,11 @@
         },
         {
           "title": "자유 HTML 발표자료 제작",
-          "description": "내용의 비교, 순서와 분기에 맞게 HTML을 구성합니다. 공통 편집기로 문구와 개체를 수정하고 장표 순서를 바꿀 수 있게 합니다. 원본 표 행과 수치, 단위를 보존합니다."
+          "description": "내용의 비교와 순서, 분기에 맞게 HTML을 구성하고 브라우저 화면에서 잘림과 겹침 후보를 확인합니다. 표 행과 수치, 단위를 보존합니다."
         },
         {
           "title": "수정본 저장과 선택형 PPTX 내보내기",
-          "description": "presentation/outputs의 HTML을 열고 편집한 뒤 새 HTML로 저장합니다. PPTX 요청이 있으면 마지막 저장본을 내보내고 실제 확인한 화면과 개체 편집 범위를 구분해 알려줍니다."
+          "description": "HTML을 편집하고 새 파일로 저장합니다. PPTX 요청 시 내보내며 확인한 화면, 편집 범위와 재현하지 못한 표 형식을 구분해 안내합니다."
         }
       ]
     },
@@ -161,13 +161,13 @@
         "report_theme_sources.py",
         "report_picker_ui.py"
       ],
-      "reviewedPluginDigest": "27997c6375e53f64487f86fd9b7b650d69722e528864b26854ef131a2ae0efc1"
+      "reviewedPluginDigest": "d72d51814768d9f0593d7bccf113fb04d8c7cbd5ca7481afbf7ac32c0e7455c1"
     },
     "distribution": "portable"
   },
   "html-report": {
     "displayName": "오프라인 HTML 업무 보고서",
-    "desc": "정리한 내용을 HTML 보고서로 만듭니다. 갤러리에서 실제 사례를 참고한 10가지 디자인과 3가지 구성을 비교하고, 글꼴과 조건을 골라 채팅에 전달합니다. 기존 양식을 참고하고 표 탐색과 다운로드까지 제공합니다.",
+    "desc": "정리한 내용을 HTML 보고서로 만듭니다. 갤러리의 10가지 디자인과 3가지 구성에서 글꼴과 조건을 고릅니다. 선택한 양식으로 표 검색, 정렬, 다운로드와 차트 툴팁을 제공하고 제목, 본문, 표와 축의 크기를 구분합니다.",
     "workTags": [
       "HTML 보고서",
       "업무 보고",
@@ -189,7 +189,7 @@
         },
         {
           "title": "내용 작성과 HTML 생성",
-          "description": "자료에 맞는 제목과 근거, 표를 작성해 한 번 생성합니다. 차트나 특수 배치가 필요할 때만 해당 명세를 참고하며 표 탐색과 다운로드는 기존 생성 기능을 사용합니다."
+          "description": "자료에 맞는 제목과 근거, 표를 작성합니다. 참고 양식의 색과 글꼴을 적용하고 카드 글자의 가독성을 확인하며, 표 탐색과 다운로드 및 차트 툴팁을 제공합니다."
         },
         {
           "title": "변경 범위 확인과 전달",
@@ -237,7 +237,7 @@
         "report_theme_sources.py",
         "report_picker_ui.py"
       ],
-      "reviewedPluginDigest": "179205862b61ba209ef9846215364d99a3d46c06116b020574ab76848b4dc4d0"
+      "reviewedPluginDigest": "4d455fd1ce16d098fe06405adc6370770f994a6e2b67dcf6e56d72a71d99c20f"
     },
     "distribution": "portable"
   },
@@ -894,5 +894,43 @@
       "includeAdditionalPaths": []
     },
     "distribution": "portable"
+  },
+  "web-api-discovery": {
+    "displayName": "웹 데이터 조회 절차 만들기",
+    "desc": "사용이 허용된 웹사이트에서 필요한 데이터 조회 방법을 찾고 재사용할 Python 코드를 만듭니다. 연결된 브라우저의 네트워크 관찰 기능이나 공식 API 문서를 활용합니다.",
+    "workTags": [
+      "웹 데이터 조회",
+      "API 탐색",
+      "반복 조회",
+      "페이지 처리"
+    ],
+    "requirements": [
+      "Python 3.11 이상이 필요합니다. 포함된 GET 조회기는 표준 라이브러리만 사용합니다.",
+      "네트워크 요청 관찰은 이미 연결된 브라우저 도구나 민감정보가 제거된 요청 자료가 필요합니다.",
+      "사이트의 조회와 자동화 권한, 인증 및 회사 정책은 사용자가 확인합니다."
+    ],
+    "workflow": {
+      "steps": [
+        {
+          "title": "사이트와 데이터 확인",
+          "description": "요청한 사이트와 데이터 범위를 확인하고 공식 API 또는 현재 연결된 네트워크 관찰 도구를 찾습니다."
+        },
+        {
+          "title": "조회 요청 관찰",
+          "description": "허용된 화면의 읽기 요청, 응답 필드와 페이지 이동 방식을 살펴봅니다. 인증값과 원본 요청 기록은 결과에 넣지 않습니다."
+        },
+        {
+          "title": "조회 코드 생성과 검증",
+          "description": "관찰한 계약에 맞는 코드를 만들고 소량을 시험합니다. GET JSON 조회기는 숫자 페이지와 커서를 지원하며, 전체 결과는 파일에 저장합니다."
+        }
+      ]
+    },
+    "sourceDir": "standalone-skills/web-api-discovery",
+    "runtimeRequired": false,
+    "packaging": {
+      "includeAdditionalPaths": []
+    },
+    "distribution": "portable",
+    "standaloneOnly": true
   }
 }

@@ -55,7 +55,7 @@ CSS = r"""
 .report-data-table .table-wrap{margin:0;max-height:560px;overscroll-behavior:contain;scrollbar-gutter:stable}
 .report-data-table table{border-collapse:separate;border-spacing:0;margin:0}
 .report-data-table thead th{position:sticky;top:0;z-index:1;background:var(--paper);box-shadow:0 1px var(--line);color:var(--ink)}
-.report-data-table :is(td,th){min-width:7rem;max-width:28rem;padding:12px 16px;word-break:keep-all;overflow-wrap:anywhere;white-space:pre-line;line-height:1.5}
+.report-data-table :is(td,th){min-width:7rem;max-width:28rem;padding:10px 14px;font-size:14px;word-break:keep-all;overflow-wrap:anywhere;white-space:pre-line;line-height:1.5}
 @media screen{.report-data-table td:is([data-column-kind="id"],[data-column-kind="date"],[data-column-kind="period"]){white-space:nowrap;word-break:normal;overflow-wrap:normal;min-width:9ch}}
 .report-data-table tbody tr:hover{background:var(--bg)}
 .report-data-table caption{text-align:left;font-weight:650;padding:12px 16px;color:var(--ink)}
@@ -66,7 +66,7 @@ CSS = r"""
 .report-data-table :is(button,input,select){font:inherit;font-size:14px;line-height:1.4;min-height:44px;border:1px solid var(--line);border-radius:7px;color:var(--ink);background:var(--paper);padding:9px 12px;max-width:100%}
 .report-data-table input[type=search]{width:min(260px,100%);min-width:0}.report-data-table select{max-width:180px}
 .report-data-table button:hover:not(:disabled){background:var(--bg);border-color:var(--accent)}
-.report-data-table button:disabled{cursor:default;opacity:.45}.report-data-table .table-sort{display:flex;align-items:center;justify-content:space-between;gap:12px;width:100%;text-align:left;min-height:44px;padding:0;border:0;background:none;font-weight:650}
+.report-data-table button:disabled{cursor:default;opacity:.45}.report-data-table .table-sort{display:flex;align-items:center;justify-content:space-between;gap:10px;width:100%;text-align:left;min-height:32px;padding:0;border:0;background:none;font-weight:650;font-size:inherit}
 .table-sort-indicator{color:var(--muted);font-size:12px}.table-count,.table-page-label,.table-empty-source{font-size:12px;line-height:1.5;color:var(--muted);font-variant-numeric:tabular-nums}.table-count{margin:0}.table-empty-source{margin:16px}
 .report-data-table .table-status{display:flex;align-items:center;flex-wrap:wrap;justify-content:space-between;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--bg)}
 .table-scope-hint{font-size:12px;line-height:1.5;color:var(--muted)}

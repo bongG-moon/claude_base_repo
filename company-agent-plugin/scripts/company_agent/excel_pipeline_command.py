@@ -69,6 +69,9 @@ def analyze(args) -> dict:
     if not 10 <= args.excel_timeout <= 300 or not 0 <= args.sample_rows <= 1000 or not 1024 <= args.context_chars <= 50000:
         return {"ok": False, "status": "input_required", "code": "invalid_excel_limits",
                 "message": "Excel 대기는 10~300초, 표본은 0~1000행, 요약은 1024~50000자로 지정해 주세요."}
+    if (getattr(args, 'xlsx_copy', False) or getattr(args, 'copy_target', [])) and output is None:
+        return {"ok": False, "status": "input_required", "code": "excel_copy_needs_output",
+                "message": "XLSX 사본은 --output으로 새 결과 폴더를 지정할 때 만듭니다."}
     script = Path(__file__).resolve().parents[2] / "skills" / "excel-to-pipeline" / "scripts" / "excel_pipeline.py"
     if not script.is_file():
         return {"ok": False, "status": "failed", "code": "excel_skill_incomplete",
@@ -96,6 +99,10 @@ def analyze(args) -> dict:
         command += ["--diagnostics"]
     for target in getattr(args, 'target', []):
         command += ["--target", target]
+    if getattr(args, 'xlsx_copy', False):
+        command += ['--xlsx-copy']
+    for target in getattr(args, 'copy_target', []):
+        command += ['--copy-target', target]
     completed = subprocess.run(command, capture_output=True, text=True, encoding="utf-8",
                                check=False, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
     if completed.returncode:

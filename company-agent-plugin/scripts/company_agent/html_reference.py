@@ -21,9 +21,12 @@ class ReferenceParser(HTMLParser):
         # class values, text and scripts never enter the result.
         self.layout_markers = Counter()
         self.external = False
+        self.root_attrs = {}
 
     def handle_starttag(self, tag, attrs):
         attrs = dict(attrs)
+        if tag in ('html', 'body'):
+            self.root_attrs[tag] = {'classes': set((attrs.get('class') or '').split()), 'id': attrs.get('id') or ''}
         self.counts[tag] += 1
         classes = (attrs.get('class') or '').lower().split()[:64]
         if tag == 'nav' or any(c in ('nav', 'navigation') or c.endswith('-nav') for c in classes):
@@ -123,6 +126,22 @@ def analyze(path: Path) -> dict:
         position = end + 2
     css = ''.join(chunks)
     tokens = {}
+    variables, root_colors = [], []
+    def matched_root(selector):
+        """Only simple selectors matching the real root, never execute source CSS."""
+        selector = selector.strip()
+        if selector == ':root':
+            return 10
+        match = re.fullmatch(r'(html|body)((?:[.#][\w-]+)*)', selector)
+        if not match:
+            return None
+        attrs = parser.root_attrs.get(match.group(1), {'classes': set(), 'id': ''})
+        parts = re.findall(r'([.#])([\w-]+)', match.group(2))
+        if any((kind == '.' and name not in attrs['classes']) or (kind == '#' and name != attrs['id']) for kind, name in parts):
+            return None
+        # A declaration on body wins over an inherited html variable even
+        # when the html selector has greater specificity.
+        return (1000 if match.group(1) == 'body' else 0) + 1 + sum(100 if kind == '#' else 10 for kind, _ in parts)
     aliases = {'--bg':'bg', '--background':'bg', '--paper':'paper', '--surface':'paper',
                '--ink':'ink', '--text':'ink', '--muted':'muted', '--accent':'accent',
                '--primary':'accent', '--brand':'accent', '--secondary':'secondary', '--line':'line', '--border':'line', '--tint':'tint',
@@ -136,7 +155,9 @@ def analyze(path: Path) -> dict:
         # A code snippet, icon, state variant, or child selector does not define
         # the page font or every card's radius. This is not a CSS cascade engine.
         selectors = {part.strip() for part in selector.split(',')}
-        root_scope = bool(selectors & {':root', 'html', 'body'})
+        matches = [score for part in selectors if (score := matched_root(part)) is not None]
+        root_scope = bool(matches)
+        specificity = max(matches, default=0)
         text_scope = root_scope or bool(selectors & {'main', '.report-main'})
         heading_scope = bool(selectors & {'h1', 'h2', 'h3'})
         panel_scope = bool(selectors & {'section', 'article', '.section', '.card', '.panel'})
@@ -151,6 +172,13 @@ def analyze(path: Path) -> dict:
             if not separator or not re.fullmatch(r'[\w-]{1,40}', prop):
                 continue
             target = aliases.get(prop) if root_scope else None
+            if root_scope and prop in aliases and re.fullmatch(r'#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?', value):
+                variables.append((specificity, len(variables), prop, value.lower()))
+            if root_scope and prop in ('background', 'background-color', 'color'):
+                variable = re.fullmatch(r'var\(\s*(--[\w-]+)\s*\)', value)
+                literal = re.fullmatch(r'#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?', value)
+                if variable or literal:
+                    root_colors.append((specificity, len(root_colors), 'ink' if prop == 'color' else 'bg', variable[1] if variable else value.lower()))
             if root_scope and re.fullmatch(r'--series-(?:[0-9]|[12][0-9])', prop):
                 target = prop[2:]
             if not target and root_scope:
@@ -198,6 +226,15 @@ def analyze(path: Path) -> dict:
                 border = re.fullmatch(r'([0-6](?:\.\d)?)px\s+solid\s+(#[0-9a-fA-F]{3}(?:[0-9a-fA-F]{3})?)', value)
                 if border and float(border[1]) <= 6:
                     tokens['tableBorderWidth'], tokens['tableBorder'] = border[1]+'px', border[2].lower()
+    resolved = {}
+    for _, _, name, value in sorted(variables):
+        resolved[name] = value
+        tokens[aliases[name]] = value
+    for _, _, target, value in sorted(root_colors):
+        if value.startswith('--'):
+            value = resolved.get(value)
+        if value:
+            tokens[target] = value
     return {'path': str(path), 'sha256': hashlib.sha256(raw).hexdigest(), 'tokens': tokens,
             'structure': {key: parser.counts[key] for key in ('header','main','section','article','table','h1','h2')},
             'layoutHints': {**{key: parser.layout_markers[key] for key in

@@ -4,7 +4,7 @@
 
 처음이라면 **[사용자 안내서](docs/Company-Agent-사용자-안내서.html)**를 여세요. 설치, 기억과 지식의 차이, 개인 스킬, 학습 내역, Claude Code 명령어와 단축키를 한 파일에서 볼 수 있습니다. 인터넷 없이 읽을 수 있으며 Noto Sans KR을 포함합니다.
 
-기본 하네스는 **1.5.2**, 개별 스킬의 최신 갱신은 **2026-11-04 두 번째 배포**입니다. [스킬 변경과 검증 기록](docs/releases/v1.5.2-skills-20261104-r2.md)을 참고하세요. 기본 설치와 개별 업무 기능을 분리했습니다. 로컬 빌드와 온라인 게시, 직원 PC 업데이트는 서로 다른 단계입니다. 이전 공개 파일은 [Release 이력](https://github.com/bongG-moon/claude_base_repo/releases)에 보존됩니다.
+기본 하네스는 **1.5.2**, 개별 스킬의 최신 갱신은 **2026-11-05 배포**입니다. [스킬 변경과 검증 기록](docs/releases/v1.5.2-skills-20261105.md)을 참고하세요. 기본 설치와 개별 업무 기능을 분리했습니다. 로컬 빌드와 온라인 게시, 직원 PC 업데이트는 서로 다른 단계입니다. 이전 공개 파일은 [Release 이력](https://github.com/bongG-moon/claude_base_repo/releases)에 보존됩니다.
 
 ## 기본 하네스와 개별 스킬
 
@@ -19,7 +19,7 @@
 
 개별 기능은 **[개별 스킬 설치 안내](skills_zip/등록_설치_안내.html)**에서 선택합니다. ZIP 하나로 사용할 수 있고 Company Harness 설치가 필요하지 않습니다. 해당 기능이 요구하는 Python 패키지나 업무 시스템 권한은 각 안내에 명시합니다. 설치했다고 실제 업무 연결까지 검증된 것은 아닙니다.
 
-발표 제작은 `presentation`과 새 `huashu-presentation` 중 선택합니다. 둘 다 HTML에서 한 장씩 넘기는 발표가 기본입니다. `presentation`은 문구와 도형 묶음 편집, `huashu-presentation`은 Huashu의 발표 제작 방식과 원본 변환 엔진을 제공합니다. 개별 스킬 16개와 기존 별도 MCP 1개를 구분해 배포합니다.
+발표 제작은 `presentation`과 `huashu-presentation` 중 선택합니다. 둘 다 HTML에서 한 장씩 넘기는 발표가 기본입니다. `presentation`은 문구와 도형 묶음 편집, `huashu-presentation`은 Huashu의 발표 제작 방식과 원본 변환 엔진을 제공합니다. 개별 스킬 17개와 기존 별도 MCP 1개를 구분해 배포합니다.
 
 기본 하네스에는 `company-agent`, `personal-memory`, `personal-knowledge`, `self-learning`, 개인 절차 저장용 `asset-factory`만 들어갑니다. 기본 `asset-factory`는 기존 업무를 개인 스킬로 저장하고 수정하는 역할입니다. 도구나 MCP를 제작하려면 개별 배포의 `asset-factory`를 사용합니다. 이름이 겹치면 선택한 출처를 유지합니다.
 

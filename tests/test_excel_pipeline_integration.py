@@ -113,6 +113,32 @@ class ExcelCliContractTests(unittest.TestCase):
                 result = excel_pipeline_command.analyze(args)
             self.assertEqual('invalid_excel_limits', result['code'])
 
+    def test_copy_requires_output_and_is_not_read_only(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'sample.xlsx'
+            source.write_bytes(b'not-opened')
+            args = self.args('--context-only', '--xlsx-copy')
+            args.file = str(source)
+            with patch.object(excel_pipeline_command.subprocess, 'run', side_effect=AssertionError('no launch')):
+                result = excel_pipeline_command.analyze(args)
+            self.assertEqual('excel_copy_needs_output', result['code'])
+        self.assertFalse(excel_pipeline_command.read_only_arguments(
+            ['business', 'excel-analyze', '--file', 'sample.xlsx', '--context-only', '--xlsx-copy']))
+
+    def test_copy_options_forward_once_without_extra_analysis(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            source = Path(temporary) / 'sample.xlsx'; source.write_bytes(b'not-opened')
+            args = self.args('--output', str(Path(temporary) / 'output'), '--xlsx-copy', '--copy-target', '집계!B2')
+            args.file = str(source)
+            completed = subprocess.CompletedProcess([], 0, '{}', '')
+            with patch.object(excel_pipeline_command.subprocess, 'run', return_value=completed) as run:
+                result = excel_pipeline_command.analyze(args)
+            run.assert_called_once()
+            self.assertTrue(result['ok'])
+            command = run.call_args.args[0]
+            self.assertIn('--xlsx-copy', command)
+            self.assertEqual(command[-2:], ['--copy-target', '집계!B2'])
+
     def test_missing_package_is_actionable_not_installation(self):
         with tempfile.TemporaryDirectory() as temporary:
             source = Path(temporary) / 'sample.xlsx'

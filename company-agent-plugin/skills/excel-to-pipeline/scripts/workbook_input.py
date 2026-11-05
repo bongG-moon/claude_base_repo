@@ -64,6 +64,11 @@ def choose_reader(source, requested="auto"):
         raise InputError("ZIP 구조가 손상되었습니다. DRM으로 단정하거나 Excel로 재시도하지 않습니다.")
     if requested == "openpyxl":
         raise InputError("일반 OOXML 파일이 아닙니다. 암호화·DRM·실제 파일 형식을 확인하세요.")
+    # A vendor wrapper can have an entirely printable first 512 bytes. Do not
+    # mislabel that observed header as renamed CSV/HTML. Only Excel opens the
+    # intact file; this detection neither removes the wrapper nor decodes it.
+    if head.lstrip(b"\xef\xbb\xbf \t\r\n").upper().startswith(b"<DOCUMENT SAFER"):
+        return "xlwings", [], "document_safer_header_excel_read_candidate"
     # Do not ask Excel to import CSV/HTML renamed to .xlsx. Vendor protection
     # wrappers are not standardized: a binary candidate is not a DRM diagnosis.
     if looks_like_text(head):

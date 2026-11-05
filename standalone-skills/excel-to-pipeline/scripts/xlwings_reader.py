@@ -8,6 +8,7 @@ export. Formula values are observations, not proof of fresh recalculation.
 from __future__ import annotations
 
 import datetime as dt
+from collections import Counter
 import hashlib
 import json
 import math
@@ -27,13 +28,15 @@ from openpyxl.styles import Font, PatternFill
 from openpyxl.styles.numbers import is_timedelta_format
 from openpyxl.utils.datetime import CALENDAR_MAC_1904, CALENDAR_WINDOWS_1900, from_excel
 
-MAX_CELLS = 250_000
+MAX_CELLS = 2_000_000
+MAX_MERGED_CELLS = 250_000
+CHUNK_CELLS = 25_000
 MAX_SHEETS = 100
 MAX_NAMES = 1000
 MAX_TABLES = 500
 MAX_MERGES = 5000
 MAX_XML = 48 * 1024 * 1024
-MAX_OUTPUT = 64 * 1024 * 1024
+MAX_OUTPUT = 256 * 1024 * 1024
 MAX_MODULES = 64
 MAX_MODULE_SOURCE = 2 * 1024 * 1024
 MAX_TOTAL_SOURCE = 8 * 1024 * 1024
@@ -55,7 +58,7 @@ def _bounds(row, col, rows, cols):
     _limit(all(isinstance(v, int) and v > 0 for v in (row, col, rows, cols)), "Excel 범위가 올바르지 않습니다.")
     _limit(row + rows - 1 <= 100_000 and col + cols - 1 <= 512,
            "Excel 읽기는 최대 100,000행·512열 범위까지 지원합니다.")
-    _limit(rows * cols <= MAX_CELLS, "Excel 사용 범위가 250,000셀을 넘습니다. 분석 범위를 나누어 주세요.")
+    _limit(rows * cols <= min(MAX_CELLS, 1_000_000), "Excel 단일 범위가 1,000,000셀 한도를 넘습니다. 필요한 범위를 지정해 주세요.")
 
 
 def _matrix(value, rows, cols):
@@ -195,6 +198,22 @@ def parse_range_xml(xml, formulas, origin, shape, formula_cells=None, values=Non
     if formula_cells is not None:
         actual = {(cell[0], cell[1]) for cell in cells if cell[4] is not None}
         _limit(actual == formula_cells, "Excel XML에 모든 수식 셀이 포함되지 않았습니다.")
+    if observed_values is not None:
+        emitted = {(cell[0], cell[1]) for cell in cells}
+        for ri, values_row in enumerate(observed_values):
+            for ci, value in enumerate(values_row):
+                if value is not None:
+                    _limit((first_row+ri, first_col+ci) in emitted,
+                           "Excel XML에 관찰한 값 일부가 없습니다. 누락된 자료를 성공으로 처리하지 않습니다.")
+        # A clipped merge exported with a shifted anchor must never erase
+        # real values when normalized into openpyxl merged cells.
+        for merged in merges:
+            left, top, right, bottom = range_boundaries(merged)
+            for rr in range(top, bottom+1):
+                for cc in range(left, right+1):
+                    if (rr,cc) != (top,left):
+                        _limit(observed_values[rr-first_row][cc-first_col] is None,
+                               "Excel 병합 범위와 관찰값이 일치하지 않습니다. 값 손실을 막기 위해 중단했습니다.")
     return cells, merges
 
 
@@ -286,6 +305,124 @@ def _address(native_range):
     return address
 
 
+def _content_range(sheet, evidence, index):
+    """Find formula/literal boundaries in four COM calls, ignoring blank formatting.
+
+    Every Find option is explicit so a person's previous Find dialog cannot
+    change the result. A missing metadata API falls back to UsedRange once;
+    actual range read failures are never retried through another reader.
+    """
+    used = sheet.UsedRange
+    original = {"row": int(used.Row), "column": int(used.Column),
+                "rows": int(used.Rows.Count), "columns": int(used.Columns.Count)}
+    try:
+        all_cells = sheet.Cells
+        # Find starts *after* this cell. Explicit corners include A1 and avoid
+        # skipping the first populated cell when Excel remembers another search.
+        after = {1: sheet.Range("XFD1048576"), 2: sheet.Range("A1")}
+        matches = [all_cells.Find(What="*", After=after[direction], LookIn=-4123, LookAt=2,
+                                  SearchOrder=order, SearchDirection=direction,
+                                  MatchCase=False, MatchByte=False, SearchFormat=False)
+                   for order, direction in ((1, 1), (1, 2), (2, 1), (2, 2))]
+        if all(match is None for match in matches):
+            return None, original, "find_formula_and_values"
+        _limit(all(match is not None for match in matches), "Excel 내용 범위의 시작과 끝이 일치하지 않습니다.")
+        top, bottom = int(matches[0].Row), int(matches[1].Row)
+        left, right = int(matches[2].Column), int(matches[3].Column)
+        _bounds(top, left, bottom-top+1, right-left+1)
+        return sheet.Range(f"{get_column_letter(left)}{top}:{get_column_letter(right)}{bottom}"), original, "find_formula_and_values"
+    except NativeReadError:
+        raise
+    except Exception:
+        evidence["incomplete_metadata"].append(f"sheet_{index}_content_find_unavailable_used_range")
+        return used, original, "used_range_fallback"
+
+
+def _xml_merge_extent(xml, rows, cols):
+    """Include a merge crossing a row block without inspecting individual cells."""
+    _limit(isinstance(xml, str) and len(xml.encode("utf-8")) <= MAX_XML,
+           "Excel 범위 XML이 크기 한도를 넘습니다.")
+    normalized = xml.replace("\x00", "").upper()
+    _limit("<!DOCTYPE" not in normalized and "<!ENTITY" not in normalized,
+           "DTD/entity가 포함된 Excel 범위 XML은 처리하지 않습니다.")
+    root = ET.fromstring(xml)
+    tables = root.findall(f"{SS}Worksheet/{SS}Table")
+    _limit(len(tables) == 1, "Excel 범위 XML에서 표를 하나로 확인하지 못했습니다.")
+    last_row, last_col, ri, edges = rows, cols, 0, []
+    for row in tables[0].findall(SS + "Row"):
+        ri = int(row.get(SS + "Index", ri+1)); ci = 0
+        for cell in row.findall(SS + "Cell"):
+            ci = int(cell.get(SS + "Index", ci+1))
+            across, down = int(cell.get(SS + "MergeAcross", 0)), int(cell.get(SS + "MergeDown", 0))
+            _limit(across >= 0 and down >= 0, "Excel XML 병합 범위가 맞지 않습니다.")
+            if across or down:
+                _limit((across+1)*(down+1) <= MAX_MERGED_CELLS, "병합 범위가 안전 한도를 넘습니다.")
+                last_row, last_col = max(last_row, ri+down), max(last_col, ci+across)
+                if ri+down >= rows or ci+across >= cols:
+                    edges.append((ri, ci))
+            ci += across
+    return last_row, last_col, edges
+
+
+def _read_chunks(sheet, used, evidence, index):
+    row, col = int(used.Row), int(used.Column)
+    rows, cols = int(used.Rows.Count), int(used.Columns.Count)
+    _bounds(row, col, rows, cols)
+    cells, merges, chunks, offset, scanned = [], set(), 0, 0, 0
+    while offset < rows:
+        block_rows = min(rows-offset, max(1, CHUNK_CELLS//cols))
+        block = used if offset == 0 and block_rows == rows else sheet.Range(
+            f"{get_column_letter(col)}{row+offset}:{get_column_letter(col+cols-1)}{row+offset+block_rows-1}")
+        # A merged heading may cross the block edge. Extend only that bounded
+        # block and read it once more; never query MergeArea for every cell.
+        for attempt in range(4):
+            document = block._oleobj_.Invoke(6, 0, 2, True, 11)
+            expanded_rows, expanded_cols, edges = _xml_merge_extent(document, block_rows, cols)
+            # Excel clips MergeDown to a partial range's bottom edge. Reading
+            # the next block inside that merge invents a shifted anchor. Only
+            # these XML-detected boundary merges need a native MergeArea check;
+            # ordinary cells never incur a cell-by-cell COM request.
+            for relative_row, relative_col in edges:
+                anchor = f"{get_column_letter(col+relative_col-1)}{row+offset+relative_row-1}"
+                area = str(sheet.Range(anchor).MergeArea.Address).replace("$", "")
+                left, top, right, bottom = range_boundaries(area)
+                _bounds(top, left, bottom-top+1, right-left+1)
+                _limit(top >= row+offset and left >= col,
+                       "블록 밖에서 시작하는 병합을 확인했습니다. 일부 셀을 누락하지 않고 읽기를 중단합니다.")
+                _limit((bottom-top+1)*(right-left+1) <= MAX_MERGED_CELLS,
+                       "병합 범위가 안전 한도를 넘습니다.")
+                expanded_rows=max(expanded_rows,bottom-(row+offset)+1)
+                expanded_cols=max(expanded_cols,right-col+1)
+                evidence["boundary_merge_checks"] = evidence.get("boundary_merge_checks",0)+1
+            if (expanded_rows, expanded_cols) == (block_rows, cols):
+                break
+            _limit(attempt < 3, "병합 범위 확장이 반복되어 읽기를 중단했습니다.")
+            block_rows, cols = expanded_rows, expanded_cols
+            rows = max(rows, offset+block_rows)
+            _bounds(row, col, rows, cols)
+            block = sheet.Range(f"{get_column_letter(col)}{row+offset}:{get_column_letter(col+cols-1)}{row+offset+block_rows-1}")
+        formula_cells = _formula_cells(block, (row+offset, col), (block_rows, cols))
+        try:
+            native_formulas = block.Formula2
+        except Exception:
+            native_formulas = block.Formula
+            note = f"sheet_{index}_formula2_unavailable_used_legacy_formula"
+            if note not in evidence["incomplete_metadata"]:
+                evidence["incomplete_metadata"].append(note)
+        part, part_merges = parse_range_xml(document, native_formulas, (row+offset, col),
+                                             (block_rows, cols), formula_cells, block.Value2)
+        cells.extend(part); merges.update(part_merges)
+        _limit(len(cells) <= MAX_CELLS and len(merges) <= MAX_MERGES, "Excel 셀 또는 병합 수가 한도를 넘습니다.")
+        chunks += 1; scanned += block_rows*cols; offset += block_rows
+    return cells, sorted(merges), {"range": f"{get_column_letter(col)}{row}:{get_column_letter(col+cols-1)}{row+rows-1}",
+                                   "scanned_cells": scanned, "chunks": chunks,
+                                   "populated_cells": len(cells),
+                                   "formula_count": sum(c[4] is not None for c in cells),
+                                   "error_counts": dict(Counter(str(c[2]) for c in cells if c[3] == "e")),
+                                   "formula_error_cells": sum(c[3] == "e" and c[4] is not None for c in cells),
+                                   "literal_error_cells": sum(c[3] == "e" and c[4] is None for c in cells)}
+
+
 def _native_snapshot(source, xw, report_owner):
     """Injection point for safety tests; production called only by child."""
     app = book = blank = None
@@ -295,7 +432,10 @@ def _native_snapshot(source, xw, report_owner):
                 "calculation": "manual", "values_origin": "excel_observed_not_recalculated",
                 "fresh_recalculation_verified": False, "refresh_requested": False,
                 "refresh_on_open_prevention": "not_guaranteed_by_excel_com",
-                "incomplete_metadata": [], "non_worksheet_sheets_not_read": 0}
+                "incomplete_metadata": [], "non_worksheet_sheets_not_read": 0,
+                "sheet_inventory": [], "read_strategy": "content_bounds_then_bounded_range_blocks",
+                "per_cell_value_formula_reads": 0, "boundary_merge_checks": 0,
+                "complete_cell_read": False}
     try:
         app = xw.App(visible=False, add_book=False)
         report_owner(int(app.pid))
@@ -329,25 +469,25 @@ def _native_snapshot(source, xw, report_owner):
         scanned = merge_area = table_area = table_count = 0
         for index in range(1, count+1):
             sheet = book.Worksheets.Item(index)
-            used = sheet.UsedRange
-            row, col = int(used.Row), int(used.Column)
-            rows, cols = int(used.Rows.Count), int(used.Columns.Count)
-            _bounds(row, col, rows, cols)
-            scanned += rows * cols
-            _limit(scanned <= MAX_CELLS, "워크북의 누적 사용 범위가 250,000셀을 넘습니다.")
-            xml = used._oleobj_.Invoke(6, 0, 2, True, 11)
-            formula_cells = _formula_cells(used, (row, col), (rows, cols))
-            try:
-                native_formulas = used.Formula2
-            except Exception:
-                native_formulas = used.Formula
-                evidence["incomplete_metadata"].append(f"sheet_{index}_formula2_unavailable_used_legacy_formula")
-            cells, merges = parse_range_xml(xml, native_formulas, (row, col), (rows, cols),
-                                             formula_cells, used.Value2)
+            used, original_range, bounds_source = _content_range(sheet, evidence, index)
+            if used is None:
+                cells, merges = [], []
+                inventory = {"range": None, "scanned_cells": 0, "chunks": 0, "populated_cells": 0,
+                             "formula_count": 0, "error_counts": {}, "formula_error_cells": 0, "literal_error_cells": 0}
+            else:
+                planned_cells = int(used.Rows.Count)*int(used.Columns.Count)
+                _limit(scanned + planned_cells <= MAX_CELLS,
+                       "워크북의 누적 내용 범위가 2,000,000셀을 넘습니다. 필요한 시트·범위를 지정해 주세요.")
+                cells, merges, inventory = _read_chunks(sheet, used, evidence, index)
+                scanned += inventory["scanned_cells"]
+                _limit(scanned <= MAX_CELLS, "병합을 포함한 워크북 내용 범위가 2,000,000셀을 넘습니다.")
+            evidence["sheet_inventory"].append({"sheet": str(sheet.Name), **inventory,
+                                                "original_used_range": original_range,
+                                                "bounds_source": bounds_source})
             for merged in merges:
                 c1, r1, c2, r2 = range_boundaries(merged)
                 merge_area += (c2-c1+1)*(r2-r1+1)
-                _limit(merge_area <= MAX_CELLS, "누적 병합 셀 수가 한도를 넘습니다.")
+                _limit(merge_area <= MAX_MERGED_CELLS, "누적 병합 셀 수가 한도를 넘습니다.")
             record = {"name": str(sheet.Name), "state": {-1: "visible", 0: "hidden", 2: "veryHidden"}[int(sheet.Visible)],
                       "cells": cells, "merges": merges, "tables": []}
             try:
@@ -401,6 +541,7 @@ def _native_snapshot(source, xw, report_owner):
         if result["extraction"]["status"] != "no_vba":
             result["features"].append("macros")
         evidence["scanned_cells"] = scanned
+        evidence["complete_cell_read"] = True
         evidence["vba_status"] = result["extraction"]["status"]
         return result
     finally:

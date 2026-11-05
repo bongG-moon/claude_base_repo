@@ -180,6 +180,17 @@ class XmlTests(unittest.TestCase):
         with self.assertRaises(reader.NativeReadError):
             reader.parse_range_xml(xml('<Row/>'), "=1", (1,1), (1,1), {(1,1)})
 
+    def test_missing_native_literal_from_xml_is_not_silently_dropped(self):
+        for value in (0, False, '', 'actual'):
+            with self.subTest(value=value), self.assertRaisesRegex(reader.NativeReadError, '관찰한 값'):
+                reader.parse_range_xml(xml('<Row/>'), value, (1,1), (1,1), set(), value)
+
+    def test_shifted_merge_cannot_erase_observed_values(self):
+        document = xml('<Row><Cell ss:MergeDown="1"><Data ss:Type="Number">1</Data></Cell></Row>'
+                       '<Row><Cell><Data ss:Type="Number">2</Data></Cell></Row>')
+        with self.assertRaisesRegex(reader.NativeReadError, '병합 범위와 관찰값'):
+            reader.parse_range_xml(document, ((1,),(2,)), (1,1), (2,1), set(), ((1,),(2,)))
+
     def test_formula_mask_without_per_cell_calls(self):
         used = types.SimpleNamespace(HasFormula=True)
         self.assertEqual(reader._formula_cells(used, (4,2), (1,2)), {(4,2),(4,3)})

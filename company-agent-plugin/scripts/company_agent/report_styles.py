@@ -73,6 +73,29 @@ def apply_reference(data):
 from .report_theme_templates import CSS
 
 
+def _readable_on_surface(candidate, surface, fallback=None, minimum=4.5):
+    """Keep an observed color when legible on an observed opaque surface."""
+    def rgb(value):
+        value = value.lstrip('#')
+        if len(value) == 3:
+            value = ''.join(ch * 2 for ch in value)
+        return [int(value[i:i+2], 16) / 255 for i in (0, 2, 4)]
+
+    def luminance(value):
+        channels = [(v / 12.92 if v <= .04045 else ((v + .055) / 1.055) ** 2.4) for v in rgb(value)]
+        return sum(a*b for a, b in zip(channels, (.2126, .7152, .0722)))
+
+    background = luminance(surface)
+    def contrast(value):
+        foreground = luminance(value)
+        return (max(background, foreground) + .05) / (min(background, foreground) + .05)
+
+    for value in (candidate, fallback):
+        if value and contrast(value) >= minimum:
+            return '#' + value.lstrip('#')
+    return '#111111' if contrast('111111') >= contrast('ffffff') else '#ffffff'
+
+
 def reference_style_css(overrides):
     """Render validated, data-only observations without importing source CSS."""
     import json
@@ -133,6 +156,14 @@ def reference_style_css(overrides):
         rules.append(root + ' .kpi{' + ';'.join(local) + '}')
     if 'surface' in colors:
         rules.append(root + ' :is(.kpi,.report-masthead){background:var(--paper)}')
+        # Replacing a preset's dark first-card surface with a reference surface
+        # must also replace its inherited light text variables. Preserve the
+        # observed colors when they meet the text contrast threshold.
+        surface = colors['surface']
+        ink = _readable_on_surface(colors.get('text'), surface)
+        muted = _readable_on_surface(colors.get('muted'), surface, ink)
+        accent = _readable_on_surface(colors.get('primary'), surface, ink, minimum=3.0)
+        rules.append(root + ' .kpi{--ink:' + ink + ';--muted:' + muted + ';--accent:' + accent + '}')
     if 'text' in colors:
         rules.append(root + ' .report-masthead{color:var(--ink)}')
     if 'muted' in colors:

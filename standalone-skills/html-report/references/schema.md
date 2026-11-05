@@ -29,6 +29,7 @@ PPT나 이미지 참고가 있을 때만 `referenceImages`와 `referenceStyle`�
 - `takeaway`는 제목 근처 핵심 문장, `source`는 출처·집계 범위·단위·기간입니다. 차트 다음 해석은 takeaway 대신 body와 contentOrder로 배치합니다.
 - `kpis`는 계산된 facts를 참조하는 `[{"fact":"total","note":"집계 조건"}]` 형식입니다. 별도 임의 value를 넣지 않습니다.
 - 표 `headers`와 각 `rows`의 열수를 맞춥니다. chart는 `type:column|bar|line|pie`, categories, series를 사용합니다.
+  차트 항목을 가리키거나 누르면 전체 항목명, 계열명과 실제 수치를 표시하고 해당 항목을 강조합니다. Tab으로 진입한 뒤 방향키, Home/End로 이동하고 Esc로 닫습니다. 원형 차트는 비중도 표시합니다. 기본 동작이므로 툴팁용 질문이나 외부 라이브러리를 추가하지 않습니다. 전체 수치는 아래 원자료 표에도 유지합니다.
   짧은 ID와 날짜, 기간은 의미 단위를 한 줄로 표시합니다. 필요한 열은 `table.columnTypes`에 headers 순서대로 auto / text / id / date / period를 지정합니다. 생략하면 명확한 제목만 자동 구분하며 자세한 예제는 [데이터 표](data-tables.md)를 봅니다.
   예: `{"type":"column","categories":["1월","2월"],"series":[{"name":"신청","values":[12,20]}]}`.
 - `contentOrder`는 각 section의 body/bullets/table/chart/image 중 존재하는 항목을 정확히 한 번씩 적습니다. 제목·출처는 제외합니다.

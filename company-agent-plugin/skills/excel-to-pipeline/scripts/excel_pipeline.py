@@ -20,7 +20,9 @@ from openpyxl.utils import get_column_letter, range_boundaries
 
 from formula_engine import FormulaEngine
 
-MAX_CELLS = 250_000
+MAX_CELLS = 2_000_000
+# Merges can expand into implicit cell objects, unlike ordinary sparse input.
+MAX_MERGED_CELLS = 250_000
 MAX_RECTANGLE = 1_000_000
 MAX_UNCOMPRESSED = 128 * 1024 * 1024
 MAX_REGIONS = 500
@@ -128,14 +130,14 @@ def preflight(source):
             if dimension is not None:
                 bounded_range(dimension.attrib.get("ref"), "시트")
             for merged in root.findall(".//" + NS + "mergeCell"):
-                c1, r1, c2, r2 = bounded_range(merged.attrib.get("ref"), "병합", MAX_CELLS)
+                c1, r1, c2, r2 = bounded_range(merged.attrib.get("ref"), "병합", MAX_MERGED_CELLS)
                 merged_area += (c2 - c1 + 1) * (r2 - r1 + 1)
-                if merged_area > MAX_CELLS:
+                if merged_area > MAX_MERGED_CELLS:
                     raise InputError("병합 범위 누적 셀 수가 시험판 한도 250,000개를 넘습니다.")
             cells = root.findall(".//" + NS + "c")
             count += len(cells)
             if count > MAX_CELLS:
-                raise InputError("셀 수가 시험판 한도 250,000개를 넘습니다.")
+                raise InputError("워크북 셀 수가 분석 한도 2,000,000개를 넘습니다. 범위를 지정해 다시 분석하세요.")
             for cell in cells:
                 bounded_range(cell.attrib.get("r", "A1"), "셀", single_cell=True)
         return features
@@ -181,12 +183,12 @@ def regions_from_points(points):
 def merged_lookup(ws):
     result = {}
     for merged in ws.merged_cells.ranges:
-        if (merged.max_row - merged.min_row + 1) * (merged.max_col - merged.min_col + 1) > MAX_CELLS:
+        if (merged.max_row - merged.min_row + 1) * (merged.max_col - merged.min_col + 1) > MAX_MERGED_CELLS:
             raise InputError("병합 범위가 시험판 한도를 넘습니다.")
         for row in range(merged.min_row, merged.max_row + 1):
             for col in range(merged.min_col, merged.max_col + 1):
                 result[(row, col)] = (merged.min_row, merged.min_col)
-        if len(result) > MAX_CELLS:
+        if len(result) > MAX_MERGED_CELLS:
             raise InputError("병합 셀 수가 시험판 한도를 넘습니다.")
     return result
 
@@ -434,6 +436,43 @@ def processing_plan(tables, formulas):
             "note": "표 수준 처리 순서입니다. 실제 계산은 셀 의존성을 따르며 업무 의미의 pandas 변환은 별도입니다."}
 
 
+def sheet_error_summary(ws, observed, formulas):
+    """Summarize value observations separately from formula-source evidence.
+
+    An observed #REF! is not proof that an external workbook is missing, and
+    an error value alone never proves that its original formula was obtained.
+    This one local pass replaces repeated model-led cell/COM inspections.
+    """
+    counts, examples, formula_errors, literal_errors = Counter(), [], 0, 0
+    own = [f for f in formulas if f["sheet"] == ws.title]
+    # Text literals can legitimately contain "#REF!" or a filename. They are
+    # displayed content, not broken references or external dependencies.
+    expressions = [re.sub(r'"(?:[^"]|"")*"', '""', f["formula"]) for f in own]
+    broken = [expr for expr in expressions if "#REF!" in expr.upper()]
+    external = [expr for expr in expressions if re.search(r"\[[^\]]+\][^!]*!", expr)]
+    for row in ws.iter_rows():
+        for cell in row:
+            value = observed[cell.coordinate] if cell.data_type == "f" else cell
+            if value.data_type != "e":
+                continue
+            counts[str(value.value)] += 1
+            if cell.data_type == "f":
+                formula_errors += 1
+            else:
+                literal_errors += 1
+            if len(examples) < 3:
+                examples.append({"cell": cell.coordinate, "error": str(value.value),
+                                 "formula_observed": cell.data_type == "f",
+                                 "formula": cell.value if cell.data_type == "f" else None})
+    return {"sheet": ws.title, "range": ws.calculate_dimension(), "formula_count": len(own),
+            "error_counts": dict(counts), "formula_error_cells": formula_errors,
+            "literal_error_cells": literal_errors, "broken_reference_formula_count": len(broken),
+            "external_reference_formula_count": len(external), "error_examples": examples,
+            "diagnosis": (["수식 원문에 #REF!가 있습니다. 삭제되거나 잘못된 참조이며 원래 열·파일은 오류만으로 복원할 수 없습니다."] if broken else [])
+                         + (["외부 통합문서 참조가 있습니다. 연결 대상의 존재 여부나 최신 값은 확인하지 않았습니다."] if external else [])
+                         + (["#VALUE!는 자료형·인수 등 여러 원인이 가능하며 참조문서 누락으로 단정하지 않습니다."] if "#VALUE!" in counts else [])}
+
+
 def analyze(source, plan=None, reader="auto", excel_timeout=90):
     from workbook_input import load_workbooks
     source = Path(source).resolve()
@@ -449,15 +488,18 @@ def analyze(source, plan=None, reader="auto", excel_timeout=90):
         engine = FormulaEngine(wb)
         formulas = engine.analyze()
         for formula in formulas:
-            cache = cached[formula["sheet"]][formula["cell"]].value
+            cached_cell = cached[formula["sheet"]][formula["cell"]]
+            cache = cached_cell.value
             formula["cached_value"] = safe_value(cache)
+            formula["cached_value_type"] = cached_cell.data_type
+            formula["cached_error"] = str(cache) if cached_cell.data_type == "e" else None
             formula["cached_value_origin"] = input_evidence["values_origin"]
             formula["value"] = safe_value(formula.get("value"))
             formula["cache_comparison"] = ("unavailable" if cache is None else
                                            "not_computed" if formula["status"] != "computed" else
                                            "match" if equivalent(cache, formula["value"]) else "mismatch")
         planned = validate_plan(plan, wb) if plan is not None else None
-        tables, sheets, observations = [], [], []
+        tables, sheets, observations, inventory = [], [], [], []
         for sheet_index, ws in enumerate(wb.worksheets, 1):
             if ws.max_row * ws.max_column > MAX_RECTANGLE:
                 raise InputError("시트 사용 범위가 시험판 한도를 넘습니다.")
@@ -469,6 +511,7 @@ def analyze(source, plan=None, reader="auto", excel_timeout=90):
             sheets.append({"name": ws.title, "state": ws.sheet_state,
                            "range": ws.calculate_dimension(), "table_count": len(specs), "notes": notes,
                            "unselected_detected_regions": [] if planned is None else [s["range"] for s in detected if not any(s["range"] == t["range"] for t in specs)]})
+            inventory.append(sheet_error_summary(ws, cached[ws.title], formulas))
             for row in ws.iter_rows():
                 for cell in row:
                     if not has_value(cell):
@@ -477,6 +520,7 @@ def analyze(source, plan=None, reader="auto", excel_timeout=90):
                                          "value": safe_value(cell.value) if cell.data_type != "f" else None,
                                          "formula": safe_value(cell.value) if cell.data_type == "f" else None,
                                          "type": cell.data_type, "number_format": cell.number_format,
+                                         "cached_value_type": cached[ws.title][cell.coordinate].data_type if cell.data_type == "f" else None,
                                          "cached_value": safe_value(cached[ws.title][cell.coordinate].value) if cell.data_type == "f" else None})
         if hashlib.sha256(source.read_bytes()).hexdigest() != digest:
             raise InputError("분석 중 원본 파일이 바뀌었습니다. 저장이 끝난 뒤 다시 실행해 주세요.")
@@ -489,6 +533,12 @@ def analyze(source, plan=None, reader="auto", excel_timeout=90):
             flags.append("formula_review_required")
         if input_evidence.get("incomplete_metadata"):
             flags.append("native_metadata_incomplete")
+        # Keep native bounds/call counts and enrich them with common diagnostics.
+        native_inventory = {item["sheet"]: item for item in input_evidence.get("sheet_inventory", [])}
+        input_evidence["sheet_inventory"] = [{**native_inventory.get(item["sheet"], {}), **item} for item in inventory]
+        input_evidence["complete_cell_read"] = True
+        if any(item["error_counts"] for item in inventory):
+            flags.append("observed_excel_errors")
         summary = {"version": VERSION, "source_name": source.name, "sha256": digest,
                    "sheet_count": len(sheets), "table_count": len(tables),
                    "data_row_count": sum(len(t["rows"]) for t in tables),
@@ -498,6 +548,7 @@ def analyze(source, plan=None, reader="auto", excel_timeout=90):
                    "source_unchanged": True, "elapsed_seconds": round(time.perf_counter()-started, 4),
                    "non_cell_features": features, "model_calls": 0,
                    "reader": input_evidence["reader"],
+                   "sheet_error_summary": [{k: v for k, v in item.items() if k not in {"error_examples", "diagnosis"}} for item in inventory],
                    "values_origin": input_evidence["values_origin"],
                    "scope": "cell_structure_and_supported_formula_subset_not_full_excel_compatibility"}
         result = {"summary": summary, "sheets": sheets, "tables": tables,
@@ -700,7 +751,7 @@ def publish(result, output, emit_project=True, sample_rows=5, context_chars=1200
         (output / "업무흐름.html").write_text(workflow_html, encoding="utf-8")
         support = output / ("pipeline_lib" if layout == "detailed" else "_support")
         support.mkdir()
-        for filename in ("excel_pipeline.py", "formula_engine.py", "vba_extract.py", "vba_inspect.py", "migration_contract.py", "model_context.py", "workbook_input.py", "xlwings_reader.py", "project_builder.py", "project_runtime.py", "python_formulas.py", "project_selection.py", "compact_project.py"):
+        for filename in ("excel_pipeline.py", "formula_engine.py", "vba_extract.py", "vba_inspect.py", "migration_contract.py", "model_context.py", "workbook_input.py", "xlwings_reader.py", "project_builder.py", "project_runtime.py", "python_formulas.py", "project_selection.py", "compact_project.py", "xlsx_copy.py"):
             shutil.copyfile(Path(__file__).resolve().parent / filename, support / filename)
         requirements = output if layout == "detailed" else support
         (requirements / "requirements.txt").write_text("openpyxl>=3.1,<4\n", encoding="utf-8")
@@ -728,6 +779,8 @@ def main(argv=None, customize=None, emit_project=True):
     parser.add_argument("--inspect", action="store_true", help="요약만 확인, 파일 생성 안 함")
     parser.add_argument("--plan", help="확인한 표 범위/헤더 JSON (선택)")
     parser.add_argument("--target", action="append", default=[], help="남길 결과 표 ID 또는 시트!A1:D20. 여러 번 지정 가능")
+    parser.add_argument("--xlsx-copy", action="store_true", help="같은 분석으로 필요한 셀과 수식의 새 필요자료.xlsx도 생성")
+    parser.add_argument("--copy-target", action="append", default=[], help="XLSX 사본만 남길 결과 표 ID 또는 시트!A1:D20. 선행 셀 자동 포함, 여러 번 지정 가능")
     parser.add_argument("--layout", choices=("compact", "detailed"), default="compact",
                         help="기본 compact: 시트별 Python 중심. detailed는 이전 상세 분석 구성")
     parser.add_argument("--diagnostics", action="store_true", help="셀별 상세 기록도 _details에 보관")
@@ -750,6 +803,8 @@ def main(argv=None, customize=None, emit_project=True):
         parser.error("--context-chars는 1024~50000 범위입니다.")
     if args.context_only and (args.output or args.inspect):
         parser.error("--context-only는 --output/--inspect와 함께 사용하지 않습니다.")
+    if (args.xlsx_copy or args.copy_target) and (args.inspect or args.context_only):
+        parser.error("XLSX 사본 생성은 --inspect/--context-only와 함께 사용하지 않습니다.")
     if not args.inspect and not args.context_only and not args.output:
         args.output = str(Path.cwd() / "excel-to-pipeline" / "outputs" /
                           dt.datetime.now().strftime("run-%Y%m%d-%H%M%S-%f"))
@@ -758,6 +813,10 @@ def main(argv=None, customize=None, emit_project=True):
             raise InputError("결과 폴더가 이미 있습니다. 새 폴더를 지정해 주세요.")
         plan = json.loads(Path(args.plan).read_text(encoding="utf-8")) if args.plan else None
         result = analyze(args.source, plan, args.reader, args.excel_timeout)
+        copy_plan = None
+        if args.xlsx_copy or args.copy_target:
+            from xlsx_copy import prepare_copy
+            copy_plan = prepare_copy(result, args.copy_target or args.target)
         if args.target:
             from project_selection import select_result
             result = select_result(result, args.target)
@@ -772,6 +831,20 @@ def main(argv=None, customize=None, emit_project=True):
             publish(result, args.output, emit_project, args.sample_rows, args.context_chars,
                     layout=args.layout, diagnostics=args.diagnostics)
             result["summary"]["outputPath"] = str(Path(args.output).absolute())
+            if copy_plan:
+                from xlsx_copy import write_copy
+                receipt = write_copy(copy_plan, Path(args.output) / "필요자료.xlsx")
+                result["summary"]["xlsx_copy"] = receipt
+                detail = Path(args.output) / ("_details" if args.layout == "compact" else "")
+                write_json(detail / "xlsx_copy.json", receipt)
+                # 이번 호출이 방금 만든 요약에 사본 영수증만 덧붙입니다. 기존 사용자 폴더는 시작 시 거절했습니다.
+                (detail / "summary.json").write_text(json.dumps(result["summary"], ensure_ascii=False, indent=2), encoding="utf-8")
+                with (Path(args.output) / "README.md").open("a", encoding="utf-8") as guide:
+                    guide.write("\n## 필요한 자료의 XLSX 사본\n\n")
+                    guide.write("`필요자료.xlsx`에 선택한 데이터와 수식 원문을 보관했습니다. 셀 주소를 옮기지 않아 원래 참조를 유지합니다.\n")
+                    guide.write("수식 결과 캐시는 복사하거나 재계산하지 않았습니다. 새 파일은 수동 계산 상태이며 Excel에서 검토 후 계산합니다.\n")
+                    guide.write("오류 수식과 외부 참조는 자동 복구하지 않습니다. 매크로, 연결, 그림과 불필요한 빈 서식은 포함하지 않습니다.\n")
+                    guide.write(f"보존 셀 {receipt['kept_cell_count']:,}개, 수식 {receipt['formula_count']:,}개. 확인 사항: {receipt['warnings'] or '없음'}.\n")
         print(json.dumps(result["summary"], ensure_ascii=False, indent=2))
         return 0
     except (InputError, OSError, ValueError, KeyError, zipfile.BadZipFile, ET.ParseError) as error:

@@ -419,6 +419,8 @@ def create_html(spec: dict[str, Any], output: Path, *, require_choices: bool = F
             if reference['sha256'] != selected['sha256']:
                 raise ArtifactError('template_changed', '첨부 양식이 변경되었습니다. 변경된 양식의 미리보기를 다시 확인해 주세요.', 'input_required')
             data['referenceCss'] = theme_css(reference)
+            # Structural counts are cues, not imported DOM or proof of visual similarity.
+            data['referenceNavigation'] = bool(reference.get('layoutHints', {}).get('navigation'))
         from .report_facts import FactError, resolve, bind
         from .report_design import render
         try:

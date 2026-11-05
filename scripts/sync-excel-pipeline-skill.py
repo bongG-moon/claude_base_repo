@@ -17,9 +17,9 @@ DESTINATION = ROOT / "company-agent-plugin" / "skills" / "excel-to-pipeline"
 RUNTIME = ("excel_pipeline.py", "formula_engine.py", "migration_contract.py",
            "model_context.py", "vba_extract.py", "vba_inspect.py",
            "workbook_input.py", "xlwings_reader.py", "project_builder.py", "project_runtime.py",
-           "python_formulas.py", "project_selection.py", "compact_project.py", "workflow_report.py")
+           "python_formulas.py", "project_selection.py", "compact_project.py", "workflow_report.py", "xlsx_copy.py")
 ASSETS = ("NotoSansKR-Variable.woff", "OFL.txt", "SOURCE.json")
-REFERENCES = ("plan.md", "limits.md", "excel-reader.md", "vba-migration.md", "generated-project.md")
+REFERENCES = ("plan.md", "limits.md", "excel-reader.md", "vba-migration.md", "generated-project.md", "xlsx-copy.md")
 REQUIREMENTS = ("requirements.txt", "requirements-vba.txt", "requirements-excel.txt")
 
 
