@@ -19,6 +19,21 @@
 
 이름·소개·태그는 [등록 글 작성 기준](catalog-writing.md)에 따라 쓴다. `name`은 자료와 동작이 드러나는 짧은 이름, `desc`는 무엇을 하고 언제 쓰는지 설명하는 1~2문장이다. `workTags`에는 동료가 검색할 업무 표현을 실제 기능 범위에서 넣는다. 제품명이나 사용자가 확정한 이름을 임의로 바꾸지 않는다. 설치 조건은 `environment`, `requirements`, `guideFile` 내용에 구체적으로 남긴다. 서버가 문장을 자동으로 쉽게 바꾸거나 기술적 사실을 검사하는 것은 아니다.
 
+## 실제 설치 이름
+
+카드의 도구 제목은 `ai-square.json.name`에서 읽는다. 카드 제목 아래와 상세 화면에 표시되는 설치 이름은 현재 배포의 원본 선언에서 확인한다.
+
+| 공유 유형 | 실제 이름을 확인하는 곳 |
+|---|---|
+| Skill | `SKILL.md` frontmatter의 `name` |
+| MCP/Tool | `.mcp.json`의 단일 `mcpServers` 이름, 또는 AI SQUARE 자동 설치 프로필로 생성하는 `pt-square-<slug>` |
+| Claude 플러그인 | `.claude-plugin/plugin.json`의 `name` |
+| AX Workspace 확장 | `extension.json`의 `id` |
+
+예를 들어 카드 제목이 `업무 메모로 주간 보고서 작성`이고 `SKILL.md`에 `name: weekly-report`가 있으면 실제 스킬명은 `weekly-report`다. 기존 이름을 보존하고 설치 안내와 사용 예시에서 같은 이름을 쓴다. 새 Skill에 이름이 빠져 있으면 준비 사본에 frontmatter를 작성하고 변경 내용을 알린다. MCP의 원본 설정 이름과 플랫폼의 자동 설치 이름이 다를 수 있으므로 최종 이름은 실제 설치 프로필과 함께 확인한다.
+
+이름 확인용으로 `installationName`, `installationIdentity`, `installedSkillName`을 `ai-square.json`에 추가하지 않는다. 제작 도우미가 반환하는 `installationName`과 `installationNameNotice`는 파일 확인 결과다. 웹 API의 `installationIdentity`는 권한과 활성 배포를 확인한 조회 결과다. 원본 이름을 확인할 수 없는 기존 자료도 기존 방식으로 배포할 수 있으며, 제작 도우미가 알린 누락 사항을 설치 안내와 인계 내용에 남긴다.
+
 경로는 `/` 구분자를 사용한다. 절대 경로, `..`, 빈 파일, 누락 파일, 중복 경로·중복 JSON 키, 알 수 없는 항목은 거절된다. guideFile 내용은 설치 안내 입력란으로 가져온다. 이름·설명·안내는 웹에서 검토하고 수정할 수 있다. 프로그램·유형은 ZIP과 일치해야 한다. 조직·업무 분야·담당자 표시명·권한은 웹 또는 게시 준비안에서 검토하며 패키지로 권한을 지정하지 않는다. 실제 등록자 사번은 인증된 계정으로 서버가 기록한다. 사번·부서코드·얼굴 사진·KEY는 배포 선언에 추가하지 않는다.
 
 toolId·release·버전 확인 URL은 입력하지 않는다. 게시 후 웹에서 발급한 별도 배포 정보 JSON에 들어간다. 원본 ZIP은 서버에서 수정하지 않는다. JSON의 상대 URL은 사용자가 접속한 플랫폼 주소 기준이며 인증이 필요하다. 사용자가 실행 시 버전 확인 기능을 요청한 경우에만 배포할 도구의 실행 진입점과 인증 방법을 함께 설계한다. 일반 배포 파일에 버전 확인 코드나 KEY 입력 절차를 추가할 필요는 없다.

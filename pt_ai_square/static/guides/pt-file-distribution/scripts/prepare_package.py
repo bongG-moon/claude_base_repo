@@ -3,6 +3,7 @@ import argparse
 from pathlib import Path
 from zipfile import ZipFile, ZIP_DEFLATED
 from package_contract import read_package
+from installation_names import name_report
 
 
 def prepare(source,output):
@@ -14,7 +15,7 @@ def prepare(source,output):
         if not raw: raise ValueError('빈 Markdown 파일입니다.')
         output.parent.mkdir(parents=True,exist_ok=True)
         with output.open('xb') as f: f.write(raw)
-        return {'packageId':source.stem,'type':'Skill','format':'md'}
+        return {'packageId':source.stem,'type':'Skill','format':'md',**name_report(output,'Skill')}
     if not source.is_dir(): raise ValueError('준비 폴더 또는 단일 .md 파일을 지정하세요.')
     if output.suffix.lower()!='.zip': raise ValueError('여러 파일이 든 폴더는 .zip 출력 경로를 지정하세요.')
     if output==source or source in output.parents: raise ValueError('ZIP 출력은 준비 폴더 바깥에 지정하세요.')
@@ -35,7 +36,7 @@ def prepare(source,output):
         with ZipFile(output) as z:
             package=read_package(z)
             if package is None: raise ValueError('준비 폴더 최상위에 ai-square.json이 필요합니다.')
-        return package
+        return {**package,**name_report(output,package['type'],package.get('entryPoint',''))}
     except Exception:
         if created: output.unlink(missing_ok=True)
         raise
@@ -49,4 +50,9 @@ if __name__=='__main__':
     try:package=prepare(args.source,args.output)
     except (ValueError,OSError) as error:parser.error(str(error))
     print(f"배포 준비 완료: {args.output} ({package['packageId']})")
+    identity=package['installationName']
+    if identity:
+        print(f"파일에 선언된 {identity['label']}: {identity['name']} ({identity['source']})")
+    else:
+        print(package['installationNameNotice'])
     print('파일 구성만 확인했습니다. 코드 실행·의존성 설치·악성코드 검사는 하지 않았습니다.')

@@ -167,7 +167,8 @@ def plugin_digest(tree, slug):
 
 def standard_files(standard):
     required = ['SKILL.md', 'references/package-format.md', 'assets/INSTALL_GUIDE.template.md',
-                'scripts/prepare_package.py', 'scripts/package_contract.py', 'scripts/install_scope.py']
+                'scripts/prepare_package.py', 'scripts/package_contract.py', 'scripts/install_scope.py',
+                'scripts/installation_names.py']
     files = read_tree(standard, '.')
     for name in required:
         if name not in files:

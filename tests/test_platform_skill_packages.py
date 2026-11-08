@@ -244,7 +244,8 @@ class PackageUnitTests(unittest.TestCase):
 
     def test_standard_instruction_change_changes_fingerprint(self):
         for name in ('SKILL.md', 'references/package-format.md', 'assets/INSTALL_GUIDE.template.md',
-                     'scripts/prepare_package.py', 'scripts/package_contract.py', 'scripts/install_scope.py'):
+                     'scripts/prepare_package.py', 'scripts/package_contract.py', 'scripts/install_scope.py',
+                     'scripts/installation_names.py'):
             path = self.root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(b'v1')
         before = export.standard_files(self.root)
         (self.root / 'SKILL.md').write_bytes(b'v2')
